@@ -30,16 +30,20 @@ import {
   Radio,
   FlaskConical,
   MessageSquare,
+  Palette,
   CreditCard,
   ListTodo,
   Settings,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useAuthStore } from '@/stores/auth-store'
 import { WORKSPACE_IDS } from '@/components/layout/lib/workspace-registry'
 import { type SidebarData } from '@/components/layout/types'
+import { createAiCoveDesignSidecarUrl } from '@/lib/ai-cove-sidecar-url'
 
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
+  const userId = useAuthStore((state) => state.auth.user?.id)
 
   return {
     workspaces: [
@@ -59,6 +63,13 @@ export function useSidebarData(): SidebarData {
             title: t('Playground'),
             url: '/playground',
             icon: FlaskConical,
+          },
+          {
+            title: 'AI-Cove-Design',
+            url: createAiCoveDesignSidecarUrl(userId),
+            configUrls: ['/playground'],
+            documentNavigation: true,
+            icon: Palette,
           },
           {
             title: t('Chat'),
