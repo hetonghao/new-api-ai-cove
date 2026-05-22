@@ -38,7 +38,6 @@ type BaseNavItem = {
   icon?: React.ElementType
   activeUrls?: (LinkProps['to'] | (string & {}))[]
   configUrls?: (LinkProps['to'] | (string & {}))[]
-  documentNavigation?: boolean
 }
 
 /**
@@ -100,4 +99,5 @@ export type TopNavLink = {
   disabled?: boolean
   requiresAuth?: boolean
   external?: boolean
+  newTab?: boolean
 }

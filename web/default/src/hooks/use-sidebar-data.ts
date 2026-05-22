@@ -36,14 +36,11 @@ import {
   Settings,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useAuthStore } from '@/stores/auth-store'
 import { WORKSPACE_IDS } from '@/components/layout/lib/workspace-registry'
 import { type SidebarData } from '@/components/layout/types'
-import { createAiCoveDesignSidecarUrl } from '@/lib/ai-cove-sidecar-url'
 
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
-  const userId = useAuthStore((state) => state.auth.user?.id)
 
   return {
     workspaces: [
@@ -66,9 +63,9 @@ export function useSidebarData(): SidebarData {
           },
           {
             title: 'AI-Cove-Design',
-            url: createAiCoveDesignSidecarUrl(userId),
+            url: '/ai-cove-design',
+            activeUrls: ['/ai-cove-design'],
             configUrls: ['/playground'],
-            documentNavigation: true,
             icon: Palette,
           },
           {

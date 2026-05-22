@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 const AI_COVE_DESIGN_SIDECAR_PATH = '/sidecars/gpt-image-canvas/'
+const AI_COVE_HELP_DOCS_SIDECAR_PATH = '/sidecars/help-docs/'
 const DEFAULT_LOCAL_SIDECAR_ORIGIN = 'http://127.0.0.1:4174'
 const DEFAULT_LOCAL_GATEWAY_ORIGIN = 'http://127.0.0.1:38080'
 
@@ -82,7 +83,9 @@ function normalizeUserId(userId: number | string | null | undefined): string {
   return ''
 }
 
-export function createAiCoveDesignSidecarUrl(userId?: number | string | null): string {
+export function createAiCoveDesignSidecarUrl(
+  userId?: number | string | null
+): string {
   const url = new URL(AI_COVE_DESIGN_SIDECAR_PATH, getSidecarOrigin())
   const params = new URLSearchParams({
     base_url: getGatewayBaseUrl(),
@@ -96,4 +99,8 @@ export function createAiCoveDesignSidecarUrl(userId?: number | string | null): s
 
   url.search = params.toString()
   return url.toString()
+}
+
+export function createAiCoveHelpDocsSidecarUrl(): string {
+  return new URL(AI_COVE_HELP_DOCS_SIDECAR_PATH, getSidecarOrigin()).toString()
 }
