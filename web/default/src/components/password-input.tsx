@@ -50,7 +50,8 @@ export function PasswordInput({
         size='icon'
         variant='ghost'
         disabled={disabled}
-        className='text-muted-foreground absolute end-1 top-1/2 h-6 w-6 -translate-y-1/2 rounded-md'
+        tabIndex={-1}
+        className='password-visibility-toggle text-muted-foreground absolute end-1 top-1/2 h-6 w-6 rounded-md'
         onClick={() => setShowPassword((prev) => !prev)}
         aria-label='Toggle password visibility'
       >

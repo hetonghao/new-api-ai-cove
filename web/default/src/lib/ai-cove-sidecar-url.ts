@@ -19,8 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 const AI_COVE_DESIGN_SIDECAR_PATH = '/sidecars/gpt-image-canvas/'
 const AI_COVE_HELP_DOCS_SIDECAR_PATH = '/sidecars/help-docs/'
-const DEFAULT_LOCAL_SIDECAR_ORIGIN = 'http://127.0.0.1:4174'
-const DEFAULT_LOCAL_GATEWAY_ORIGIN = 'http://127.0.0.1:38080'
+const DEFAULT_LOCAL_SIDECAR_PORT = 4174
 
 type AiCoveSidecarEnv = {
   VITE_AI_COVE_GATEWAY_BASE_URL?: string
@@ -40,33 +39,82 @@ function getCurrentOrigin(): string {
   return 'http://localhost:3000'
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === '127.0.0.1' ||
+    hostname === 'localhost' ||
+    hostname === '::1'
+  )
+}
+
 function isLocalHost(): boolean {
   if (typeof window === 'undefined') {
     return false
   }
-  return (
-    window.location.hostname === '127.0.0.1' ||
-    window.location.hostname === 'localhost' ||
-    window.location.hostname === '::1'
-  )
+  return isLoopbackHostname(window.location.hostname)
+}
+
+function createCurrentHostOrigin(port?: number | string): string {
+  if (typeof window === 'undefined') {
+    const fallbackPort = port ? String(port) : '3000'
+    return `http://127.0.0.1:${fallbackPort}`
+  }
+
+  const url = new URL(window.location.href)
+  if (port) {
+    url.port = String(port)
+  }
+  url.pathname = ''
+  url.search = ''
+  url.hash = ''
+  return url.origin
+}
+
+function rehostLocalUrl(raw: string | undefined): string {
+  if (!raw || typeof window === 'undefined') {
+    return ''
+  }
+
+  try {
+    const url = new URL(raw)
+    if (!isLoopbackHostname(url.hostname)) {
+      return url.toString().replace(/\/+$/u, '')
+    }
+    url.hostname = window.location.hostname
+    return url.toString().replace(/\/+$/u, '')
+  } catch {
+    return raw
+  }
 }
 
 function getGatewayBaseUrl(): string {
   const env = getEnv()
+  if (isLocalHost()) {
+    return (
+      rehostLocalUrl(env.VITE_AI_COVE_GATEWAY_BASE_URL) ||
+      rehostLocalUrl(env.VITE_REACT_APP_SERVER_URL) ||
+      getCurrentOrigin()
+    )
+  }
   return (
     env.VITE_AI_COVE_GATEWAY_BASE_URL ||
     env.VITE_REACT_APP_SERVER_URL ||
-    (isLocalHost() ? DEFAULT_LOCAL_GATEWAY_ORIGIN : undefined) ||
     getCurrentOrigin()
   )
 }
 
 function getSidecarOrigin(): string {
   const env = getEnv()
+  if (isLocalHost()) {
+    return (
+      rehostLocalUrl(env.VITE_AI_COVE_SIDECAR_BASE_URL) ||
+      rehostLocalUrl(env.VITE_REACT_APP_SIDECAR_BASE_URL) ||
+      createCurrentHostOrigin(DEFAULT_LOCAL_SIDECAR_PORT)
+    )
+  }
   return (
     env.VITE_AI_COVE_SIDECAR_BASE_URL ||
     env.VITE_REACT_APP_SIDECAR_BASE_URL ||
-    (isLocalHost() ? DEFAULT_LOCAL_SIDECAR_ORIGIN : undefined) ||
     getCurrentOrigin()
   )
 }

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useRef, useEffect, type ReactNode } from 'react'
+import { useRef, useEffect, type CSSProperties, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 interface AnimateInViewProps {
@@ -27,6 +27,7 @@ interface AnimateInViewProps {
   animation?: 'fade-up' | 'fade-in' | 'scale-in' | 'fade-left' | 'fade-right'
   once?: boolean
   as?: 'div' | 'section' | 'li' | 'span'
+  style?: CSSProperties
 }
 
 export function AnimateInView(props: AnimateInViewProps) {
@@ -76,7 +77,10 @@ export function AnimateInView(props: AnimateInViewProps) {
         'opacity-0 will-change-[transform,opacity]',
         props.className
       )}
-      style={{ animationDelay: delay ? `${delay}ms` : undefined }}
+      style={{
+        ...props.style,
+        animationDelay: delay ? `${delay}ms` : props.style?.animationDelay,
+      }}
     >
       {props.children}
     </Tag>

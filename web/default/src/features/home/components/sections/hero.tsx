@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { Link } from '@tanstack/react-router'
 import { ArrowRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/components/ui/button'
+import { HeroFloatingLines } from '../hero-floating-lines'
 import { HeroTerminalDemo } from '../hero-terminal-demo'
 
 interface HeroProps {
@@ -29,80 +29,56 @@ interface HeroProps {
 
 export function Hero(props: HeroProps) {
   const { t } = useTranslation()
+  const [oneApiSitePrefix, oneApiSiteSuffix] = t('One API site').split('API')
 
   return (
-    <section className='relative z-10 flex flex-col items-center overflow-hidden px-6 pt-28 pb-16 md:pt-36 md:pb-24'>
-      {/* Radial gradient background */}
-      <div
-        aria-hidden
-        className='pointer-events-none absolute inset-0 -z-10 opacity-25 dark:opacity-[0.12]'
-        style={{
-          background: [
-            'radial-gradient(ellipse 60% 50% at 20% 20%, oklch(0.72 0.18 250 / 80%) 0%, transparent 70%)',
-            'radial-gradient(ellipse 50% 40% at 80% 15%, oklch(0.65 0.15 200 / 60%) 0%, transparent 70%)',
-            'radial-gradient(ellipse 40% 35% at 40% 80%, oklch(0.70 0.12 280 / 40%) 0%, transparent 70%)',
-          ].join(', '),
-        }}
-      />
-      {/* Grid pattern */}
-      <div
-        aria-hidden
-        className='absolute inset-0 -z-10 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_30%,black_20%,transparent_100%)] bg-[size:4rem_4rem] opacity-[0.08]'
-      />
-
-      <div className='flex max-w-3xl flex-col items-center text-center'>
-        <h1
-          className='landing-animate-fade-up text-[clamp(2rem,5.5vw,3.5rem)] leading-[1.15] font-bold tracking-tight'
-          style={{ animationDelay: '0ms' }}
-        >
-          {t('Unified API Gateway for')}
-          <br />
-          <span className='bg-gradient-to-r from-blue-400 via-violet-400 to-purple-500 bg-clip-text text-transparent'>
-            {t('All Your AI Models')}
+    <section className='home-shell home-hero' aria-labelledby='home-hero-title'>
+      <HeroFloatingLines />
+      <div className='home-hero-copy landing-animate-fade-up'>
+        <div className='home-eyebrow'>AI-Cove</div>
+        <h1 id='home-hero-title' className='home-hero-title'>
+          <span className='home-title-line'>
+            {oneApiSitePrefix}
+            <span className='home-title-api'>{t('API')}</span>
+            {oneApiSiteSuffix}
+          </span>
+          <span className='home-title-line'>{t('connects all')}</span>
+          <span className='home-title-line home-title-accent'>
+            {t('frontier AI models')}
           </span>
         </h1>
-        <p
-          className='landing-animate-fade-up text-muted-foreground/80 mt-5 max-w-lg text-base leading-relaxed opacity-0 md:text-lg'
-          style={{ animationDelay: '80ms' }}
-        >
-          {t('Power AI applications, manage digital assets, connect the Future')}
+        <p className='home-hero-sub'>
+          <span className='home-hero-sub-lead'>
+            {t('Built for AI applications, global developers, and teams')}
+          </span>
+          <span className='home-hero-sub-muted'>
+            {t(
+              'Fast direct access, no account-ban risk, non-expiring balance, and better value. Low-latency access to ChatGPT, Claude, Gemini, and other frontier models.'
+            )}
+          </span>
         </p>
-        <div
-          className='landing-animate-fade-up mt-8 flex items-center gap-3 opacity-0'
-          style={{ animationDelay: '160ms' }}
-        >
+        <div className='home-actions'>
           {props.isAuthenticated ? (
-            <Button
-              className='group rounded-lg'
-              render={<Link to='/dashboard' />}
-            >
+            <Link className='home-btn home-btn-primary' to='/dashboard'>
               {t('Go to Dashboard')}
-              <ArrowRight className='ml-1 size-3.5 transition-transform duration-200 group-hover:translate-x-0.5' />
-            </Button>
+              <ArrowRight aria-hidden='true' className='home-btn-arrow' />
+            </Link>
           ) : (
             <>
-              <Button
-                className='group rounded-lg'
-                render={<Link to='/sign-up' />}
-              >
+              <Link className='home-btn home-btn-primary' to='/sign-up'>
                 {t('Get Started')}
-                <ArrowRight className='ml-1 size-3.5 transition-transform duration-200 group-hover:translate-x-0.5' />
-              </Button>
-              <Button
-                variant='outline'
-                className='border-border/50 hover:border-border hover:bg-muted/50 rounded-lg'
-                render={<Link to='/pricing' />}
-              >
+                <ArrowRight aria-hidden='true' className='home-btn-arrow' />
+              </Link>
+              <Link className='home-btn' to='/pricing'>
                 {t('View Pricing')}
-              </Button>
+              </Link>
             </>
           )}
         </div>
       </div>
-
       <div
-        className='landing-animate-fade-up w-full opacity-0'
-        style={{ animationDelay: '300ms' }}
+        className='landing-animate-fade-up'
+        style={{ animationDelay: '180ms' }}
       >
         <HeroTerminalDemo />
       </div>

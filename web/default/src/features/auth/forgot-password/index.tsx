@@ -24,9 +24,9 @@ import { ForgotPasswordForm } from './components/forgot-password-form'
 export function ForgotPassword() {
   const { t } = useTranslation()
   return (
-    <AuthLayout>
-      <div className='w-full space-y-8'>
-        <div className='space-y-3'>
+    <AuthLayout variant='home'>
+      <div className='ai-cove-auth-content w-full space-y-8'>
+        <div className='ai-cove-auth-heading space-y-2'>
           <h2 className='text-center text-2xl font-semibold tracking-tight sm:text-left'>
             {t('Forgot password')}
           </h2>
@@ -47,7 +47,7 @@ export function ForgotPassword() {
           </p>
         </div>
 
-        <ForgotPasswordForm className='space-y-0' />
+        <ForgotPasswordForm className='ai-cove-auth-form' />
       </div>
     </AuthLayout>
   )

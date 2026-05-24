@@ -38,34 +38,30 @@ interface ApiDemoConfig {
 const ACCENT_CLASSES: Record<
   AccentTone,
   {
-    activeText: string
-    activeBorder: string
-    badge: string
+    tone: string
+    toneSoft: string
+    toneDark: string
   }
 > = {
   emerald: {
-    activeText: 'text-emerald-600 dark:text-emerald-400',
-    activeBorder: 'border-emerald-500 dark:border-emerald-400',
-    badge:
-      'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400',
+    tone: '#60915d',
+    toneSoft: '#e0eddc',
+    toneDark: '#5f895c',
   },
   amber: {
-    activeText: 'text-amber-600 dark:text-amber-400',
-    activeBorder: 'border-amber-500 dark:border-amber-400',
-    badge:
-      'bg-amber-500/10 text-amber-600 dark:bg-amber-400/10 dark:text-amber-400',
+    tone: '#bd7d3f',
+    toneSoft: '#fce4cf',
+    toneDark: '#8a5a2a',
   },
   blue: {
-    activeText: 'text-blue-600 dark:text-blue-400',
-    activeBorder: 'border-blue-500 dark:border-blue-400',
-    badge:
-      'bg-blue-500/10 text-blue-600 dark:bg-blue-400/10 dark:text-blue-400',
+    tone: '#2f86ad',
+    toneSoft: '#def0fa',
+    toneDark: '#2d6e89',
   },
   violet: {
-    activeText: 'text-violet-600 dark:text-violet-400',
-    activeBorder: 'border-violet-500 dark:border-violet-400',
-    badge:
-      'bg-violet-500/10 text-violet-600 dark:bg-violet-400/10 dark:text-violet-400',
+    tone: '#7760a8',
+    toneSoft: '#e8e1f5',
+    toneDark: '#6e5e9e',
   },
 }
 
@@ -202,65 +198,46 @@ export function HeroTerminalDemo() {
   const accent = ACCENT_CLASSES[demo.accent]
 
   return (
-    <div className='mx-auto mt-16 w-full max-w-2xl'>
+    <div className='home-terminal-wrap'>
       <div
-        className={cn(
-          'overflow-hidden rounded-2xl border backdrop-blur-sm',
-          'border-border/60 bg-white/95 shadow-[0_20px_50px_-25px_rgba(15,23,42,0.18)]',
-          'dark:border-white/[0.06] dark:bg-[#0b0f17]/95 dark:shadow-[0_20px_60px_-25px_rgba(0,0,0,0.7)]'
-        )}
+        className='home-terminal-card'
+        style={
+          {
+            '--tone': accent.tone,
+            '--tone-soft': accent.toneSoft,
+            '--tone-dark': accent.toneDark,
+          } as React.CSSProperties
+        }
       >
-        {/* Tab strip */}
-        <div
-          className={cn(
-            'flex items-center gap-1 border-b px-2 sm:gap-1.5 sm:px-3',
-            'border-border/50 dark:border-white/[0.05]'
-          )}
-        >
+        <div className='home-tab-strip' role='tablist' aria-label='API 示例'>
           {API_DEMOS.map((item, index) => {
             const tone = ACCENT_CLASSES[item.accent]
             const isActive = index === activeIndex
             return (
               <button
                 key={item.id}
+                type='button'
+                role='tab'
+                aria-selected={isActive}
                 onClick={() => handleSelect(index)}
-                className={cn(
-                  'relative -mb-px flex items-center gap-1.5 border-b-2 px-2.5 py-2.5 text-[11px] font-medium tracking-wide transition-colors sm:px-3 sm:text-xs',
-                  isActive
-                    ? `${tone.activeBorder} ${tone.activeText}`
-                    : 'text-foreground/40 hover:text-foreground/70 border-transparent'
-                )}
+                className={cn('home-api-tab', isActive && 'active')}
+                style={{ '--tone': tone.tone } as React.CSSProperties}
               >
                 {item.label}
               </button>
             )
           })}
-          <div className='ml-auto flex items-center gap-2 pr-2 sm:pr-3'>
-            <span className='inline-block size-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.45)]' />
-            <span className='text-foreground/40 font-mono text-[10px] tracking-wider uppercase'>
-              200 ok
-            </span>
+          <div className='home-terminal-status'>
+            <span className='home-status-dot' />
+            200 ok
           </div>
         </div>
 
-        {/* Endpoint row */}
-        <div
-          className={cn(
-            'flex items-center gap-2.5 border-b px-5 py-3',
-            'border-border/40 dark:border-white/[0.04]'
-          )}
-        >
-          <span
-            className={cn(
-              'rounded-md px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wider',
-              accent.badge
-            )}
-          >
-            {demo.method}
-          </span>
+        <div className='home-endpoint-row'>
+          <span className='home-method'>{demo.method}</span>
           <code
             className={cn(
-              'text-foreground/75 truncate font-mono text-[12.5px] transition-opacity duration-200',
+              'home-endpoint fade-swap',
               transitioning ? 'opacity-0' : 'opacity-100'
             )}
           >
@@ -268,43 +245,26 @@ export function HeroTerminalDemo() {
           </code>
         </div>
 
-        {/* Body — fixed rows so neither block shifts when switching demos */}
-        <div className='grid h-[400px] grid-rows-[235px_minmax(0,1fr)] font-mono text-[12.5px] leading-[1.55]'>
-          {/* Request */}
+        <div className='home-terminal-body'>
           <RequestBlock demo={demo} transitioning={transitioning} />
-
-          {/* Response */}
           <ResponseBlock demo={demo} transitioning={transitioning} />
         </div>
 
-        {/* Footer metrics */}
-        <div
-          className={cn(
-            'flex items-center justify-between border-t px-5 py-2.5',
-            'border-border/40 bg-muted/30 dark:border-white/[0.05] dark:bg-white/[0.02]'
-          )}
-        >
-          <div className='text-foreground/40 flex items-center gap-3 text-[10px] tabular-nums'>
-            <span className='flex items-center gap-1'>
-              <span className='font-mono'>{demo.latency}</span>
-              <span className='tracking-wider uppercase'>ms</span>
+        <div className='home-terminal-footer'>
+          <div className='home-metrics'>
+            <span>
+              <strong>{demo.latency}</strong> ms
             </span>
-            <span className='bg-foreground/15 size-1 rounded-full' />
-            <span className='flex items-center gap-1'>
-              <span className='font-mono'>{demo.tokens}</span>
-              <span className='tracking-wider uppercase'>tokens</span>
+            <span className='home-metric-dot' />
+            <span>
+              <strong>{demo.tokens}</strong> Token
             </span>
-            <span className='bg-foreground/15 size-1 rounded-full' />
-            <span className='flex items-center gap-1'>
-              <span className='tracking-wider uppercase'>cost</span>
-              <span className='font-mono'>
-                ${(demo.tokens * 0.00003).toFixed(5)}
-              </span>
+            <span className='home-metric-dot' />
+            <span>
+              费用 <strong>${(demo.tokens * 0.00003).toFixed(5)}</strong>
             </span>
           </div>
-          <span className='text-foreground/30 font-mono text-[10px] tracking-wider uppercase'>
-            stream · sse
-          </span>
+          <span>流式 · SSE</span>
         </div>
       </div>
     </div>
@@ -315,7 +275,7 @@ function RequestBlock(props: { demo: ApiDemoConfig; transitioning: boolean }) {
   const { demo, transitioning } = props
 
   return (
-    <div className='relative px-5 py-4'>
+    <div className='home-code-panel'>
       <SectionLabel>Request</SectionLabel>
       <div
         className={cn(
@@ -354,12 +314,7 @@ function ResponseBlock(props: { demo: ApiDemoConfig; transitioning: boolean }) {
   const { demo, transitioning } = props
 
   return (
-    <div
-      className={cn(
-        'relative border-t px-5 py-4',
-        'border-border/40 bg-muted/20 dark:border-white/[0.05] dark:bg-white/[0.015]'
-      )}
-    >
+    <div className={cn('home-code-panel home-response-panel')}>
       <SectionLabel>Response</SectionLabel>
       <div
         className={cn(
@@ -376,11 +331,7 @@ function ResponseBlock(props: { demo: ApiDemoConfig; transitioning: boolean }) {
 }
 
 function SectionLabel(props: { children: ReactNode }) {
-  return (
-    <span className='text-foreground/30 font-sans text-[10px] font-semibold tracking-[0.18em] uppercase'>
-      {props.children}
-    </span>
-  )
+  return <span className='home-section-label'>{props.children}</span>
 }
 
 const STRING_RE = /"[^"]*"/g
@@ -498,46 +449,34 @@ function CodeLine(props: { children: ReactNode; indent?: number }) {
 }
 
 function Command(props: { children: ReactNode }) {
-  return (
-    <span className='font-medium text-emerald-600 dark:text-emerald-400'>
-      {props.children}
-    </span>
-  )
+  return <span className='code-command'>{props.children}</span>
 }
 
 function Flag(props: { children: ReactNode }) {
-  return (
-    <span className='text-blue-600 dark:text-blue-400'>{props.children}</span>
-  )
+  return <span className='code-flag'>{props.children}</span>
 }
 
 function Key(props: { children: ReactNode }) {
-  return (
-    <span className='text-sky-700 dark:text-sky-300'>{props.children}</span>
-  )
+  return <span className='code-flag'>{props.children}</span>
 }
 
 function StringText(props: { children: ReactNode }) {
-  return (
-    <span className='text-amber-700 dark:text-amber-300'>{props.children}</span>
-  )
+  return <span className='code-string'>{props.children}</span>
 }
 
 function NumberText(props: { children: ReactNode }) {
-  return (
-    <span className='font-medium text-violet-600 dark:text-violet-300'>
-      {props.children}
-    </span>
-  )
+  return <span className='code-number'>{props.children}</span>
 }
 
 function Muted(props: { children: ReactNode }) {
-  return <span className='text-foreground/55'>{props.children}</span>
+  return <span className='code-muted'>{props.children}</span>
 }
 
 function Accent(props: { children: ReactNode; accent: AccentTone }) {
   const tone = ACCENT_CLASSES[props.accent]
   return (
-    <span className={cn('font-medium', tone.activeText)}>{props.children}</span>
+    <span className='font-medium' style={{ color: tone.tone }}>
+      {props.children}
+    </span>
   )
 }

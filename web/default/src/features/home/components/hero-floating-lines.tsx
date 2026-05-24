@@ -16,9 +16,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-export { CTA } from './sections/cta'
-export { Features } from './sections/features'
-export { Hero } from './sections/hero'
-export { HomeFooter } from './sections/home-footer'
-export { HowItWorks } from './sections/how-it-works'
-export { Stats } from './sections/stats'
+import { FloatingLines } from '@/components/backgrounds/floating-lines'
+
+const HERO_ENABLED_WAVES: Array<'top' | 'middle' | 'bottom'> = ['middle']
+const HERO_LINE_GRADIENT = ['#1a9fd3', '#7d95b7', '#6a6a6a']
+
+export function HeroFloatingLines() {
+  return (
+    <FloatingLines
+      animationSpeed={3}
+      bendRadius={8}
+      bendStrength={-2}
+      className='home-hero-floating-field'
+      enabledWaves={HERO_ENABLED_WAVES}
+      interactive
+      lineCount={5}
+      lineDistance={23}
+      linesGradient={HERO_LINE_GRADIENT}
+      parallax
+    />
+  )
+}
