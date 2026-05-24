@@ -219,7 +219,7 @@ void main() {
   float lineEnergy = max(max(color.r, color.g), color.b);
   float lineAlpha = smoothstep(0.18, 0.62, lineEnergy);
   vec3 lineColor = clamp(color.rgb / max(lineEnergy, 0.001), 0.0, 1.0);
-  gl_FragColor = vec4(lineColor, lineAlpha);
+  gl_FragColor = vec4(lineColor * lineAlpha, lineAlpha);
 }
 `
 
@@ -378,9 +378,10 @@ export function FloatingLines({
     const renderer = new WebGLRenderer({
       alpha: true,
       antialias: false,
-      premultipliedAlpha: false,
+      premultipliedAlpha: true,
       powerPreference: 'high-performance',
     })
+    renderer.setClearAlpha(0)
     renderer.setPixelRatio(
       Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO)
     )
@@ -397,7 +398,10 @@ export function FloatingLines({
       bottomLineCount: { value: bottomLineCount },
       bottomLineDistance: { value: bottomLineDistance },
       bottomWavePosition: {
-        value: getWavePosition(bottomWavePosition, DEFAULT_BOTTOM_WAVE_POSITION),
+        value: getWavePosition(
+          bottomWavePosition,
+          DEFAULT_BOTTOM_WAVE_POSITION
+        ),
       },
       enableBottom: { value: bottomEnabled },
       enableMiddle: { value: middleEnabled },
@@ -471,9 +475,7 @@ export function FloatingLines({
     }
 
     const resizeObserver =
-      typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(setSize)
-        : null
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(setSize) : null
     const handlePointerMove = (event: PointerEvent) => {
       const rect = renderer.domElement.getBoundingClientRect()
       const x = event.clientX - rect.left
@@ -599,7 +601,10 @@ export function FloatingLines({
       document.removeEventListener('visibilitychange', handleVisibilityChange)
 
       if (interactive) {
-        renderer.domElement.removeEventListener('pointermove', handlePointerMove)
+        renderer.domElement.removeEventListener(
+          'pointermove',
+          handlePointerMove
+        )
         renderer.domElement.removeEventListener(
           'pointerleave',
           handlePointerLeave

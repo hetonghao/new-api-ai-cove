@@ -832,9 +832,16 @@ For commercial licensing, please contact support@quantumnous.com
   opacity: 0.86;
   overflow: hidden;
   pointer-events: auto;
+  background: transparent;
   transform: translate3d(-50%, 0, 0) rotate(5deg);
   transform-origin: 50% 50%;
   mask-image: linear-gradient(90deg, transparent 0%, black 6%, black 100%);
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    black 6%,
+    black 100%
+  );
 }
 
 .home-hero-copy {
@@ -2599,10 +2606,22 @@ For commercial licensing, please contact support@quantumnous.com
   height: clamp(420px, 46vw, 680px);
   opacity: 0.56;
   overflow: hidden;
+  background: transparent;
   transform: translate3d(-50%, -50%, 0) rotate(-72deg);
   transform-origin: 50% 50%;
   mask-image: linear-gradient(90deg, transparent 0%, black 6%, black 100%);
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    black 6%,
+    black 100%
+  );
   pointer-events: none;
+}
+
+.home-hero-floating-field canvas,
+.ai-cove-auth-floating-field canvas {
+  background: transparent !important;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -3495,7 +3514,26 @@ For commercial licensing, please contact support@quantumnous.com
   }
 
   .home-hero-floating-field {
-    display: none;
+    display: block;
+    top: 72px;
+    width: min(980px, 242vw);
+    height: 390px;
+    opacity: 0.44;
+    pointer-events: none;
+    mask-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      black 9%,
+      black 91%,
+      transparent 100%
+    );
+    -webkit-mask-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      black 9%,
+      black 91%,
+      transparent 100%
+    );
   }
 
   .home-hero-title {
@@ -3621,6 +3659,26 @@ For commercial licensing, please contact support@quantumnous.com
   .ai-cove-auth-stage {
     width: min(100% - 28px, 520px);
     padding-top: 88px;
+  }
+
+  .ai-cove-auth-floating-field {
+    width: min(980px, 242vw);
+    height: 430px;
+    opacity: 0.42;
+    mask-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      black 9%,
+      black 91%,
+      transparent 100%
+    );
+    -webkit-mask-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      black 9%,
+      black 91%,
+      transparent 100%
+    );
   }
 
   .ai-cove-auth-card {
