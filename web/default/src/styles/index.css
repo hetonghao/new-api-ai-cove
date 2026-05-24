@@ -2605,6 +2605,95 @@ For commercial licensing, please contact support@quantumnous.com
   pointer-events: none;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .ai-cove-auth-brand {
+    animation: authBrandEnter 540ms cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
+  }
+
+  .ai-cove-auth-kicker,
+  .ai-cove-auth-title-line,
+  .ai-cove-auth-story p,
+  .ai-cove-auth-proof,
+  .ai-cove-auth-card,
+  .ai-cove-auth-heading h2,
+  .ai-cove-auth-heading p,
+  .ai-cove-auth-content > p,
+  .ai-cove-auth-form > * {
+    will-change: opacity, transform;
+  }
+
+  .ai-cove-auth-kicker {
+    animation: authStoryEnter 560ms cubic-bezier(0.16, 1, 0.3, 1) 130ms both;
+  }
+
+  .ai-cove-auth-title-line {
+    animation: authStoryEnter 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .ai-cove-auth-title-line:nth-child(1) {
+    animation-delay: 190ms;
+  }
+
+  .ai-cove-auth-title-line:nth-child(2) {
+    animation-delay: 270ms;
+  }
+
+  .ai-cove-auth-title-line:nth-child(3) {
+    animation-delay: 350ms;
+  }
+
+  .ai-cove-auth-story p {
+    animation: authStoryEnter 560ms cubic-bezier(0.16, 1, 0.3, 1) 440ms both;
+  }
+
+  .ai-cove-auth-proof {
+    animation: authStoryEnter 560ms cubic-bezier(0.16, 1, 0.3, 1) 520ms both;
+  }
+
+  .ai-cove-auth-card {
+    animation: authCardEnter 660ms cubic-bezier(0.16, 1, 0.3, 1) 180ms both;
+  }
+
+  .ai-cove-auth-heading h2 {
+    animation: authFormElementEnter 520ms cubic-bezier(0.16, 1, 0.3, 1) 360ms
+      both;
+  }
+
+  .ai-cove-auth-heading p {
+    animation: authFormElementEnter 500ms cubic-bezier(0.16, 1, 0.3, 1) 430ms
+      both;
+  }
+
+  .ai-cove-auth-form > * {
+    animation: authFormElementEnter 500ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .ai-cove-auth-form > :nth-child(1) {
+    animation-delay: 500ms;
+  }
+
+  .ai-cove-auth-form > :nth-child(2) {
+    animation-delay: 580ms;
+  }
+
+  .ai-cove-auth-form > :nth-child(3) {
+    animation-delay: 660ms;
+  }
+
+  .ai-cove-auth-form > :nth-child(4) {
+    animation-delay: 740ms;
+  }
+
+  .ai-cove-auth-form > :nth-child(n + 5) {
+    animation-delay: 820ms;
+  }
+
+  .ai-cove-auth-content > p {
+    animation: authFormElementEnter 500ms cubic-bezier(0.16, 1, 0.3, 1) 900ms
+      both;
+  }
+}
+
 .ai-cove-auth-brand {
   color: var(--home-ink);
 }
@@ -2994,6 +3083,14 @@ For commercial licensing, please contact support@quantumnous.com
   animation: homeButtonFloat 5.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .ai-cove-auth-form > [data-slot='button'][type='submit'] {
+    animation:
+      authFormElementEnter 500ms cubic-bezier(0.16, 1, 0.3, 1) 660ms both,
+      homeButtonFloat 5.6s cubic-bezier(0.22, 1, 0.36, 1) 1300ms infinite;
+  }
+}
+
 .ai-cove-auth-form [data-slot='button'][type='submit']:hover,
 .ai-cove-auth-form [data-slot='button'][type='submit']:focus-visible {
   border-color: color-mix(
@@ -3247,8 +3344,20 @@ For commercial licensing, please contact support@quantumnous.com
     + .public-header-mobile-overlay
     .public-header-mobile-auth-button,
   .ai-cove-auth-proof-track,
-  .ai-cove-auth-form [data-slot='button'][type='submit'] {
+  .ai-cove-auth-form [data-slot='button'][type='submit'],
+  .ai-cove-auth-brand,
+  .ai-cove-auth-kicker,
+  .ai-cove-auth-title-line,
+  .ai-cove-auth-story p,
+  .ai-cove-auth-proof,
+  .ai-cove-auth-card,
+  .ai-cove-auth-heading h2,
+  .ai-cove-auth-heading p,
+  .ai-cove-auth-content > p,
+  .ai-cove-auth-form > * {
     animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
   }
 
   .ai-cove-auth-floating-field {
@@ -3386,11 +3495,7 @@ For commercial licensing, please contact support@quantumnous.com
   }
 
   .home-hero-floating-field {
-    top: 80px;
-    width: 208vw;
-    height: 320px;
-    opacity: 0.52;
-    transform: translate3d(-50%, 0, 0) rotate(3deg);
+    display: none;
   }
 
   .home-hero-title {
@@ -3552,6 +3657,50 @@ For commercial licensing, please contact support@quantumnous.com
   }
   50% {
     translate: 0 -2px;
+  }
+}
+
+@keyframes authBrandEnter {
+  from {
+    opacity: 0;
+    transform: translate3d(-10px, -8px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes authStoryEnter {
+  from {
+    opacity: 0;
+    transform: translate3d(-18px, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes authCardEnter {
+  from {
+    opacity: 0;
+    transform: translate3d(22px, 16px, 0) scale(0.982);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes authFormElementEnter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
   }
 }
 
