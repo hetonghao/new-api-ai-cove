@@ -2585,11 +2585,6 @@ For commercial licensing, please contact support@quantumnous.com
   mask-image: radial-gradient(circle at 50% 28%, black, transparent 74%);
 }
 
-.ai-cove-auth-shell > :not(.ai-cove-auth-atmosphere) {
-  position: relative;
-  z-index: 1;
-}
-
 .ai-cove-auth-atmosphere {
   position: fixed;
   inset: 0;
@@ -2752,6 +2747,8 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .ai-cove-auth-stage {
+  position: relative;
+  z-index: 1;
   width: min(1180px, calc(100% - 48px));
   min-height: 100svh;
   display: grid;
@@ -2759,7 +2756,7 @@ For commercial licensing, please contact support@quantumnous.com
   gap: clamp(42px, 7vw, 92px);
   align-items: center;
   margin: 0 auto;
-  padding: 112px 0 58px;
+  padding: 85px 0;
 }
 
 .ai-cove-auth-story {
@@ -3474,7 +3471,7 @@ For commercial licensing, please contact support@quantumnous.com
   .ai-cove-auth-stage {
     grid-template-columns: 1fr;
     width: min(100% - 32px, 640px);
-    padding: 96px 0 38px;
+    padding: 72px 0;
   }
 
   .ai-cove-auth-story {
@@ -3658,7 +3655,7 @@ For commercial licensing, please contact support@quantumnous.com
 
   .ai-cove-auth-stage {
     width: min(100% - 28px, 520px);
-    padding-top: 88px;
+    padding: 72px 0;
   }
 
   .ai-cove-auth-floating-field {

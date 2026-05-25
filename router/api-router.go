@@ -146,6 +146,16 @@ func SetApiRouter(router *gin.Engine) {
 			}
 		}
 
+		salesRoute := apiRouter.Group("/sales")
+		salesRoute.Use(middleware.SalesAuth())
+		{
+			salesRoute.GET("/users", controller.GetSalesUsers)
+			salesRoute.PATCH("/users/:id/group", controller.UpdateSalesUserGroup)
+			salesRoute.GET("/data", controller.GetSalesData)
+			salesRoute.GET("/data/users", controller.GetSalesDataByUser)
+			salesRoute.GET("/groups", controller.GetSalesGroups)
+		}
+
 		// Subscription billing (plans, purchase, admin management)
 		subscriptionRoute := apiRouter.Group("/subscription")
 		subscriptionRoute.Use(middleware.UserAuth())

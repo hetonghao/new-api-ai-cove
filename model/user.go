@@ -27,7 +27,7 @@ type User struct {
 	Password         string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
 	OriginalPassword string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
 	DisplayName      string         `json:"display_name" gorm:"index" validate:"max=20"`
-	Role             int            `json:"role" gorm:"type:int;default:1"`   // admin, common
+	Role             int            `json:"role" gorm:"type:int;default:1"`   // admin, sales, common
 	Status           int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
 	Email            string         `json:"email" gorm:"index" validate:"max=50"`
 	GitHubId         string         `json:"github_id" gorm:"column:github_id;index"`
@@ -125,6 +125,14 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 		"enabled":  true,
 		"topup":    true,
 		"personal": true,
+	}
+
+	if userRole >= common.RoleSalesUser {
+		defaultConfig["sales"] = map[string]interface{}{
+			"enabled": true,
+			"users":   true,
+			"data":    true,
+		}
 	}
 
 	// 管理员区域 - 根据角色决定

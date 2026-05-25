@@ -68,6 +68,7 @@ export const STATIC_I18N_KEYS = [
   // Roles
   'Super Admin',
   'Admin',
+  'Sales',
   'User',
   'Guest',
 
@@ -95,9 +96,12 @@ export const STATIC_I18N_KEYS = [
   // Users
   'Root',
   'Deleted',
+  'Promote to Admin',
+  'Promote to Sales',
   'User created successfully',
   'User updated successfully',
   'User updated successfully',
+  'User promoted to sales successfully',
   'Failed to load users',
   'Failed to search users',
   'Failed to create user',

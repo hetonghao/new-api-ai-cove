@@ -53,9 +53,13 @@ export function AppSidebar() {
   // Non-Admin users cannot see Admin navigation group
   const currentNavGroups = useMemo(() => {
     const isAdmin = userRole && userRole >= ROLE.ADMIN
+    const canAccessSales = userRole && userRole >= ROLE.SALES
     return configFilteredNavGroups.filter((group) => {
       if (group.id === 'admin') {
         return isAdmin
+      }
+      if (group.id === 'sales') {
+        return canAccessSales
       }
       return true
     })

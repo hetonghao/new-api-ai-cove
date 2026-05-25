@@ -447,14 +447,22 @@ func calculateUserPermissions(userRole int) map[string]interface{} {
 		// 管理员可以设置边栏，但不包含系统设置功能
 		permissions["sidebar_settings"] = true
 		permissions["sidebar_modules"] = map[string]interface{}{
+			"sales": true,
 			"admin": map[string]interface{}{
 				"setting": false, // 管理员不能访问系统设置
 			},
+		}
+	} else if userRole == common.RoleSalesUser {
+		permissions["sidebar_settings"] = true
+		permissions["sidebar_modules"] = map[string]interface{}{
+			"sales": true,
+			"admin": false,
 		}
 	} else {
 		// 普通用户只能设置个人功能，不包含管理员区域
 		permissions["sidebar_settings"] = true
 		permissions["sidebar_modules"] = map[string]interface{}{
+			"sales": false,
 			"admin": false, // 普通用户不能访问管理员区域
 		}
 	}
@@ -488,6 +496,14 @@ func generateDefaultSidebarConfig(userRole int) string {
 		"enabled":  true,
 		"topup":    true,
 		"personal": true,
+	}
+
+	if userRole >= common.RoleSalesUser {
+		defaultConfig["sales"] = map[string]interface{}{
+			"enabled": true,
+			"users":   true,
+			"data":    true,
+		}
 	}
 
 	// 管理员区域 - 根据角色决定
@@ -882,6 +898,7 @@ func ManageUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
 	}
+	roleChanged := false
 	switch req.Action {
 	case "disable":
 		user.Status = common.UserStatusDisabled
@@ -918,6 +935,18 @@ func ManageUser(c *gin.Context) {
 			return
 		}
 		user.Role = common.RoleAdminUser
+		roleChanged = true
+	case "promote_sales":
+		if user.Role >= common.RoleAdminUser {
+			common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
+			return
+		}
+		if user.Role == common.RoleSalesUser {
+			common.ApiErrorMsg(c, "用户已经是销售员")
+			return
+		}
+		user.Role = common.RoleSalesUser
+		roleChanged = true
 	case "demote":
 		if user.Role == common.RoleRootUser {
 			common.ApiErrorI18n(c, i18n.MsgUserCannotDemoteRootUser)
@@ -928,6 +957,7 @@ func ManageUser(c *gin.Context) {
 			return
 		}
 		user.Role = common.RoleCommonUser
+		roleChanged = true
 	case "add_quota":
 		adminName := c.GetString("username")
 		adminId := c.GetInt("id")
@@ -975,6 +1005,18 @@ func ManageUser(c *gin.Context) {
 			"message": "",
 		})
 		return
+	default:
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	if roleChanged {
+		defaultSidebarConfig := generateDefaultSidebarConfig(user.Role)
+		if defaultSidebarConfig != "" {
+			currentSetting := user.GetSetting()
+			currentSetting.SidebarModules = defaultSidebarConfig
+			user.SetSetting(currentSetting)
+		}
 	}
 
 	if err := user.Update(false); err != nil {
@@ -985,7 +1027,7 @@ func ManageUser(c *gin.Context) {
 	// 避免在 Redis TTL 过期前仍使用旧状态（尤其是禁用后仍可发起请求的问题）。
 	// InvalidateUserCache 会让下一次 GetUserCache 从数据库重新加载，
 	// InvalidateUserTokensCache 则确保令牌侧的缓存也同步刷新。
-	if req.Action == "disable" || req.Action == "promote" || req.Action == "demote" {
+	if req.Action == "disable" || roleChanged {
 		if err := model.InvalidateUserCache(user.Id); err != nil {
 			common.SysLog(fmt.Sprintf("failed to invalidate user cache for user %d: %s", user.Id, err.Error()))
 		}

@@ -16,32 +16,40 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { t } from 'i18next'
+import type { User } from '@/features/users/types'
 
-export const ROLE = {
-  GUEST: 0, // 后续如果需要用到这个角色那就再加，同语先留一下
-  USER: 1,
-  SALES: 2,
-  ADMIN: 10,
-  SUPER_ADMIN: 100,
-} as const
+export type SalesUser = User
 
-export type RoleValue = (typeof ROLE)[keyof typeof ROLE]
-
-const DEFAULT_ROLE = ROLE.GUEST
-
-const ROLE_LABEL_KEYS: Record<RoleValue, string> = {
-  [ROLE.SUPER_ADMIN]: 'Super Admin',
-  [ROLE.ADMIN]: 'Admin',
-  [ROLE.SALES]: 'Sales',
-  [ROLE.USER]: 'User',
-  [ROLE.GUEST]: 'Guest',
+export interface ApiResponse<T = unknown> {
+  success: boolean
+  message?: string
+  data?: T
 }
 
-export function getRoleLabelKey(role?: number): string {
-  return ROLE_LABEL_KEYS[role as RoleValue] ?? ROLE_LABEL_KEYS[DEFAULT_ROLE]
+export interface SalesUsersParams {
+  keyword?: string
+  group?: string
+  p?: number
+  page_size?: number
 }
 
-export function getRoleLabel(role?: number): string {
-  return t(getRoleLabelKey(role))
+export interface SalesUsersPage {
+  items: SalesUser[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface QuotaDataPoint {
+  model_name?: string
+  username?: string
+  created_at: number
+  count: number
+  quota: number
+  token_used: number
+}
+
+export interface SalesDataParams {
+  start_timestamp?: number
+  end_timestamp?: number
 }

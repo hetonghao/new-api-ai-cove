@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { type Row } from '@tanstack/react-table'
 import {
   MoreHorizontal,
@@ -30,6 +31,7 @@ import {
   ShieldAlert,
   Link2,
   CreditCard,
+  Handshake,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -60,8 +62,14 @@ interface DataTableRowActionsProps {
   row: Row<User>
 }
 
+interface UsersQueryData {
+  items: User[]
+  total: number
+}
+
 export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
   const user = row.original
   const { setOpen, setCurrentRow, triggerRefresh } = useUsers()
   const [resetPasskeyOpen, setResetPasskeyOpen] = useState(false)
@@ -84,6 +92,21 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
       const result = await manageUser(user.id, action)
       if (result.success) {
         toast.success(t(getUserActionMessage(action)))
+        if (result.data) {
+          queryClient.setQueriesData<UsersQueryData>(
+            { queryKey: ['users'] },
+            (current) =>
+              current
+                ? {
+                    ...current,
+                    items: current.items.map((item) =>
+                      item.id === user.id ? { ...item, ...result.data } : item
+                    ),
+                  }
+                : current
+          )
+        }
+        await queryClient.invalidateQueries({ queryKey: ['users'] })
         triggerRefresh()
       } else {
         toast.error(
@@ -128,6 +151,8 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   }
 
   const isDisabled = user.status === USER_STATUS.DISABLED
+  const isSales = user.role === USER_ROLE.SALES
+  const isCommon = user.role === USER_ROLE.USER
   const isAdmin = user.role >= USER_ROLE.ADMIN
   const isRoot = user.role === USER_ROLE.ROOT
 
@@ -178,7 +203,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
             </DropdownMenuItem>
           )}
 
-          {isAdmin && !isRoot && (
+          {(isSales || (isAdmin && !isRoot)) && (
             <DropdownMenuItem onClick={() => handleManage('demote')}>
               {t('Demote')}
               <DropdownMenuShortcut>
@@ -187,9 +212,18 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
             </DropdownMenuItem>
           )}
 
+          {isCommon && (
+            <DropdownMenuItem onClick={() => handleManage('promote_sales')}>
+              {t('Promote to Sales')}
+              <DropdownMenuShortcut>
+                <Handshake size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
+          )}
+
           {!isAdmin && (
             <DropdownMenuItem onClick={() => handleManage('promote')}>
-              {t('Promote')}
+              {t('Promote to Admin')}
               <DropdownMenuShortcut>
                 <ArrowUp size={16} />
               </DropdownMenuShortcut>
