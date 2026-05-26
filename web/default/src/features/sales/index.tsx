@@ -271,9 +271,6 @@ export function Sales() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('Sales')}</SectionPageLayout.Title>
-      <SectionPageLayout.Description>
-        {t('Track invited users and sales usage data')}
-      </SectionPageLayout.Description>
       <SectionPageLayout.Actions>
         <Select
           items={[
@@ -298,6 +295,10 @@ export function Sales() {
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
         <div className='space-y-4'>
+          <p className='text-muted-foreground text-sm'>
+            {t('Track invited users and sales usage data')}
+          </p>
+
           <div className='grid gap-3 md:grid-cols-3'>
             <Metric
               icon={UsersIcon}

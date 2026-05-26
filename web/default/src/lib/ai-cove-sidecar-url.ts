@@ -28,6 +28,8 @@ type AiCoveSidecarEnv = {
   VITE_REACT_APP_SIDECAR_BASE_URL?: string
 }
 
+type AiCoveSidecarTheme = 'dark' | 'light'
+
 function getEnv(): AiCoveSidecarEnv {
   return (import.meta.env ?? {}) as AiCoveSidecarEnv
 }
@@ -131,8 +133,13 @@ function normalizeUserId(userId: number | string | null | undefined): string {
   return ''
 }
 
+function normalizeTheme(theme: AiCoveSidecarTheme | null | undefined): string {
+  return theme === 'dark' || theme === 'light' ? theme : ''
+}
+
 export function createAiCoveDesignSidecarUrl(
-  userId?: number | string | null
+  userId?: number | string | null,
+  theme?: AiCoveSidecarTheme | null
 ): string {
   const url = new URL(AI_COVE_DESIGN_SIDECAR_PATH, getSidecarOrigin())
   const params = new URLSearchParams({
@@ -143,6 +150,11 @@ export function createAiCoveDesignSidecarUrl(
   const normalizedUserId = normalizeUserId(userId)
   if (normalizedUserId) {
     params.set('user_id', normalizedUserId)
+  }
+
+  const normalizedTheme = normalizeTheme(theme)
+  if (normalizedTheme) {
+    params.set('theme', normalizedTheme)
   }
 
   url.search = params.toString()

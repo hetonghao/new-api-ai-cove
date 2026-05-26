@@ -16,9 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { useAuthStore } from '@/stores/auth-store'
+import { useTheme } from '@/context/theme-provider'
 import { createAiCoveDesignSidecarUrl } from '@/lib/ai-cove-sidecar-url'
 import { isSidebarModuleEnabled } from '@/lib/nav-modules'
 import { Main } from '@/components/layout'
@@ -34,8 +35,10 @@ export const Route = createFileRoute('/_authenticated/ai-cove-design/')({
 
 function AiCoveDesignPage() {
   const userId = useAuthStore((state) => state.auth.user?.id)
+  const { resolvedTheme } = useTheme()
+  const initialThemeRef = useRef(resolvedTheme)
   const sidecarUrl = useMemo(
-    () => createAiCoveDesignSidecarUrl(userId),
+    () => createAiCoveDesignSidecarUrl(userId, initialThemeRef.current),
     [userId]
   )
 

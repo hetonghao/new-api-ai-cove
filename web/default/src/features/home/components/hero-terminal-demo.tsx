@@ -159,7 +159,11 @@ const API_DEMOS: ApiDemoConfig[] = [
 const CYCLE_INTERVAL = 4500
 const TRANSITION_MS = 220
 
-export function HeroTerminalDemo() {
+interface HeroTerminalDemoProps {
+  className?: string
+}
+
+export function HeroTerminalDemo(props: HeroTerminalDemoProps) {
   const [activeIndex, setActiveIndex] = useState(0)
   const [transitioning, setTransitioning] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined)
@@ -198,7 +202,7 @@ export function HeroTerminalDemo() {
   const accent = ACCENT_CLASSES[demo.accent]
 
   return (
-    <div className='home-terminal-wrap'>
+    <div className={cn('home-terminal-wrap', props.className)}>
       <div
         className='home-terminal-card'
         style={
