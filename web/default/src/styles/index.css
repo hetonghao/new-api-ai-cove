@@ -849,13 +849,13 @@ For commercial licensing, please contact support@quantumnous.com
   top: calc(clamp(38px, 4.8vw, 82px) + 10px);
   left: 50%;
   z-index: 0;
-  width: max(100vw, min(2220px, 190vw));
-  height: max(clamp(420px, 46vw, 680px), min(36vw, 960px));
+  width: min(2220px, 190vw);
+  height: clamp(420px, 46vw, 680px);
   opacity: 0.86;
   overflow: hidden;
   pointer-events: auto;
   background: transparent;
-  transform: translate3d(-50%, 0, 0) rotate(5deg);
+  transform: translate3d(-50%, 0, 0) rotate(-5deg);
   transform-origin: 50% 50%;
   mask-image: linear-gradient(90deg, transparent 0%, black 6%, black 100%);
   -webkit-mask-image: linear-gradient(
@@ -864,6 +864,13 @@ For commercial licensing, please contact support@quantumnous.com
     black 6%,
     black 100%
   );
+}
+
+@media (min-width: 1800px) {
+  .home-hero-floating-field {
+    width: min(calc(100vw + 128px), 2720px);
+    height: min(980px, max(760px, 38vw));
+  }
 }
 
 .home-hero-copy {

@@ -233,6 +233,8 @@ const DEFAULT_BOTTOM_WAVE_POSITION = { x: 2, y: -0.7, rotate: -1 }
 const FRAME_INTERVAL_MS = 1000 / 45
 const MAX_DELTA_SECONDS = 0.06
 const MAX_PIXEL_RATIO = 1.5
+const SOFT_CANVAS_AREA = 1_800_000
+const HUGE_CANVAS_AREA = 2_300_000
 
 type WavePosition = {
   x: number
@@ -250,6 +252,7 @@ export type FloatingLinesProps = {
   lineCount?: number | number[]
   lineDistance?: number | number[]
   linesGradient?: string[]
+  maxPixelRatio?: number
   middleWavePosition?: WavePosition
   mixBlendMode?: CSSProperties['mixBlendMode']
   mouseDamping?: number
@@ -309,6 +312,25 @@ function getWavePosition(
   )
 }
 
+function getAdaptivePixelRatio(
+  width: number,
+  height: number,
+  maxPixelRatio: number
+): number {
+  const preferredPixelRatio = Math.min(window.devicePixelRatio || 1, maxPixelRatio)
+  const area = width * height
+
+  if (area >= HUGE_CANVAS_AREA) {
+    return Math.min(preferredPixelRatio, 1.1)
+  }
+
+  if (area >= SOFT_CANVAS_AREA) {
+    return Math.min(preferredPixelRatio, 1.25)
+  }
+
+  return preferredPixelRatio
+}
+
 export function FloatingLines({
   animationSpeed = 1,
   bendRadius = 5,
@@ -320,6 +342,7 @@ export function FloatingLines({
   lineCount = DEFAULT_LINE_COUNT,
   lineDistance = DEFAULT_LINE_DISTANCE,
   linesGradient,
+  maxPixelRatio = MAX_PIXEL_RATIO,
   middleWavePosition,
   mixBlendMode = 'screen',
   mouseDamping = 0.05,
@@ -382,9 +405,6 @@ export function FloatingLines({
       powerPreference: 'high-performance',
     })
     renderer.setClearAlpha(0)
-    renderer.setPixelRatio(
-      Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO)
-    )
     renderer.domElement.style.width = '100%'
     renderer.domElement.style.height = '100%'
     renderer.domElement.style.display = 'block'
@@ -465,7 +485,9 @@ export function FloatingLines({
       if (!active) return
       const width = container.clientWidth || 1
       const height = container.clientHeight || 1
+      const pixelRatio = getAdaptivePixelRatio(width, height, maxPixelRatio)
 
+      renderer.setPixelRatio(pixelRatio)
       renderer.setSize(width, height, false)
       uniforms.iResolution.value.set(
         renderer.domElement.width,

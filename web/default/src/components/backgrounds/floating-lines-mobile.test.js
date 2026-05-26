@@ -58,14 +58,14 @@ function ruleBlock(css, selector) {
 
 test('desktop home extends the floating lines across wide viewports', () => {
   const desktopRule = ruleBlock(read(cssPath), '.home-hero-floating-field')
+  const wideDesktopCss = mediaBlock(read(cssPath), '(min-width: 1800px)')
 
+  assert.match(desktopRule, /width:\s*min\(2220px,\s*190vw\)/)
+  assert.match(desktopRule, /height:\s*clamp\(420px,\s*46vw,\s*680px\)/)
+  assert.match(desktopRule, /rotate\(-5deg\)/)
   assert.match(
-    desktopRule,
-    /width:\s*max\(100vw,\s*min\(2220px,\s*190vw\)\)/
-  )
-  assert.match(
-    desktopRule,
-    /height:\s*max\(\s*clamp\(420px,\s*46vw,\s*680px\),\s*min\(36vw,\s*960px\)\s*\)/
+    wideDesktopCss,
+    /\.home-hero-floating-field\s*\{[^}]*width:\s*min\(calc\(100vw \+ 128px\),\s*2720px\)[^}]*height:\s*min\(980px,\s*max\(760px,\s*38vw\)\)/s
   )
 })
 
@@ -95,4 +95,14 @@ test('floating lines premultiply transparent pixels for mobile WebViews', () => 
   )
   assert.match(source, /premultipliedAlpha\s*:\s*true/)
   assert.match(source, /renderer\.setClearAlpha\(0\)/)
+})
+
+test('floating lines lower pixel ratio on oversized canvases', () => {
+  const source = read(floatingLinesPath)
+
+  assert.match(source, /function getAdaptivePixelRatio/)
+  assert.match(source, /const SOFT_CANVAS_AREA = 1_800_000/)
+  assert.match(source, /const HUGE_CANVAS_AREA = 2_300_000/)
+  assert.match(source, /return Math\.min\(preferredPixelRatio, 1\.25\)/)
+  assert.match(source, /return Math\.min\(preferredPixelRatio, 1\.1\)/)
 })
