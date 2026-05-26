@@ -12,6 +12,10 @@ function read(path) {
   return readFileSync(path, 'utf8')
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 function mediaBlock(css, query) {
   const start = css.indexOf(`@media ${query}`)
   assert.notEqual(start, -1, `missing media query ${query}`)
@@ -30,6 +34,40 @@ function mediaBlock(css, query) {
 
   throw new Error(`unterminated media query ${query}`)
 }
+
+function ruleBlock(css, selector) {
+  const match = new RegExp(`(^|\\n)${escapeRegExp(selector)}\\s*\\{`).exec(
+    css
+  )
+  assert.notEqual(match, null, `missing rule ${selector}`)
+
+  const open = css.indexOf('{', match.index)
+  assert.notEqual(open, -1, `missing opening brace for ${selector}`)
+
+  let depth = 0
+  for (let index = open; index < css.length; index += 1) {
+    if (css[index] === '{') depth += 1
+    if (css[index] === '}') depth -= 1
+    if (depth === 0) {
+      return css.slice(open + 1, index)
+    }
+  }
+
+  throw new Error(`unterminated rule ${selector}`)
+}
+
+test('desktop home extends the floating lines across wide viewports', () => {
+  const desktopRule = ruleBlock(read(cssPath), '.home-hero-floating-field')
+
+  assert.match(
+    desktopRule,
+    /width:\s*max\(100vw,\s*min\(2220px,\s*190vw\)\)/
+  )
+  assert.match(
+    desktopRule,
+    /height:\s*max\(\s*clamp\(420px,\s*46vw,\s*680px\),\s*min\(36vw,\s*960px\)\s*\)/
+  )
+})
 
 test('mobile home keeps the hero floating lines visible', () => {
   const mobileCss = mediaBlock(read(cssPath), '(max-width: 680px)')

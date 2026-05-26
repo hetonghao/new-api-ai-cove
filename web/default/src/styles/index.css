@@ -849,8 +849,8 @@ For commercial licensing, please contact support@quantumnous.com
   top: calc(clamp(38px, 4.8vw, 82px) + 10px);
   left: 50%;
   z-index: 0;
-  width: min(2220px, 190vw);
-  height: clamp(420px, 46vw, 680px);
+  width: max(100vw, min(2220px, 190vw));
+  height: max(clamp(420px, 46vw, 680px), min(36vw, 960px));
   opacity: 0.86;
   overflow: hidden;
   pointer-events: auto;
