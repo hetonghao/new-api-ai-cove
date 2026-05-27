@@ -44,6 +44,7 @@ import {
   FormField,
   FormItem,
   FormLabel,
+  FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -66,8 +67,8 @@ import {
 } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
-import { useResetForm } from '../hooks/use-reset-form'
 import { useUpdateOption } from '../hooks/use-update-option'
+import { safeNumberFieldProps } from '../utils/numeric-field'
 import {
   buildPerformanceFormDefaults,
   findChangedPerformanceUpdates,
@@ -77,6 +78,14 @@ import {
   type PerformanceFormValues,
 } from './performance-form-utils.js'
 
+/**
+ * IMPORTANT: react-hook-form 7 interprets dotted `name` strings as nested
+ * paths. If we declare the schema with literal flat keys like
+ * `'performance_setting.disk_cache_enabled'`, the form state diverges from
+ * what zod validates and saves silently turn into no-ops. So we model the
+ * form internally with proper nested objects and only flatten back to the
+ * server-side key format right before persisting.
+ */
 const perfSchema = z.object({
   performance_setting: z.object({
     disk_cache_enabled: z.boolean(),
@@ -95,6 +104,8 @@ const perfSchema = z.object({
     retention_days: z.coerce.number().min(0),
   }),
 })
+
+type PerformanceFormInput = z.input<typeof perfSchema>
 
 function formatBytes(bytes: number, decimals = 2): string {
   if (!bytes || isNaN(bytes)) return '0 Bytes'
@@ -159,25 +170,37 @@ export function PerformanceSection(props: Props) {
   const baselineRef = useRef<PerformanceBaseline>(
     normalizePerformanceBaseline(props.defaultValues)
   )
+  const baselineSerializedRef = useRef<string>(
+    JSON.stringify(baselineRef.current)
+  )
   const [stats, setStats] = useState<PerformanceStats | null>(null)
   const [logInfo, setLogInfo] = useState<LogInfo | null>(null)
   const [logCleanupMode, setLogCleanupMode] = useState('by_count')
   const [logCleanupValue, setLogCleanupValue] = useState(10)
   const [logCleanupLoading, setLogCleanupLoading] = useState(false)
 
-  const formDefaults = useMemo(
-    () => buildPerformanceFormDefaults(props.defaultValues),
+  const normalizedDefaultValues = useMemo(
+    () => normalizePerformanceBaseline(props.defaultValues),
     [props.defaultValues]
   )
 
-  const form = useForm<PerformanceFormValues>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: zodResolver(perfSchema) as any,
+  const formDefaults = useMemo(
+    () => buildPerformanceFormDefaults(normalizedDefaultValues),
+    [normalizedDefaultValues]
+  )
+
+  const form = useForm<PerformanceFormInput, unknown, PerformanceFormValues>({
+    resolver: zodResolver(perfSchema),
     defaultValues: formDefaults,
   })
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  useResetForm(form as any, formDefaults)
+  useEffect(() => {
+    const serialized = JSON.stringify(normalizedDefaultValues)
+    if (serialized === baselineSerializedRef.current) return
+    baselineRef.current = normalizedDefaultValues
+    baselineSerializedRef.current = serialized
+    form.reset(buildPerformanceFormDefaults(normalizedDefaultValues))
+  }, [normalizedDefaultValues, form])
 
   const fetchStats = useCallback(async () => {
     try {
@@ -202,20 +225,25 @@ export function PerformanceSection(props: Props) {
     fetchLogInfo()
   }, [fetchStats, fetchLogInfo])
 
-  const onSubmit = async (data: PerformanceFormValues) => {
-    const updates = findChangedPerformanceUpdates(data, baselineRef.current)
+  const onSubmit = async (values: PerformanceFormValues) => {
+    const normalized = normalizePerformanceFormValues(values)
+    const updates = findChangedPerformanceUpdates(values, baselineRef.current)
+
     if (updates.length === 0) {
       toast.info(t('No changes to save'))
       return
     }
+
     for (const [key, value] of updates) {
       await updateOption.mutateAsync({
         key,
-        value: value as string | number | boolean,
+        value,
       })
     }
-    baselineRef.current = normalizePerformanceFormValues(data)
-    toast.success(t('Saved successfully'))
+
+    baselineRef.current = normalized
+    baselineSerializedRef.current = JSON.stringify(normalized)
+    form.reset(buildPerformanceFormDefaults(normalized))
     fetchStats()
   }
 
@@ -287,9 +315,13 @@ export function PerformanceSection(props: Props) {
   const diskEnabled = form.watch('performance_setting.disk_cache_enabled')
   const monitorEnabled = form.watch('performance_setting.monitor_enabled')
   const perfMetricsEnabled = form.watch('perf_metrics_setting.enabled')
-  const maxCacheSizeMb = form.watch(
+  const maxCacheSizeRaw = form.watch(
     'performance_setting.disk_cache_max_size_mb'
   )
+  const maxCacheSizeMb =
+    typeof maxCacheSizeRaw === 'number'
+      ? maxCacheSizeRaw
+      : Number(maxCacheSizeRaw) || 0
 
   const lowDiskSpace =
     diskEnabled &&
@@ -351,11 +383,18 @@ export function PerformanceSection(props: Props) {
                 <FormItem>
                   <FormLabel>{t('Disk Cache Threshold (MB)')}</FormLabel>
                   <FormControl>
-                    <Input type='number' {...field} disabled={!diskEnabled} />
+                    <Input
+                      type='number'
+                      min={1}
+                      step={1}
+                      {...safeNumberFieldProps(field)}
+                      disabled={!diskEnabled}
+                    />
                   </FormControl>
                   <FormDescription>
                     {t('Use disk cache when request body exceeds this size')}
                   </FormDescription>
+                  <FormMessage />
                 </FormItem>
               )}
             />
@@ -366,7 +405,13 @@ export function PerformanceSection(props: Props) {
                 <FormItem>
                   <FormLabel>{t('Max Disk Cache Size (MB)')}</FormLabel>
                   <FormControl>
-                    <Input type='number' {...field} disabled={!diskEnabled} />
+                    <Input
+                      type='number'
+                      min={100}
+                      step={1}
+                      {...safeNumberFieldProps(field)}
+                      disabled={!diskEnabled}
+                    />
                   </FormControl>
                   {stats?.disk_space_info &&
                     stats.disk_space_info.total > 0 && (
@@ -377,6 +422,7 @@ export function PerformanceSection(props: Props) {
                         })}
                       </FormDescription>
                     )}
+                  <FormMessage />
                 </FormItem>
               )}
             />
@@ -402,11 +448,15 @@ export function PerformanceSection(props: Props) {
                       placeholder={t(
                         'Leave empty to use system temp directory'
                       )}
-                      {...field}
                       value={field.value ?? ''}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
                       disabled={!diskEnabled}
                     />
                   </FormControl>
+                  <FormMessage />
                 </FormItem>
               )}
             />
@@ -453,10 +503,13 @@ export function PerformanceSection(props: Props) {
                   <FormControl>
                     <Input
                       type='number'
-                      {...field}
+                      min={0}
+                      step={1}
+                      {...safeNumberFieldProps(field)}
                       disabled={!monitorEnabled}
                     />
                   </FormControl>
+                  <FormMessage />
                 </FormItem>
               )}
             />
@@ -469,10 +522,14 @@ export function PerformanceSection(props: Props) {
                   <FormControl>
                     <Input
                       type='number'
-                      {...field}
+                      min={0}
+                      max={100}
+                      step={1}
+                      {...safeNumberFieldProps(field)}
                       disabled={!monitorEnabled}
                     />
                   </FormControl>
+                  <FormMessage />
                 </FormItem>
               )}
             />
@@ -485,10 +542,14 @@ export function PerformanceSection(props: Props) {
                   <FormControl>
                     <Input
                       type='number'
-                      {...field}
+                      min={0}
+                      max={100}
+                      step={1}
+                      {...safeNumberFieldProps(field)}
                       disabled={!monitorEnabled}
                     />
                   </FormControl>
+                  <FormMessage />
                 </FormItem>
               )}
             />
@@ -535,10 +596,12 @@ export function PerformanceSection(props: Props) {
                     <Input
                       type='number'
                       min={1}
-                      {...field}
+                      step={1}
+                      {...safeNumberFieldProps(field)}
                       disabled={!perfMetricsEnabled}
                     />
                   </FormControl>
+                  <FormMessage />
                 </FormItem>
               )}
             />
@@ -571,6 +634,7 @@ export function PerformanceSection(props: Props) {
                       </SelectGroup>
                     </SelectContent>
                   </Select>
+                  <FormMessage />
                 </FormItem>
               )}
             />
@@ -584,13 +648,15 @@ export function PerformanceSection(props: Props) {
                     <Input
                       type='number'
                       min={0}
-                      {...field}
+                      step={1}
+                      {...safeNumberFieldProps(field)}
                       disabled={!perfMetricsEnabled}
                     />
                   </FormControl>
                   <FormDescription>
                     {t('0 means data is kept permanently')}
                   </FormDescription>
+                  <FormMessage />
                 </FormItem>
               )}
             />
