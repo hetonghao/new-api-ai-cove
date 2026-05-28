@@ -177,13 +177,7 @@ func main() {
 	middleware.SetUpLogger(server)
 	// Initialize session store
 	store := cookie.NewStore([]byte(common.SessionSecret))
-	store.Options(sessions.Options{
-		Path:     "/",
-		MaxAge:   2592000, // 30 days
-		HttpOnly: true,
-		Secure:   false,
-		SameSite: http.SameSiteStrictMode,
-	})
+	store.Options(buildSessionOptions())
 	server.Use(sessions.Sessions("session", store))
 
 	InjectUmamiAnalytics()
@@ -207,6 +201,17 @@ func main() {
 	err = server.Run(":" + port)
 	if err != nil {
 		common.FatalLog("failed to start HTTP server: " + err.Error())
+	}
+}
+
+func buildSessionOptions() sessions.Options {
+	return sessions.Options{
+		Path:     "/",
+		Domain:   strings.TrimSpace(os.Getenv("SESSION_COOKIE_DOMAIN")),
+		MaxAge:   2592000, // 30 days
+		HttpOnly: true,
+		Secure:   common.GetEnvOrDefaultBool("SESSION_COOKIE_SECURE", false),
+		SameSite: http.SameSiteStrictMode,
 	}
 }
 
