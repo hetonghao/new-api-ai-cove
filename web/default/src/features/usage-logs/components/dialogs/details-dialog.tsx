@@ -60,6 +60,10 @@ import {
   getResponseTimeColor,
 } from '../../lib/format'
 import {
+  getDisplayPromptTokens,
+  getLogCacheWriteTokens,
+} from '../../lib/display-tokens'
+import {
   getLogTypeConfig,
   isPerCallBilling,
   isTimingLogType,
@@ -329,10 +333,10 @@ function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
   const { t } = useTranslation()
   const { log, other } = props
 
-  const promptTokens = log.prompt_tokens || 0
+  const promptTokens = getDisplayPromptTokens(log.prompt_tokens || 0, other)
   const completionTokens = log.completion_tokens || 0
   const cacheRead = other.cache_tokens || 0
-  const cacheWrite = other.cache_creation_tokens || 0
+  const cacheWrite = getLogCacheWriteTokens(other)
   const cacheWrite5m = other.cache_creation_tokens_5m || 0
   const cacheWrite1h = other.cache_creation_tokens_1h || 0
   const hasTokens = promptTokens > 0 || completionTokens > 0

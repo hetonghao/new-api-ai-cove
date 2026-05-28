@@ -49,6 +49,10 @@ import {
   isViolationFeeLog,
 } from '../../lib/format'
 import {
+  getDisplayPromptTokens,
+  getLogCacheWriteTokens,
+} from '../../lib/display-tokens'
+import {
   isDisplayableLogType,
   isTimingLogType,
   getLogTypeConfig,
@@ -670,19 +674,17 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
 
         const other = parseLogOther(log.other)
 
-        const promptTokens = log.prompt_tokens || 0
+        const promptTokens = getDisplayPromptTokens(
+          log.prompt_tokens || 0,
+          other
+        )
         const completionTokens = log.completion_tokens || 0
         if (promptTokens === 0 && completionTokens === 0) {
           return <span className='text-muted-foreground text-xs'>-</span>
         }
 
         const cacheReadTokens = other?.cache_tokens || 0
-        const cacheWrite5m = other?.cache_creation_tokens_5m || 0
-        const cacheWrite1h = other?.cache_creation_tokens_1h || 0
-        const hasSplitCache = cacheWrite5m > 0 || cacheWrite1h > 0
-        const cacheWriteTokens = hasSplitCache
-          ? cacheWrite5m + cacheWrite1h
-          : other?.cache_creation_tokens || 0
+        const cacheWriteTokens = getLogCacheWriteTokens(other)
 
         return (
           <div className='flex flex-col gap-0.5'>
