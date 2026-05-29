@@ -90,7 +90,12 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 
 	statusCodeMappingStr := c.GetString("status_code_mapping")
 
+	stopHeartbeat := func() {}
+	if shouldSendImageProcessingHeartbeat(info, request) {
+		stopHeartbeat = startProcessingHeartbeat(c, imageProcessingHeartbeatInterval)
+	}
 	resp, err := adaptor.DoRequest(c, info, requestBody)
+	stopHeartbeat()
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
 	}
