@@ -79,8 +79,10 @@ func TestStartProcessingHeartbeatSendsRepeated102UntilStopped(t *testing.T) {
 
 	engine := gin.New()
 	engine.GET("/heartbeat", func(c *gin.Context) {
+		c.Writer.Header().Set("Cache-Control", "private")
 		stop := startProcessingHeartbeat(c, 10*time.Millisecond)
 		time.Sleep(25 * time.Millisecond)
+		stop()
 		stop()
 		c.String(http.StatusOK, "ok")
 	})
@@ -121,6 +123,12 @@ func TestStartProcessingHeartbeatSendsRepeated102UntilStopped(t *testing.T) {
 
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("StatusCode = %d, want %d; body=%s", response.StatusCode, http.StatusOK, body)
+	}
+	if got := response.Header.Get("Cache-Control"); got != "private" {
+		t.Fatalf("Cache-Control = %q, want private", got)
+	}
+	if got := response.Header.Get("X-Accel-Buffering"); got != "" {
+		t.Fatalf("X-Accel-Buffering = %q, want empty final header", got)
 	}
 	if interimCount < 2 {
 		t.Fatalf("observed %d interim responses, want at least 2", interimCount)

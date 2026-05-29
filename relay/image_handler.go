@@ -94,6 +94,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	if shouldSendImageProcessingHeartbeat(info, request) {
 		stopHeartbeat = startProcessingHeartbeat(c, imageProcessingHeartbeatInterval)
 	}
+	defer stopHeartbeat()
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	stopHeartbeat()
 	if err != nil {

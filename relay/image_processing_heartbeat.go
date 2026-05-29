@@ -3,6 +3,7 @@ package relay
 import (
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/dto"
@@ -44,6 +45,7 @@ func startProcessingHeartbeat(c *gin.Context, interval time.Duration) func() {
 
 	done := make(chan struct{})
 	stopped := make(chan struct{})
+	var stopOnce sync.Once
 
 	go func() {
 		defer close(stopped)
@@ -64,15 +66,40 @@ func startProcessingHeartbeat(c *gin.Context, interval time.Duration) func() {
 	}()
 
 	return func() {
-		close(done)
+		stopOnce.Do(func() {
+			close(done)
+		})
 		<-stopped
 	}
 }
 
 func sendProcessingHeartbeat(writer http.ResponseWriter) {
-	writer.Header().Set("Cache-Control", "no-store")
-	writer.Header().Set("X-Accel-Buffering", "no")
+	header := writer.Header()
+	cacheControlValues, hadCacheControl := cloneHeaderValues(header, "Cache-Control")
+	xAccelBufferingValues, hadXAccelBuffering := cloneHeaderValues(header, "X-Accel-Buffering")
+
+	header.Set("Cache-Control", "no-store")
+	header.Set("X-Accel-Buffering", "no")
 	writer.WriteHeader(http.StatusProcessing)
+	restoreHeaderValues(header, "Cache-Control", cacheControlValues, hadCacheControl)
+	restoreHeaderValues(header, "X-Accel-Buffering", xAccelBufferingValues, hadXAccelBuffering)
+}
+
+func cloneHeaderValues(header http.Header, key string) ([]string, bool) {
+	values, ok := header[http.CanonicalHeaderKey(key)]
+	if !ok {
+		return nil, false
+	}
+	return append([]string(nil), values...), true
+}
+
+func restoreHeaderValues(header http.Header, key string, values []string, ok bool) {
+	canonicalKey := http.CanonicalHeaderKey(key)
+	if !ok {
+		delete(header, canonicalKey)
+		return
+	}
+	header[canonicalKey] = values
 }
 
 func unwrapHTTPResponseWriter(writer http.ResponseWriter) http.ResponseWriter {
