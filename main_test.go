@@ -44,3 +44,23 @@ func TestBuildSessionOptionsAllowsSharedProductionCookie(t *testing.T) {
 		t.Fatal("Secure = false, want true")
 	}
 }
+
+func TestSessionCookieNameDefaultsToSession(t *testing.T) {
+	t.Setenv("SESSION_COOKIE_NAME", "")
+
+	name := getSessionCookieName()
+
+	if name != "session" {
+		t.Fatalf("cookie name = %q, want session", name)
+	}
+}
+
+func TestSessionCookieNameAllowsOverride(t *testing.T) {
+	t.Setenv("SESSION_COOKIE_NAME", "ai_cove_session")
+
+	name := getSessionCookieName()
+
+	if name != "ai_cove_session" {
+		t.Fatalf("cookie name = %q, want ai_cove_session", name)
+	}
+}

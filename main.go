@@ -178,7 +178,7 @@ func main() {
 	// Initialize session store
 	store := cookie.NewStore([]byte(common.SessionSecret))
 	store.Options(buildSessionOptions())
-	server.Use(sessions.Sessions("session", store))
+	server.Use(sessions.Sessions(getSessionCookieName(), store))
 
 	InjectUmamiAnalytics()
 	InjectGoogleAnalytics()
@@ -213,6 +213,14 @@ func buildSessionOptions() sessions.Options {
 		Secure:   common.GetEnvOrDefaultBool("SESSION_COOKIE_SECURE", false),
 		SameSite: http.SameSiteStrictMode,
 	}
+}
+
+func getSessionCookieName() string {
+	name := strings.TrimSpace(os.Getenv("SESSION_COOKIE_NAME"))
+	if name != "" {
+		return name
+	}
+	return "session"
 }
 
 func InjectUmamiAnalytics() {
