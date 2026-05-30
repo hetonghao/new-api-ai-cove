@@ -32,6 +32,7 @@ import {
 import { useMediaQuery } from '@/hooks'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { useAuthStore } from '@/stores/auth-store'
 import { cn } from '@/lib/utils'
 import { useIsAdmin } from '@/hooks/use-admin'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
@@ -68,6 +69,7 @@ interface UsageLogsTableProps {
 export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   const { t } = useTranslation()
   const isAdmin = useIsAdmin()
+  const currentUserId = useAuthStore((state) => state.auth.user?.id)
   const isMobile = useMediaQuery('(max-width: 640px)')
   const searchParams = route.useSearch()
 
@@ -124,6 +126,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       const result = await fetchLogsByCategory({
         logCategory,
         isAdmin,
+        currentUserId,
         page: pagination.pageIndex + 1,
         pageSize: pagination.pageSize,
         searchParams,

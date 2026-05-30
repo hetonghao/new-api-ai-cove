@@ -24,6 +24,8 @@ import { Eye, EyeOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsAdmin } from '@/hooks/use-admin'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -92,6 +94,7 @@ export function CommonLogsFilterBar<TData>(
       token: searchParams.token || undefined,
       group: searchParams.group || undefined,
       username: searchParams.username || undefined,
+      hideSelf: searchParams.hideSelf === true,
       requestId: searchParams.requestId || undefined,
       upstreamRequestId: searchParams.upstreamRequestId || undefined,
     })
@@ -112,13 +115,17 @@ export function CommonLogsFilterBar<TData>(
     searchParams.token,
     searchParams.group,
     searchParams.username,
+    searchParams.hideSelf,
     searchParams.requestId,
     searchParams.upstreamRequestId,
     searchParams.type,
   ])
 
   const handleChange = useCallback(
-    (field: keyof CommonLogFilters, value: Date | string | undefined) => {
+    (
+      field: keyof CommonLogFilters,
+      value: Date | string | boolean | undefined
+    ) => {
       setFilters((prev) => ({ ...prev, [field]: value }))
     },
     []
@@ -169,6 +176,7 @@ export function CommonLogsFilterBar<TData>(
   const hasExpandedFilters =
     !!filters.token ||
     !!filters.username ||
+    !!filters.hideSelf ||
     !!filters.channel ||
     !!filters.requestId ||
     !!filters.upstreamRequestId
@@ -180,6 +188,7 @@ export function CommonLogsFilterBar<TData>(
   const expandedFilterCount = [
     filters.token,
     isAdmin ? filters.username : undefined,
+    isAdmin && filters.hideSelf ? 'hide-self' : undefined,
     isAdmin ? filters.channel : undefined,
     filters.requestId,
     filters.upstreamRequestId,
@@ -299,6 +308,25 @@ export function CommonLogsFilterBar<TData>(
             onChange={(e) => handleChange('username', e.target.value)}
             onKeyDown={handleKeyDown}
           />
+        </LogsFilterField>
+      )}
+      {isAdmin && (
+        <LogsFilterField className='sm:col-span-2'>
+          <div className='border-input flex h-8 items-center gap-2 rounded-md border px-2.5'>
+            <Checkbox
+              id='usage-logs-hide-self'
+              checked={filters.hideSelf === true}
+              onCheckedChange={(checked) =>
+                handleChange('hideSelf', checked === true)
+              }
+            />
+            <Label
+              htmlFor='usage-logs-hide-self'
+              className='text-muted-foreground text-sm leading-5 font-normal'
+            >
+              {t('Hide my logs')}
+            </Label>
+          </div>
         </LogsFilterField>
       )}
       {isAdmin && (

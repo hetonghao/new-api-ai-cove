@@ -51,6 +51,7 @@ export interface CommonLogFilters extends CommonFilters {
   token?: string
   group?: string
   username?: string
+  hideSelf?: boolean
   requestId?: string
   upstreamRequestId?: string
 }
@@ -261,6 +262,7 @@ export interface GetLogsParams {
   page_size?: number
   type?: number
   username?: string
+  exclude_user_id?: number
   token_name?: string
   model_name?: string
   start_timestamp?: number
@@ -285,6 +287,7 @@ export interface GetLogsResponse {
 export interface GetLogStatsParams {
   type?: number
   username?: string
+  exclude_user_id?: number
   token_name?: string
   model_name?: string
   start_timestamp?: number
@@ -337,6 +340,7 @@ export interface GetTaskLogsParams {
 export interface FetchLogsConfig {
   logCategory: LogCategory
   isAdmin: boolean
+  currentUserId?: number
   page: number
   pageSize: number
   searchParams: Record<string, unknown>

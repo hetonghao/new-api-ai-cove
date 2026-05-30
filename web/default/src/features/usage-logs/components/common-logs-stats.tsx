@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
+import { useAuthStore } from '@/stores/auth-store'
 import { formatLogQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useIsAdmin } from '@/hooks/use-admin'
@@ -49,6 +50,7 @@ function StatBadge(props: {
 export function CommonLogsStats() {
   const { t } = useTranslation()
   const isAdmin = useIsAdmin()
+  const currentUserId = useAuthStore((state) => state.auth.user?.id)
   const searchParams = route.useSearch()
   const { sensitiveVisible } = useUsageLogsContext()
 
@@ -61,6 +63,7 @@ export function CommonLogsStats() {
         searchParams,
         columnFilters: [],
         isAdmin,
+        currentUserId,
       })
 
       const result = isAdmin
