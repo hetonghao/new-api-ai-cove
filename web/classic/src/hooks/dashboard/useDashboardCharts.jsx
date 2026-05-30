@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { initVChartSemiTheme } from '@visactor/vchart-semi-theme';
 import {
   modelColorMap,
@@ -36,10 +36,15 @@ import {
   initializeMaps,
   processUserData,
 } from '../../helpers/dashboard';
+import {
+  DEFAULT_USER_TREND_CHART_TYPE,
+  createUserTrendChartSpec,
+} from '../../helpers/dashboardUserTrendChart';
 
 const USER_COLORS = [
   '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
   '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#14b8a6',
+  '#64748b',
 ];
 
 export const useDashboardCharts = (
@@ -329,59 +334,23 @@ export const useDashboardCharts = (
   });
 
   // ========== Admin: 用户消耗趋势 ==========
-  const [spec_user_trend, setSpecUserTrend] = useState({
-    type: 'area',
-    data: [{ id: 'userTrendData', values: [] }],
-    xField: 'Time',
-    yField: 'rawQuota',
-    seriesField: 'User',
-    stack: false,
-    legends: { visible: true, selectMode: 'single' },
-    title: {
-      visible: true,
-      text: t('用户消耗趋势'),
-      subtext: '',
-    },
-    axes: [{
-      orient: 'left',
-      label: {
-        formatMethod: (value) => renderQuota(value, 2),
-      },
-    }],
-    area: { style: { fillOpacity: 0.15 } },
-    line: { style: { lineWidth: 2 } },
-    point: { visible: false },
-    tooltip: {
-      mark: {
-        content: [{
-          key: (datum) => datum['User'],
-          value: (datum) => renderQuota(datum['rawQuota'] || 0, 4),
-        }],
-      },
-      dimension: {
-        content: [{
-          key: (datum) => datum['User'],
-          value: (datum) => datum['rawQuota'] || 0,
-        }],
-        updateContent: (array) => {
-          array.sort((a, b) => b.value - a.value);
-          let sum = 0;
-          for (let i = 0; i < array.length; i++) {
-            let value = parseFloat(array[i].value);
-            if (isNaN(value)) value = 0;
-            sum += value;
-            array[i].value = renderQuota(value, 4);
-          }
-          array.unshift({
-            key: t('总计'),
-            value: renderQuota(sum, 4),
-          });
-          return array;
-        },
-      },
-    },
-    color: { type: 'ordinal', range: USER_COLORS },
-  });
+  const [userTrendChartType, setUserTrendChartType] = useState(
+    DEFAULT_USER_TREND_CHART_TYPE,
+  );
+  const [userTrendValues, setUserTrendValues] = useState([]);
+  const [userTrendTotalQuota, setUserTrendTotalQuota] = useState(0);
+  const spec_user_trend = useMemo(
+    () =>
+      createUserTrendChartSpec({
+        chartType: userTrendChartType,
+        values: userTrendValues,
+        totalQuota: userTrendTotalQuota,
+        t,
+        renderQuota,
+        colors: USER_COLORS,
+      }),
+    [userTrendChartType, userTrendValues, userTrendTotalQuota, t],
+  );
 
   // ========== 数据处理函数 ==========
   const generateModelColors = useCallback((uniqueModels, modelColors) => {
@@ -595,14 +564,8 @@ export const useDashboardCharts = (
         Usage: item.Quota ? getQuotaWithUnit(item.Quota, 4) : 0,
       }));
 
-      setSpecUserTrend((prev) => ({
-        ...prev,
-        data: [{ id: 'userTrendData', values: userTrendValues }],
-        title: {
-          ...prev.title,
-          subtext: `${t('总计')}：${renderQuota(totalUserQuota, 2)}`,
-        },
-      }));
+      setUserTrendValues(userTrendValues);
+      setUserTrendTotalQuota(totalUserQuota);
     },
     [dataExportDefaultTime, t],
   );
@@ -621,6 +584,8 @@ export const useDashboardCharts = (
     spec_rank_bar,
     spec_user_rank,
     spec_user_trend,
+    userTrendChartType,
+    setUserTrendChartType,
     updateChartData,
     updateUserChartData,
     generateModelColors,

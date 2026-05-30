@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
-import { Users, Loader2 } from 'lucide-react'
+import { AreaChart, BarChart3, Loader2, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getRollingDateRange, type TimeGranularity } from '@/lib/time'
 import { VCHART_OPTION } from '@/lib/vchart'
@@ -39,6 +39,7 @@ import {
   processUserChartData,
 } from '@/features/dashboard/lib'
 import type { ProcessedUserChartData } from '@/features/dashboard/types'
+import type { UserTrendChartType } from '@/features/dashboard/types'
 
 let themeManagerPromise: Promise<
   (typeof import('@visactor/vchart'))['ThemeManager']
@@ -63,6 +64,15 @@ const USER_CHARTS: {
 
 const TOP_USER_LIMIT_OPTIONS = [5, 10, 20, 50]
 
+const USER_TREND_CHART_OPTIONS: {
+  value: UserTrendChartType
+  labelKey: string
+  icon: typeof BarChart3
+}[] = [
+  { value: 'bar', labelKey: 'Bar Chart', icon: BarChart3 },
+  { value: 'area', labelKey: 'Area Chart', icon: AreaChart },
+]
+
 export function UserCharts() {
   const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
@@ -79,6 +89,8 @@ export function UserCharts() {
     getDefaultDays(timeGranularity)
   )
   const [topUserLimit, setTopUserLimit] = useState(10)
+  const [userTrendChartType, setUserTrendChartType] =
+    useState<UserTrendChartType>('bar')
   const [timeRange, setTimeRange] = useState(() => {
     const days = getDefaultDays(timeGranularity)
     const { start, end } = getRollingDateRange(days)
@@ -221,16 +233,47 @@ export function UserCharts() {
 
       <div className='grid gap-3'>
         {USER_CHARTS.map((chart) => {
-          const spec = chartData[chart.specKey]
+          const spec =
+            chart.value === 'trend' && userTrendChartType === 'area'
+              ? chartData.spec_user_trend_area
+              : chartData[chart.specKey]
+          const specType = typeof spec?.type === 'string' ? spec.type : ''
 
           return (
             <div
               key={chart.value}
               className='overflow-hidden rounded-lg border'
             >
-              <div className='flex w-full items-center gap-2 border-b px-3 py-2 sm:px-5 sm:py-3'>
-                <Users className='text-muted-foreground/60 size-4' />
-                <div className='text-sm font-semibold'>{t(chart.labelKey)}</div>
+              <div className='flex w-full flex-col gap-2 border-b px-3 py-2 sm:px-5 sm:py-3 lg:flex-row lg:items-center lg:justify-between'>
+                <div className='flex items-center gap-2'>
+                  <Users className='text-muted-foreground/60 size-4' />
+                  <div className='text-sm font-semibold'>
+                    {t(chart.labelKey)}
+                  </div>
+                </div>
+
+                {chart.value === 'trend' && (
+                  <div className='bg-muted/60 inline-flex h-7 w-full overflow-x-auto rounded-lg border p-0.5 sm:h-8 sm:w-auto'>
+                    {USER_TREND_CHART_OPTIONS.map((item) => {
+                      const Icon = item.icon
+                      return (
+                        <button
+                          key={item.value}
+                          type='button'
+                          onClick={() => setUserTrendChartType(item.value)}
+                          className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
+                            userTrendChartType === item.value
+                              ? 'bg-background text-foreground shadow-sm'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          <Icon className='size-3.5' />
+                          {t(item.labelKey)}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
@@ -240,7 +283,7 @@ export function UserCharts() {
                   themeReady &&
                   spec && (
                     <VChart
-                      key={`user-${chart.value}-${topUserLimit}-${resolvedTheme}-${customization.preset}`}
+                      key={`user-${chart.value}-${specType}-${topUserLimit}-${resolvedTheme}-${customization.preset}`}
                       spec={{
                         ...spec,
                         theme: resolvedTheme === 'dark' ? 'dark' : 'light',

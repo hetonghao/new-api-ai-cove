@@ -25,6 +25,10 @@ import type {
   ProcessedChartData,
   ProcessedUserChartData,
 } from '@/features/dashboard/types'
+import {
+  USER_TREND_CHART_TYPES,
+  createUserTrendChartSpec,
+} from './user-trend-chart'
 
 type TFunction = (key: string) => string
 type TooltipLineItem = {
@@ -771,11 +775,12 @@ export function processUserChartData(
       background: { fill: 'transparent' },
     },
     spec_user_trend: {
-      type: 'area',
+      type: 'bar',
       data: [{ id: 'userTrendData', values: [] }],
       xField: 'Time',
       yField: 'rawQuota',
       seriesField: 'User',
+      stack: true,
       title: {
         visible: true,
         text: tt('User Consumption Trend'),
@@ -783,7 +788,22 @@ export function processUserChartData(
       },
       legends: { visible: true, selectMode: 'single' },
       color: { type: 'ordinal', range: userColorRange },
-      point: { visible: false },
+      background: { fill: 'transparent' },
+    },
+    spec_user_trend_area: {
+      type: 'area',
+      data: [{ id: 'userTrendData', values: [] }],
+      xField: 'Time',
+      yField: 'rawQuota',
+      seriesField: 'User',
+      stack: false,
+      title: {
+        visible: true,
+        text: tt('User Consumption Trend'),
+        subtext: tt('No data available'),
+      },
+      legends: { visible: true, selectMode: 'single' },
+      color: { type: 'ordinal', range: userColorRange },
       background: { fill: 'transparent' },
     },
   }
@@ -909,86 +929,21 @@ export function processUserChartData(
       background: { fill: 'transparent' },
       animation: true,
     },
-    spec_user_trend: {
-      type: 'area',
-      data: [{ id: 'userTrendData', values: trendValues }],
-      xField: 'Time',
-      yField: 'rawQuota',
-      seriesField: 'User',
-      stack: false,
-      title: {
-        visible: true,
-        text: tt('User Consumption Trend'),
-        subtext: `${tt('Total:')} ${formatVal(totalQuota)}`,
-      },
-      legends: { visible: true, selectMode: 'single' },
-      axes: [
-        { orient: 'bottom', type: 'band' },
-        {
-          orient: 'left',
-          type: 'linear',
-          label: {
-            formatMethod: (value: number) => formatVal(value),
-          },
-        },
-      ],
-      tooltip: {
-        mark: {
-          content: [
-            {
-              key: (datum: Record<string, unknown>) => datum?.User,
-              value: (datum: Record<string, unknown>) =>
-                formatVal(Number(datum?.rawQuota) || 0),
-            },
-          ],
-        },
-        dimension: {
-          content: [
-            {
-              key: (datum: Record<string, unknown>) => datum?.User,
-              value: (datum: Record<string, unknown>) =>
-                Number(datum?.rawQuota) || 0,
-            },
-          ],
-          updateContent: (
-            array: Array<{
-              key: string
-              value: string | number
-            }>
-          ) => {
-            array.sort(
-              (a, b) => (Number(b.value) || 0) - (Number(a.value) || 0)
-            )
-            let sum = 0
-            for (let i = 0; i < array.length; i++) {
-              const v = Number(array[i].value) || 0
-              sum += v
-              array[i].value = formatVal(v)
-            }
-            array.unshift({
-              key: tt('Total:'),
-              value: formatVal(sum),
-            })
-            return array
-          },
-        },
-      },
-      area: {
-        style: {
-          fillOpacity: 0.15,
-          curveType: 'monotone',
-        },
-      },
-      line: {
-        style: {
-          lineWidth: 2,
-          curveType: 'monotone',
-        },
-      },
-      point: { visible: false },
-      color: { specified: userColorMap },
-      background: { fill: 'transparent' },
-      animation: true,
-    },
+    spec_user_trend: createUserTrendChartSpec({
+      chartType: USER_TREND_CHART_TYPES.BAR,
+      values: trendValues,
+      totalQuota,
+      tt,
+      formatVal,
+      colors: userColorMap,
+    }),
+    spec_user_trend_area: createUserTrendChartSpec({
+      chartType: USER_TREND_CHART_TYPES.AREA,
+      values: trendValues,
+      totalQuota,
+      tt,
+      formatVal,
+      colors: userColorMap,
+    }),
   }
 }

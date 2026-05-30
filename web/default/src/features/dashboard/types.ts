@@ -62,6 +62,8 @@ export interface DashboardFilters {
 
 export type ConsumptionDistributionChartType = 'bar' | 'area'
 
+export type UserTrendChartType = 'bar' | 'area'
+
 export type ModelAnalyticsChartTab = 'trend' | 'proportion' | 'top'
 
 export interface DashboardChartPreferences {
@@ -110,6 +112,7 @@ export interface ProcessedChartData {
 export interface ProcessedUserChartData {
   spec_user_rank: VChartSpec
   spec_user_trend: VChartSpec
+  spec_user_trend_area: VChartSpec
 }
 
 // ============================================================================

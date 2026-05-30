@@ -21,6 +21,7 @@ import React from 'react';
 import { Card, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { PieChart } from 'lucide-react';
 import { VChart } from '@visactor/react-vchart';
+import { USER_TREND_CHART_TYPES } from '../../helpers/dashboardUserTrendChart';
 
 const ChartsPanel = ({
   activeChartTab,
@@ -31,6 +32,8 @@ const ChartsPanel = ({
   spec_rank_bar,
   spec_user_rank,
   spec_user_trend,
+  userTrendChartType,
+  setUserTrendChartType,
   isAdminUser,
   CARD_PROPS,
   CHART_CONFIG,
@@ -48,22 +51,41 @@ const ChartsPanel = ({
             <PieChart size={16} />
             {t('模型数据分析')}
           </div>
-          <Tabs
-            type='slash'
-            activeKey={activeChartTab}
-            onChange={setActiveChartTab}
-          >
-            <TabPane tab={<span>{t('消耗分布')}</span>} itemKey='1' />
-            <TabPane tab={<span>{t('调用趋势')}</span>} itemKey='2' />
-            <TabPane tab={<span>{t('调用次数分布')}</span>} itemKey='3' />
-            <TabPane tab={<span>{t('调用次数排行')}</span>} itemKey='4' />
-            {isAdminUser && (
-              <TabPane tab={<span>{t('用户消耗排行')}</span>} itemKey='5' />
+          <div className='flex flex-col sm:flex-row sm:items-center gap-2'>
+            <Tabs
+              type='slash'
+              activeKey={activeChartTab}
+              onChange={setActiveChartTab}
+            >
+              <TabPane tab={<span>{t('消耗分布')}</span>} itemKey='1' />
+              <TabPane tab={<span>{t('调用趋势')}</span>} itemKey='2' />
+              <TabPane tab={<span>{t('调用次数分布')}</span>} itemKey='3' />
+              <TabPane tab={<span>{t('调用次数排行')}</span>} itemKey='4' />
+              {isAdminUser && (
+                <TabPane tab={<span>{t('用户消耗排行')}</span>} itemKey='5' />
+              )}
+              {isAdminUser && (
+                <TabPane tab={<span>{t('用户消耗趋势')}</span>} itemKey='6' />
+              )}
+            </Tabs>
+            {activeChartTab === '6' && isAdminUser && (
+              <Tabs
+                type='button'
+                size='small'
+                activeKey={userTrendChartType}
+                onChange={setUserTrendChartType}
+              >
+                <TabPane
+                  tab={<span>{t('柱状图')}</span>}
+                  itemKey={USER_TREND_CHART_TYPES.BAR}
+                />
+                <TabPane
+                  tab={<span>{t('面积图')}</span>}
+                  itemKey={USER_TREND_CHART_TYPES.AREA}
+                />
+              </Tabs>
             )}
-            {isAdminUser && (
-              <TabPane tab={<span>{t('用户消耗趋势')}</span>} itemKey='6' />
-            )}
-          </Tabs>
+          </div>
         </div>
       }
       bodyStyle={{ padding: 0 }}
@@ -85,7 +107,11 @@ const ChartsPanel = ({
           <VChart spec={spec_user_rank} option={CHART_CONFIG} />
         )}
         {activeChartTab === '6' && isAdminUser && (
-          <VChart spec={spec_user_trend} option={CHART_CONFIG} />
+          <VChart
+            key={userTrendChartType}
+            spec={spec_user_trend}
+            option={CHART_CONFIG}
+          />
         )}
       </div>
     </Card>
