@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getRouteApi } from '@tanstack/react-router'
 import {
   type ColumnDef,
   flexRender,
@@ -49,8 +48,7 @@ import type { LogCategory } from '../types'
 import { CommonLogsFilterBar } from './common-logs-filter-bar'
 import { TaskLogsFilterBar } from './task-logs-filter-bar'
 import { UsageLogsMobileList } from './usage-logs-mobile-card'
-
-const route = getRouteApi('/_authenticated/usage-logs/$section')
+import { useUsageLogsContext } from './usage-logs-provider'
 
 const logTypeRowTint: Record<number, string> = {
   [LOG_TYPE_ENUM.ERROR]: 'bg-rose-50/40 dark:bg-rose-950/20',
@@ -68,10 +66,19 @@ interface UsageLogsTableProps {
 
 export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   const { t } = useTranslation()
-  const isAdmin = useIsAdmin()
+  const isAdminUser = useIsAdmin()
   const currentUserId = useAuthStore((state) => state.auth.user?.id)
   const isMobile = useMediaQuery('(max-width: 640px)')
-  const searchParams = route.useSearch()
+  const {
+    search: searchParams,
+    navigateSearch,
+    dataScope,
+    adminControls,
+    hideSelfControl,
+    queryKeyScope,
+  } = useUsageLogsContext()
+  const canUseAdminControls = adminControls ?? isAdminUser
+  const canHideSelf = hideSelfControl ?? isAdminUser
 
   const {
     columnFilters,
@@ -80,8 +87,8 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     onPaginationChange,
     ensurePageInRange,
   } = useTableUrlState({
-    search: route.useSearch(),
-    navigate: route.useNavigate(),
+    search: searchParams,
+    navigate: navigateSearch,
     pagination: { defaultPage: 1, defaultPageSize: isMobile ? 20 : 100 },
     globalFilter: { enabled: false },
     columnFilters: [
@@ -94,7 +101,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       { columnId: 'model_name', searchKey: 'model', type: 'string' as const },
       { columnId: 'token_name', searchKey: 'token', type: 'string' as const },
       { columnId: 'group', searchKey: 'group', type: 'string' as const },
-      ...(isAdmin
+      ...(canUseAdminControls
         ? [
             {
               columnId: 'channel',
@@ -114,8 +121,12 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [
       'logs',
+      queryKeyScope,
       logCategory,
-      isAdmin,
+      dataScope,
+      canUseAdminControls,
+      canHideSelf,
+      currentUserId,
       pagination.pageIndex + 1,
       pagination.pageSize,
       columnFilters,
@@ -125,8 +136,9 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     queryFn: async () => {
       const result = await fetchLogsByCategory({
         logCategory,
-        isAdmin,
-        currentUserId,
+        dataScope,
+        isAdmin: canUseAdminControls,
+        currentUserId: canHideSelf ? currentUserId : undefined,
         page: pagination.pageIndex + 1,
         pageSize: pagination.pageSize,
         searchParams,
@@ -141,7 +153,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       return result.data || DEFAULT_LOGS_DATA
     },
     placeholderData: (previousData, previousQuery) => {
-      if (previousQuery?.queryKey[1] === logCategory) {
+      if (previousQuery?.queryKey[2] === logCategory) {
         return previousData
       }
       return undefined
@@ -149,7 +161,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   })
 
   const logs = data?.items || []
-  const columns = useColumnsByCategory(logCategory, isAdmin)
+  const columns = useColumnsByCategory(logCategory, canUseAdminControls)
   const isLoadingData = isLoading || (isFetching && !data)
 
   const table = useReactTable({

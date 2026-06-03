@@ -38,8 +38,10 @@ import {
   saveGranularity,
   processUserChartData,
 } from '@/features/dashboard/lib'
-import type { ProcessedUserChartData } from '@/features/dashboard/types'
-import type { UserTrendChartType } from '@/features/dashboard/types'
+import type {
+  ProcessedUserChartData,
+  UserTrendChartType,
+} from '@/features/dashboard/types'
 
 let themeManagerPromise: Promise<
   (typeof import('@visactor/vchart'))['ThemeManager']
@@ -73,7 +75,11 @@ const USER_TREND_CHART_OPTIONS: {
   { value: 'area', labelKey: 'Area Chart', icon: AreaChart },
 ]
 
-export function UserCharts() {
+interface UserChartsProps {
+  scope?: 'admin' | 'sales'
+}
+
+export function UserCharts({ scope = 'admin' }: UserChartsProps) {
   const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
   const { customization } = useThemeCustomization()
@@ -138,8 +144,8 @@ export function UserCharts() {
   }, [resolvedTheme])
 
   const { data: userData, isLoading } = useQuery({
-    queryKey: ['dashboard', 'user-quota', timeRange],
-    queryFn: () => getUserQuotaDataByUsers(timeRange),
+    queryKey: ['dashboard', 'user-quota', scope, timeRange],
+    queryFn: () => getUserQuotaDataByUsers(timeRange, scope),
     select: (res) => (res.success ? res.data : []),
     staleTime: 60_000,
   })
@@ -160,7 +166,6 @@ export function UserCharts() {
       t,
       topUserLimit,
       customization.preset,
-      customization.radius,
     ]
   )
 

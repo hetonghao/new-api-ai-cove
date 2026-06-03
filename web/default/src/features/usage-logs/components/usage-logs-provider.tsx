@@ -18,7 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, type ReactNode } from 'react'
+import type { NavigateFn } from '@/hooks/use-table-url-state'
 import type { ChannelAffinityInfo } from '../types'
+
+export type UsageLogsDataScope = 'default' | 'sales'
 
 interface UsageLogsContextValue {
   selectedUserId: number | null
@@ -31,13 +34,46 @@ interface UsageLogsContextValue {
   setAffinityDialogOpen: (open: boolean) => void
   sensitiveVisible: boolean
   setSensitiveVisible: (visible: boolean) => void
+  search: Record<string, unknown>
+  navigateSearch: NavigateFn
+  dataScope: UsageLogsDataScope
+  adminControls?: boolean
+  hideSelfControl?: boolean
+  userInfoEnabled: boolean
+  detailsAdmin?: boolean
+  affinityStatsEnabled: boolean
+  queryKeyScope: string
 }
 
 const UsageLogsContext = createContext<UsageLogsContextValue | undefined>(
   undefined
 )
 
-export function UsageLogsProvider({ children }: { children: ReactNode }) {
+interface UsageLogsProviderProps {
+  children: ReactNode
+  search: Record<string, unknown>
+  navigateSearch: NavigateFn
+  dataScope?: UsageLogsDataScope
+  adminControls?: boolean
+  hideSelfControl?: boolean
+  userInfoEnabled?: boolean
+  detailsAdmin?: boolean
+  affinityStatsEnabled?: boolean
+  queryKeyScope?: string
+}
+
+export function UsageLogsProvider({
+  children,
+  search,
+  navigateSearch,
+  dataScope = 'default',
+  adminControls,
+  hideSelfControl,
+  userInfoEnabled = true,
+  detailsAdmin,
+  affinityStatsEnabled = true,
+  queryKeyScope = dataScope,
+}: UsageLogsProviderProps) {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
   const [userInfoDialogOpen, setUserInfoDialogOpen] = useState(false)
   const [affinityTarget, setAffinityTarget] =
@@ -58,6 +94,15 @@ export function UsageLogsProvider({ children }: { children: ReactNode }) {
         setAffinityDialogOpen,
         sensitiveVisible,
         setSensitiveVisible,
+        search,
+        navigateSearch,
+        dataScope,
+        adminControls,
+        hideSelfControl,
+        userInfoEnabled,
+        detailsAdmin,
+        affinityStatsEnabled,
+        queryKeyScope,
       }}
     >
       {children}

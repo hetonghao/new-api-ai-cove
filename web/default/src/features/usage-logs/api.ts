@@ -83,6 +83,12 @@ export const getUserLogStats = (
   params: Omit<GetLogStatsParams, 'username' | 'channel'> = {}
 ) => fetchLogStats('/api/log', params, false)
 
+export const getSalesLogs = (params: GetLogsParams = {}) =>
+  fetchLogs('/api/sales/logs', params, true)
+
+export const getSalesLogStats = (params: GetLogStatsParams = {}) =>
+  fetchLogStats('/api/sales/logs', params, true)
+
 export async function getUserInfo(
   userId: number
 ): Promise<{ success: boolean; message?: string; data?: UserInfo }> {

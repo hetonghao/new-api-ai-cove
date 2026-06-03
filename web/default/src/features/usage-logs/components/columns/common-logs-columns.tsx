@@ -40,6 +40,10 @@ import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import { LOG_TYPE_ALL_VALUE } from '../../constants'
 import type { UsageLog } from '../../data/schema'
 import {
+  getDisplayPromptTokens,
+  getLogCacheWriteTokens,
+} from '../../lib/display-tokens'
+import {
   formatModelName,
   getFirstResponseTimeColor,
   getResponseTimeColor,
@@ -48,10 +52,6 @@ import {
   parseLogOther,
   isViolationFeeLog,
 } from '../../lib/format'
-import {
-  getDisplayPromptTokens,
-  getLogCacheWriteTokens,
-} from '../../lib/display-tokens'
 import {
   isDisplayableLogType,
   isTimingLogType,
@@ -311,14 +311,20 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           <DataTableColumnHeader column={column} title={t('Channel')} />
         ),
         cell: function ChannelCell({ row }) {
-          const { sensitiveVisible, setAffinityTarget, setAffinityDialogOpen } =
-            useUsageLogsContext()
+          const {
+            sensitiveVisible,
+            setAffinityTarget,
+            setAffinityDialogOpen,
+            affinityStatsEnabled,
+          } = useUsageLogsContext()
           const log = row.original
 
           if (!isDisplayableLogType(log.type)) return null
 
           const other = parseLogOther(log.other)
-          const affinity = other?.admin_info?.channel_affinity
+          const affinity = affinityStatsEnabled
+            ? other?.admin_info?.channel_affinity
+            : null
           const useChannel = other?.admin_info?.use_channel
           const channelChain =
             useChannel && useChannel.length > 0
@@ -416,8 +422,12 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           <DataTableColumnHeader column={column} title={t('User')} />
         ),
         cell: function UserCell({ row }) {
-          const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
-            useUsageLogsContext()
+          const {
+            sensitiveVisible,
+            setSelectedUserId,
+            setUserInfoDialogOpen,
+            userInfoEnabled,
+          } = useUsageLogsContext()
           const log = row.original
 
           if (!log.username) return null
@@ -425,9 +435,13 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           return (
             <button
               type='button'
-              className='flex items-center gap-1.5 text-left'
+              className={cn(
+                'flex items-center gap-1.5 text-left',
+                !userInfoEnabled && 'cursor-default'
+              )}
               onClick={(e) => {
                 e.stopPropagation()
+                if (!userInfoEnabled) return
                 setSelectedUserId(log.user_id)
                 setUserInfoDialogOpen(true)
               }}
@@ -451,7 +465,12 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 <Tooltip>
                   <TooltipTrigger
                     render={
-                      <span className='text-muted-foreground max-w-[100px] truncate text-sm hover:underline' />
+                      <span
+                        className={cn(
+                          'text-muted-foreground max-w-[100px] truncate text-sm',
+                          userInfoEnabled && 'hover:underline'
+                        )}
+                      />
                     }
                   >
                     {sensitiveVisible ? log.username : '••••'}
@@ -755,7 +774,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
 
         return (
           <div className='flex flex-col gap-0.5'>
-            <span className='border-border/80 bg-muted/60 inline-flex h-6 w-fit items-center rounded-md border px-2 text-sm leading-none [font-family:var(--font-body)] font-semibold tabular-nums'>
+            <span className='border-border/80 bg-muted/60 inline-flex h-6 w-fit items-center rounded-md border px-2 [font-family:var(--font-body)] text-sm leading-none font-semibold tabular-nums'>
               {quotaDisplay.prefix && (
                 <span className='mr-1'>{quotaDisplay.prefix}</span>
               )}
@@ -772,6 +791,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
       header: t('Details'),
       cell: function DetailsCell({ row }) {
         const [dialogOpen, setDialogOpen] = useState(false)
+        const { detailsAdmin } = useUsageLogsContext()
         const log = row.original
         const other = parseLogOther(log.other)
 
@@ -815,7 +835,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
             </button>
             <DetailsDialog
               log={log}
-              isAdmin={isAdmin}
+              isAdmin={detailsAdmin ?? isAdmin}
               open={dialogOpen}
               onOpenChange={setDialogOpen}
             />

@@ -16,9 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { UserInfo } from '@/features/usage-logs/types'
 import type { User } from '@/features/users/types'
 
-export type SalesUser = User
+export type SalesUser = User & {
+  topup_amount?: number
+}
 
 export interface ApiResponse<T = unknown> {
   success: boolean
@@ -53,3 +56,9 @@ export interface SalesDataParams {
   start_timestamp?: number
   end_timestamp?: number
 }
+
+export interface SalesStats {
+  topup_amount: number
+}
+
+export type SalesUserInfo = UserInfo

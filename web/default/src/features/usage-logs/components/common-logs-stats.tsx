@@ -17,19 +17,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { getRouteApi } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
 import { formatLogQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useIsAdmin } from '@/hooks/use-admin'
 import { Skeleton } from '@/components/ui/skeleton'
-import { getLogStats, getUserLogStats } from '../api'
+import { getLogStats, getSalesLogStats, getUserLogStats } from '../api'
 import { DEFAULT_LOG_STATS } from '../constants'
 import { buildApiParams } from '../lib/utils'
 import { useUsageLogsContext } from './usage-logs-provider'
-
-const route = getRouteApi('/_authenticated/usage-logs/$section')
 
 function StatBadge(props: {
   label: string
@@ -49,26 +46,46 @@ function StatBadge(props: {
 
 export function CommonLogsStats() {
   const { t } = useTranslation()
-  const isAdmin = useIsAdmin()
+  const isAdminUser = useIsAdmin()
   const currentUserId = useAuthStore((state) => state.auth.user?.id)
-  const searchParams = route.useSearch()
-  const { sensitiveVisible } = useUsageLogsContext()
+  const {
+    sensitiveVisible,
+    search: searchParams,
+    dataScope,
+    adminControls,
+    hideSelfControl,
+    queryKeyScope,
+  } = useUsageLogsContext()
+  const canUseAdminControls = adminControls ?? isAdminUser
+  const canHideSelf = hideSelfControl ?? isAdminUser
 
   const { data: stats, isLoading } = useQuery({
-    queryKey: ['usage-logs-stats', isAdmin, searchParams],
+    queryKey: [
+      'usage-logs-stats',
+      queryKeyScope,
+      dataScope,
+      canUseAdminControls,
+      canHideSelf,
+      currentUserId,
+      isAdminUser,
+      searchParams,
+    ],
     queryFn: async () => {
       const params = buildApiParams({
         page: 1,
         pageSize: 1,
         searchParams,
         columnFilters: [],
-        isAdmin,
-        currentUserId,
+        isAdmin: canUseAdminControls,
+        currentUserId: canHideSelf ? currentUserId : undefined,
       })
 
-      const result = isAdmin
-        ? await getLogStats(params)
-        : await getUserLogStats(params)
+      const result =
+        dataScope === 'sales'
+          ? await getSalesLogStats(params)
+          : isAdminUser
+            ? await getLogStats(params)
+            : await getUserLogStats(params)
 
       return result.success
         ? result.data || DEFAULT_LOG_STATS

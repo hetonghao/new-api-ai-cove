@@ -21,6 +21,8 @@ import type {
   ApiResponse,
   QuotaDataPoint,
   SalesDataParams,
+  SalesStats,
+  SalesUserInfo,
   SalesUsersPage,
   SalesUsersParams,
 } from './types'
@@ -32,10 +34,24 @@ export async function getSalesUsers(
   return res.data
 }
 
+export async function getSalesUserInfo(
+  userId: number
+): Promise<ApiResponse<SalesUserInfo>> {
+  const res = await api.get(`/api/sales/users/${userId}`)
+  return res.data
+}
+
 export async function getSalesData(
   params: SalesDataParams
 ): Promise<ApiResponse<QuotaDataPoint[]>> {
   const res = await api.get('/api/sales/data', { params })
+  return res.data
+}
+
+export async function getSalesStats(): Promise<ApiResponse<SalesStats>> {
+  const res = await api.get('/api/sales/stats', {
+    params: { _t: Date.now() },
+  })
   return res.data
 }
 

@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useQueryClient, useIsFetching } from '@tanstack/react-query'
-import { useNavigate, getRouteApi } from '@tanstack/react-router'
 import { type Table } from '@tanstack/react-table'
 import { Eye, EyeOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -52,13 +51,20 @@ import {
 } from './logs-filter-toolbar'
 import { useUsageLogsContext } from './usage-logs-provider'
 
-const route = getRouteApi('/_authenticated/usage-logs/$section')
 const logTypeValues = ['0', '1', '2', '3', '4', '5', '6'] as const
 
 type LogTypeValue = (typeof logTypeValues)[number]
 
 function isLogTypeValue(value: string): value is LogTypeValue {
   return (logTypeValues as readonly string[]).includes(value)
+}
+
+function getStringSearchParam(value: unknown): string | undefined {
+  return typeof value === 'string' && value !== '' ? value : undefined
+}
+
+function getNumberSearchParam(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 interface CommonLogsFilterBarProps<TData> {
@@ -69,12 +75,20 @@ export function CommonLogsFilterBar<TData>(
   props: CommonLogsFilterBarProps<TData>
 ) {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const searchParams = route.useSearch()
-  const isAdmin = useIsAdmin()
-  const { sensitiveVisible, setSensitiveVisible } = useUsageLogsContext()
-  const fetchingLogs = useIsFetching({ queryKey: ['logs'] })
+  const isAdminUser = useIsAdmin()
+  const {
+    sensitiveVisible,
+    setSensitiveVisible,
+    search: searchParams,
+    navigateSearch,
+    adminControls,
+    hideSelfControl,
+    queryKeyScope,
+  } = useUsageLogsContext()
+  const fetchingLogs = useIsFetching({ queryKey: ['logs', queryKeyScope] })
+  const canUseAdminControls = adminControls ?? isAdminUser
+  const canHideSelf = hideSelfControl ?? isAdminUser
 
   const [filters, setFilters] = useState<CommonLogFilters>(() => {
     const { start, end } = getDefaultTimeRange()
@@ -84,19 +98,19 @@ export function CommonLogsFilterBar<TData>(
 
   useEffect(() => {
     const { start, end } = getDefaultTimeRange()
+    const startTime = getNumberSearchParam(searchParams.startTime)
+    const endTime = getNumberSearchParam(searchParams.endTime)
     setFilters({
-      startTime: searchParams.startTime
-        ? new Date(searchParams.startTime)
-        : start,
-      endTime: searchParams.endTime ? new Date(searchParams.endTime) : end,
-      channel: searchParams.channel || undefined,
-      model: searchParams.model || undefined,
-      token: searchParams.token || undefined,
-      group: searchParams.group || undefined,
-      username: searchParams.username || undefined,
+      startTime: startTime ? new Date(startTime) : start,
+      endTime: endTime ? new Date(endTime) : end,
+      channel: getStringSearchParam(searchParams.channel),
+      model: getStringSearchParam(searchParams.model),
+      token: getStringSearchParam(searchParams.token),
+      group: getStringSearchParam(searchParams.group),
+      username: getStringSearchParam(searchParams.username),
       hideSelf: searchParams.hideSelf === true,
-      requestId: searchParams.requestId || undefined,
-      upstreamRequestId: searchParams.upstreamRequestId || undefined,
+      requestId: getStringSearchParam(searchParams.requestId),
+      upstreamRequestId: getStringSearchParam(searchParams.upstreamRequestId),
     })
 
     const typeArr = searchParams.type
@@ -133,18 +147,18 @@ export function CommonLogsFilterBar<TData>(
 
   const handleApply = useCallback(() => {
     const filterParams = buildSearchParams(filters, 'common')
-    navigate({
-      to: '/usage-logs/$section',
-      params: { section: 'common' },
+    navigateSearch({
       search: {
         ...filterParams,
         type: [logType],
         page: 1,
       },
     })
-    queryClient.invalidateQueries({ queryKey: ['logs'] })
-    queryClient.invalidateQueries({ queryKey: ['usage-logs-stats'] })
-  }, [filters, logType, navigate, queryClient])
+    queryClient.invalidateQueries({ queryKey: ['logs', queryKeyScope] })
+    queryClient.invalidateQueries({
+      queryKey: ['usage-logs-stats', queryKeyScope],
+    })
+  }, [filters, logType, navigateSearch, queryClient, queryKeyScope])
 
   const handleReset = useCallback(() => {
     const { start, end } = getDefaultTimeRange()
@@ -152,9 +166,7 @@ export function CommonLogsFilterBar<TData>(
     setFilters(resetFilters)
     setLogType(LOG_TYPE_ALL_VALUE)
 
-    navigate({
-      to: '/usage-logs/$section',
-      params: { section: 'common' },
+    navigateSearch({
       search: {
         page: 1,
         type: [LOG_TYPE_ALL_VALUE],
@@ -162,9 +174,11 @@ export function CommonLogsFilterBar<TData>(
         endTime: end.getTime(),
       },
     })
-    queryClient.invalidateQueries({ queryKey: ['logs'] })
-    queryClient.invalidateQueries({ queryKey: ['usage-logs-stats'] })
-  }, [navigate, queryClient])
+    queryClient.invalidateQueries({ queryKey: ['logs', queryKeyScope] })
+    queryClient.invalidateQueries({
+      queryKey: ['usage-logs-stats', queryKeyScope],
+    })
+  }, [navigateSearch, queryClient, queryKeyScope])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -187,9 +201,9 @@ export function CommonLogsFilterBar<TData>(
 
   const expandedFilterCount = [
     filters.token,
-    isAdmin ? filters.username : undefined,
-    isAdmin && filters.hideSelf ? 'hide-self' : undefined,
-    isAdmin ? filters.channel : undefined,
+    canUseAdminControls ? filters.username : undefined,
+    canHideSelf && filters.hideSelf ? 'hide-self' : undefined,
+    canUseAdminControls ? filters.channel : undefined,
     filters.requestId,
     filters.upstreamRequestId,
   ].filter(Boolean).length
@@ -299,7 +313,7 @@ export function CommonLogsFilterBar<TData>(
           onKeyDown={handleKeyDown}
         />
       </LogsFilterField>
-      {isAdmin && (
+      {canUseAdminControls && (
         <LogsFilterField>
           <LogsFilterInput
             placeholder={t('Username')}
@@ -310,7 +324,7 @@ export function CommonLogsFilterBar<TData>(
           />
         </LogsFilterField>
       )}
-      {isAdmin && (
+      {canHideSelf && (
         <LogsFilterField className='sm:col-span-2'>
           <div className='border-input flex h-8 items-center gap-2 rounded-md border px-2.5'>
             <Checkbox
@@ -329,7 +343,7 @@ export function CommonLogsFilterBar<TData>(
           </div>
         </LogsFilterField>
       )}
-      {isAdmin && (
+      {canUseAdminControls && (
         <LogsFilterField>
           <LogsFilterInput
             placeholder={t('Channel ID')}

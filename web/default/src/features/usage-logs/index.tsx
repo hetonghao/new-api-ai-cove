@@ -160,8 +160,11 @@ function UsageLogsContent() {
 }
 
 export function UsageLogs() {
+  const search = route.useSearch()
+  const navigateSearch = route.useNavigate()
+
   return (
-    <UsageLogsProvider>
+    <UsageLogsProvider search={search} navigateSearch={navigateSearch}>
       <UsageLogsContent />
     </UsageLogsProvider>
   )

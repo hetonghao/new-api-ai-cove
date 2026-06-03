@@ -32,16 +32,24 @@ import { Label } from '@/components/ui/label'
 import { getUserInfo } from '../../api'
 import type { UserInfo } from '../../types'
 
+type FetchUserInfo = (userId: number) => Promise<{
+  success: boolean
+  message?: string
+  data?: UserInfo
+}>
+
 interface UserInfoDialogProps {
   userId: number | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  fetchUserInfo?: FetchUserInfo
 }
 
 export function UserInfoDialog({
   userId,
   open,
   onOpenChange,
+  fetchUserInfo: fetchUserInfoProp = getUserInfo,
 }: UserInfoDialogProps) {
   const { t } = useTranslation()
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
@@ -51,7 +59,7 @@ export function UserInfoDialog({
     async (id: number) => {
       setIsLoading(true)
       try {
-        const result = await getUserInfo(id)
+        const result = await fetchUserInfoProp(id)
         if (result.success) {
           setUserInfo(result.data || null)
         } else {
@@ -65,7 +73,7 @@ export function UserInfoDialog({
         setIsLoading(false)
       }
     },
-    [t]
+    [fetchUserInfoProp, t]
   )
 
   useEffect(() => {

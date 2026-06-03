@@ -50,12 +50,17 @@ export async function getUserQuotaDates(
 // System Monitoring
 // ----------------------------------------------------------------------------
 
-export async function getUserQuotaDataByUsers(params: {
-  start_timestamp: number
-  end_timestamp: number
-}) {
+export async function getUserQuotaDataByUsers(
+  params: {
+    start_timestamp: number
+    end_timestamp: number
+  },
+  scope: 'admin' | 'sales' = 'admin'
+) {
+  const endpoint =
+    scope === 'sales' ? '/api/sales/data/users' : '/api/data/users'
   const res = await api.get<{ success: boolean; data: QuotaDataItem[] }>(
-    '/api/data/users',
+    endpoint,
     { params }
   )
   return res.data

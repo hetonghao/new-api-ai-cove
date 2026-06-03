@@ -152,9 +152,13 @@ func SetApiRouter(router *gin.Engine) {
 		salesRoute.Use(middleware.SalesAuth())
 		{
 			salesRoute.GET("/users", controller.GetSalesUsers)
+			salesRoute.GET("/users/:id", controller.GetSalesUser)
 			salesRoute.PATCH("/users/:id/group", controller.UpdateSalesUserGroup)
+			salesRoute.GET("/stats", controller.GetSalesStats)
 			salesRoute.GET("/data", controller.GetSalesData)
 			salesRoute.GET("/data/users", controller.GetSalesDataByUser)
+			salesRoute.GET("/logs", controller.GetSalesLogs)
+			salesRoute.GET("/logs/stat", controller.GetSalesLogsStat)
 			salesRoute.GET("/groups", controller.GetSalesGroups)
 		}
 

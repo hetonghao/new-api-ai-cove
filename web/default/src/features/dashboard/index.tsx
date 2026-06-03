@@ -185,12 +185,13 @@ export function Dashboard() {
 
   const meta = SECTION_META[activeSection] ?? SECTION_META.overview
   const isAdmin = Boolean(userRole && userRole >= ROLE.ADMIN)
+  const isSales = Boolean(userRole && userRole >= ROLE.SALES)
   const visibleSections = useMemo(
     () =>
       DASHBOARD_SECTION_IDS.filter(
-        (section) => section !== 'overview' && (section !== 'users' || isAdmin)
+        (section) => section !== 'overview' && (section !== 'users' || isSales)
       ),
-    [isAdmin]
+    [isSales]
   )
   const handleSectionChange = useCallback(
     (section: string) => {
@@ -294,7 +295,7 @@ export function Dashboard() {
           {activeSection === 'users' && (
             <FadeIn>
               <Suspense fallback={<ModelChartsFallback />}>
-                <LazyUserCharts />
+                <LazyUserCharts scope={isAdmin ? 'admin' : 'sales'} />
               </Suspense>
             </FadeIn>
           )}

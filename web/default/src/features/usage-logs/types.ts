@@ -339,6 +339,7 @@ export interface GetTaskLogsParams {
  */
 export interface FetchLogsConfig {
   logCategory: LogCategory
+  dataScope?: 'default' | 'sales'
   isAdmin: boolean
   currentUserId?: number
   page: number
