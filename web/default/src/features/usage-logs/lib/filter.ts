@@ -80,6 +80,19 @@ export function buildSearchParams(
   }
 }
 
+export function buildUsernameFilterSearch(
+  search: Record<string, unknown>,
+  username: string
+): Record<string, unknown> {
+  const normalizedUsername = username.trim()
+
+  return {
+    ...search,
+    page: 1,
+    username: normalizedUsername || undefined,
+  }
+}
+
 /**
  * Get log category display name
  */

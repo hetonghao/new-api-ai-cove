@@ -21,10 +21,12 @@ import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { formatQuota, formatCompactNumber } from '@/lib/format'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -42,6 +44,7 @@ interface UserInfoDialogProps {
   userId: number | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  onFilterByUsername?: (username: string) => void
   fetchUserInfo?: FetchUserInfo
 }
 
@@ -49,6 +52,7 @@ export function UserInfoDialog({
   userId,
   open,
   onOpenChange,
+  onFilterByUsername,
   fetchUserInfo: fetchUserInfoProp = getUserInfo,
 }: UserInfoDialogProps) {
   const { t } = useTranslation()
@@ -58,6 +62,7 @@ export function UserInfoDialog({
   const fetchUserInfo = useCallback(
     async (id: number) => {
       setIsLoading(true)
+      setUserInfo(null)
       try {
         const result = await fetchUserInfoProp(id)
         if (result.success) {
@@ -94,6 +99,9 @@ export function UserInfoDialog({
       <div className='text-sm font-semibold'>{value}</div>
     </div>
   )
+
+  const canFilterByUsername =
+    !isLoading && !!userInfo?.username && !!onFilterByUsername
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -192,6 +200,17 @@ export function UserInfoDialog({
           <div className='text-muted-foreground py-8 text-center text-sm'>
             {t('No user information available')}
           </div>
+        )}
+
+        {canFilterByUsername && (
+          <DialogFooter>
+            <Button
+              type='button'
+              onClick={() => onFilterByUsername?.(userInfo.username)}
+            >
+              {t('Filter by this username')}
+            </Button>
+          </DialogFooter>
         )}
       </DialogContent>
     </Dialog>

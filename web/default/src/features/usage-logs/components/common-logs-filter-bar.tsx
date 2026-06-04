@@ -84,6 +84,7 @@ export function CommonLogsFilterBar<TData>(
     navigateSearch,
     adminControls,
     hideSelfControl,
+    advancedFilterExpansionRequest,
     queryKeyScope,
   } = useUsageLogsContext()
   const fetchingLogs = useIsFetching({ queryKey: ['logs', queryKeyScope] })
@@ -398,6 +399,7 @@ export function CommonLogsFilterBar<TData>(
         [filters.model, filters.group, hasTypeFilter].filter(Boolean).length +
         expandedFilterCount
       }
+      advancedOpenRequest={advancedFilterExpansionRequest}
       hasAdvancedActiveFilters={hasExpandedFilters}
       advancedFilterCount={expandedFilterCount}
       hasActiveFilters={hasAdditionalFilters}

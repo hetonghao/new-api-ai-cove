@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useMemo } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useSidebarConfig } from '@/hooks/use-sidebar-config'
@@ -24,6 +25,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SectionPageLayout } from '@/components/layout'
 import type { NavGroup } from '@/components/layout/types'
 import { CacheStatsDialog } from '@/features/system-settings/general/channel-affinity/cache-stats-dialog'
+import { buildUsernameFilterSearch } from './lib/filter'
 import { UserInfoDialog } from './components/dialogs/user-info-dialog'
 import {
   UsageLogsProvider,
@@ -54,6 +56,7 @@ const SECTION_META: Record<UsageLogsSectionId, { titleKey: string }> = {
 function UsageLogsContent() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const params = route.useParams()
   const activeCategory: UsageLogsSectionId =
     params.section && isUsageLogsSectionId(params.section)
@@ -66,6 +69,10 @@ function UsageLogsContent() {
     affinityTarget,
     affinityDialogOpen,
     setAffinityDialogOpen,
+    requestAdvancedFilterExpansion,
+    search,
+    navigateSearch,
+    queryKeyScope,
   } = useUsageLogsContext()
   const tabNavGroups = useMemo<NavGroup[]>(
     () => [
@@ -108,6 +115,28 @@ function UsageLogsContent() {
   const showTaskSwitcher =
     activeCategory !== 'common' && visibleSections.length > 1
 
+  const handleFilterByUsername = useCallback(
+    (username: string) => {
+      requestAdvancedFilterExpansion()
+      navigateSearch({
+        search: buildUsernameFilterSearch(search, username),
+      })
+      setUserInfoDialogOpen(false)
+      void queryClient.invalidateQueries({ queryKey: ['logs', queryKeyScope] })
+      void queryClient.invalidateQueries({
+        queryKey: ['usage-logs-stats', queryKeyScope],
+      })
+    },
+    [
+      navigateSearch,
+      queryClient,
+      queryKeyScope,
+      requestAdvancedFilterExpansion,
+      search,
+      setUserInfoDialogOpen,
+    ]
+  )
+
   return (
     <>
       <SectionPageLayout>
@@ -136,6 +165,7 @@ function UsageLogsContent() {
         userId={selectedUserId}
         open={userInfoDialogOpen}
         onOpenChange={setUserInfoDialogOpen}
+        onFilterByUsername={handleFilterByUsername}
       />
 
       <CacheStatsDialog

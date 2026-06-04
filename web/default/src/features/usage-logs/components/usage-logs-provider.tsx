@@ -34,6 +34,8 @@ interface UsageLogsContextValue {
   setAffinityDialogOpen: (open: boolean) => void
   sensitiveVisible: boolean
   setSensitiveVisible: (visible: boolean) => void
+  advancedFilterExpansionRequest: number
+  requestAdvancedFilterExpansion: () => void
   search: Record<string, unknown>
   navigateSearch: NavigateFn
   dataScope: UsageLogsDataScope
@@ -80,6 +82,8 @@ export function UsageLogsProvider({
     useState<ChannelAffinityInfo | null>(null)
   const [affinityDialogOpen, setAffinityDialogOpen] = useState(false)
   const [sensitiveVisible, setSensitiveVisible] = useState(true)
+  const [advancedFilterExpansionRequest, setAdvancedFilterExpansionRequest] =
+    useState(0)
 
   return (
     <UsageLogsContext.Provider
@@ -94,6 +98,9 @@ export function UsageLogsProvider({
         setAffinityDialogOpen,
         sensitiveVisible,
         setSensitiveVisible,
+        advancedFilterExpansionRequest,
+        requestAdvancedFilterExpansion: () =>
+          setAdvancedFilterExpansionRequest((request) => request + 1),
         search,
         navigateSearch,
         dataScope,

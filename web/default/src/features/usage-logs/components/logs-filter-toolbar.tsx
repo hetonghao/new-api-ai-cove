@@ -16,7 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, type ComponentProps, type ReactNode } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from 'react'
 import { type Table } from '@tanstack/react-table'
 import { useMediaQuery } from '@/hooks'
 import { ChevronDown, Loader2 } from 'lucide-react'
@@ -44,6 +50,7 @@ interface LogsFilterToolbarProps<TData> {
   mobileFilters?: ReactNode
   mobileFilterCount?: number
   stats?: ReactNode
+  advancedOpenRequest?: number
   hasActiveFilters: boolean
   hasAdvancedActiveFilters?: boolean
   advancedFilterCount?: number
@@ -87,11 +94,20 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const isMobile = useMediaQuery('(max-width: 640px)')
+  const lastAdvancedOpenRequestRef = useRef(props.advancedOpenRequest ?? 0)
 
   const hasAdvancedFilters = props.advancedFilters != null
   const activeAdvancedCount =
     props.advancedFilterCount ?? (props.hasAdvancedActiveFilters ? 1 : 0)
   const activeMobileFilterCount = props.mobileFilterCount ?? activeAdvancedCount
+
+  useEffect(() => {
+    const nextRequest = props.advancedOpenRequest ?? 0
+    if (nextRequest > lastAdvancedOpenRequestRef.current) {
+      setAdvancedOpen(true)
+    }
+    lastAdvancedOpenRequestRef.current = nextRequest
+  }, [props.advancedOpenRequest])
 
   const handleMobileReset = () => {
     props.onReset()
