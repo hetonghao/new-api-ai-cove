@@ -217,6 +217,7 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.force_format ||
     values.thinking_to_content ||
     values.pass_through_body_enabled ||
+    values.channel_status_notify_enabled ||
     values.system_prompt_override ||
     values.claude_beta_query ||
     values.upstream_model_update_check_enabled ||
@@ -2584,6 +2585,31 @@ export function ChannelMutateDrawer({
                                   onCheckedChange={(checked) =>
                                     field.onChange(checked ? 1 : 0)
                                   }
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name='channel_status_notify_enabled'
+                          render={({ field }) => (
+                            <FormItem className='flex items-center justify-between'>
+                              <div className='space-y-0.5'>
+                                <FormLabel>
+                                  {t('Channel Status Email Notifications')}
+                                </FormLabel>
+                                <FormDescription>
+                                  {t(
+                                    'Send email when this channel is automatically disabled or recovered'
+                                  )}
+                                </FormDescription>
+                              </div>
+                              <FormControl>
+                                <Switch
+                                  checked={field.value === true}
+                                  onCheckedChange={field.onChange}
                                 />
                               </FormControl>
                             </FormItem>

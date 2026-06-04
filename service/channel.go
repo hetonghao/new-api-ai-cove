@@ -15,6 +15,22 @@ func formatNotifyType(channelId int, status int) string {
 	return fmt.Sprintf("%s_%d_%d", dto.NotifyTypeChannelUpdate, channelId, status)
 }
 
+func shouldSendChannelStatusNotification(channelId int) bool {
+	channel, err := model.GetChannelById(channelId, false)
+	if err != nil {
+		common.SysLog(fmt.Sprintf("skip channel status notification: failed to load channel #%d: %s", channelId, err.Error()))
+		return false
+	}
+	return channel.GetOtherSettings().ChannelStatusNotifyEnabled
+}
+
+func notifyRootUserForChannelStatus(channelId int, status int, subject string, content string) {
+	if !shouldSendChannelStatusNotification(channelId) {
+		return
+	}
+	NotifyRootUser(formatNotifyType(channelId, status), subject, content)
+}
+
 // disable & notify
 func DisableChannel(channelError types.ChannelError, reason string) {
 	common.SysLog(fmt.Sprintf("通道「%s」（#%d）发生错误，准备禁用，原因：%s", channelError.ChannelName, channelError.ChannelId, common.LocalLogPreview(reason)))
@@ -29,7 +45,7 @@ func DisableChannel(channelError types.ChannelError, reason string) {
 	if success {
 		subject := fmt.Sprintf("通道「%s」（#%d）已被禁用", channelError.ChannelName, channelError.ChannelId)
 		content := fmt.Sprintf("通道「%s」（#%d）已被禁用，原因：%s", channelError.ChannelName, channelError.ChannelId, reason)
-		NotifyRootUser(formatNotifyType(channelError.ChannelId, common.ChannelStatusAutoDisabled), subject, content)
+		notifyRootUserForChannelStatus(channelError.ChannelId, common.ChannelStatusAutoDisabled, subject, content)
 	}
 }
 
@@ -38,7 +54,7 @@ func EnableChannel(channelId int, usingKey string, channelName string) {
 	if success {
 		subject := fmt.Sprintf("通道「%s」（#%d）已被启用", channelName, channelId)
 		content := fmt.Sprintf("通道「%s」（#%d）已被启用", channelName, channelId)
-		NotifyRootUser(formatNotifyType(channelId, common.ChannelStatusEnabled), subject, content)
+		notifyRootUserForChannelStatus(channelId, common.ChannelStatusEnabled, subject, content)
 	}
 }
 

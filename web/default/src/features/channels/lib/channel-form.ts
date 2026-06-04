@@ -199,6 +199,8 @@ export const channelFormSchema = z
     upstream_model_update_check_enabled: z.boolean().optional(),
     upstream_model_update_auto_sync_enabled: z.boolean().optional(),
     upstream_model_update_ignored_models: z.string().optional(),
+    // Channel status notification settings (stored in settings JSON)
+    channel_status_notify_enabled: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     if ([3, 8, 36, 45].includes(data.type) && !data.base_url?.trim()) {
@@ -316,6 +318,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   upstream_model_update_check_enabled: false,
   upstream_model_update_auto_sync_enabled: false,
   upstream_model_update_ignored_models: '',
+  channel_status_notify_enabled: false,
 }
 
 // ============================================================================
@@ -370,6 +373,7 @@ export function transformChannelToFormDefaults(
   let upstreamModelUpdateCheckEnabled = false
   let upstreamModelUpdateAutoSyncEnabled = false
   let upstreamModelUpdateIgnoredModels = ''
+  let channelStatusNotifyEnabled = false
 
   if (channel.settings) {
     try {
@@ -394,6 +398,8 @@ export function transformChannelToFormDefaults(
       )
         ? parsed.upstream_model_update_ignored_models.join(',')
         : ''
+      channelStatusNotifyEnabled =
+        parsed.channel_status_notify_enabled === true
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to parse channel settings:', error)
@@ -443,6 +449,7 @@ export function transformChannelToFormDefaults(
     upstream_model_update_check_enabled: upstreamModelUpdateCheckEnabled,
     upstream_model_update_auto_sync_enabled: upstreamModelUpdateAutoSyncEnabled,
     upstream_model_update_ignored_models: upstreamModelUpdateIgnoredModels,
+    channel_status_notify_enabled: channelStatusNotifyEnabled,
   }
 }
 
@@ -565,6 +572,12 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     if (typeof settingsObj.upstream_model_update_last_check_time !== 'number') {
       settingsObj.upstream_model_update_last_check_time = 0
     }
+  }
+
+  if (formData.channel_status_notify_enabled === true) {
+    settingsObj.channel_status_notify_enabled = true
+  } else if ('channel_status_notify_enabled' in settingsObj) {
+    delete settingsObj.channel_status_notify_enabled
   }
 
   return JSON.stringify(settingsObj)
