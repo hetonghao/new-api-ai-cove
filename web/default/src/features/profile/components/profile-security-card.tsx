@@ -22,6 +22,7 @@ import { useDialogs } from '@/hooks/use-dialog'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TitledCard } from '@/components/ui/titled-card'
+import { getPasswordDialogMode } from '../lib/password-dialog'
 import type { UserProfile } from '../types'
 import { AccessTokenDialog } from './dialogs/access-token-dialog'
 import { ChangePasswordDialog } from './dialogs/change-password-dialog'
@@ -34,6 +35,7 @@ import { DeleteAccountDialog } from './dialogs/delete-account-dialog'
 interface ProfileSecurityCardProps {
   profile: UserProfile | null
   loading: boolean
+  onProfileUpdate: () => Promise<void>
 }
 
 type DialogKey = 'password' | 'token' | 'delete'
@@ -41,6 +43,7 @@ type DialogKey = 'password' | 'token' | 'delete'
 export function ProfileSecurityCard({
   profile,
   loading,
+  onProfileUpdate,
 }: ProfileSecurityCardProps) {
   const { t } = useTranslation()
   const dialogs = useDialogs<DialogKey>()
@@ -63,11 +66,21 @@ export function ProfileSecurityCard({
 
   if (!profile) return null
 
+  const passwordDialogMode = getPasswordDialogMode(
+    Boolean(profile.has_password)
+  )
+
   const securityActions = [
     {
       icon: Shield,
-      title: t('Change Password'),
-      description: t('Update your password to keep your account secure'),
+      title:
+        passwordDialogMode === 'setup'
+          ? t('Set Password')
+          : t('Change Password'),
+      description:
+        passwordDialogMode === 'setup'
+          ? t('Set your first password for this account')
+          : t('Update your password to keep your account secure'),
       action: () => dialogs.open('password'),
       variant: 'default' as const,
     },
@@ -133,6 +146,8 @@ export function ProfileSecurityCard({
           open ? dialogs.open('password') : dialogs.close('password')
         }
         username={profile.username}
+        mode={passwordDialogMode}
+        onSuccess={onProfileUpdate}
       />
 
       <AccessTokenDialog

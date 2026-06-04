@@ -395,7 +395,7 @@ func GetAffCode(c *gin.Context) {
 func GetSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	userRole := c.GetInt("role")
-	user, err := model.GetUserById(id, false)
+	user, err := model.GetUserById(id, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -414,6 +414,7 @@ func GetSelf(c *gin.Context) {
 		"id":                user.Id,
 		"username":          user.Username,
 		"display_name":      user.DisplayName,
+		"has_password":      user.Password != "",
 		"role":              user.Role,
 		"status":            user.Status,
 		"email":             user.Email,

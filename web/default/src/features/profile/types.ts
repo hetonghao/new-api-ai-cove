@@ -53,6 +53,8 @@ export interface UserProfile {
   request_count: number
   /** Account status (1=启用, 2=禁用, 3=待审核, 4=已删除) */
   status: number
+  /** Whether the account already has a local password */
+  has_password?: boolean
   /** Access token (system token) */
   access_token?: string
   /** Affiliate code */

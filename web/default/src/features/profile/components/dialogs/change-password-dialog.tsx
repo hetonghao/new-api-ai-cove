@@ -32,6 +32,10 @@ import {
 import { Label } from '@/components/ui/label'
 import { PasswordInput } from '@/components/password-input'
 import { updateUserProfile } from '../../api'
+import {
+  buildPasswordUpdatePayload,
+  type PasswordDialogMode,
+} from '../../lib/password-dialog'
 
 // ============================================================================
 // Change Password Dialog Component
@@ -41,12 +45,16 @@ interface ChangePasswordDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   username: string
+  mode: PasswordDialogMode
+  onSuccess: () => Promise<void>
 }
 
 export function ChangePasswordDialog({
   open,
   onOpenChange,
   username,
+  mode,
+  onSuccess,
 }: ChangePasswordDialogProps) {
   const { t } = useTranslation()
   const [loading, setLoading] = useState(false)
@@ -64,7 +72,7 @@ export function ChangePasswordDialog({
     e.preventDefault()
 
     // Validation
-    if (!formData.originalPassword) {
+    if (mode === 'change' && !formData.originalPassword) {
       toast.error(t('Please enter your current password'))
       return
     }
@@ -79,7 +87,10 @@ export function ChangePasswordDialog({
       return
     }
 
-    if (formData.originalPassword === formData.newPassword) {
+    if (
+      mode === 'change' &&
+      formData.originalPassword === formData.newPassword
+    ) {
       toast.error(t('New password must be different from current password'))
       return
     }
@@ -91,13 +102,20 @@ export function ChangePasswordDialog({
 
     try {
       setLoading(true)
-      const response = await updateUserProfile({
-        original_password: formData.originalPassword,
-        password: formData.newPassword,
-      })
+      const response = await updateUserProfile(
+        buildPasswordUpdatePayload(mode, {
+          originalPassword: formData.originalPassword,
+          newPassword: formData.newPassword,
+        })
+      )
 
       if (response.success) {
-        toast.success(t('Password changed successfully'))
+        toast.success(
+          mode === 'setup'
+            ? t('Password set successfully')
+            : t('Password changed successfully')
+        )
+        await onSuccess()
         onOpenChange(false)
         setFormData({
           originalPassword: '',
@@ -119,27 +137,33 @@ export function ChangePasswordDialog({
       <DialogContent className='sm:max-w-md'>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{t('Change Password')}</DialogTitle>
+            <DialogTitle>
+              {mode === 'setup' ? t('Set Password') : t('Change Password')}
+            </DialogTitle>
             <DialogDescription>
-              {t('Update your password for account:')}{' '}
+              {mode === 'setup'
+                ? t('Set your first password for account:')
+                : t('Update your password for account:')}{' '}
               <strong>{username}</strong>
             </DialogDescription>
           </DialogHeader>
 
           <div className='my-6 space-y-4'>
-            <div className='space-y-2'>
-              <Label htmlFor='currentPassword'>{t('Current Password')}</Label>
-              <PasswordInput
-                id='currentPassword'
-                value={formData.originalPassword}
-                onChange={(e) =>
-                  handleChange('originalPassword', e.target.value)
-                }
-                disabled={loading}
-                required
-                autoComplete='current-password'
-              />
-            </div>
+            {mode === 'change' && (
+              <div className='space-y-2'>
+                <Label htmlFor='currentPassword'>{t('Current Password')}</Label>
+                <PasswordInput
+                  id='currentPassword'
+                  value={formData.originalPassword}
+                  onChange={(e) =>
+                    handleChange('originalPassword', e.target.value)
+                  }
+                  disabled={loading}
+                  required
+                  autoComplete='current-password'
+                />
+              </div>
+            )}
 
             <div className='space-y-2'>
               <Label htmlFor='newPassword'>{t('New Password')}</Label>
@@ -185,7 +209,13 @@ export function ChangePasswordDialog({
             </Button>
             <Button type='submit' disabled={loading}>
               {loading && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
-              {loading ? t('Changing...') : t('Change Password')}
+              {loading
+                ? mode === 'setup'
+                  ? t('Setting...')
+                  : t('Changing...')
+                : mode === 'setup'
+                  ? t('Set Password')
+                  : t('Change Password')}
             </Button>
           </DialogFooter>
         </form>
