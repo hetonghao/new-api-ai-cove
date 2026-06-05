@@ -23,7 +23,7 @@ func setupSalesModelTestDB(t *testing.T) *gorm.DB {
 	initCol()
 
 	db := DB
-	require.NoError(t, db.AutoMigrate(&User{}, &QuotaData{}, &TopUp{}, &Log{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &QuotaData{}, &TopUp{}, &Log{}, &SalesCommissionSettlement{}))
 	require.NoError(t, db.Exec("DELETE FROM quota_data").Error)
 	require.NoError(t, db.Exec("DELETE FROM top_ups").Error)
 	require.NoError(t, db.Exec("DELETE FROM logs").Error)
@@ -58,7 +58,7 @@ func setupSplitSalesModelTestDB(t *testing.T) (*gorm.DB, *gorm.DB) {
 	LOG_DB = logDB
 	initCol()
 
-	require.NoError(t, appDB.AutoMigrate(&User{}, &QuotaData{}, &TopUp{}, &Channel{}))
+	require.NoError(t, appDB.AutoMigrate(&User{}, &QuotaData{}, &TopUp{}, &Channel{}, &SalesCommissionSettlement{}))
 	require.NoError(t, logDB.AutoMigrate(&Log{}))
 
 	t.Cleanup(func() {
@@ -198,6 +198,43 @@ func TestGetSalesTopUpAmountOnlyCountsSuccessfulInvitedUsers(t *testing.T) {
 
 	require.NoError(t, err)
 	require.InDelta(t, 10.5, amount, 0.0001)
+}
+
+func TestGetSalesCommissionSummaryArchivesSettledAmountAndRepricesPendingRevenue(t *testing.T) {
+	db := setupSalesModelTestDB(t)
+	seedSalesModelUsers(t, db)
+	require.NoError(t, db.Model(&User{}).Where("id = ?", 1).Update("commission_ratio", 10).Error)
+	require.NoError(t, db.Create(&[]TopUp{
+		{UserId: 2, Amount: 10000, Money: 600, Status: common.TopUpStatusSuccess, TradeNo: "commission-topup-1"},
+		{UserId: 3, Amount: 10000, Money: 400, Status: common.TopUpStatusSuccess, TradeNo: "commission-topup-2"},
+	}).Error)
+
+	settlement, err := CreateSalesCommissionSettlement(1, 99, 30, "first settlement")
+	require.NoError(t, err)
+	require.InDelta(t, 300, settlement.CoveredRevenue, 0.0001)
+
+	require.NoError(t, db.Model(&User{}).Where("id = ?", 1).Update("commission_ratio", 15).Error)
+
+	summary, err := GetSalesCommissionSummary(1)
+
+	require.NoError(t, err)
+	require.InDelta(t, 1000, summary.TotalRevenue, 0.0001)
+	require.InDelta(t, 15, summary.CommissionRatio, 0.0001)
+	require.InDelta(t, 30, summary.SettledCommissionAmount, 0.0001)
+	require.InDelta(t, 700, summary.PendingCommissionRevenue, 0.0001)
+	require.InDelta(t, 105, summary.PendingCommissionAmount, 0.0001)
+	require.InDelta(t, 135, summary.TotalCommissionAmount, 0.0001)
+}
+
+func TestCreateSalesCommissionSettlementRejectsAmountAbovePending(t *testing.T) {
+	db := setupSalesModelTestDB(t)
+	seedSalesModelUsers(t, db)
+	require.NoError(t, db.Model(&User{}).Where("id = ?", 1).Update("commission_ratio", 10).Error)
+	require.NoError(t, db.Create(&TopUp{UserId: 2, Amount: 10000, Money: 100, Status: common.TopUpStatusSuccess, TradeNo: "commission-topup-limit"}).Error)
+
+	_, err := CreateSalesCommissionSettlement(1, 99, 11, "too much")
+
+	require.Error(t, err)
 }
 
 func TestGetSalesLogsOnlyReturnsInvitedUsers(t *testing.T) {

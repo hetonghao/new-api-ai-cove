@@ -59,6 +59,59 @@ export interface SalesDataParams {
 
 export interface SalesStats {
   topup_amount: number
+  commission_ratio: number
+  settled_commission_amount: number
+  settled_commission_revenue: number
+  pending_commission_revenue: number
+  pending_commission_amount: number
+  total_commission_amount: number
+  last_settlement_created_at: number
 }
 
 export type SalesUserInfo = UserInfo
+
+export interface SalesCommissionSettlement {
+  id: number
+  sales_user_id: number
+  operator_user_id: number
+  amount: number
+  commission_ratio: number
+  covered_revenue: number
+  note: string
+  created_at: number
+}
+
+export interface SalesCommissionSettlementPage {
+  items: SalesCommissionSettlement[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface SalesCommissionAdminParams {
+  keyword?: string
+  p?: number
+  page_size?: number
+}
+
+export interface SalesCommissionAdminRow {
+  sales_user_id: number
+  username: string
+  email?: string
+  display_name?: string
+  commission_ratio: number
+  total_revenue: number
+  settled_commission_amount: number
+  settled_commission_revenue: number
+  pending_commission_revenue: number
+  pending_commission_amount: number
+  total_commission_amount: number
+  last_settlement_created_at: number
+}
+
+export interface SalesCommissionAdminPage {
+  items: SalesCommissionAdminRow[]
+  total: number
+  page: number
+  page_size: number
+}

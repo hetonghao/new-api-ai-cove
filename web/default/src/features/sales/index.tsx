@@ -22,13 +22,18 @@ import {
   Activity,
   BarChart3,
   CreditCard,
+  HandCoins,
   RefreshCw,
   Search,
+  Wallet,
   Users as UsersIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { useAuthStore } from '@/stores/auth-store'
 import { formatNumber, formatQuota, formatTimestampToDate } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
+import { cn } from '@/lib/utils'
 import type { NavigateFn } from '@/hooks/use-table-url-state'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -58,24 +63,51 @@ import {
 } from '@/features/usage-logs/components/usage-logs-provider'
 import { UsageLogsTable } from '@/features/usage-logs/components/usage-logs-table'
 import {
+  createSalesCommissionSettlement,
+  getSalesCommissionAdminRows,
+  getSalesCommissionSettlements,
   getSalesData,
   getSalesGroups,
   getSalesStats,
   getSalesUserInfo,
   getSalesUsers,
+  updateSalesCommissionRatio,
   updateSalesUserGroup,
 } from './api'
-import type { QuotaDataPoint, SalesUser } from './types'
+import {
+  RootCommissionSettlementsTab,
+  SalesCommissionSettlementsTab,
+  SettlementDialog,
+} from './components/commission-settlements'
+import type {
+  QuotaDataPoint,
+  SalesCommissionAdminRow,
+  SalesStats,
+  SalesUser,
+} from './types'
 
 const ALL_GROUPS_VALUE = '__all__'
+const COMMISSION_PAGE_SIZE = 20
+const ROOT_COMMISSION_PAGE_SIZE = 20
 const RANGE_SECONDS = {
   '7d': 7 * 24 * 60 * 60,
   '30d': 30 * 24 * 60 * 60,
   '90d': 90 * 24 * 60 * 60,
 } as const
 
+const EMPTY_SALES_STATS: SalesStats = {
+  topup_amount: 0,
+  commission_ratio: 0,
+  settled_commission_amount: 0,
+  settled_commission_revenue: 0,
+  pending_commission_revenue: 0,
+  pending_commission_amount: 0,
+  total_commission_amount: 0,
+  last_settlement_created_at: 0,
+}
+
 type RangeValue = keyof typeof RANGE_SECONDS
-type SalesTab = 'invited-users' | 'usage-logs'
+type SalesTab = 'invited-users' | 'usage-logs' | 'commission-settlements'
 
 function sumQuotaData(data: QuotaDataPoint[]) {
   return data.reduce(
@@ -89,14 +121,32 @@ function sumQuotaData(data: QuotaDataPoint[]) {
   )
 }
 
+function summarizeRootCommissionRows(rows: SalesCommissionAdminRow[]) {
+  return rows.reduce(
+    (acc, row) => {
+      acc.totalRevenue += row.total_revenue
+      acc.pendingCommissionAmount += row.pending_commission_amount
+      acc.settledCommissionAmount += row.settled_commission_amount
+      return acc
+    },
+    {
+      totalRevenue: 0,
+      pendingCommissionAmount: 0,
+      settledCommissionAmount: 0,
+    }
+  )
+}
+
 function Metric({
   icon: Icon,
   label,
   value,
+  valueClassName,
 }: {
   icon: typeof UsersIcon
   label: string
   value: string
+  valueClassName?: string
 }) {
   return (
     <div className='border-border/80 bg-card/40 flex min-h-24 items-center gap-3 rounded-md border px-4 py-3'>
@@ -105,7 +155,12 @@ function Metric({
       </div>
       <div className='min-w-0'>
         <div className='text-muted-foreground text-xs'>{label}</div>
-        <div className='truncate text-xl font-semibold tabular-nums'>
+        <div
+          className={cn(
+            'truncate text-xl font-semibold tabular-nums',
+            valueClassName
+          )}
+        >
           {value}
         </div>
       </div>
@@ -115,6 +170,10 @@ function Metric({
 
 function formatYuanAmount(amount: number | null | undefined): string {
   return `¥${formatNumber(amount ?? 0)}`
+}
+
+function createEmptySettlementPage(page: number, pageSize: number) {
+  return { items: [], total: 0, page, page_size: pageSize }
 }
 
 function cleanSearch(search: Record<string, unknown>): Record<string, unknown> {
@@ -143,9 +202,17 @@ function SalesUsageLogsTab() {
 export function Sales() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const currentUser = useAuthStore((state) => state.auth.user)
+  const isRoot = currentUser?.role === ROLE.SUPER_ADMIN
   const [keyword, setKeyword] = useState('')
   const [groupFilter, setGroupFilter] = useState('')
   const [page, setPage] = useState(1)
+  const [commissionPage, setCommissionPage] = useState(1)
+  const [rootCommissionPage, setRootCommissionPage] = useState(1)
+  const [rootCommissionKeyword, setRootCommissionKeyword] = useState('')
+  const [ratioDrafts, setRatioDrafts] = useState<Record<number, string>>({})
+  const [settlementDialogRow, setSettlementDialogRow] =
+    useState<SalesCommissionAdminRow | null>(null)
   const [range, setRange] = useState<RangeValue>('30d')
   const [activeTab, setActiveTab] = useState<SalesTab>('invited-users')
   const [salesLogsSearch, setSalesLogsSearch] = useState<
@@ -208,10 +275,61 @@ export function Sales() {
       const result = await getSalesStats()
       if (!result.success) {
         toast.error(result.message || t('Failed to load sales data'))
-        return { topup_amount: 0 }
+        return EMPTY_SALES_STATS
       }
-      return result.data || { topup_amount: 0 }
+      return result.data || EMPTY_SALES_STATS
     },
+  })
+
+  const commissionSettlementsQuery = useQuery({
+    queryKey: ['sales-commission-settlements', commissionPage, t],
+    enabled: activeTab === 'commission-settlements' && !isRoot,
+    queryFn: async () => {
+      const result = await getSalesCommissionSettlements({
+        p: commissionPage,
+        page_size: COMMISSION_PAGE_SIZE,
+      })
+      if (!result.success) {
+        toast.error(
+          result.message || t('Failed to load commission settlements')
+        )
+        return createEmptySettlementPage(commissionPage, COMMISSION_PAGE_SIZE)
+      }
+      return (
+        result.data ||
+        createEmptySettlementPage(commissionPage, COMMISSION_PAGE_SIZE)
+      )
+    },
+    placeholderData: (previousData) => previousData,
+  })
+
+  const rootCommissionQuery = useQuery({
+    queryKey: [
+      'sales-commission-admin',
+      rootCommissionPage,
+      rootCommissionKeyword,
+      t,
+    ],
+    enabled: activeTab === 'commission-settlements' && isRoot,
+    queryFn: async () => {
+      const result = await getSalesCommissionAdminRows({
+        p: rootCommissionPage,
+        page_size: ROOT_COMMISSION_PAGE_SIZE,
+        keyword: rootCommissionKeyword,
+      })
+      if (!result.success) {
+        toast.error(result.message || t('Failed to load sales commissions'))
+        return createEmptySettlementPage(
+          rootCommissionPage,
+          ROOT_COMMISSION_PAGE_SIZE
+        )
+      }
+      return (
+        result.data ||
+        createEmptySettlementPage(rootCommissionPage, ROOT_COMMISSION_PAGE_SIZE)
+      )
+    },
+    placeholderData: (previousData) => previousData,
   })
 
   const salesDataQuery = useQuery({
@@ -240,17 +358,103 @@ export function Sales() {
     onError: () => toast.error(t('Failed to update user group')),
   })
 
+  const updateRatioMutation = useMutation({
+    mutationFn: ({
+      salesUserId,
+      commissionRatio,
+    }: {
+      salesUserId: number
+      commissionRatio: number
+    }) => updateSalesCommissionRatio(salesUserId, commissionRatio),
+    onSuccess: (result, variables) => {
+      if (result.success) {
+        toast.success(t('Ratio updated successfully'))
+        setRatioDrafts((current) => ({
+          ...current,
+          [variables.salesUserId]: String(variables.commissionRatio),
+        }))
+        queryClient.invalidateQueries({ queryKey: ['sales-commission-admin'] })
+        return
+      }
+      toast.error(result.message || t('Failed to update commission ratio'))
+    },
+    onError: () => toast.error(t('Failed to update commission ratio')),
+  })
+
+  const createSettlementMutation = useMutation({
+    mutationFn: ({
+      salesUserId,
+      amount,
+      note,
+    }: {
+      salesUserId: number
+      amount: number
+      note: string
+    }) => createSalesCommissionSettlement(salesUserId, { amount, note }),
+    onSuccess: (result, variables) => {
+      if (result.success) {
+        toast.success(t('Settlement recorded successfully'))
+        setSettlementDialogRow(null)
+        queryClient.invalidateQueries({ queryKey: ['sales-commission-admin'] })
+        queryClient.invalidateQueries({
+          queryKey: [
+            'sales-commission-settlements-root',
+            variables.salesUserId,
+          ],
+        })
+        return
+      }
+      toast.error(result.message || t('Failed to record settlement'))
+    },
+    onError: () => toast.error(t('Failed to record settlement')),
+  })
+
   const users = usersQuery.data?.items || []
   const totalUsers = usersQuery.data?.total || 0
   const salesData = salesDataQuery.data || []
   const totals = sumQuotaData(salesData)
-  const topupAmount = statsQuery.data?.topup_amount || 0
+  const stats = statsQuery.data || EMPTY_SALES_STATS
+  const topupAmount = stats.topup_amount || 0
   const pageCount = Math.max(1, Math.ceil(totalUsers / pageSize))
   const groups = groupsQuery.data?.data || []
+  const commissionSettlements = commissionSettlementsQuery.data?.items || []
+  const commissionTotal = commissionSettlementsQuery.data?.total || 0
+  const commissionPageCount = Math.max(
+    1,
+    Math.ceil(commissionTotal / COMMISSION_PAGE_SIZE)
+  )
+  const rootCommissionRows = rootCommissionQuery.data?.items || []
+  const rootCommissionTotal = rootCommissionQuery.data?.total || 0
+  const rootCommissionPageCount = Math.max(
+    1,
+    Math.ceil(rootCommissionTotal / ROOT_COMMISSION_PAGE_SIZE)
+  )
+  const rootCommissionSummary = summarizeRootCommissionRows(rootCommissionRows)
 
   const handleGroupChange = (user: SalesUser, group: string | null) => {
     if (!group || group === user.group) return
     updateGroupMutation.mutate({ userId: user.id, group })
+  }
+
+  const handleRatioDraftChange = (salesUserId: number, value: string) => {
+    setRatioDrafts((current) => ({ ...current, [salesUserId]: value }))
+  }
+
+  const handleUpdateRatio = (row: SalesCommissionAdminRow) => {
+    const draft = ratioDrafts[row.sales_user_id] ?? String(row.commission_ratio)
+    const commissionRatio = Number(draft)
+    if (
+      !Number.isFinite(commissionRatio) ||
+      commissionRatio < 0 ||
+      commissionRatio > 100
+    ) {
+      toast.error(t('Invalid commission ratio'))
+      return
+    }
+    updateRatioMutation.mutate({
+      salesUserId: row.sales_user_id,
+      commissionRatio,
+    })
   }
 
   return (
@@ -295,6 +499,9 @@ export function Sales() {
               <TabsTrigger value='usage-logs'>
                 {t('Invited User Usage Logs')}
               </TabsTrigger>
+              <TabsTrigger value='commission-settlements'>
+                {t('Commission Settlements')}
+              </TabsTrigger>
             </TabsList>
           </Tabs>
 
@@ -305,16 +512,19 @@ export function Sales() {
                   icon={UsersIcon}
                   label={t('Invited Users')}
                   value={formatNumber(totalUsers)}
+                  valueClassName='text-sky-600 dark:text-sky-400'
                 />
                 <Metric
                   icon={Activity}
                   label={t('Sales Requests')}
                   value={formatNumber(totals.count)}
+                  valueClassName='text-indigo-600 dark:text-indigo-400'
                 />
                 <Metric
                   icon={BarChart3}
                   label={t('Sales Quota')}
                   value={formatQuota(totals.quota)}
+                  valueClassName='text-emerald-600 dark:text-emerald-400'
                 />
                 <Metric
                   icon={CreditCard}
@@ -501,7 +711,7 @@ export function Sales() {
                         setPage((current) => Math.max(1, current - 1))
                       }
                     >
-                      {t('Previous')}
+                      {t('Previous Page')}
                     </Button>
                     <Button
                       type='button'
@@ -512,7 +722,7 @@ export function Sales() {
                         setPage((current) => Math.min(pageCount, current + 1))
                       }
                     >
-                      {t('Next')}
+                      {t('Next Page')}
                     </Button>
                   </div>
                 </div>
@@ -534,6 +744,101 @@ export function Sales() {
               <SalesUsageLogsTab />
             </UsageLogsProvider>
           )}
+
+          {activeTab === 'commission-settlements' &&
+            (isRoot ? (
+              <>
+                <div className='grid gap-3 md:grid-cols-4'>
+                  <Metric
+                    icon={UsersIcon}
+                    label={t('Salesperson Count')}
+                    value={formatNumber(rootCommissionTotal)}
+                    valueClassName='text-sky-600 dark:text-sky-400'
+                  />
+                  <Metric
+                    icon={CreditCard}
+                    label={t('Total Revenue')}
+                    value={formatYuanAmount(rootCommissionSummary.totalRevenue)}
+                    valueClassName='text-emerald-600 dark:text-emerald-400'
+                  />
+                  <Metric
+                    icon={Wallet}
+                    label={t('Pending Commission')}
+                    value={formatYuanAmount(
+                      rootCommissionSummary.pendingCommissionAmount
+                    )}
+                    valueClassName='text-amber-600 dark:text-amber-400'
+                  />
+                  <Metric
+                    icon={HandCoins}
+                    label={t('Settled Commission')}
+                    value={formatYuanAmount(
+                      rootCommissionSummary.settledCommissionAmount
+                    )}
+                    valueClassName='text-teal-600 dark:text-teal-400'
+                  />
+                </div>
+
+                <RootCommissionSettlementsTab
+                  rows={rootCommissionRows}
+                  isLoading={rootCommissionQuery.isLoading}
+                  isFetching={rootCommissionQuery.isFetching}
+                  keyword={rootCommissionKeyword}
+                  page={rootCommissionPage}
+                  pageCount={rootCommissionPageCount}
+                  ratioDrafts={ratioDrafts}
+                  onKeywordChange={(value) => {
+                    setRootCommissionKeyword(value)
+                    setRootCommissionPage(1)
+                  }}
+                  onRefresh={() => rootCommissionQuery.refetch()}
+                  onPreviousPage={() =>
+                    setRootCommissionPage((current) => Math.max(1, current - 1))
+                  }
+                  onNextPage={() =>
+                    setRootCommissionPage((current) =>
+                      Math.min(rootCommissionPageCount, current + 1)
+                    )
+                  }
+                  onRatioDraftChange={handleRatioDraftChange}
+                  onUpdateRatio={handleUpdateRatio}
+                  onOpenSettlement={setSettlementDialogRow}
+                  updatingSalesUserId={
+                    updateRatioMutation.isPending
+                      ? updateRatioMutation.variables?.salesUserId
+                      : undefined
+                  }
+                />
+              </>
+            ) : (
+              <SalesCommissionSettlementsTab
+                stats={stats}
+                settlements={commissionSettlements}
+                isLoading={commissionSettlementsQuery.isLoading}
+                isFetching={commissionSettlementsQuery.isFetching}
+                page={commissionPage}
+                pageCount={commissionPageCount}
+                onPreviousPage={() =>
+                  setCommissionPage((current) => Math.max(1, current - 1))
+                }
+                onNextPage={() =>
+                  setCommissionPage((current) =>
+                    Math.min(commissionPageCount, current + 1)
+                  )
+                }
+                onRefresh={() => commissionSettlementsQuery.refetch()}
+              />
+            ))}
+
+          <SettlementDialog
+            row={settlementDialogRow}
+            open={Boolean(settlementDialogRow)}
+            isSubmitting={createSettlementMutation.isPending}
+            onOpenChange={(open) => {
+              if (!open) setSettlementDialogRow(null)
+            }}
+            onSubmit={(payload) => createSettlementMutation.mutate(payload)}
+          />
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>

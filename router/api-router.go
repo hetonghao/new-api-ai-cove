@@ -160,6 +160,11 @@ func SetApiRouter(router *gin.Engine) {
 			salesRoute.GET("/logs", controller.GetSalesLogs)
 			salesRoute.GET("/logs/stat", controller.GetSalesLogsStat)
 			salesRoute.GET("/groups", controller.GetSalesGroups)
+			salesRoute.GET("/commission/settlements", controller.GetSalesCommissionSettlements)
+			salesRoute.GET("/admin/commissions", middleware.RootAuth(), controller.GetSalesCommissionListByRoot)
+			salesRoute.PATCH("/admin/commissions/:sales_user_id/ratio", middleware.RootAuth(), controller.UpdateSalesCommissionRatioByRoot)
+			salesRoute.POST("/admin/commissions/:sales_user_id/settlements", middleware.RootAuth(), controller.CreateSalesCommissionSettlementByRoot)
+			salesRoute.GET("/admin/commissions/:sales_user_id/settlements", middleware.RootAuth(), controller.GetSalesCommissionSettlementsByRoot)
 		}
 
 		// Subscription billing (plans, purchase, admin management)

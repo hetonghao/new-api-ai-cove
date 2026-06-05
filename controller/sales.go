@@ -15,6 +15,15 @@ type updateSalesUserGroupRequest struct {
 	Group string `json:"group"`
 }
 
+type updateSalesCommissionRatioRequest struct {
+	CommissionRatio float64 `json:"commission_ratio"`
+}
+
+type createSalesCommissionSettlementRequest struct {
+	Amount float64 `json:"amount"`
+	Note   string  `json:"note"`
+}
+
 func GetSalesUsers(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	users, total, err := model.ListSalesInvitedUsers(
@@ -85,8 +94,20 @@ func GetSalesStats(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	commissionSummary, err := model.GetSalesCommissionSummary(c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	common.ApiSuccess(c, gin.H{
-		"topup_amount": topUpAmount,
+		"topup_amount":               topUpAmount,
+		"commission_ratio":           commissionSummary.CommissionRatio,
+		"settled_commission_amount":  commissionSummary.SettledCommissionAmount,
+		"settled_commission_revenue": commissionSummary.SettledCommissionRevenue,
+		"pending_commission_revenue": commissionSummary.PendingCommissionRevenue,
+		"pending_commission_amount":  commissionSummary.PendingCommissionAmount,
+		"total_commission_amount":    commissionSummary.TotalCommissionAmount,
+		"last_settlement_created_at": commissionSummary.LastSettlementCreatedAt,
 	})
 }
 
@@ -159,4 +180,84 @@ func GetSalesGroups(c *gin.Context) {
 		groupNames = append(groupNames, groupName)
 	}
 	common.ApiSuccess(c, groupNames)
+}
+
+func GetSalesCommissionSettlements(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	settlements, total, err := model.ListSalesCommissionSettlements(c.GetInt("id"), pageInfo)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(settlements)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func GetSalesCommissionListByRoot(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	rows, total, err := model.ListSalesCommissionAdminRows(c.Query("keyword"), pageInfo)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(rows)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func UpdateSalesCommissionRatioByRoot(c *gin.Context) {
+	salesUserID, err := strconv.Atoi(c.Param("sales_user_id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	var req updateSalesCommissionRatioRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.UpdateSalesCommissionRatio(salesUserID, req.CommissionRatio); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func CreateSalesCommissionSettlementByRoot(c *gin.Context) {
+	salesUserID, err := strconv.Atoi(c.Param("sales_user_id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	var req createSalesCommissionSettlementRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	settlement, err := model.CreateSalesCommissionSettlement(salesUserID, c.GetInt("id"), req.Amount, req.Note)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, settlement)
+}
+
+func GetSalesCommissionSettlementsByRoot(c *gin.Context) {
+	salesUserID, err := strconv.Atoi(c.Param("sales_user_id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo := common.GetPageQuery(c)
+	settlements, total, err := model.ListSalesCommissionSettlements(salesUserID, pageInfo)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(settlements)
+	common.ApiSuccess(c, pageInfo)
 }

@@ -20,6 +20,9 @@ import { api } from '@/lib/api'
 import type {
   ApiResponse,
   QuotaDataPoint,
+  SalesCommissionAdminPage,
+  SalesCommissionAdminParams,
+  SalesCommissionSettlementPage,
   SalesDataParams,
   SalesStats,
   SalesUserInfo,
@@ -52,6 +55,54 @@ export async function getSalesStats(): Promise<ApiResponse<SalesStats>> {
   const res = await api.get('/api/sales/stats', {
     params: { _t: Date.now() },
   })
+  return res.data
+}
+
+export async function getSalesCommissionSettlements(params: {
+  p?: number
+  page_size?: number
+}): Promise<ApiResponse<SalesCommissionSettlementPage>> {
+  const res = await api.get('/api/sales/commission/settlements', { params })
+  return res.data
+}
+
+export async function getSalesCommissionAdminRows(
+  params: SalesCommissionAdminParams
+): Promise<ApiResponse<SalesCommissionAdminPage>> {
+  const res = await api.get('/api/sales/admin/commissions', { params })
+  return res.data
+}
+
+export async function updateSalesCommissionRatio(
+  salesUserId: number,
+  commissionRatio: number
+): Promise<ApiResponse> {
+  const res = await api.patch(
+    `/api/sales/admin/commissions/${salesUserId}/ratio`,
+    { commission_ratio: commissionRatio }
+  )
+  return res.data
+}
+
+export async function createSalesCommissionSettlement(
+  salesUserId: number,
+  payload: { amount: number; note?: string }
+): Promise<ApiResponse> {
+  const res = await api.post(
+    `/api/sales/admin/commissions/${salesUserId}/settlements`,
+    payload
+  )
+  return res.data
+}
+
+export async function getSalesCommissionSettlementsByRoot(
+  salesUserId: number,
+  params: { p?: number; page_size?: number }
+): Promise<ApiResponse<SalesCommissionSettlementPage>> {
+  const res = await api.get(
+    `/api/sales/admin/commissions/${salesUserId}/settlements`,
+    { params }
+  )
   return res.data
 }
 

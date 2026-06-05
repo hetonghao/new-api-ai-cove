@@ -38,7 +38,7 @@ func setupSalesControllerTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	model.DB = db
 	model.LOG_DB = db
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.QuotaData{}, &model.TopUp{}, &model.Log{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.QuotaData{}, &model.TopUp{}, &model.Log{}, &model.SalesCommissionSettlement{}))
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
@@ -196,6 +196,56 @@ func TestGetSalesStatsReturnsInvitedTopUpAmountOnly(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(response.Data, &data))
 	require.InDelta(t, 10.5, data.TopUpAmount, 0.0001)
+}
+
+func TestGetSalesStatsIncludesCommissionSummary(t *testing.T) {
+	db := setupSalesControllerTestDB(t)
+	require.NoError(t, db.Create(&[]model.User{
+		{Id: 1, Username: "seller", Role: common.RoleSalesUser, Status: common.UserStatusEnabled, Group: "default", AffCode: "ctrl-commission-1", CommissionRatio: 10},
+		{Id: 2, Username: "alice", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", InviterId: 1, AffCode: "ctrl-commission-2"},
+	}).Error)
+	require.NoError(t, db.Create(&model.TopUp{UserId: 2, Amount: 10000, Money: 100, Status: common.TopUpStatusSuccess, TradeNo: "ctrl-commission-topup"}).Error)
+
+	ctx, recorder := newSalesControllerContext(t, http.MethodGet, "/api/sales/stats", nil, 1)
+
+	GetSalesStats(ctx)
+
+	response := decodeSalesAPIResponse(t, recorder)
+	require.True(t, response.Success)
+	var data struct {
+		TopUpAmount              float64 `json:"topup_amount"`
+		CommissionRatio          float64 `json:"commission_ratio"`
+		PendingCommissionAmount  float64 `json:"pending_commission_amount"`
+		TotalCommissionAmount    float64 `json:"total_commission_amount"`
+		SettledCommissionAmount  float64 `json:"settled_commission_amount"`
+		PendingCommissionRevenue float64 `json:"pending_commission_revenue"`
+	}
+	require.NoError(t, json.Unmarshal(response.Data, &data))
+	require.InDelta(t, 100, data.TopUpAmount, 0.0001)
+	require.InDelta(t, 10, data.CommissionRatio, 0.0001)
+	require.InDelta(t, 10, data.PendingCommissionAmount, 0.0001)
+	require.InDelta(t, 10, data.TotalCommissionAmount, 0.0001)
+	require.InDelta(t, 0, data.SettledCommissionAmount, 0.0001)
+	require.InDelta(t, 100, data.PendingCommissionRevenue, 0.0001)
+}
+
+func TestCreateSalesCommissionSettlementByRootRecordsSettlement(t *testing.T) {
+	db := setupSalesControllerTestDB(t)
+	require.NoError(t, db.Create(&[]model.User{
+		{Id: 1, Username: "seller", Role: common.RoleSalesUser, Status: common.UserStatusEnabled, Group: "default", AffCode: "ctrl-root-commission-1", CommissionRatio: 10},
+		{Id: 2, Username: "alice", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", InviterId: 1, AffCode: "ctrl-root-commission-2"},
+	}).Error)
+	require.NoError(t, db.Create(&model.TopUp{UserId: 2, Amount: 10000, Money: 100, Status: common.TopUpStatusSuccess, TradeNo: "ctrl-root-commission-topup"}).Error)
+
+	ctx, recorder := newSalesControllerContext(t, http.MethodPost, "/api/sales/admin/commissions/1/settlements", gin.H{"amount": 5, "note": "offline paid"}, 99)
+	ctx.Set("role", common.RoleRootUser)
+	ctx.Params = gin.Params{{Key: "sales_user_id", Value: "1"}}
+
+	CreateSalesCommissionSettlementByRoot(ctx)
+
+	response := decodeSalesAPIResponse(t, recorder)
+	require.True(t, response.Success)
+	require.Contains(t, recorder.Body.String(), "offline paid")
 }
 
 func TestGetSalesLogsStatPassesThroughRequestFiltersAndOnlyCountsConsumeLogs(t *testing.T) {
