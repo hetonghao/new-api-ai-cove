@@ -42,10 +42,13 @@ import {
 } from '@/components/ui/tooltip'
 import { getSalesCommissionSettlementsByRoot } from '../api'
 import {
+  canCreateCommissionSettlement,
   calculateSettlementAmountByPercent,
   getSettlementAmountError,
   roundMoney,
   SETTLEMENT_PERCENTAGES,
+  shouldShowSettlementForm,
+  type SettlementDialogMode,
   type SettlementPercentage,
 } from '../lib/commission-settlement'
 import type {
@@ -365,6 +368,7 @@ export function RootCommissionSettlementsTab({
   onNextPage,
   onRatioDraftChange,
   onUpdateRatio,
+  onOpenDetails,
   onOpenSettlement,
   updatingSalesUserId,
 }: {
@@ -381,6 +385,7 @@ export function RootCommissionSettlementsTab({
   onNextPage: () => void
   onRatioDraftChange: (salesUserId: number, value: string) => void
   onUpdateRatio: (row: SalesCommissionAdminRow) => void
+  onOpenDetails: (row: SalesCommissionAdminRow) => void
   onOpenSettlement: (row: SalesCommissionAdminRow) => void
   updatingSalesUserId?: number
 }) {
@@ -449,6 +454,10 @@ export function RootCommissionSettlementsTab({
                   String(row.commission_ratio ?? 0)
                 const isUpdating = updatingSalesUserId === row.sales_user_id
                 const displayContact = row.email || row.username
+                const canCreateSettlement = canCreateCommissionSettlement(
+                  row.pending_commission_amount,
+                  row.commission_ratio
+                )
                 return (
                   <TableRow key={row.sales_user_id}>
                     <TableCell>
@@ -506,18 +515,26 @@ export function RootCommissionSettlementsTab({
                       {formatTimestampToDate(row.last_settlement_created_at)}
                     </TableCell>
                     <TableCell className='text-right'>
-                      <Button
-                        type='button'
-                        size='sm'
-                        onClick={() => onOpenSettlement(row)}
-                        disabled={
-                          row.pending_commission_amount <= 0 ||
-                          row.commission_ratio <= 0
-                        }
-                      >
-                        <HandCoins className='size-3.5' />
-                        {t('Settle')}
-                      </Button>
+                      <div className='flex justify-end gap-2'>
+                        <Button
+                          type='button'
+                          variant='outline'
+                          size='sm'
+                          onClick={() => onOpenDetails(row)}
+                        >
+                          <ReceiptText className='size-3.5' />
+                          {t('Details')}
+                        </Button>
+                        <Button
+                          type='button'
+                          size='sm'
+                          onClick={() => onOpenSettlement(row)}
+                          disabled={!canCreateSettlement}
+                        >
+                          <HandCoins className='size-3.5' />
+                          {t('Settle')}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 )
@@ -558,12 +575,14 @@ export function RootCommissionSettlementsTab({
 
 export function SettlementDialog({
   row,
+  mode,
   open,
   isSubmitting,
   onOpenChange,
   onSubmit,
 }: {
   row: SalesCommissionAdminRow | null
+  mode: SettlementDialogMode
   open: boolean
   isSubmitting: boolean
   onOpenChange: (open: boolean) => void
@@ -582,6 +601,7 @@ export function SettlementDialog({
           <SettlementDialogForm
             key={row.sales_user_id}
             row={row}
+            mode={mode}
             isSubmitting={isSubmitting}
             onOpenChange={onOpenChange}
             onSubmit={onSubmit}
@@ -601,11 +621,13 @@ export function SettlementDialog({
 
 function SettlementDialogForm({
   row,
+  mode,
   isSubmitting,
   onOpenChange,
   onSubmit,
 }: {
   row: SalesCommissionAdminRow
+  mode: SettlementDialogMode
   isSubmitting: boolean
   onOpenChange: (open: boolean) => void
   onSubmit: (payload: {
@@ -615,7 +637,12 @@ function SettlementDialogForm({
   }) => void
 }) {
   const { t } = useTranslation()
-  const [mode, setMode] = useState<'percent' | 'manual'>('percent')
+  const canCreateSettlement = canCreateCommissionSettlement(
+    row.pending_commission_amount,
+    row.commission_ratio
+  )
+  const showSettlementForm = shouldShowSettlementForm(mode, canCreateSettlement)
+  const [inputMode, setInputMode] = useState<'percent' | 'manual'>('percent')
   const [selectedPercent, setSelectedPercent] =
     useState<SettlementPercentage>(100)
   const [amountInput, setAmountInput] = useState(() =>
@@ -658,7 +685,7 @@ function SettlementDialogForm({
   })
 
   const handlePercentClick = (percent: SettlementPercentage) => {
-    setMode('percent')
+    setInputMode('percent')
     setSelectedPercent(percent)
     setAmountInput(
       String(calculateSettlementAmountByPercent(pendingAmount, percent))
@@ -677,7 +704,9 @@ function SettlementDialogForm({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{t('Create Settlement')}</DialogTitle>
+        <DialogTitle>
+          {mode === 'settle' ? t('Create Settlement') : t('Commission Details')}
+        </DialogTitle>
         <DialogDescription>
           {`${getSalespersonName(row)} - ${t('Pending Commission')} ${formatYuanAmount(pendingAmount)}`}
         </DialogDescription>
@@ -702,76 +731,84 @@ function SettlementDialogForm({
           />
         </div>
 
-        <div className='space-y-2'>
-          <Label>{t('Settlement percentage')}</Label>
-          <div className='flex flex-wrap gap-2'>
-            {SETTLEMENT_PERCENTAGES.map((percent) => (
-              <Button
-                key={percent}
-                type='button'
-                variant={
-                  mode === 'percent' && selectedPercent === percent
-                    ? 'default'
-                    : 'outline'
-                }
-                onClick={() => handlePercentClick(percent)}
-              >
-                {percent}%
-              </Button>
-            ))}
-            <Button
-              type='button'
-              variant={mode === 'manual' ? 'default' : 'outline'}
-              onClick={() => setMode('manual')}
-            >
-              {t('Manual amount')}
-            </Button>
-          </div>
-        </div>
-
-        <div className='grid gap-3 sm:grid-cols-[1fr_14rem]'>
-          <div className='space-y-2'>
-            <Label htmlFor='commission-settlement-amount'>
-              {t('Settlement amount')}
-            </Label>
-            <Input
-              id='commission-settlement-amount'
-              type='number'
-              min='0'
-              step='0.01'
-              value={amountInput}
-              onChange={(event) => {
-                setMode('manual')
-                setAmountInput(event.target.value)
-              }}
-            />
-            {amountError && (
-              <p className='text-destructive text-sm'>
-                {amountError === 'too-large'
-                  ? t('Settlement amount cannot exceed pending commission')
-                  : t('Settlement amount must be greater than 0')}
-              </p>
-            )}
-          </div>
-          <div className='border-border/80 flex flex-col justify-center rounded-md border px-3 py-2'>
-            <div className='text-muted-foreground text-xs'>
-              {t('Remaining after settlement')}
+        {showSettlementForm ? (
+          <>
+            <div className='space-y-2'>
+              <Label>{t('Settlement percentage')}</Label>
+              <div className='flex flex-wrap gap-2'>
+                {SETTLEMENT_PERCENTAGES.map((percent) => (
+                  <Button
+                    key={percent}
+                    type='button'
+                    variant={
+                      inputMode === 'percent' && selectedPercent === percent
+                        ? 'default'
+                        : 'outline'
+                    }
+                    onClick={() => handlePercentClick(percent)}
+                  >
+                    {percent}%
+                  </Button>
+                ))}
+                <Button
+                  type='button'
+                  variant={inputMode === 'manual' ? 'default' : 'outline'}
+                  onClick={() => setInputMode('manual')}
+                >
+                  {t('Manual amount')}
+                </Button>
+              </div>
             </div>
-            <div className='text-lg font-semibold tabular-nums'>
-              {formatYuanAmount(remainingAmount)}
-            </div>
-          </div>
-        </div>
 
-        <div className='space-y-2'>
-          <Label htmlFor='commission-settlement-note'>{t('Note')}</Label>
-          <Textarea
-            id='commission-settlement-note'
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            placeholder={t('Optional settlement note')}
-          />
-        </div>
+            <div className='grid gap-3 sm:grid-cols-[1fr_14rem]'>
+              <div className='space-y-2'>
+                <Label htmlFor='commission-settlement-amount'>
+                  {t('Settlement amount')}
+                </Label>
+                <Input
+                  id='commission-settlement-amount'
+                  type='number'
+                  min='0'
+                  step='0.01'
+                  value={amountInput}
+                  onChange={(event) => {
+                    setInputMode('manual')
+                    setAmountInput(event.target.value)
+                  }}
+                />
+                {amountError && (
+                  <p className='text-destructive text-sm'>
+                    {amountError === 'too-large'
+                      ? t('Settlement amount cannot exceed pending commission')
+                      : t('Settlement amount must be greater than 0')}
+                  </p>
+                )}
+              </div>
+              <div className='border-border/80 flex flex-col justify-center rounded-md border px-3 py-2'>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Remaining after settlement')}
+                </div>
+                <div className='text-lg font-semibold tabular-nums'>
+                  {formatYuanAmount(remainingAmount)}
+                </div>
+              </div>
+            </div>
+
+            <div className='space-y-2'>
+              <Label htmlFor='commission-settlement-note'>{t('Note')}</Label>
+              <Textarea
+                id='commission-settlement-note'
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder={t('Optional settlement note')}
+              />
+            </div>
+          </>
+        ) : canCreateSettlement ? null : (
+          <div className='text-muted-foreground rounded-md border px-3 py-2 text-sm'>
+            {t('No pending commission available')}
+          </div>
+        )}
 
         <div className='space-y-2'>
           <div className='font-medium'>{t('Recent Settlements')}</div>
@@ -793,14 +830,16 @@ function SettlementDialogForm({
         >
           {t('Cancel')}
         </Button>
-        <Button
-          type='button'
-          onClick={handleSubmit}
-          disabled={Boolean(amountError) || isSubmitting}
-        >
-          <HandCoins className='size-4' />
-          {t('Create Settlement')}
-        </Button>
+        {showSettlementForm && (
+          <Button
+            type='button'
+            onClick={handleSubmit}
+            disabled={Boolean(amountError) || isSubmitting}
+          >
+            <HandCoins className='size-4' />
+            {t('Create Settlement')}
+          </Button>
+        )}
       </DialogFooter>
     </>
   )

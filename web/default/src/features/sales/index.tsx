@@ -79,6 +79,7 @@ import {
   SalesCommissionSettlementsTab,
   SettlementDialog,
 } from './components/commission-settlements'
+import type { SettlementDialogMode } from './lib/commission-settlement'
 import type {
   QuotaDataPoint,
   SalesCommissionAdminRow,
@@ -211,8 +212,13 @@ export function Sales() {
   const [rootCommissionPage, setRootCommissionPage] = useState(1)
   const [rootCommissionKeyword, setRootCommissionKeyword] = useState('')
   const [ratioDrafts, setRatioDrafts] = useState<Record<number, string>>({})
-  const [settlementDialogRow, setSettlementDialogRow] =
-    useState<SalesCommissionAdminRow | null>(null)
+  const [settlementDialogState, setSettlementDialogState] = useState<{
+    row: SalesCommissionAdminRow | null
+    mode: SettlementDialogMode
+  }>({
+    row: null,
+    mode: 'detail',
+  })
   const [range, setRange] = useState<RangeValue>('30d')
   const [activeTab, setActiveTab] = useState<SalesTab>('invited-users')
   const [salesLogsSearch, setSalesLogsSearch] = useState<
@@ -394,7 +400,7 @@ export function Sales() {
     onSuccess: (result, variables) => {
       if (result.success) {
         toast.success(t('Settlement recorded successfully'))
-        setSettlementDialogRow(null)
+        setSettlementDialogState((current) => ({ ...current, row: null }))
         queryClient.invalidateQueries({ queryKey: ['sales-commission-admin'] })
         queryClient.invalidateQueries({
           queryKey: [
@@ -455,6 +461,13 @@ export function Sales() {
       salesUserId: row.sales_user_id,
       commissionRatio,
     })
+  }
+
+  const openSettlementDialog = (
+    row: SalesCommissionAdminRow,
+    mode: SettlementDialogMode
+  ) => {
+    setSettlementDialogState({ row, mode })
   }
 
   return (
@@ -802,7 +815,10 @@ export function Sales() {
                   }
                   onRatioDraftChange={handleRatioDraftChange}
                   onUpdateRatio={handleUpdateRatio}
-                  onOpenSettlement={setSettlementDialogRow}
+                  onOpenDetails={(row) => openSettlementDialog(row, 'detail')}
+                  onOpenSettlement={(row) =>
+                    openSettlementDialog(row, 'settle')
+                  }
                   updatingSalesUserId={
                     updateRatioMutation.isPending
                       ? updateRatioMutation.variables?.salesUserId
@@ -831,11 +847,17 @@ export function Sales() {
             ))}
 
           <SettlementDialog
-            row={settlementDialogRow}
-            open={Boolean(settlementDialogRow)}
+            row={settlementDialogState.row}
+            mode={settlementDialogState.mode}
+            open={Boolean(settlementDialogState.row)}
             isSubmitting={createSettlementMutation.isPending}
             onOpenChange={(open) => {
-              if (!open) setSettlementDialogRow(null)
+              if (!open) {
+                setSettlementDialogState((current) => ({
+                  ...current,
+                  row: null,
+                }))
+              }
             }}
             onSubmit={(payload) => createSettlementMutation.mutate(payload)}
           />
