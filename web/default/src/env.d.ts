@@ -22,6 +22,8 @@ declare module '@visactor/react-vchart' {
   export const VChart: React.ComponentType<Record<string, unknown>>
 }
 
+declare const __AI_COVE_DESIGN_DESKTOP_DOWNLOAD_VERSION__: string | undefined
+
 declare module '@visactor/vchart-semi-theme' {
   export const initVChartSemiTheme: (opts?: Record<string, unknown>) => void
 }

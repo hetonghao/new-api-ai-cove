@@ -12,6 +12,10 @@ export default defineConfig(({ envMode }) => {
     process.env.VITE_REACT_APP_SERVER_URL ||
     env.rawPublicVars.VITE_REACT_APP_SERVER_URL ||
     'http://localhost:3000'
+  const desktopDownloadVersion =
+    process.env.VITE_AI_COVE_DESIGN_DESKTOP_DOWNLOAD_VERSION ||
+    env.rawPublicVars.VITE_AI_COVE_DESIGN_DESKTOP_DOWNLOAD_VERSION ||
+    ''
 
   const isProd = envMode === 'production'
   const devProxy = Object.fromEntries(
@@ -53,6 +57,11 @@ export default defineConfig(({ envMode }) => {
     source: {
       entry: {
         index: './src/main.tsx',
+      },
+      define: {
+        __AI_COVE_DESIGN_DESKTOP_DOWNLOAD_VERSION__: JSON.stringify(
+          desktopDownloadVersion,
+        ),
       },
     },
     resolve: {

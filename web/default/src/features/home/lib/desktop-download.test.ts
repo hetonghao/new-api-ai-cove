@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import {
   detectDesktopDownloadPlatform,
   getDesktopDownloadTarget,
+  withDesktopDownloadVersion,
 } from './desktop-download.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -69,6 +70,16 @@ test('builds the macOS desktop download target by default', () => {
     labelKey: 'Download Cove-Desgin macOS desktop app',
     ariaLabelKey: 'Download Cove-Desgin for macOS',
   })
+})
+
+test('adds the desktop release version to download URLs', () => {
+  assert.equal(
+    withDesktopDownloadVersion(
+      '/downloads/ai-cove-design-desktop-macos.dmg',
+      '0.2.2'
+    ),
+    '/downloads/ai-cove-design-desktop-macos.dmg?v=0.2.2'
+  )
 })
 
 test('maps desktop download labels to the requested Chinese copy', () => {

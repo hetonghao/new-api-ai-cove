@@ -16,6 +16,22 @@ export type DesktopDownloadTarget = {
 const MACOS_DOWNLOAD_HREF = '/downloads/ai-cove-design-desktop-macos.dmg'
 const WINDOWS_DOWNLOAD_HREF = '/downloads/ai-cove-design-desktop-windows.exe'
 
+function getDesktopDownloadVersion() {
+  if (typeof __AI_COVE_DESIGN_DESKTOP_DOWNLOAD_VERSION__ !== 'string') {
+    return ''
+  }
+  return __AI_COVE_DESIGN_DESKTOP_DOWNLOAD_VERSION__.trim()
+}
+
+export function withDesktopDownloadVersion(
+  href: string,
+  version = getDesktopDownloadVersion()
+) {
+  const normalizedVersion = version.trim()
+  if (!normalizedVersion) return href
+  return `${href}?v=${encodeURIComponent(normalizedVersion)}`
+}
+
 function getNavigatorEnvironment(): DesktopDownloadEnvironment {
   if (typeof navigator === 'undefined') {
     return {}
@@ -61,7 +77,7 @@ export function getDesktopDownloadTarget(
   if (platform === 'windows') {
     return {
       platform,
-      href: WINDOWS_DOWNLOAD_HREF,
+      href: withDesktopDownloadVersion(WINDOWS_DOWNLOAD_HREF),
       labelKey: 'Download Cove-Desgin Windows desktop app',
       ariaLabelKey: 'Download Cove-Desgin for Windows',
     }
@@ -69,7 +85,7 @@ export function getDesktopDownloadTarget(
 
   return {
     platform,
-    href: MACOS_DOWNLOAD_HREF,
+    href: withDesktopDownloadVersion(MACOS_DOWNLOAD_HREF),
     labelKey: 'Download Cove-Desgin macOS desktop app',
     ariaLabelKey: 'Download Cove-Desgin for macOS',
   }
