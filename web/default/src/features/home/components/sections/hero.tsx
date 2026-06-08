@@ -84,6 +84,12 @@ export function Hero(props: HeroProps) {
             href={desktopDownload.href}
             aria-label={t(desktopDownload.ariaLabelKey)}
           >
+            <img
+              alt=''
+              aria-hidden='true'
+              className='home-desktop-download-icon'
+              src='/desgin-logo.png'
+            />
             {t(desktopDownload.labelKey)}
             <Download aria-hidden='true' className='home-btn-arrow' />
           </a>

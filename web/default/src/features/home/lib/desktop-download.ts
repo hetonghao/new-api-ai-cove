@@ -62,15 +62,15 @@ export function getDesktopDownloadTarget(
     return {
       platform,
       href: WINDOWS_DOWNLOAD_HREF,
-      labelKey: 'Download Windows desktop app',
-      ariaLabelKey: 'Download AI-Cove-Design for Windows',
+      labelKey: 'Download Cove-Desgin Windows desktop app',
+      ariaLabelKey: 'Download Cove-Desgin for Windows',
     }
   }
 
   return {
     platform,
     href: MACOS_DOWNLOAD_HREF,
-    labelKey: 'Download macOS desktop app',
-    ariaLabelKey: 'Download AI-Cove-Design for macOS',
+    labelKey: 'Download Cove-Desgin macOS desktop app',
+    ariaLabelKey: 'Download Cove-Desgin for macOS',
   }
 }

@@ -12,4 +12,6 @@ test('home hero renders a desktop download CTA', () => {
   assert.match(source, /getDesktopDownloadTarget\(\)/)
   assert.match(source, /data-download-platform=\{desktopDownload\.platform\}/)
   assert.match(source, /href=\{desktopDownload\.href\}/)
+  assert.match(source, /src='\/desgin-logo\.png'/)
+  assert.match(source, /className='home-desktop-download-icon'/)
 })

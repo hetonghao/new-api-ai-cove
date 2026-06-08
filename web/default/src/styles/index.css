@@ -1021,6 +1021,14 @@ For commercial licensing, please contact support@quantumnous.com
   transition: transform 220ms var(--home-ease);
 }
 
+.home-desktop-download-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
 .home-btn:hover .home-btn-arrow,
 .home-btn:focus-visible .home-btn-arrow {
   transform: translateX(3px);
