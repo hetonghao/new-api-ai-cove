@@ -17,10 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { HeroFloatingLines } from '../hero-floating-lines'
 import { HeroTerminalDemo } from '../hero-terminal-demo'
+import { getDesktopDownloadTarget } from '../../lib/desktop-download'
 
 interface HeroProps {
   className?: string
@@ -30,6 +31,7 @@ interface HeroProps {
 export function Hero(props: HeroProps) {
   const { t } = useTranslation()
   const [oneApiSitePrefix, oneApiSiteSuffix] = t('One API site').split('API')
+  const desktopDownload = getDesktopDownloadTarget()
 
   return (
     <section className='home-shell home-hero' aria-labelledby='home-hero-title'>
@@ -74,6 +76,17 @@ export function Hero(props: HeroProps) {
               </Link>
             </>
           )}
+          <a
+            className='home-btn'
+            data-download-platform={desktopDownload.platform}
+            data-testid='home-desktop-download'
+            download
+            href={desktopDownload.href}
+            aria-label={t(desktopDownload.ariaLabelKey)}
+          >
+            {t(desktopDownload.labelKey)}
+            <Download aria-hidden='true' className='home-btn-arrow' />
+          </a>
         </div>
       </div>
       <div
