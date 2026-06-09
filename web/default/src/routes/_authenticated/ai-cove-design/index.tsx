@@ -38,14 +38,28 @@ function AiCoveDesignPage() {
   const { resolvedTheme } = useTheme()
   const initialThemeRef = useRef(resolvedTheme)
   const sidecarUrl = useMemo(
-    () => createAiCoveDesignSidecarUrl(userId, initialThemeRef.current),
+    () =>
+      userId ? createAiCoveDesignSidecarUrl(userId, initialThemeRef.current) : '',
     [userId]
   )
+
+  if (!userId) {
+    return (
+      <Main className='bg-background p-0'>
+        <div
+          data-testid='ai-cove-design-loading'
+          className='text-muted-foreground flex size-full items-center justify-center text-sm'
+        >
+          正在加载 AI Cove Design...
+        </div>
+      </Main>
+    )
+  }
 
   return (
     <Main className='bg-background p-0'>
       <iframe
-        title='AI-Cove-Design'
+        title='AI Cove Design'
         src={sidecarUrl}
         className='bg-background size-full border-0'
         allow='clipboard-read; clipboard-write'

@@ -32,7 +32,7 @@ export function buildDesktopAuthCallbackUrl(input: DesktopAuthCallbackInput) {
     !token ||
     !userId
   ) {
-    throw new Error('Invalid AI-Cove-Design desktop auth callback.')
+    throw new Error('Invalid AI Cove Design desktop auth callback.')
   }
 
   const callbackUrl = new URL(input.redirectUri)

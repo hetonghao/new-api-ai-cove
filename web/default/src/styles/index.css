@@ -750,6 +750,130 @@ For commercial licensing, please contact support@quantumnous.com
   transform: translateY(0) scale(0.985);
 }
 
+.desktop-auth-page {
+  --home-bg: #fdf9f5;
+  --home-paper: #fffffc;
+  --home-line: #ece2d5;
+  --home-ink: #2a2520;
+  --home-muted: #8a7e72;
+  --home-brand-blue: #129bd7;
+  --home-brand-orange: #f47a16;
+  --home-serif: 'Instrument Serif', 'Iowan Old Style', Charter, Georgia, serif;
+
+  display: flex;
+  min-height: min(72vh, 720px);
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(520px 260px at 50% 18%, rgba(18, 155, 215, 0.1), transparent 68%),
+    var(--home-bg);
+  padding: 48px 20px;
+}
+
+.desktop-auth-card {
+  width: min(460px, 100%);
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--home-brand-blue) 16%, var(--home-line));
+  border-radius: 22px;
+  background:
+    radial-gradient(180px 92px at 0% 42%, rgba(179, 212, 232, 0.34), transparent 72%),
+    linear-gradient(135deg, rgba(255, 255, 252, 0.9), rgba(250, 245, 239, 0.66));
+  box-shadow: 0 20px 46px rgba(60, 40, 20, 0.08);
+  color: var(--home-ink);
+  padding: 18px;
+}
+
+.desktop-auth-brand {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+}
+
+.desktop-auth-brand-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--home-paper);
+  object-fit: contain;
+  box-shadow:
+    0 0 0 1px rgba(244, 122, 22, 0.18),
+    0 9px 20px rgba(244, 122, 22, 0.13);
+}
+
+.desktop-auth-brand-copy {
+  min-width: 0;
+}
+
+.desktop-auth-brand-copy > span {
+  display: block;
+  color: var(--home-brand-blue);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.desktop-auth-brand-copy strong {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  margin-top: 7px;
+  color: var(--home-ink);
+  font-family: var(--home-serif);
+  font-size: 30px;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.018em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.desktop-auth-brand-gap {
+  width: 0.22em;
+  flex: 0 0 auto;
+}
+
+.desktop-auth-status {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 18px;
+  border-top: 1px solid var(--home-line);
+  padding-top: 16px;
+}
+
+.desktop-auth-status-dot {
+  width: 10px;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--home-brand-blue);
+  box-shadow: 0 0 0 5px rgba(18, 155, 215, 0.11);
+}
+
+.desktop-auth-status[data-error='true'] .desktop-auth-status-dot {
+  background: #c45100;
+  box-shadow: 0 0 0 5px rgba(196, 81, 0, 0.12);
+}
+
+.desktop-auth-status h1 {
+  margin: 0;
+  color: var(--home-ink);
+  font-size: 15px;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.desktop-auth-status p {
+  margin: 5px 0 0;
+  color: var(--home-muted);
+  font-size: 13px;
+  font-weight: 560;
+  line-height: 1.6;
+}
+
 .ai-cove-home,
 .home-footer {
   --home-bg: #fdf9f5;

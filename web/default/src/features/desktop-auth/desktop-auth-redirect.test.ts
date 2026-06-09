@@ -5,7 +5,7 @@ import {
   isAllowedDesktopRedirectUri,
 } from './desktop-auth-redirect.ts'
 
-test('allows only local AI-Cove-Design desktop callback URLs', () => {
+test('allows only local AI Cove Design desktop callback URLs', () => {
   assert.equal(
     isAllowedDesktopRedirectUri(
       'http://127.0.0.1:8787/api/desktop-auth/callback'

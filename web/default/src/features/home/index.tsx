@@ -42,7 +42,7 @@ export function Home() {
         showMainContainer={false}
         headerProps={{
           className: 'ai-cove-landing-header',
-          siteName: 'AI-Cove',
+          siteName: 'AI Cove',
         }}
       >
         <main className='ai-cove-home flex min-h-[100dvh] items-center justify-center'>
@@ -75,7 +75,7 @@ export function Home() {
   return (
     <PublicLayout
       showMainContainer={false}
-      headerProps={{ className: 'ai-cove-landing-header', siteName: 'AI-Cove' }}
+      headerProps={{ className: 'ai-cove-landing-header', siteName: 'AI Cove' }}
     >
       <main className='ai-cove-home'>
         <Hero isAuthenticated={isAuthenticated} />

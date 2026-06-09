@@ -29,7 +29,7 @@ export function HomeFooter() {
   const { t } = useTranslation()
   const { logo } = useSystemConfig()
   const currentYear = new Date().getFullYear()
-  const displayName = 'AI-Cove'
+  const displayName = 'AI Cove'
   const displayLogo = logo || '/logo.png'
 
   return (
@@ -64,7 +64,7 @@ export function HomeFooter() {
             />
             <div className='home-footer-design-copy'>
               <span>{t('Integrated subsystem')}</span>
-              <strong>{t('AI-Cove-Design')}</strong>
+              <strong>{t('AI Cove Design')}</strong>
               <p>{t(AI_COVE_DESIGN_DESCRIPTION)}</p>
             </div>
           </div>

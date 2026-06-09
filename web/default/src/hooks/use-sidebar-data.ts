@@ -59,7 +59,7 @@ export function useSidebarData(): SidebarData {
             icon: FlaskConical,
           },
           {
-            title: 'AI-Cove-Design',
+            title: 'AI Cove Design',
             url: '/ai-cove-design',
             activeUrls: ['/ai-cove-design'],
             configUrls: ['/playground'],

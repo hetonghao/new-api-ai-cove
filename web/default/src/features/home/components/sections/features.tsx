@@ -268,7 +268,7 @@ export function Features(_props: FeaturesProps) {
               )}
             </h3>
             <p className='lede'>
-              {t('Four reasons developers ship faster on AI-Cove.')}
+              {t('Four reasons developers ship faster on AI Cove.')}
             </p>
           </header>
 

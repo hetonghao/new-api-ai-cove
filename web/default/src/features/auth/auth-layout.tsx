@@ -92,7 +92,7 @@ export function AuthLayout({ children, variant = 'default' }: AuthLayoutProps) {
   const { t } = useTranslation()
   const { systemName, logo, loading } = useSystemConfig()
   const isHomeVariant = variant === 'home'
-  const displayName = isHomeVariant ? 'AI-Cove' : systemName
+  const displayName = isHomeVariant ? 'AI Cove' : systemName
   const [oneApiSitePrefix, oneApiSiteSuffix] = t('One API site').split('API')
 
   return (

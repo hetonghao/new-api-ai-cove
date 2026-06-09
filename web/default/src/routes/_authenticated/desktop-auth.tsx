@@ -74,14 +74,35 @@ function DesktopAuthPage() {
   }, [nonce, redirectUri, t])
 
   return (
-    <Main className='flex min-h-[60vh] items-center justify-center'>
-      <div className='max-w-md rounded-lg border bg-card p-5 text-card-foreground shadow-sm'>
-        <h1 className='text-base font-semibold'>
-          {t('Connecting AI-Cove-Design desktop app')}
-        </h1>
-        <p className='mt-2 text-sm text-muted-foreground'>
-          {error || t('Please wait while AI Cove signs in the desktop app.')}
-        </p>
+    <Main className='desktop-auth-page'>
+      <div className='desktop-auth-card'>
+        <div className='desktop-auth-brand'>
+          <img
+            src='/desgin-logo.png'
+            alt=''
+            className='desktop-auth-brand-logo'
+            aria-hidden='true'
+          />
+          <div className='desktop-auth-brand-copy'>
+            <span>{t('Desktop app')}</span>
+            <strong aria-label='AI Cove Design'>
+              <span className='desktop-auth-brand-ai' aria-hidden='true'>
+                AI
+              </span>
+              <span className='desktop-auth-brand-gap' aria-hidden='true' />
+              <span aria-hidden='true'>Cove Design</span>
+            </strong>
+          </div>
+        </div>
+        <div className='desktop-auth-status' data-error={Boolean(error)}>
+          <span className='desktop-auth-status-dot' aria-hidden='true' />
+          <div>
+            <h1>{t('Connecting AI Cove Design desktop app')}</h1>
+            <p>
+              {error || t('Please wait while AI Cove signs in the desktop app.')}
+            </p>
+          </div>
+        </div>
       </div>
     </Main>
   )

@@ -37,7 +37,7 @@ export function Hero(props: HeroProps) {
     <section className='home-shell home-hero' aria-labelledby='home-hero-title'>
       <HeroFloatingLines />
       <div className='home-hero-copy landing-animate-fade-up'>
-        <div className='home-eyebrow'>AI-Cove</div>
+        <div className='home-eyebrow'>AI Cove</div>
         <h1 id='home-hero-title' className='home-hero-title'>
           <span className='home-title-line'>
             {oneApiSitePrefix}

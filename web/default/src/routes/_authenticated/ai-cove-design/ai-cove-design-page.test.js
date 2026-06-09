@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import test from 'node:test'
+
+const source = readFileSync(
+  join(process.cwd(), 'src/routes/_authenticated/ai-cove-design/index.tsx'),
+  'utf8'
+)
+
+test('waits for the authenticated user id before loading the AI Cove Design iframe', () => {
+  assert.match(
+    source,
+    /if \(!userId\) \{[\s\S]*data-testid='ai-cove-design-loading'[\s\S]*return \(/,
+    'AI Cove Design should not mount the embedded iframe until the auth store has a user id'
+  )
+  assert.match(
+    source,
+    /createAiCoveDesignSidecarUrl\(userId, initialThemeRef\.current\)/,
+    'The iframe URL should still be built with the authenticated user id once it is available'
+  )
+})
