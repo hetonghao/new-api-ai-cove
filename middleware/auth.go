@@ -273,6 +273,100 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 	}
 }
 
+// BillingTokenAuth allows a key owner to query billing state even when the key
+// is expired or exhausted, while still rejecting disabled keys and banned users.
+func BillingTokenAuth() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		key := c.Request.Header.Get("Authorization")
+		if key == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgTokenNotProvided),
+			})
+			c.Abort()
+			return
+		}
+		if strings.HasPrefix(key, "Bearer ") || strings.HasPrefix(key, "bearer ") {
+			key = strings.TrimSpace(key[7:])
+		}
+		key = strings.TrimPrefix(key, "sk-")
+		parts := strings.Split(key, "-")
+		key = parts[0]
+
+		var token model.Token
+		if err := model.DB.Where(&model.Token{Key: key}).First(&token).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"success": false,
+					"message": common.TranslateMessage(c, i18n.MsgTokenInvalid),
+				})
+			} else {
+				common.SysLog("BillingTokenAuth GetTokenByKey database error: " + err.Error())
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": common.TranslateMessage(c, i18n.MsgDatabaseError),
+				})
+			}
+			c.Abort()
+			return
+		}
+		if token.Status == common.TokenStatusDisabled {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"code":    "token_disabled",
+				"message": common.TranslateMessage(c, i18n.MsgTokenDisabled),
+			})
+			c.Abort()
+			return
+		}
+		allowIps := token.GetIpLimits()
+		if len(allowIps) > 0 {
+			clientIp := c.ClientIP()
+			ip := net.ParseIP(clientIp)
+			if ip == nil {
+				c.JSON(http.StatusForbidden, gin.H{
+					"success": false,
+					"message": "无法解析客户端 IP 地址",
+				})
+				c.Abort()
+				return
+			}
+			if common.IsIpInCIDRList(ip, allowIps) == false {
+				c.JSON(http.StatusForbidden, gin.H{
+					"success": false,
+					"message": "您的 IP 不在令牌允许访问的列表中",
+				})
+				c.Abort()
+				return
+			}
+		}
+
+		userCache, err := model.GetUserCache(token.UserId)
+		if err != nil {
+			common.SysLog(fmt.Sprintf("BillingTokenAuth GetUserCache error for user %d: %v", token.UserId, err))
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgDatabaseError),
+			})
+			c.Abort()
+			return
+		}
+		if userCache.Status != common.UserStatusEnabled {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgAuthUserBanned),
+			})
+			c.Abort()
+			return
+		}
+
+		c.Set("id", token.UserId)
+		c.Set("token_id", token.Id)
+		c.Set("token_key", token.Key)
+		c.Next()
+	}
+}
+
 func TokenAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		// 先检测是否为ws

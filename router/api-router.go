@@ -12,7 +12,7 @@ import (
 )
 
 func SetApiRouter(router *gin.Engine) {
-		apiRouter := router.Group("/api")
+	apiRouter := router.Group("/api")
 	apiRouter.Use(middleware.RouteTag("api"))
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
@@ -308,6 +308,12 @@ func SetApiRouter(router *gin.Engine) {
 			{
 				tokenUsageRoute.GET("/", controller.GetTokenUsage)
 			}
+		}
+
+		billingRoute := apiRouter.Group("/billing")
+		billingRoute.Use(middleware.CORS(), middleware.CriticalRateLimit(), middleware.BillingTokenAuth())
+		{
+			billingRoute.GET("/self", controller.GetBillingSelf)
 		}
 
 		redemptionRoute := apiRouter.Group("/redemption")

@@ -815,24 +815,55 @@ For commercial licensing, please contact support@quantumnous.com
   text-transform: uppercase;
 }
 
-.desktop-auth-brand-copy strong {
-  display: flex;
+.ai-cove-design-wordmark {
+  display: inline-flex;
   min-width: 0;
   align-items: baseline;
-  margin-top: 7px;
   color: var(--home-ink);
   font-family: var(--home-serif);
   font-size: 30px;
-  font-style: italic;
-  font-weight: 400;
-  letter-spacing: -0.018em;
-  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 0.98;
   white-space: nowrap;
 }
 
-.desktop-auth-brand-gap {
-  width: 0.22em;
+.desktop-auth-brand-copy .ai-cove-design-wordmark {
+  margin-top: 7px;
+}
+
+.ai-cove-design-wordmark span {
+  display: inline-block;
+  vertical-align: baseline;
+}
+
+.ai-cove-design-wordmark__prefix {
+  color: #2c211a;
+  font-style: italic;
+  font-weight: 700;
+}
+
+.ai-cove-design-wordmark__image {
+  color: transparent;
+  background: linear-gradient(100deg, #7e321a 0%, #c65f32 48%, #0f766e 100%);
+  background-clip: text;
+  font-size: 1.07em;
+  -webkit-background-clip: text;
+}
+
+.ai-cove-design-wordmark__canvas {
+  color: #0f5f58;
+  font-size: 1.15em;
+  text-shadow: 0 1px 0 rgba(231, 177, 112, 0.36);
+}
+
+.ai-cove-design-wordmark__space {
+  width: 0.18em;
   flex: 0 0 auto;
+}
+
+.ai-cove-design-wordmark__space--after-prefix {
+  width: 0.34em;
 }
 
 .desktop-auth-status {
@@ -2279,7 +2310,7 @@ For commercial licensing, please contact support@quantumnous.com
   min-width: 0;
 }
 
-.home-footer-design-copy span {
+.home-footer-design-copy > span {
   display: block;
   color: var(--home-brand-blue);
   font-family: var(--home-mono);
@@ -2290,16 +2321,9 @@ For commercial licensing, please contact support@quantumnous.com
   text-transform: uppercase;
 }
 
-.home-footer-design-copy strong {
-  display: block;
+.home-footer-design-wordmark {
   margin-top: 7px;
-  color: var(--home-ink);
-  font-family: var(--home-serif);
   font-size: 28px;
-  font-style: italic;
-  font-weight: 400;
-  letter-spacing: -0.018em;
-  line-height: 1;
 }
 
 .home-footer-design-copy p {
