@@ -51,47 +51,24 @@ import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
-import { safeNumberFieldProps } from '../utils/numeric-field'
 
 const createPricingSchema = (t: (key: string) => string) =>
-  z
-    .object({
-      QuotaPerUnit: z.coerce.number().min(0, t('Value must be at least 0')),
-      USDExchangeRate: z.coerce
+  z.object({
+    QuotaPerUnit: z.coerce.number().min(0, t('Value must be at least 0')),
+    USDExchangeRate: z.coerce
+      .number()
+      .min(0.0001, t('Exchange rate must be greater than 0')),
+    DisplayInCurrencyEnabled: z.boolean(),
+    DisplayTokenStatEnabled: z.boolean(),
+    general_setting: z.object({
+      quota_display_type: z.literal('USD'),
+      custom_currency_symbol: z.string().max(8).optional(),
+      custom_currency_exchange_rate: z.coerce
         .number()
-        .min(0.0001, t('Exchange rate must be greater than 0')),
-      DisplayInCurrencyEnabled: z.boolean(),
-      DisplayTokenStatEnabled: z.boolean(),
-      general_setting: z.object({
-        quota_display_type: z.enum(['USD', 'CNY', 'TOKENS', 'CUSTOM']),
-        custom_currency_symbol: z.string().max(8).optional(),
-        custom_currency_exchange_rate: z.coerce
-          .number()
-          .min(0.0001, t('Exchange rate must be greater than 0'))
-          .optional(),
-      }),
-    })
-    .superRefine((data, ctx) => {
-      const displayType = data.general_setting.quota_display_type
-
-      if (displayType === 'CUSTOM') {
-        if (!data.general_setting.custom_currency_symbol?.trim()) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['general_setting', 'custom_currency_symbol'],
-            message: t('Custom currency symbol is required'),
-          })
-        }
-
-        if (data.general_setting.custom_currency_exchange_rate == null) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['general_setting', 'custom_currency_exchange_rate'],
-            message: t('Exchange rate is required'),
-          })
-        }
-      }
-    })
+        .min(0.0001, t('Exchange rate must be greater than 0'))
+        .optional(),
+    }),
+  })
 
 type PricingFormValues = z.infer<ReturnType<typeof createPricingSchema>>
 
@@ -134,13 +111,8 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
       },
     })
 
-  const displayType = form.watch('general_setting.quota_display_type') ?? 'USD'
-  const displayInCurrencyEnabled = form.watch('DisplayInCurrencyEnabled')
-  const showTokensOnlyOption = displayType === 'TOKENS'
   const showQuotaPerUnit =
-    displayType === 'TOKENS' ||
     defaultValues.QuotaPerUnit !== DEFAULT_CURRENCY_CONFIG.quotaPerUnit
-  const showDisplayInCurrencyOption = displayInCurrencyEnabled === false
 
   return (
     <>
@@ -186,165 +158,28 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
             <FormField
               control={form.control}
               name='general_setting.quota_display_type'
-              render={({ field }) => (
+              render={() => (
                 <FormItem>
                   <FormLabel>{t('Display Mode')}</FormLabel>
-                  <Select
-                    items={[
-                      { value: 'USD', label: t('USD') },
-                      { value: 'CNY', label: t('CNY') },
-                      { value: 'CUSTOM', label: t('Custom Currency') },
-                      { value: 'TOKENS', label: t('Tokens Only') },
-                    ]}
-                    value={field.value}
-                    onValueChange={field.onChange}
-                  >
+                  <Select items={[{ value: 'USD', label: t('USD') }]} value='USD'>
                     <FormControl>
-                      <SelectTrigger>
+                      <SelectTrigger disabled>
                         <SelectValue placeholder={t('Select display mode')} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent alignItemWithTrigger={false}>
                       <SelectGroup>
                         <SelectItem value='USD'>{t('USD')}</SelectItem>
-                        <SelectItem value='CNY'>{t('CNY')}</SelectItem>
-                        <SelectItem value='CUSTOM'>
-                          {t('Custom Currency')}
-                        </SelectItem>
-                        {showTokensOnlyOption && (
-                          <SelectItem value='TOKENS'>
-                            {t('Tokens Only')}
-                          </SelectItem>
-                        )}
                       </SelectGroup>
                     </SelectContent>
                   </Select>
                   <FormDescription>
-                    {t('Choose how quota values are shown to users')}
+                    {t('All quota and billing amounts are displayed in USD ($).')}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
-
-            {displayType !== 'TOKENS' && (
-              <FormField
-                control={form.control}
-                name='USDExchangeRate'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      {displayType === 'CNY'
-                        ? t('CNY per USD')
-                        : displayType === 'USD'
-                          ? t('USD Exchange Rate')
-                          : t('USD Exchange Rate')}
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        step='0.01'
-                        {...safeNumberFieldProps(field)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Real exchange rate between USD and your payment gateway currency'
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
-
-            {displayType === 'CUSTOM' && (
-              <div className='grid gap-4 sm:grid-cols-2'>
-                <FormField
-                  control={form.control}
-                  name='general_setting.custom_currency_symbol'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Custom Currency Symbol')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          type='text'
-                          value={field.value ?? ''}
-                          onChange={field.onChange}
-                          name={field.name}
-                          onBlur={field.onBlur}
-                          ref={field.ref}
-                          maxLength={8}
-                          placeholder={t('e.g. ¥ or HK$')}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t('Prefix used when displaying prices')}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name='general_setting.custom_currency_exchange_rate'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Units per USD')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          type='number'
-                          step='0.01'
-                          value={field.value ?? ''}
-                          onChange={(e) =>
-                            field.onChange(
-                              e.target.value === ''
-                                ? undefined
-                                : e.target.valueAsNumber
-                            )
-                          }
-                          name={field.name}
-                          onBlur={field.onBlur}
-                          ref={field.ref}
-                          placeholder={t('e.g. 8 means 1 USD = 8 units')}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t('Conversion rate from USD to your custom currency')}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            )}
-
-            {showDisplayInCurrencyOption && (
-              <FormField
-                control={form.control}
-                name='DisplayInCurrencyEnabled'
-                render={({ field }) => (
-                  <SettingsSwitchItem>
-                    <SettingsSwitchContent>
-                      <FormLabel>{t('Display in Currency')}</FormLabel>
-                      <FormDescription>
-                        {displayType === 'TOKENS'
-                          ? t(
-                              'Tokens-only mode will show raw quota values regardless of this toggle.'
-                            )
-                          : t('Show prices in currency instead of quota.')}
-                      </FormDescription>
-                    </SettingsSwitchContent>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </SettingsSwitchItem>
-                )}
-              />
-            )}
 
             <FormField
               control={form.control}

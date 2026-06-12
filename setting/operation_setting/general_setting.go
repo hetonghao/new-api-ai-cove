@@ -41,51 +41,27 @@ func GetGeneralSetting() *GeneralSetting {
 	return &generalSetting
 }
 
-// IsCurrencyDisplay 是否以货币形式展示（美元或人民币）
+// IsCurrencyDisplay 站点统一以美元展示金额。
 func IsCurrencyDisplay() bool {
-	return generalSetting.QuotaDisplayType != QuotaDisplayTypeTokens
+	return true
 }
 
-// IsCNYDisplay 是否以人民币展示
+// IsCNYDisplay 美元口径下始终为 false。
 func IsCNYDisplay() bool {
-	return generalSetting.QuotaDisplayType == QuotaDisplayTypeCNY
+	return false
 }
 
-// GetQuotaDisplayType 返回额度展示类型
+// GetQuotaDisplayType 金额展示统一锁定为 USD。
 func GetQuotaDisplayType() string {
-	return generalSetting.QuotaDisplayType
+	return QuotaDisplayTypeUSD
 }
 
-// GetCurrencySymbol 返回当前展示类型对应符号
+// GetCurrencySymbol 返回站点统一美元符号。
 func GetCurrencySymbol() string {
-	switch generalSetting.QuotaDisplayType {
-	case QuotaDisplayTypeUSD:
-		return "$"
-	case QuotaDisplayTypeCNY:
-		return "¥"
-	case QuotaDisplayTypeCustom:
-		if generalSetting.CustomCurrencySymbol != "" {
-			return generalSetting.CustomCurrencySymbol
-		}
-		return "¤"
-	default:
-		return ""
-	}
+	return "$"
 }
 
-// GetUsdToCurrencyRate 返回 1 USD = X <currency> 的 X（TOKENS 不适用）
-func GetUsdToCurrencyRate(usdToCny float64) float64 {
-	switch generalSetting.QuotaDisplayType {
-	case QuotaDisplayTypeUSD:
-		return 1
-	case QuotaDisplayTypeCNY:
-		return usdToCny
-	case QuotaDisplayTypeCustom:
-		if generalSetting.CustomCurrencyExchangeRate > 0 {
-			return generalSetting.CustomCurrencyExchangeRate
-		}
-		return 1
-	default:
-		return 1
-	}
+// GetUsdToCurrencyRate 统一返回 1，表示所有金额直接按美元展示。
+func GetUsdToCurrencyRate(_ float64) float64 {
+	return 1
 }

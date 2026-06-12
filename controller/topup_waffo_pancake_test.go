@@ -66,11 +66,11 @@ func TestGetWaffoPancakePayMoney(t *testing.T) {
 			expected:         24,
 		},
 		{
-			name:             "tokens display converts quota to display units before pricing",
+			name:             "display mode is normalized to usd for payment pricing",
 			amount:           int64(common.QuotaPerUnit * 3),
 			group:            "vip",
 			quotaDisplayType: operation_setting.QuotaDisplayTypeTokens,
-			expected:         4.5,
+			expected:         2250000,
 		},
 		{
 			name:             "non-positive discount falls back to no discount",

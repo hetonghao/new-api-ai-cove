@@ -121,7 +121,7 @@ const DEFAULT_FORMAT_OPTIONS: Required<CurrencyFormatOptions> = {
   minimumNonZero: 0,
 }
 
-const DISPLAY_TYPE_VALUES = ['USD', 'CNY', 'TOKENS', 'CUSTOM'] as const
+const DISPLAY_TYPE_VALUES = ['USD'] as const
 type DisplayTypeLiteral = (typeof DISPLAY_TYPE_VALUES)[number]
 
 export function isCurrencyDisplayType(
@@ -134,10 +134,10 @@ export function isCurrencyDisplayType(
 }
 
 export function parseCurrencyDisplayType(
-  value: unknown,
-  fallback: CurrencyDisplayType = 'USD'
+  _value: unknown,
+  _fallback: CurrencyDisplayType = 'USD'
 ): CurrencyDisplayType {
-  return isCurrencyDisplayType(value) ? value : fallback
+  return 'USD'
 }
 
 function getConfig(): CurrencyConfig {
@@ -146,67 +146,30 @@ function getConfig(): CurrencyConfig {
   return {
     ...DEFAULT_CURRENCY_CONFIG,
     ...currency,
+    displayInCurrency: true,
+    quotaDisplayType: 'USD',
     quotaPerUnit:
       currency?.quotaPerUnit && currency.quotaPerUnit > 0
         ? currency.quotaPerUnit
         : DEFAULT_CURRENCY_CONFIG.quotaPerUnit,
-    usdExchangeRate:
-      currency?.usdExchangeRate && currency.usdExchangeRate > 0
-        ? currency.usdExchangeRate
-        : DEFAULT_CURRENCY_CONFIG.usdExchangeRate,
-    customCurrencyExchangeRate:
-      currency?.customCurrencyExchangeRate &&
-      currency.customCurrencyExchangeRate > 0
-        ? currency.customCurrencyExchangeRate
-        : DEFAULT_CURRENCY_CONFIG.customCurrencyExchangeRate,
-    customCurrencySymbol:
-      currency?.customCurrencySymbol?.trim() ||
-      DEFAULT_CURRENCY_CONFIG.customCurrencySymbol,
+    usdExchangeRate: 1,
+    customCurrencyExchangeRate: 1,
+    customCurrencySymbol: '$',
   }
 }
 
 function getDisplayMeta(config: CurrencyConfig): DisplayMeta {
-  switch (config.quotaDisplayType) {
-    case 'CNY':
-      return {
-        kind: 'currency',
-        symbol: '¥',
-        currencyCode: 'CNY',
-        exchangeRate: config.usdExchangeRate,
-      }
-    case 'CUSTOM':
-      return {
-        kind: 'custom',
-        symbol: config.customCurrencySymbol,
-        exchangeRate: config.customCurrencyExchangeRate,
-      }
-    case 'TOKENS':
-      return {
-        kind: 'tokens',
-        quotaPerUnit: config.quotaPerUnit,
-      }
-    case 'USD':
-    default:
-      return {
-        kind: 'currency',
-        symbol: '$',
-        currencyCode: 'USD',
-        exchangeRate: 1,
-      }
+  void config
+  return {
+    kind: 'currency',
+    symbol: '$',
+    currencyCode: 'USD',
+    exchangeRate: 1,
   }
 }
 
 function getBillingDisplayMeta(config: CurrencyConfig): DisplayMeta {
-  const meta = getDisplayMeta(config)
-  if (meta.kind === 'tokens') {
-    return {
-      kind: 'currency',
-      symbol: '$',
-      currencyCode: 'USD',
-      exchangeRate: 1,
-    }
-  }
-  return meta
+  return getDisplayMeta(config)
 }
 
 function mergeOptions(
@@ -480,21 +443,7 @@ export function formatQuotaWithCurrency(
  * - Form field labels
  */
 export function getCurrencyLabel(): string {
-  const { config, meta } = getCurrencyDisplay()
-
-  if (meta.kind === 'tokens') {
-    return 'Tokens'
-  }
-
-  switch (config.quotaDisplayType) {
-    case 'CNY':
-      return 'CNY'
-    case 'CUSTOM':
-      return meta.kind === 'custom' ? meta.symbol : 'Custom'
-    case 'USD':
-    default:
-      return 'USD'
-  }
+  return 'USD'
 }
 
 /**
@@ -513,8 +462,7 @@ export function getCurrencyLabel(): string {
  * Use this to conditionally show currency-specific UI elements
  */
 export function isCurrencyDisplayEnabled(): boolean {
-  const { meta } = getCurrencyDisplay()
-  return meta.kind !== 'tokens'
+  return true
 }
 
 /**

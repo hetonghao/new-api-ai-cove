@@ -66,29 +66,16 @@ export function mapStatusDataToConfig(
 ): Partial<SystemConfig> {
   if (!data) return {}
 
-  const quotaDisplayType =
-    (data.quota_display_type as CurrencyDisplayType | undefined) ??
-    DEFAULT_CURRENCY_CONFIG.quotaDisplayType
-
   const currency: CurrencyConfig = {
-    displayInCurrency:
-      data.display_in_currency ?? DEFAULT_CURRENCY_CONFIG.displayInCurrency,
-    quotaDisplayType,
+    displayInCurrency: true,
+    quotaDisplayType: 'USD',
     quotaPerUnit: toNumber(
       data.quota_per_unit,
       DEFAULT_CURRENCY_CONFIG.quotaPerUnit
     ),
-    usdExchangeRate: toNumber(
-      data.usd_exchange_rate,
-      DEFAULT_CURRENCY_CONFIG.usdExchangeRate
-    ),
-    customCurrencySymbol:
-      data.custom_currency_symbol?.trim() ||
-      DEFAULT_CURRENCY_CONFIG.customCurrencySymbol,
-    customCurrencyExchangeRate: toNumber(
-      data.custom_currency_exchange_rate,
-      DEFAULT_CURRENCY_CONFIG.customCurrencyExchangeRate
-    ),
+    usdExchangeRate: 1,
+    customCurrencySymbol: '$',
+    customCurrencyExchangeRate: 1,
   }
 
   return {
