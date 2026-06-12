@@ -314,6 +314,7 @@ func SetApiRouter(router *gin.Engine) {
 		billingRoute.Use(middleware.CORS(), middleware.CriticalRateLimit(), middleware.BillingTokenAuth())
 		{
 			billingRoute.GET("/self", controller.GetBillingSelf)
+			billingRoute.GET("/self/v2", controller.GetBillingSelfV2)
 		}
 
 		redemptionRoute := apiRouter.Group("/redemption")
