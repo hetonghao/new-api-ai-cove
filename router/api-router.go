@@ -12,9 +12,7 @@ import (
 )
 
 func SetApiRouter(router *gin.Engine) {
-	router.GET("/api/debug/processing", middleware.RouteTag("api-debug"), middleware.GlobalAPIRateLimit(), controller.ProcessingProbe)
-
-	apiRouter := router.Group("/api")
+		apiRouter := router.Group("/api")
 	apiRouter.Use(middleware.RouteTag("api"))
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储

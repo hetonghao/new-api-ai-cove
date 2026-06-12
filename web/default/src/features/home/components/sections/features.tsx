@@ -165,9 +165,9 @@ export function Features(_props: FeaturesProps) {
   const proofRows: ProofRow[] = [
     {
       num: '01',
-      title: t('Direct access'),
+      title: t('Stable access'),
       description: t(
-        'Reach the gateway consistently from local tools and CI without waiting on brittle upstream paths.'
+        'Keep local tools and CI on the same compatible API contract without changing your client workflow.'
       ),
       tone: '#8a6f2a',
     },
@@ -215,7 +215,7 @@ export function Features(_props: FeaturesProps) {
           </div>
           <p className='note'>
             {t(
-              'One Base URL connects local assistants, official CLIs, and coding agents to the same gateway.'
+              'One compatible endpoint keeps local assistants, official CLIs, and coding agents aligned.'
             )}
           </p>
         </div>

@@ -1,0 +1,87 @@
+package router
+
+import (
+	"bytes"
+	"embed"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"testing"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+)
+
+//go:embed web/default/dist web/default/dist/index.html web/classic/dist web/classic/dist/index.html
+var webRouterTestAssets embed.FS
+
+func newWebRouterTestThemeAssets(t *testing.T) ThemeAssets {
+	t.Helper()
+
+	defaultIndex, err := webRouterTestAssets.ReadFile("web/default/dist/index.html")
+	require.NoError(t, err)
+
+	classicIndex, err := webRouterTestAssets.ReadFile("web/classic/dist/index.html")
+	require.NoError(t, err)
+
+	return ThemeAssets{
+		DefaultBuildFS:   webRouterTestAssets,
+		DefaultIndexPage: defaultIndex,
+		ClassicBuildFS:   webRouterTestAssets,
+		ClassicIndexPage: classicIndex,
+	}
+}
+
+func newWebRouterTestEngine(t *testing.T) *gin.Engine {
+	t.Helper()
+
+	gin.SetMode(gin.TestMode)
+	common.SetTheme("default")
+	t.Cleanup(func() {
+		common.SetTheme("classic")
+	})
+
+	engine := gin.New()
+	SetWebRouter(engine, newWebRouterTestThemeAssets(t))
+	return engine
+}
+
+func TestWebRouterServesDownloadsLatestJSONWithoutGzipOrIndexFallback(t *testing.T) {
+	engine := newWebRouterTestEngine(t)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/downloads/latest.json", nil)
+	request.Header.Set("Accept-Encoding", "gzip")
+
+	engine.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "", recorder.Header().Get("Content-Encoding"))
+	require.Equal(t, "", recorder.Header().Get("Vary"))
+	require.Equal(t, "application/json", recorder.Header().Get("Content-Type"))
+	require.JSONEq(t, `{"version":"1.0.3","platforms":["darwin-aarch64","windows-x86_64"]}`, recorder.Body.String())
+	require.Equal(t, strconv.Itoa(recorder.Body.Len()), recorder.Header().Get("Content-Length"))
+}
+
+func TestWebRouterServesDesktopInstallerWithoutGzipAndWithContentLength(t *testing.T) {
+	engine := newWebRouterTestEngine(t)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/downloads/ai-cove-design-desktop-windows.exe", nil)
+	request.Header.Set("Accept-Encoding", "gzip")
+
+	engine.ServeHTTP(recorder, request)
+
+	expectedBody, err := webRouterTestAssets.ReadFile("web/default/dist/downloads/ai-cove-design-desktop-windows.exe")
+	require.NoError(t, err)
+
+	actualBody, err := io.ReadAll(recorder.Body)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "", recorder.Header().Get("Content-Encoding"))
+	require.Equal(t, "", recorder.Header().Get("Vary"))
+	require.NotEmpty(t, recorder.Header().Get("Content-Length"))
+	require.Equal(t, strconv.Itoa(len(expectedBody)), recorder.Header().Get("Content-Length"))
+	require.True(t, bytes.Equal(expectedBody, actualBody))
+}
