@@ -546,3 +546,45 @@ func TestBillingSelfV2KeepsUnlimitedSubscriptionsInUSDContract(t *testing.T) {
 	require.Nil(t, response.Data.Subscriptions[0].AmountRemaining)
 	require.Equal(t, 0.0, response.Data.Subscriptions[0].AmountTotal)
 }
+
+func TestBillingSelfV2RejectsDisabledToken(t *testing.T) {
+	db := setupBillingSelfRouteTestDB(t)
+	now := time.Now().Unix()
+
+	require.NoError(t, db.Create(&model.User{
+		Id:       5104,
+		Username: "disabled-user-v2",
+		Password: "hashed-password",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		Quota:    100,
+		AffCode:  "B5104",
+	}).Error)
+	require.NoError(t, db.Create(&model.Token{
+		UserId:         5104,
+		Key:            "billingkeydisabledv2",
+		Name:           "disabled-key-v2",
+		Status:         common.TokenStatusDisabled,
+		CreatedTime:    now - 3600,
+		AccessedTime:   now - 60,
+		ExpiredTime:    -1,
+		RemainQuota:    10,
+		UsedQuota:      20,
+		UnlimitedQuota: false,
+		Group:          "default",
+	}).Error)
+
+	engine := newBillingSelfTestEngine()
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/billing/self/v2", nil)
+	request.Header.Set("Authorization", "Bearer sk-billingkeydisabledv2")
+
+	engine.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	response := decodeBillingSelfV2Response(t, recorder)
+	require.False(t, response.Success)
+	require.Equal(t, "token_disabled", response.Code)
+	require.NotEmpty(t, response.Message)
+}
