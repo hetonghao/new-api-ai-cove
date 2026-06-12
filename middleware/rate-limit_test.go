@@ -24,6 +24,9 @@ func newGlobalAPIRateLimitTestEngine(t *testing.T) *gin.Engine {
 	engine.GET("/api/user/self", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
+	engine.GET("/api/user/self/groups", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
 	engine.GET("/api/user/models", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
@@ -52,7 +55,7 @@ func newGlobalAPIRateLimitTestEngine(t *testing.T) *gin.Engine {
 func TestGlobalAPIRateLimitSkipsUserSelfAndLogRoutes(t *testing.T) {
 	engine := newGlobalAPIRateLimitTestEngine(t)
 
-	for _, path := range []string{"/api/user/self", "/api/user/models", "/api/data/self", "/api/log/", "/api/log/stat", "/api/log/self"} {
+	for _, path := range []string{"/api/user/self", "/api/user/self/groups", "/api/user/models", "/api/data/self", "/api/log/", "/api/log/stat", "/api/log/self"} {
 		first := httptest.NewRecorder()
 		firstRequest := httptest.NewRequest(http.MethodGet, path, nil)
 		firstRequest.RemoteAddr = "203.0.113.9:3456"

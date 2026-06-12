@@ -117,6 +117,8 @@ func shouldSkipGlobalAPIRateLimit(method string, path string) bool {
 	switch {
 	case path == "/api/user/self":
 		return true
+	case path == "/api/user/self/groups":
+		return true
 	case path == "/api/user/models":
 		return true
 	case path == "/api/user/checkin":
