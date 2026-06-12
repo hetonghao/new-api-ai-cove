@@ -12,8 +12,6 @@ import (
 )
 
 func SetApiRouter(router *gin.Engine) {
-	router.GET("/api/debug/processing", middleware.RouteTag("api-debug"), middleware.GlobalAPIRateLimit(), controller.ProcessingProbe)
-
 	apiRouter := router.Group("/api")
 	apiRouter.Use(middleware.RouteTag("api"))
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
@@ -310,6 +308,12 @@ func SetApiRouter(router *gin.Engine) {
 			{
 				tokenUsageRoute.GET("/", controller.GetTokenUsage)
 			}
+		}
+
+		billingRoute := apiRouter.Group("/billing")
+		billingRoute.Use(middleware.CORS(), middleware.CriticalRateLimit(), middleware.BillingTokenAuth())
+		{
+			billingRoute.GET("/self", controller.GetBillingSelf)
 		}
 
 		redemptionRoute := apiRouter.Group("/redemption")

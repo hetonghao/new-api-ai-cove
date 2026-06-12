@@ -51,6 +51,7 @@ const (
 	MsgTokenExhaustedCannotEable = "token.exhausted_cannot_enable"
 	MsgTokenInvalid              = "token.invalid"
 	MsgTokenNotProvided          = "token.not_provided"
+	MsgTokenDisabled             = "token.disabled"
 	MsgTokenExpired              = "token.expired"
 	MsgTokenExhausted            = "token.exhausted"
 	MsgTokenStatusUnavailable    = "token.status_unavailable"

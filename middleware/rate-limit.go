@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -96,9 +97,47 @@ func GlobalWebRateLimit() func(c *gin.Context) {
 
 func GlobalAPIRateLimit() func(c *gin.Context) {
 	if common.GlobalApiRateLimitEnable {
-		return rateLimitFactory(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration, "GA")
+		limiter := rateLimitFactory(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration, "GA")
+		return func(c *gin.Context) {
+			if shouldSkipGlobalAPIRateLimit(c.Request.Method, c.Request.URL.Path) {
+				c.Next()
+				return
+			}
+			limiter(c)
+		}
 	}
 	return defNext
+}
+
+func shouldSkipGlobalAPIRateLimit(method string, path string) bool {
+	if method != http.MethodGet {
+		return false
+	}
+
+	switch {
+	case path == "/api/user/self":
+		return true
+	case path == "/api/user/models":
+		return true
+	case path == "/api/user/checkin":
+		return true
+	case path == "/api/user/passkey":
+		return true
+	case path == "/api/user/2fa/status":
+		return true
+	case path == "/api/data/self":
+		return true
+	case path == "/api/log/":
+		return true
+	case path == "/api/log/stat":
+		return true
+	case path == "/api/log/self":
+		return true
+	case strings.HasPrefix(path, "/api/log/self/"):
+		return true
+	default:
+		return false
+	}
 }
 
 func CriticalRateLimit() func(c *gin.Context) {
