@@ -64,7 +64,25 @@ export function HomeFooter() {
             />
             <div className='home-footer-design-copy'>
               <span>{t('Integrated subsystem')}</span>
-              <strong>{t('AI Cove Design')}</strong>
+              <strong
+                className='ai-cove-design-wordmark home-footer-design-wordmark'
+                aria-label='AI  Cove Design'
+              >
+                <span className='ai-cove-design-wordmark__prefix' aria-hidden='true'>
+                  AI
+                </span>
+                <span
+                  className='ai-cove-design-wordmark__space ai-cove-design-wordmark__space--after-prefix'
+                  aria-hidden='true'
+                />
+                <span className='ai-cove-design-wordmark__image' aria-hidden='true'>
+                  Cove
+                </span>
+                <span className='ai-cove-design-wordmark__space' aria-hidden='true' />
+                <span className='ai-cove-design-wordmark__canvas' aria-hidden='true'>
+                  Design
+                </span>
+              </strong>
               <p>{t(AI_COVE_DESIGN_DESCRIPTION)}</p>
             </div>
           </div>

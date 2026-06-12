@@ -85,12 +85,21 @@ function DesktopAuthPage() {
           />
           <div className='desktop-auth-brand-copy'>
             <span>{t('Desktop app')}</span>
-            <strong aria-label='AI Cove Design'>
-              <span className='desktop-auth-brand-ai' aria-hidden='true'>
+            <strong className='ai-cove-design-wordmark' aria-label='AI  Cove Design'>
+              <span className='ai-cove-design-wordmark__prefix' aria-hidden='true'>
                 AI
               </span>
-              <span className='desktop-auth-brand-gap' aria-hidden='true' />
-              <span aria-hidden='true'>Cove Design</span>
+              <span
+                className='ai-cove-design-wordmark__space ai-cove-design-wordmark__space--after-prefix'
+                aria-hidden='true'
+              />
+              <span className='ai-cove-design-wordmark__image' aria-hidden='true'>
+                Cove
+              </span>
+              <span className='ai-cove-design-wordmark__space' aria-hidden='true' />
+              <span className='ai-cove-design-wordmark__canvas' aria-hidden='true'>
+                Design
+              </span>
             </strong>
           </div>
         </div>
