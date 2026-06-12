@@ -22,24 +22,25 @@ type billingSelfAPIResponse struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 	Data    struct {
+		Currency              string `json:"currency"`
 		BillingPreference     string `json:"billing_preference"`
 		HasActiveSubscription bool   `json:"has_active_subscription"`
 		Wallet                struct {
-			RemainingQuota int `json:"remaining_quota"`
-			UsedQuota      int `json:"used_quota"`
+			RemainingAmount float64 `json:"remaining_amount"`
+			UsedAmount      float64 `json:"used_amount"`
 		} `json:"wallet"`
 		Subscriptions []struct {
-			Id              int    `json:"id"`
-			PlanId          int    `json:"plan_id"`
-			Status          string `json:"status"`
-			Source          string `json:"source"`
-			StartTime       int64  `json:"start_time"`
-			EndTime         int64  `json:"end_time"`
-			NextResetTime   int64  `json:"next_reset_time"`
-			AmountTotal     int64  `json:"amount_total"`
-			AmountUsed      int64  `json:"amount_used"`
-			AmountRemaining *int64 `json:"amount_remaining"`
-			Unlimited       bool   `json:"unlimited"`
+			Id              int      `json:"id"`
+			PlanId          int      `json:"plan_id"`
+			Status          string   `json:"status"`
+			Source          string   `json:"source"`
+			StartTime       int64    `json:"start_time"`
+			EndTime         int64    `json:"end_time"`
+			NextResetTime   int64    `json:"next_reset_time"`
+			AmountTotal     float64  `json:"amount_total"`
+			AmountUsed      float64  `json:"amount_used"`
+			AmountRemaining *float64 `json:"amount_remaining"`
+			Unlimited       bool     `json:"unlimited"`
 		} `json:"subscriptions"`
 	} `json:"data"`
 }
@@ -148,16 +149,17 @@ func TestBillingSelfReturnsWalletAndActiveSubscriptionsForToken(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	response := decodeBillingSelfResponse(t, recorder)
 	require.True(t, response.Success)
+	require.Equal(t, "USD", response.Data.Currency)
 	require.Equal(t, "wallet_first", response.Data.BillingPreference)
 	require.True(t, response.Data.HasActiveSubscription)
-	require.Equal(t, 1200, response.Data.Wallet.RemainingQuota)
-	require.Equal(t, 340, response.Data.Wallet.UsedQuota)
+	require.InDelta(t, 0.0024, response.Data.Wallet.RemainingAmount, 0.000001)
+	require.InDelta(t, 0.00068, response.Data.Wallet.UsedAmount, 0.000001)
 	require.Len(t, response.Data.Subscriptions, 1)
 	require.Equal(t, 7001, response.Data.Subscriptions[0].Id)
-	require.Equal(t, int64(1000), response.Data.Subscriptions[0].AmountTotal)
-	require.Equal(t, int64(240), response.Data.Subscriptions[0].AmountUsed)
+	require.InDelta(t, 0.002, response.Data.Subscriptions[0].AmountTotal, 0.000001)
+	require.InDelta(t, 0.00048, response.Data.Subscriptions[0].AmountUsed, 0.000001)
 	require.NotNil(t, response.Data.Subscriptions[0].AmountRemaining)
-	require.Equal(t, int64(760), *response.Data.Subscriptions[0].AmountRemaining)
+	require.InDelta(t, 0.00152, *response.Data.Subscriptions[0].AmountRemaining, 0.000001)
 	require.False(t, response.Data.Subscriptions[0].Unlimited)
 }
 
@@ -200,8 +202,9 @@ func TestBillingSelfAllowsExhaustedTokenToQuery(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	response := decodeBillingSelfResponse(t, recorder)
 	require.True(t, response.Success)
-	require.Equal(t, 88, response.Data.Wallet.RemainingQuota)
-	require.Equal(t, 912, response.Data.Wallet.UsedQuota)
+	require.Equal(t, "USD", response.Data.Currency)
+	require.InDelta(t, 0.000176, response.Data.Wallet.RemainingAmount, 0.000001)
+	require.InDelta(t, 0.001824, response.Data.Wallet.UsedAmount, 0.000001)
 }
 
 func TestBillingSelfAllowsExpiredTokenToQuery(t *testing.T) {
@@ -243,8 +246,9 @@ func TestBillingSelfAllowsExpiredTokenToQuery(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	response := decodeBillingSelfResponse(t, recorder)
 	require.True(t, response.Success)
-	require.Equal(t, 321, response.Data.Wallet.RemainingQuota)
-	require.Equal(t, 654, response.Data.Wallet.UsedQuota)
+	require.Equal(t, "USD", response.Data.Currency)
+	require.InDelta(t, 0.000642, response.Data.Wallet.RemainingAmount, 0.000001)
+	require.InDelta(t, 0.001308, response.Data.Wallet.UsedAmount, 0.000001)
 }
 
 func TestBillingSelfRejectsDisabledToken(t *testing.T) {
@@ -386,4 +390,5 @@ func TestBillingSelfMarksUnlimitedSubscriptions(t *testing.T) {
 	require.Len(t, response.Data.Subscriptions, 1)
 	require.True(t, response.Data.Subscriptions[0].Unlimited)
 	require.Nil(t, response.Data.Subscriptions[0].AmountRemaining)
+	require.Equal(t, 0.0, response.Data.Subscriptions[0].AmountTotal)
 }
