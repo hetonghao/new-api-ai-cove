@@ -7,30 +7,11 @@ import (
 )
 
 type BillingSelfWallet struct {
-	RemainingQuota int `json:"remaining_quota"`
-	UsedQuota      int `json:"used_quota"`
-}
-
-type BillingSelfSubscription struct {
-	Id              int    `json:"id"`
-	PlanId          int    `json:"plan_id"`
-	Status          string `json:"status"`
-	Source          string `json:"source"`
-	StartTime       int64  `json:"start_time"`
-	EndTime         int64  `json:"end_time"`
-	NextResetTime   int64  `json:"next_reset_time"`
-	AmountTotal     int64  `json:"amount_total"`
-	AmountUsed      int64  `json:"amount_used"`
-	AmountRemaining *int64 `json:"amount_remaining,omitempty"`
-	Unlimited       bool   `json:"unlimited"`
-}
-
-type BillingSelfV2Wallet struct {
 	RemainingAmount float64 `json:"remaining_amount"`
 	UsedAmount      float64 `json:"used_amount"`
 }
 
-type BillingSelfV2Subscription struct {
+type BillingSelfSubscription struct {
 	Id              int      `json:"id"`
 	PlanId          int      `json:"plan_id"`
 	Status          string   `json:"status"`
@@ -97,53 +78,6 @@ func GetBillingSelf(c *gin.Context) {
 		}
 		sub := summary.Subscription
 		unlimited := sub.AmountTotal == 0
-		var amountRemaining *int64
-		if !unlimited {
-			remaining := sub.AmountTotal - sub.AmountUsed
-			if remaining < 0 {
-				remaining = 0
-			}
-			amountRemaining = &remaining
-		}
-		items = append(items, BillingSelfSubscription{
-			Id:              sub.Id,
-			PlanId:          sub.PlanId,
-			Status:          sub.Status,
-			Source:          sub.Source,
-			StartTime:       sub.StartTime,
-			EndTime:         sub.EndTime,
-			NextResetTime:   sub.NextResetTime,
-			AmountTotal:     sub.AmountTotal,
-			AmountUsed:      sub.AmountUsed,
-			AmountRemaining: amountRemaining,
-			Unlimited:       unlimited,
-		})
-	}
-
-	common.ApiSuccess(c, gin.H{
-		"billing_preference":      snapshot.BillingPreference,
-		"has_active_subscription": len(items) > 0,
-		"wallet": BillingSelfWallet{
-			RemainingQuota: snapshot.RemainingQuota,
-			UsedQuota:      snapshot.UsedQuota,
-		},
-		"subscriptions": items,
-	})
-}
-
-func GetBillingSelfV2(c *gin.Context) {
-	snapshot, ok := loadBillingSelfSnapshot(c)
-	if !ok {
-		return
-	}
-
-	items := make([]BillingSelfV2Subscription, 0, len(snapshot.SubscriptionSummaries))
-	for _, summary := range snapshot.SubscriptionSummaries {
-		if summary.Subscription == nil {
-			continue
-		}
-		sub := summary.Subscription
-		unlimited := sub.AmountTotal == 0
 		amountTotalUSD := float64(sub.AmountTotal) / common.QuotaPerUnit
 		amountUsedUSD := float64(sub.AmountUsed) / common.QuotaPerUnit
 		var amountRemaining *float64
@@ -155,7 +89,7 @@ func GetBillingSelfV2(c *gin.Context) {
 			remainingUSD := float64(remainingQuota) / common.QuotaPerUnit
 			amountRemaining = &remainingUSD
 		}
-		items = append(items, BillingSelfV2Subscription{
+		items = append(items, BillingSelfSubscription{
 			Id:              sub.Id,
 			PlanId:          sub.PlanId,
 			Status:          sub.Status,
@@ -174,7 +108,7 @@ func GetBillingSelfV2(c *gin.Context) {
 		"currency":                "USD",
 		"billing_preference":      snapshot.BillingPreference,
 		"has_active_subscription": len(items) > 0,
-		"wallet": BillingSelfV2Wallet{
+		"wallet": BillingSelfWallet{
 			RemainingAmount: float64(snapshot.RemainingQuota) / common.QuotaPerUnit,
 			UsedAmount:      float64(snapshot.UsedQuota) / common.QuotaPerUnit,
 		},

@@ -22,33 +22,6 @@ type billingSelfAPIResponse struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 	Data    struct {
-		BillingPreference     string `json:"billing_preference"`
-		HasActiveSubscription bool   `json:"has_active_subscription"`
-		Wallet                struct {
-			RemainingQuota int `json:"remaining_quota"`
-			UsedQuota      int `json:"used_quota"`
-		} `json:"wallet"`
-		Subscriptions []struct {
-			Id              int    `json:"id"`
-			PlanId          int    `json:"plan_id"`
-			Status          string `json:"status"`
-			Source          string `json:"source"`
-			StartTime       int64  `json:"start_time"`
-			EndTime         int64  `json:"end_time"`
-			NextResetTime   int64  `json:"next_reset_time"`
-			AmountTotal     int64  `json:"amount_total"`
-			AmountUsed      int64  `json:"amount_used"`
-			AmountRemaining *int64 `json:"amount_remaining"`
-			Unlimited       bool   `json:"unlimited"`
-		} `json:"subscriptions"`
-	} `json:"data"`
-}
-
-type billingSelfV2APIResponse struct {
-	Success bool   `json:"success"`
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Data    struct {
 		Currency              string `json:"currency"`
 		BillingPreference     string `json:"billing_preference"`
 		HasActiveSubscription bool   `json:"has_active_subscription"`
@@ -109,14 +82,6 @@ func decodeBillingSelfResponse(t *testing.T, recorder *httptest.ResponseRecorder
 	t.Helper()
 
 	var response billingSelfAPIResponse
-	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
-	return response
-}
-
-func decodeBillingSelfV2Response(t *testing.T, recorder *httptest.ResponseRecorder) billingSelfV2APIResponse {
-	t.Helper()
-
-	var response billingSelfV2APIResponse
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
 	return response
 }
@@ -184,16 +149,17 @@ func TestBillingSelfReturnsWalletAndActiveSubscriptionsForToken(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	response := decodeBillingSelfResponse(t, recorder)
 	require.True(t, response.Success)
+	require.Equal(t, "USD", response.Data.Currency)
 	require.Equal(t, "wallet_first", response.Data.BillingPreference)
 	require.True(t, response.Data.HasActiveSubscription)
-	require.Equal(t, 1200, response.Data.Wallet.RemainingQuota)
-	require.Equal(t, 340, response.Data.Wallet.UsedQuota)
+	require.InDelta(t, 0.0024, response.Data.Wallet.RemainingAmount, 0.000001)
+	require.InDelta(t, 0.00068, response.Data.Wallet.UsedAmount, 0.000001)
 	require.Len(t, response.Data.Subscriptions, 1)
 	require.Equal(t, 7001, response.Data.Subscriptions[0].Id)
-	require.Equal(t, int64(1000), response.Data.Subscriptions[0].AmountTotal)
-	require.Equal(t, int64(240), response.Data.Subscriptions[0].AmountUsed)
+	require.InDelta(t, 0.002, response.Data.Subscriptions[0].AmountTotal, 0.000001)
+	require.InDelta(t, 0.00048, response.Data.Subscriptions[0].AmountUsed, 0.000001)
 	require.NotNil(t, response.Data.Subscriptions[0].AmountRemaining)
-	require.Equal(t, int64(760), *response.Data.Subscriptions[0].AmountRemaining)
+	require.InDelta(t, 0.00152, *response.Data.Subscriptions[0].AmountRemaining, 0.000001)
 	require.False(t, response.Data.Subscriptions[0].Unlimited)
 }
 
@@ -236,8 +202,9 @@ func TestBillingSelfAllowsExhaustedTokenToQuery(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	response := decodeBillingSelfResponse(t, recorder)
 	require.True(t, response.Success)
-	require.Equal(t, 88, response.Data.Wallet.RemainingQuota)
-	require.Equal(t, 912, response.Data.Wallet.UsedQuota)
+	require.Equal(t, "USD", response.Data.Currency)
+	require.InDelta(t, 0.000176, response.Data.Wallet.RemainingAmount, 0.000001)
+	require.InDelta(t, 0.001824, response.Data.Wallet.UsedAmount, 0.000001)
 }
 
 func TestBillingSelfAllowsExpiredTokenToQuery(t *testing.T) {
@@ -279,8 +246,9 @@ func TestBillingSelfAllowsExpiredTokenToQuery(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	response := decodeBillingSelfResponse(t, recorder)
 	require.True(t, response.Success)
-	require.Equal(t, 321, response.Data.Wallet.RemainingQuota)
-	require.Equal(t, 654, response.Data.Wallet.UsedQuota)
+	require.Equal(t, "USD", response.Data.Currency)
+	require.InDelta(t, 0.000642, response.Data.Wallet.RemainingAmount, 0.000001)
+	require.InDelta(t, 0.001308, response.Data.Wallet.UsedAmount, 0.000001)
 }
 
 func TestBillingSelfRejectsDisabledToken(t *testing.T) {
@@ -422,169 +390,15 @@ func TestBillingSelfMarksUnlimitedSubscriptions(t *testing.T) {
 	require.Len(t, response.Data.Subscriptions, 1)
 	require.True(t, response.Data.Subscriptions[0].Unlimited)
 	require.Nil(t, response.Data.Subscriptions[0].AmountRemaining)
-	require.Equal(t, int64(0), response.Data.Subscriptions[0].AmountTotal)
-}
-
-func TestBillingSelfV2ReturnsWalletAndActiveSubscriptionsForToken(t *testing.T) {
-	db := setupBillingSelfRouteTestDB(t)
-	now := time.Now().Unix()
-
-	require.NoError(t, db.Create(&model.User{
-		Id:        5101,
-		Username:  "billing-user-v2",
-		Password:  "hashed-password",
-		Role:      common.RoleCommonUser,
-		Status:    common.UserStatusEnabled,
-		Group:     "default",
-		Quota:     1200,
-		UsedQuota: 340,
-		Setting:   `{"billing_preference":"wallet_first"}`,
-		AffCode:   "B5101",
-	}).Error)
-	require.NoError(t, db.Create(&model.Token{
-		UserId:         5101,
-		Key:            "billingkeyactivev2",
-		Name:           "primary-key-v2",
-		Status:         common.TokenStatusEnabled,
-		CreatedTime:    now - 3600,
-		AccessedTime:   now - 60,
-		ExpiredTime:    -1,
-		RemainQuota:    200,
-		UsedQuota:      50,
-		UnlimitedQuota: false,
-		Group:          "default",
-	}).Error)
-	require.NoError(t, db.Create(&model.UserSubscription{
-		Id:            7101,
-		UserId:        5101,
-		PlanId:        9101,
-		AmountTotal:   1000,
-		AmountUsed:    240,
-		StartTime:     now - 7200,
-		EndTime:       now + 7200,
-		Status:        "active",
-		Source:        "order",
-		NextResetTime: now + 3600,
-	}).Error)
-
-	engine := newBillingSelfTestEngine()
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/billing/self/v2", nil)
-	request.Header.Set("Authorization", "Bearer sk-billingkeyactivev2")
-
-	engine.ServeHTTP(recorder, request)
-
-	require.Equal(t, http.StatusOK, recorder.Code)
-	response := decodeBillingSelfV2Response(t, recorder)
-	require.True(t, response.Success)
-	require.Equal(t, "USD", response.Data.Currency)
-	require.Equal(t, "wallet_first", response.Data.BillingPreference)
-	require.True(t, response.Data.HasActiveSubscription)
-	require.InDelta(t, 0.0024, response.Data.Wallet.RemainingAmount, 0.000001)
-	require.InDelta(t, 0.00068, response.Data.Wallet.UsedAmount, 0.000001)
-	require.Len(t, response.Data.Subscriptions, 1)
-	require.Equal(t, 7101, response.Data.Subscriptions[0].Id)
-	require.InDelta(t, 0.002, response.Data.Subscriptions[0].AmountTotal, 0.000001)
-	require.InDelta(t, 0.00048, response.Data.Subscriptions[0].AmountUsed, 0.000001)
-	require.NotNil(t, response.Data.Subscriptions[0].AmountRemaining)
-	require.InDelta(t, 0.00152, *response.Data.Subscriptions[0].AmountRemaining, 0.000001)
-	require.False(t, response.Data.Subscriptions[0].Unlimited)
-}
-
-func TestBillingSelfV2KeepsUnlimitedSubscriptionsInUSDContract(t *testing.T) {
-	db := setupBillingSelfRouteTestDB(t)
-	now := time.Now().Unix()
-
-	require.NoError(t, db.Create(&model.User{
-		Id:       5106,
-		Username: "unlimited-user-v2",
-		Password: "hashed-password",
-		Role:     common.RoleCommonUser,
-		Status:   common.UserStatusEnabled,
-		Group:    "default",
-		Quota:    50,
-		AffCode:  "B5106",
-	}).Error)
-	require.NoError(t, db.Create(&model.Token{
-		UserId:         5106,
-		Key:            "billingkeyunlimitedv2",
-		Name:           "unlimited-key-v2",
-		Status:         common.TokenStatusEnabled,
-		CreatedTime:    now - 3600,
-		AccessedTime:   now - 60,
-		ExpiredTime:    -1,
-		RemainQuota:    10,
-		UsedQuota:      20,
-		UnlimitedQuota: false,
-		Group:          "default",
-	}).Error)
-	require.NoError(t, db.Create(&model.UserSubscription{
-		Id:            7106,
-		UserId:        5106,
-		PlanId:        9106,
-		AmountTotal:   0,
-		AmountUsed:    240,
-		StartTime:     now - 7200,
-		EndTime:       now + 7200,
-		Status:        "active",
-		Source:        "order",
-		NextResetTime: now + 3600,
-	}).Error)
-
-	engine := newBillingSelfTestEngine()
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/billing/self/v2", nil)
-	request.Header.Set("Authorization", "Bearer sk-billingkeyunlimitedv2")
-
-	engine.ServeHTTP(recorder, request)
-
-	require.Equal(t, http.StatusOK, recorder.Code)
-	response := decodeBillingSelfV2Response(t, recorder)
-	require.True(t, response.Success)
-	require.Len(t, response.Data.Subscriptions, 1)
-	require.True(t, response.Data.Subscriptions[0].Unlimited)
-	require.Nil(t, response.Data.Subscriptions[0].AmountRemaining)
 	require.Equal(t, 0.0, response.Data.Subscriptions[0].AmountTotal)
 }
 
-func TestBillingSelfV2RejectsDisabledToken(t *testing.T) {
-	db := setupBillingSelfRouteTestDB(t)
-	now := time.Now().Unix()
-
-	require.NoError(t, db.Create(&model.User{
-		Id:       5104,
-		Username: "disabled-user-v2",
-		Password: "hashed-password",
-		Role:     common.RoleCommonUser,
-		Status:   common.UserStatusEnabled,
-		Group:    "default",
-		Quota:    100,
-		AffCode:  "B5104",
-	}).Error)
-	require.NoError(t, db.Create(&model.Token{
-		UserId:         5104,
-		Key:            "billingkeydisabledv2",
-		Name:           "disabled-key-v2",
-		Status:         common.TokenStatusDisabled,
-		CreatedTime:    now - 3600,
-		AccessedTime:   now - 60,
-		ExpiredTime:    -1,
-		RemainQuota:    10,
-		UsedQuota:      20,
-		UnlimitedQuota: false,
-		Group:          "default",
-	}).Error)
-
+func TestBillingSelfV2PathNoLongerExists(t *testing.T) {
 	engine := newBillingSelfTestEngine()
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/billing/self/v2", nil)
-	request.Header.Set("Authorization", "Bearer sk-billingkeydisabledv2")
 
 	engine.ServeHTTP(recorder, request)
 
-	require.Equal(t, http.StatusForbidden, recorder.Code)
-	response := decodeBillingSelfV2Response(t, recorder)
-	require.False(t, response.Success)
-	require.Equal(t, "token_disabled", response.Code)
-	require.NotEmpty(t, response.Message)
+	require.Equal(t, http.StatusNotFound, recorder.Code)
 }
