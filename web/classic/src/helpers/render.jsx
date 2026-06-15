@@ -94,7 +94,6 @@ import {
   SiGitlab,
   SiGoogle,
   SiKeycloak,
-  SiLinkedin,
   SiNextcloud,
   SiNotion,
   SiOkta,
@@ -106,6 +105,7 @@ import {
   SiWechat,
   SiX,
 } from 'react-icons/si';
+import { FaLinkedin } from 'react-icons/fa';
 
 // 获取侧边栏Lucide图标组件
 export function getLucideIcon(key, selected = false) {
@@ -509,7 +509,7 @@ const oauthProviderIconMap = {
   google: SiGoogle,
   discord: SiDiscord,
   facebook: SiFacebook,
-  linkedin: SiLinkedin,
+  linkedin: FaLinkedin,
   x: SiX,
   twitter: SiX,
   slack: SiSlack,
@@ -1056,13 +1056,17 @@ export function getQuotaWithUnit(quota, digits = 6) {
   return (quota / quotaPerUnit).toFixed(digits);
 }
 
+// amount 为系统内部的美元值
 export function renderQuotaWithAmount(amount) {
-  const quotaDisplayType = getQuotaDisplayType();
+  const { symbol, rate, type } = getCurrencyConfig();
+  if (type === 'TOKENS') {
+    return renderNumber(renderUnitWithQuota(amount));
+  }
   const numericAmount = Number(amount);
-  const formattedAmount = Number.isFinite(numericAmount)
-      ? numericAmount.toFixed(2)
-      : amount;
-  return quotaDisplayType === 'USD' ? '$' + formattedAmount : formattedAmount;
+  if (!Number.isFinite(numericAmount)) {
+    return symbol + amount;
+  }
+  return symbol + (numericAmount * rate).toFixed(2);
 }
 
 /**

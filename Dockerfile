@@ -1,14 +1,16 @@
 FROM oven/bun:1@sha256:0733e50325078969732ebe3b15ce4c4be5082f18c4ac1a0f0ca4839c2e4e42a7 AS builder
 
-WORKDIR /build
-COPY web/default/package.json .
-COPY web/default/bun.lock .
+WORKDIR /build/web
+COPY web/package.json web/bun.lock ./
+COPY web/default/package.json ./default/package.json
+COPY web/classic/package.json ./classic/package.json
 RUN bun install --frozen-lockfile --network-concurrency 8
-COPY ./web/default .
-COPY ./VERSION .
-RUN DESKTOP_DOWNLOAD_VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' public/downloads/latest.json 2>/dev/null | head -n 1)" \
+COPY ./web/default ./default
+COPY ./VERSION /build/VERSION
+RUN DESKTOP_DOWNLOAD_VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' default/public/downloads/latest.json 2>/dev/null | head -n 1)" && \
+    cd default && \
     DISABLE_ESLINT_PLUGIN='true' \
-    VITE_REACT_APP_VERSION=$(cat VERSION) \
+    VITE_REACT_APP_VERSION=$(cat /build/VERSION) \
     VITE_AI_COVE_DESIGN_DESKTOP_DOWNLOAD_VERSION="$DESKTOP_DOWNLOAD_VERSION" \
     bun run build
 
@@ -26,10 +28,10 @@ ADD go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-COPY --from=builder /build/dist ./web/default/dist
+COPY --from=builder /build/web/default/dist ./web/default/dist
 # Reuse the default frontend bundle for the classic theme to avoid a second
 # high-memory frontend build in the release image.
-COPY --from=builder /build/dist ./web/classic/dist
+COPY --from=builder /build/web/default/dist ./web/classic/dist
 RUN go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o new-api
 
 FROM debian:bookworm-slim@sha256:f06537653ac770703bc45b4b113475bd402f451e85223f0f2837acbf89ab020a
