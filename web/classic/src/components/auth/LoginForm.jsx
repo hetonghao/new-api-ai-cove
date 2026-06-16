@@ -66,6 +66,10 @@ import LinuxDoIcon from '../common/logo/LinuxDoIcon';
 import TwoFAVerification from './TwoFAVerification';
 import { useTranslation } from 'react-i18next';
 import { SiDiscord } from 'react-icons/si';
+import {
+  getPrimarySubmitButtonState,
+  guardPrimarySubmitAction,
+} from './legal-consent-guard.js';
 
 const LoginForm = () => {
   let navigate = useNavigate();
@@ -142,6 +146,12 @@ const LoginForm = () => {
       status.telegram_oauth ||
       hasCustomOAuthProviders,
   );
+  const requiresLegalConsent = hasUserAgreement || hasPrivacyPolicy;
+  const primarySubmitButtonState = getPrimarySubmitButtonState({
+    isActuallyDisabled: false,
+    requiresLegalConsent,
+    agreedToLegal: agreedToTerms,
+  });
 
   useEffect(() => {
     if (status?.turnstile_check) {
@@ -216,8 +226,15 @@ const LoginForm = () => {
   }
 
   async function handleSubmit(e) {
-    if ((hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms) {
-      showInfo(t('请先阅读并同意用户协议和隐私政策'));
+    if (
+      guardPrimarySubmitAction({
+        requiresLegalConsent,
+        agreedToLegal: agreedToTerms,
+        onBlocked: (message) => {
+          showInfo(message);
+        },
+      }).intercepted
+    ) {
       return;
     }
     if (turnstileEnabled && turnstileToken === '') {
@@ -805,14 +822,16 @@ const LoginForm = () => {
                 <div className='space-y-2 pt-2'>
                   <Button
                     theme='solid'
-                    className='w-full !rounded-full'
+                    className={`w-full !rounded-full${
+                      primarySubmitButtonState.visuallyDisabled
+                        ? ' opacity-50'
+                        : ''
+                    }`}
                     type='primary'
                     htmlType='submit'
                     onClick={handleSubmit}
                     loading={loginLoading}
-                    disabled={
-                      (hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms
-                    }
+                    aria-disabled={primarySubmitButtonState.ariaDisabled}
                   >
                     {t('继续')}
                   </Button>

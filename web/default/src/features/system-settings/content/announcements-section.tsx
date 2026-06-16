@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState } from 'react'
-import * as z from 'zod'
+import type { infer as ZodInfer } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Plus, Edit, Trash2, Save } from 'lucide-react'
@@ -62,6 +62,10 @@ import { StatusBadge } from '@/components/status-badge'
 import { SettingsSwitchField } from '../components/settings-form-layout'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+import {
+  announcementSchema,
+  ANNOUNCEMENT_CONTENT_DESCRIPTION,
+} from './announcements-section.validation'
 
 type Announcement = {
   id: number
@@ -76,20 +80,7 @@ type AnnouncementsSectionProps = {
   data: string
 }
 
-const announcementSchema = z.object({
-  content: z
-    .string()
-    .min(1, 'Content is required')
-    .max(500, 'Content must be less than 500 characters'),
-  publishDate: z.string().min(1, 'Publish date is required'),
-  type: z.enum(['default', 'ongoing', 'success', 'warning', 'error']),
-  extra: z
-    .string()
-    .max(100, 'Extra must be less than 100 characters')
-    .optional(),
-})
-
-type AnnouncementFormValues = z.infer<typeof announcementSchema>
+type AnnouncementFormValues = ZodInfer<typeof announcementSchema>
 
 const ANNOUNCEMENT_FORM_ID = 'announcement-form'
 
@@ -492,7 +483,7 @@ export function AnnouncementsSection({
                     />
                   </FormControl>
                   <FormDescription>
-                    {t('Maximum 500 characters. Supports Markdown and HTML.')}
+                    {t(ANNOUNCEMENT_CONTENT_DESCRIPTION)}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

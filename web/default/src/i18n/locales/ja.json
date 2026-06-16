@@ -2325,6 +2325,7 @@
     "Maximum 1000 characters. Supports Markdown and HTML.": "最大1000文字。MarkdownとHTMLをサポートしています。",
     "Maximum 200 characters": "最大200文字",
     "Maximum 500 characters. Supports Markdown and HTML.": "最大500文字。MarkdownとHTMLをサポートしています。",
+    "Maximum 3000 characters (counted by Unicode characters). Supports Markdown and HTML.": "最大3000文字（Unicode文字数でカウント）。MarkdownとHTMLをサポートしています。",
     "Maximum check-in quota": "最大チェックインクォータ",
     "Maximum input window": "最大入力ウィンドウ",
     "Maximum number of tokens in the response": "レスポンスの最大トークン数",

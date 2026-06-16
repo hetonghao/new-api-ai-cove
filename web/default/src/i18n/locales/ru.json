@@ -2325,6 +2325,7 @@
     "Maximum 1000 characters. Supports Markdown and HTML.": "Максимум 1000 символов. Поддерживает Markdown и HTML.",
     "Maximum 200 characters": "Максимум 200 символов",
     "Maximum 500 characters. Supports Markdown and HTML.": "Максимум 500 символов. Поддерживает Markdown и HTML.",
+    "Maximum 3000 characters (counted by Unicode characters). Supports Markdown and HTML.": "Максимум 3000 символов (с подсчётом по Unicode-символам). Поддерживает Markdown и HTML.",
     "Maximum check-in quota": "Максимальная квота регистрации",
     "Maximum input window": "Максимальное окно ввода",
     "Maximum number of tokens in the response": "Максимальное число токенов в ответе",

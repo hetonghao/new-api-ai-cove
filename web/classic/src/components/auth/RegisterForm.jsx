@@ -64,6 +64,10 @@ import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 import { useTranslation } from 'react-i18next';
 import { SiDiscord } from 'react-icons/si';
+import {
+  getPrimarySubmitButtonState,
+  guardPrimarySubmitAction,
+} from './legal-consent-guard.js';
 
 const RegisterForm = () => {
   let navigate = useNavigate();
@@ -140,6 +144,12 @@ const RegisterForm = () => {
       status.telegram_oauth ||
       hasCustomOAuthProviders,
   );
+  const requiresLegalConsent = hasUserAgreement || hasPrivacyPolicy;
+  const primarySubmitButtonState = getPrimarySubmitButtonState({
+    isActuallyDisabled: false,
+    requiresLegalConsent,
+    agreedToLegal: agreedToTerms,
+  });
 
   const [showEmailVerification, setShowEmailVerification] = useState(false);
 
@@ -216,6 +226,17 @@ const RegisterForm = () => {
   }
 
   async function handleSubmit(e) {
+    if (
+      guardPrimarySubmitAction({
+        requiresLegalConsent,
+        agreedToLegal: agreedToTerms,
+        onBlocked: (message) => {
+          showInfo(message);
+        },
+      }).intercepted
+    ) {
+      return;
+    }
     if (password.length < 8) {
       showInfo('密码长度不得小于 8 位！');
       return;
@@ -678,14 +699,16 @@ const RegisterForm = () => {
                 <div className='space-y-2 pt-2'>
                   <Button
                     theme='solid'
-                    className='w-full !rounded-full'
+                    className={`w-full !rounded-full${
+                      primarySubmitButtonState.visuallyDisabled
+                        ? ' opacity-50'
+                        : ''
+                    }`}
                     type='primary'
                     htmlType='submit'
                     onClick={handleSubmit}
                     loading={registerLoading}
-                    disabled={
-                      (hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms
-                    }
+                    aria-disabled={primarySubmitButtonState.ariaDisabled}
                   >
                     {t('注册')}
                   </Button>

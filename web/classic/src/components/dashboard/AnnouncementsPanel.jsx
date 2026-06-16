@@ -20,12 +20,12 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Card, Tag, Timeline, Empty } from '@douyinfe/semi-ui';
 import { Bell } from 'lucide-react';
-import { marked } from 'marked';
 import {
   IllustrationConstruction,
   IllustrationConstructionDark,
 } from '@douyinfe/semi-illustrations';
 import ScrollableContainer from '../common/ui/ScrollableContainer';
+import MarkdownRenderer from '../common/markdown/MarkdownRenderer';
 
 const AnnouncementsPanel = ({
   announcementData,
@@ -80,7 +80,6 @@ const AnnouncementsPanel = ({
         {announcementData.length > 0 ? (
           <Timeline mode='left'>
             {announcementData.map((item, idx) => {
-              const htmlExtra = item.extra ? marked.parse(item.extra) : '';
               return (
                 <Timeline.Item
                   key={idx}
@@ -88,20 +87,15 @@ const AnnouncementsPanel = ({
                   time={`${item.relative ? item.relative + ' ' : ''}${item.time}`}
                   extra={
                     item.extra ? (
-                      <div
-                        className='text-xs text-gray-500'
-                        dangerouslySetInnerHTML={{ __html: htmlExtra }}
+                      <MarkdownRenderer
+                        content={item.extra}
+                        fontSize={12}
+                        className='text-gray-500'
                       />
                     ) : null
                   }
                 >
-                  <div>
-                    <div
-                      dangerouslySetInnerHTML={{
-                        __html: marked.parse(item.content || ''),
-                      }}
-                    />
-                  </div>
+                  <MarkdownRenderer content={item.content || ''} />
                 </Timeline.Item>
               );
             })}

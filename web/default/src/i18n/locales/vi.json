@@ -2325,6 +2325,7 @@
     "Maximum 1000 characters. Supports Markdown and HTML.": "Tối đa 1000 ký tự. Hỗ trợ Markdown và HTML.",
     "Maximum 200 characters": "Tối đa 200 ký tự",
     "Maximum 500 characters. Supports Markdown and HTML.": "Tối đa 500 ký tự. Hỗ trợ Markdown và HTML.",
+    "Maximum 3000 characters (counted by Unicode characters). Supports Markdown and HTML.": "Tối đa 3000 ký tự (đếm theo ký tự Unicode). Hỗ trợ Markdown và HTML.",
     "Maximum check-in quota": "Hạn ngạch điểm danh tối đa",
     "Maximum input window": "Cửa sổ nhập tối đa",
     "Maximum number of tokens in the response": "Số token tối đa trong phản hồi",

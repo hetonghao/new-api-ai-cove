@@ -45,6 +45,10 @@ import {
   formatDateTimeString,
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
+import {
+  ANNOUNCEMENT_CONTENT_LIMIT,
+  validateAnnouncementContentBeforeSave,
+} from './SettingsAnnouncements.validation.js';
 
 const { Text } = Typography;
 
@@ -270,6 +274,13 @@ const SettingsAnnouncements = ({ options, refresh }) => {
   const handleSaveAnnouncement = async () => {
     if (!announcementForm.content || !announcementForm.publishDate) {
       showError('请填写完整的公告信息');
+      return;
+    }
+    const contentValidationError = validateAnnouncementContentBeforeSave(
+      announcementForm.content,
+    );
+    if (contentValidationError) {
+      showError(contentValidationError);
       return;
     }
 
@@ -536,7 +547,6 @@ const SettingsAnnouncements = ({ options, refresh }) => {
             field='content'
             label={t('公告内容')}
             placeholder={t('请输入公告内容（支持 Markdown/HTML）')}
-            maxCount={500}
             rows={3}
             rules={[{ required: true, message: t('请输入公告内容') }]}
             onChange={(value) =>
@@ -619,7 +629,6 @@ const SettingsAnnouncements = ({ options, refresh }) => {
         <TextArea
           value={announcementForm.content}
           placeholder={t('请输入公告内容（支持 Markdown/HTML）')}
-          maxCount={500}
           rows={15}
           style={{ width: '100%' }}
           onChange={(value) =>

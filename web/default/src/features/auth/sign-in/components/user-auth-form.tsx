@@ -51,6 +51,10 @@ import { OAuthProviders } from '@/features/auth/components/oauth-providers'
 import { loginFormSchema } from '@/features/auth/constants'
 import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
+import {
+  getPrimarySubmitButtonState,
+  guardPrimarySubmitAction,
+} from '@/features/auth/lib/legal-consent-guard'
 import { beginPasskeyLogin, finishPasskeyLogin } from '@/features/auth/passkey'
 import type { AuthFormProps } from '@/features/auth/types'
 
@@ -90,6 +94,11 @@ export function UserAuthForm({
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
   const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
   const requiresLegalConsent = hasUserAgreement || hasPrivacyPolicy
+  const primarySubmitButtonState = getPrimarySubmitButtonState({
+    isActuallyDisabled: isLoading,
+    requiresLegalConsent,
+    agreedToLegal,
+  })
   const passkeyButtonDisabled =
     isPasskeyLoading ||
     !passkeySupported ||
@@ -143,8 +152,15 @@ export function UserAuthForm({
   }, [status])
 
   async function onSubmit(data: z.infer<typeof loginFormSchema>) {
-    if (requiresLegalConsent && !agreedToLegal) {
-      toast.error(legalConsentErrorMessage)
+    if (
+      guardPrimarySubmitAction({
+        requiresLegalConsent,
+        agreedToLegal,
+        onBlocked: message => {
+          toast.error(message)
+        },
+      }).intercepted
+    ) {
       return
     }
 
@@ -372,8 +388,13 @@ export function UserAuthForm({
             {/* Submit Button */}
             <Button
               type='submit'
-              className='mt-2 w-full justify-center gap-2'
-              disabled={isLoading || (requiresLegalConsent && !agreedToLegal)}
+              className={cn(
+                'mt-2 w-full justify-center gap-2',
+                primarySubmitButtonState.visuallyDisabled &&
+                  'cursor-not-allowed opacity-50'
+              )}
+              disabled={primarySubmitButtonState.disabled}
+              aria-disabled={primarySubmitButtonState.ariaDisabled}
             >
               {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
               {t('Sign in')}

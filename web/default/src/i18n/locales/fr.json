@@ -2325,6 +2325,7 @@
     "Maximum 1000 characters. Supports Markdown and HTML.": "Maximum 1000 caractères. Prend en charge Markdown et HTML.",
     "Maximum 200 characters": "Maximum 200 caractères",
     "Maximum 500 characters. Supports Markdown and HTML.": "Maximum 500 caractères. Prend en charge Markdown et HTML.",
+    "Maximum 3000 characters (counted by Unicode characters). Supports Markdown and HTML.": "Maximum 3000 caractères (comptés en caractères Unicode). Prend en charge Markdown et HTML.",
     "Maximum check-in quota": "Quota maximum de connexion",
     "Maximum input window": "Fenêtre d'entrée maximale",
     "Maximum number of tokens in the response": "Nombre maximum de jetons dans la réponse",

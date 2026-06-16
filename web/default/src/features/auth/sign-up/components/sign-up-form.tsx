@@ -47,6 +47,10 @@ import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { useEmailVerification } from '@/features/auth/hooks/use-email-verification'
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
 import {
+  getPrimarySubmitButtonState,
+  guardPrimarySubmitAction,
+} from '@/features/auth/lib/legal-consent-guard'
+import {
   getAffiliateCode,
   saveAffiliateCode,
 } from '@/features/auth/lib/storage'
@@ -104,6 +108,11 @@ export function SignUpForm({
     true
   const hasWeChatLogin = Boolean(status?.wechat_login)
   const turnstileReady = !isTurnstileEnabled || Boolean(turnstileToken)
+  const primarySubmitButtonState = getPrimarySubmitButtonState({
+    isActuallyDisabled: isLoading || !turnstileReady,
+    requiresLegalConsent,
+    agreedToLegal,
+  })
 
   const wechatQrCodeUrl = useMemo(() => {
     return (
@@ -135,8 +144,15 @@ export function SignUpForm({
   }, [])
 
   async function onSubmit(data: z.infer<typeof registerFormSchema>) {
-    if (requiresLegalConsent && !agreedToLegal) {
-      toast.error(legalConsentErrorMessage)
+    if (
+      guardPrimarySubmitAction({
+        requiresLegalConsent,
+        agreedToLegal,
+        onBlocked: message => {
+          toast.error(message)
+        },
+      }).intercepted
+    ) {
       return
     }
 
@@ -354,12 +370,13 @@ export function SignUpForm({
         {/* Submit Button */}
         <Button
           type='submit'
-          className='mt-2 w-full justify-center gap-2'
-          disabled={
-            isLoading ||
-            (requiresLegalConsent && !agreedToLegal) ||
-            !turnstileReady
-          }
+          className={cn(
+            'mt-2 w-full justify-center gap-2',
+            primarySubmitButtonState.visuallyDisabled &&
+              'cursor-not-allowed opacity-50'
+          )}
+          disabled={primarySubmitButtonState.disabled}
+          aria-disabled={primarySubmitButtonState.ariaDisabled}
         >
           {isLoading ? <Loader2 className='h-4 w-4 animate-spin' /> : null}
           {t('Create account')}
