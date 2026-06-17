@@ -677,15 +677,11 @@ func normalizeAutomaticChannelTestUsageForBilling(usage *dto.Usage, estimateProm
 		normalized.InputTokensDetails = &inputDetails
 	}
 
-	if estimatePromptTokens > 0 {
-		normalized.PromptTokens = estimatePromptTokens
-		normalized.InputTokens = estimatePromptTokens
-		if normalized.PromptTokensDetails.TextTokens > 0 {
-			normalized.PromptTokensDetails.TextTokens = estimatePromptTokens
-		}
-		if normalized.InputTokensDetails != nil && normalized.InputTokensDetails.TextTokens > 0 {
-			normalized.InputTokensDetails.TextTokens = estimatePromptTokens
-		}
+	normalized.PromptTokens = estimatePromptTokens
+	normalized.InputTokens = estimatePromptTokens
+	normalized.PromptTokensDetails.TextTokens = estimatePromptTokens
+	if normalized.InputTokensDetails != nil {
+		normalized.InputTokensDetails.TextTokens = estimatePromptTokens
 	}
 	normalized.TotalTokens = normalized.PromptTokens + normalized.CompletionTokens
 	return &normalized

@@ -118,6 +118,33 @@ func TestNormalizeAutomaticChannelTestUsageForBillingStripsCacheTokens(t *testin
 	require.Equal(t, 4864, usage.InputTokensDetails.CachedTokens)
 }
 
+func TestNormalizeAutomaticChannelTestUsageForBillingUsesZeroEstimate(t *testing.T) {
+	usage := &dto.Usage{
+		PromptTokens:     223,
+		CompletionTokens: 13,
+		TotalTokens:      5100,
+		InputTokens:      223,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens: 4864,
+			TextTokens:   223,
+		},
+		InputTokensDetails: &dto.InputTokenDetails{
+			CachedTokens: 4864,
+			TextTokens:   223,
+		},
+	}
+
+	normalized := normalizeAutomaticChannelTestUsageForBilling(usage, 0, true)
+
+	require.Equal(t, 0, normalized.PromptTokens)
+	require.Equal(t, 0, normalized.InputTokens)
+	require.Equal(t, 13, normalized.CompletionTokens)
+	require.Equal(t, 13, normalized.TotalTokens)
+	require.Zero(t, normalized.PromptTokensDetails.TextTokens)
+	require.NotNil(t, normalized.InputTokensDetails)
+	require.Zero(t, normalized.InputTokensDetails.TextTokens)
+}
+
 func TestResolveChannelTestUserIDUsesRequestUser(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
