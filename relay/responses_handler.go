@@ -44,6 +44,7 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 			Model:              req.Model,
 			Input:              req.Input,
 			Instructions:       req.Instructions,
+			MaxOutputTokens:    req.MaxOutputTokens,
 			PreviousResponseID: req.PreviousResponseID,
 		}
 	default:

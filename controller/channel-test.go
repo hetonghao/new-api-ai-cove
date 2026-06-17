@@ -43,7 +43,9 @@ type testResult struct {
 	newAPIError *types.NewAPIError
 }
 
-func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
+const automaticChannelTestMaxOutputTokens uint = 1
+
+func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string, automatic bool) string {
 	normalized := strings.TrimSpace(endpointType)
 	if normalized != "" {
 		return normalized
@@ -52,6 +54,9 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 		return string(constant.EndpointTypeOpenAIResponseCompact)
 	}
 	if channel != nil && channel.Type == constant.ChannelTypeCodex {
+		if automatic {
+			return string(constant.EndpointTypeOpenAIResponseCompact)
+		}
 		return string(constant.EndpointTypeOpenAIResponse)
 	}
 	return normalized
@@ -74,7 +79,68 @@ func resolveChannelTestUserID(c *gin.Context) (int, error) {
 	return rootUser.Id, nil
 }
 
-func testChannel(channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool) testResult {
+func resolveChannelTestModel(channel *model.Channel, requestedModel string, automatic bool) string {
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel != "" {
+		return requestedModel
+	}
+	if channel != nil && channel.TestModel != nil {
+		if testModel := strings.TrimSpace(*channel.TestModel); testModel != "" {
+			return testModel
+		}
+	}
+	if channel != nil {
+		models := channel.GetModels()
+		if automatic {
+			if modelName := lowestCostChannelTestModel(models); modelName != "" {
+				return modelName
+			}
+		}
+		for _, modelName := range models {
+			if modelName = strings.TrimSpace(modelName); modelName != "" {
+				return modelName
+			}
+		}
+	}
+	return "gpt-4o-mini"
+}
+
+func normalizeAutomaticChannelTestModel(channel *model.Channel, modelName string, automatic bool) string {
+	if !automatic {
+		return modelName
+	}
+	if channel != nil && channel.Type == constant.ChannelTypeAnthropic && strings.HasSuffix(modelName, "-thinking") {
+		return strings.TrimSuffix(modelName, "-thinking")
+	}
+	return modelName
+}
+
+func lowestCostChannelTestModel(models []string) string {
+	bestModel := ""
+	bestCost := 0.0
+	bestKnown := false
+	for _, modelName := range models {
+		modelName = strings.TrimSpace(modelName)
+		if modelName == "" {
+			continue
+		}
+		cost, _, known := ratio_setting.GetModelRatioOrPrice(modelName)
+		if !known {
+			if bestModel == "" {
+				bestModel = modelName
+			}
+			continue
+		}
+		if !bestKnown || cost < bestCost {
+			bestModel = modelName
+			bestCost = cost
+			bestKnown = true
+		}
+	}
+	return bestModel
+}
+
+func testChannel(channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool, automatic bool) testResult {
 	tik := time.Now()
 	var unsupportedTestChannelTypes = []int{
 		constant.ChannelTypeMidjourney,
@@ -94,22 +160,9 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 
-	testModel = strings.TrimSpace(testModel)
-	if testModel == "" {
-		if channel.TestModel != nil && *channel.TestModel != "" {
-			testModel = strings.TrimSpace(*channel.TestModel)
-		} else {
-			models := channel.GetModels()
-			if len(models) > 0 {
-				testModel = strings.TrimSpace(models[0])
-			}
-			if testModel == "" {
-				testModel = "gpt-4o-mini"
-			}
-		}
-	}
+	testModel = normalizeAutomaticChannelTestModel(channel, resolveChannelTestModel(channel, testModel, automatic), automatic)
 
-	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType)
+	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType, automatic)
 
 	requestPath := "/v1/chat/completions"
 
@@ -236,7 +289,7 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 		}
 	}
 
-	request := buildTestRequest(testModel, endpointType, channel, isStream)
+	request := buildTestRequest(testModel, endpointType, channel, isStream, automatic)
 
 	info, err := relaycommon.GenRelayInfo(c, relayFormat, request, nil)
 
@@ -363,6 +416,7 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 				Model:              req.Model,
 				Input:              req.Input,
 				Instructions:       req.Instructions,
+				MaxOutputTokens:    req.MaxOutputTokens,
 				PreviousResponseID: req.PreviousResponseID,
 			})
 		case *dto.OpenAIResponsesRequest:
@@ -696,7 +750,22 @@ func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 	return message
 }
 
-func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool) dto.Request {
+func channelTestMaxOutputTokens(defaultTokens uint, automatic bool) uint {
+	if automatic {
+		return automaticChannelTestMaxOutputTokens
+	}
+	return defaultTokens
+}
+
+func applyAutomaticResponsesOutputLimit(req *dto.OpenAIResponsesRequest, automatic bool) {
+	if req == nil || !automatic {
+		return
+	}
+	req.MaxOutputTokens = lo.ToPtr(automaticChannelTestMaxOutputTokens)
+}
+
+func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool, automatic bool) dto.Request {
+	model = normalizeAutomaticChannelTestModel(channel, model, automatic)
 	testResponsesInput := json.RawMessage(`[{"role":"user","content":"hi"}]`)
 
 	// 根据端点类型构建不同的测试请求
@@ -726,23 +795,30 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 			}
 		case constant.EndpointTypeOpenAIResponse:
 			// 返回 OpenAIResponsesRequest
-			return &dto.OpenAIResponsesRequest{
+			req := &dto.OpenAIResponsesRequest{
 				Model:  model,
 				Input:  json.RawMessage(`[{"role":"user","content":"hi"}]`),
 				Stream: lo.ToPtr(isStream),
 			}
+			applyAutomaticResponsesOutputLimit(req, automatic)
+			return req
 		case constant.EndpointTypeOpenAIResponseCompact:
 			// 返回 OpenAIResponsesCompactionRequest
-			return &dto.OpenAIResponsesCompactionRequest{
+			req := &dto.OpenAIResponsesCompactionRequest{
 				Model: model,
 				Input: testResponsesInput,
 			}
+			if automatic {
+				req.MaxOutputTokens = lo.ToPtr(automaticChannelTestMaxOutputTokens)
+			}
+			return req
 		case constant.EndpointTypeAnthropic, constant.EndpointTypeGemini, constant.EndpointTypeOpenAI:
 			// 返回 GeneralOpenAIRequest
 			maxTokens := uint(16)
 			if constant.EndpointType(endpointType) == constant.EndpointTypeGemini {
 				maxTokens = 3000
 			}
+			maxTokens = channelTestMaxOutputTokens(maxTokens, automatic)
 			req := &dto.GeneralOpenAIRequest{
 				Model:  model,
 				Stream: lo.ToPtr(isStream),
@@ -784,19 +860,33 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 
 	// Responses compaction models (must use /v1/responses/compact)
 	if strings.HasSuffix(model, ratio_setting.CompactModelSuffix) {
-		return &dto.OpenAIResponsesCompactionRequest{
+		req := &dto.OpenAIResponsesCompactionRequest{
 			Model: model,
 			Input: testResponsesInput,
+		}
+		if automatic {
+			req.MaxOutputTokens = lo.ToPtr(automaticChannelTestMaxOutputTokens)
+		}
+		return req
+	}
+
+	if automatic && channel != nil && channel.Type == constant.ChannelTypeCodex {
+		return &dto.OpenAIResponsesCompactionRequest{
+			Model:           ratio_setting.WithCompactModelSuffix(model),
+			Input:           testResponsesInput,
+			MaxOutputTokens: lo.ToPtr(automaticChannelTestMaxOutputTokens),
 		}
 	}
 
 	// Responses-only models (e.g. codex series)
 	if strings.Contains(strings.ToLower(model), "codex") {
-		return &dto.OpenAIResponsesRequest{
+		req := &dto.OpenAIResponsesRequest{
 			Model:  model,
 			Input:  json.RawMessage(`[{"role":"user","content":"hi"}]`),
 			Stream: lo.ToPtr(isStream),
 		}
+		applyAutomaticResponsesOutputLimit(req, automatic)
+		return req
 	}
 
 	// Chat/Completion 请求 - 返回 GeneralOpenAIRequest
@@ -815,15 +905,15 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	}
 
 	if dto.IsOpenAIReasoningOModel(model) {
-		testRequest.MaxCompletionTokens = lo.ToPtr(uint(16))
+		testRequest.MaxCompletionTokens = lo.ToPtr(channelTestMaxOutputTokens(16, automatic))
 	} else if strings.Contains(model, "thinking") {
 		if !strings.Contains(model, "claude") {
-			testRequest.MaxTokens = lo.ToPtr(uint(50))
+			testRequest.MaxTokens = lo.ToPtr(channelTestMaxOutputTokens(50, automatic))
 		}
 	} else if strings.Contains(model, "gemini") {
-		testRequest.MaxTokens = lo.ToPtr(uint(3000))
+		testRequest.MaxTokens = lo.ToPtr(channelTestMaxOutputTokens(3000, automatic))
 	} else {
-		testRequest.MaxTokens = lo.ToPtr(uint(16))
+		testRequest.MaxTokens = lo.ToPtr(channelTestMaxOutputTokens(16, automatic))
 	}
 
 	return testRequest
@@ -857,7 +947,7 @@ func TestChannel(c *gin.Context) {
 		return
 	}
 	tik := time.Now()
-	result := testChannel(channel, testUserID, testModel, endpointType, isStream)
+	result := testChannel(channel, testUserID, testModel, endpointType, isStream, false)
 	if result.localErr != nil {
 		resp := gin.H{
 			"success": false,
@@ -928,7 +1018,7 @@ func testAllChannels(notify bool) error {
 			}
 			isChannelEnabled := channel.Status == common.ChannelStatusEnabled
 			tik := time.Now()
-			result := testChannel(channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel))
+			result := testChannel(channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel), true)
 			tok := time.Now()
 			milliseconds := tok.Sub(tik).Milliseconds()
 
