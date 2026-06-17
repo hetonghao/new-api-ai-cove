@@ -77,6 +77,47 @@ func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
 	require.NotEmpty(t, other["expr_b64"])
 }
 
+func TestNormalizeAutomaticChannelTestUsageForBillingStripsCacheTokens(t *testing.T) {
+	usage := &dto.Usage{
+		PromptTokens:         223,
+		CompletionTokens:     13,
+		TotalTokens:          5100,
+		InputTokens:          223,
+		PromptCacheHitTokens: 4864,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens:         4864,
+			CachedCreationTokens: 128,
+			TextTokens:           223,
+		},
+		InputTokensDetails: &dto.InputTokenDetails{
+			CachedTokens:         4864,
+			CachedCreationTokens: 128,
+			TextTokens:           223,
+		},
+		ClaudeCacheCreation5mTokens: 64,
+		ClaudeCacheCreation1hTokens: 32,
+	}
+
+	normalized := normalizeAutomaticChannelTestUsageForBilling(usage, 3, true)
+
+	require.NotSame(t, usage, normalized)
+	require.Equal(t, 3, normalized.PromptTokens)
+	require.Equal(t, 3, normalized.InputTokens)
+	require.Equal(t, 13, normalized.CompletionTokens)
+	require.Equal(t, 16, normalized.TotalTokens)
+	require.Zero(t, normalized.PromptCacheHitTokens)
+	require.Zero(t, normalized.PromptTokensDetails.CachedTokens)
+	require.Zero(t, normalized.PromptTokensDetails.CachedCreationTokens)
+	require.NotNil(t, normalized.InputTokensDetails)
+	require.Zero(t, normalized.InputTokensDetails.CachedTokens)
+	require.Zero(t, normalized.InputTokensDetails.CachedCreationTokens)
+	require.Zero(t, normalized.ClaudeCacheCreation5mTokens)
+	require.Zero(t, normalized.ClaudeCacheCreation1hTokens)
+
+	require.Equal(t, 4864, usage.PromptTokensDetails.CachedTokens)
+	require.Equal(t, 4864, usage.InputTokensDetails.CachedTokens)
+}
+
 func TestResolveChannelTestUserIDUsesRequestUser(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())

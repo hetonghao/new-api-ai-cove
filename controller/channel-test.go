@@ -350,7 +350,18 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 	//logInfo.ApiKey = ""
 	common.SysLog(fmt.Sprintf("testing channel %d with model %s , info %+v ", channel.Id, testModel, info.ToString()))
 
-	priceData, err := helper.ModelPriceHelper(c, info, 0, request.GetTokenCountMeta())
+	tokenCountMeta := request.GetTokenCountMeta()
+	estimatePromptTokens, err := service.EstimateRequestToken(c, tokenCountMeta, info)
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeCountTokenFailed),
+		}
+	}
+	info.SetEstimatePromptTokens(estimatePromptTokens)
+
+	priceData, err := helper.ModelPriceHelper(c, info, estimatePromptTokens, tokenCountMeta)
 	if err != nil {
 		return testResult{
 			context:     c,
@@ -532,6 +543,7 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 			newAPIError: types.NewOpenAIError(usageErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
 		}
 	}
+	usage = normalizeAutomaticChannelTestUsageForBilling(usage, info.GetEstimatePromptTokens(), automatic)
 	result := w.Result()
 	respBody, err := readTestResponseBody(result.Body, isStream)
 	if err != nil {
@@ -645,6 +657,38 @@ func coerceTestUsage(usageAny any, isStream bool, estimatePromptTokens int) (*dt
 		usage.TotalTokens = usage.PromptTokens
 		return usage, nil
 	}
+}
+
+func normalizeAutomaticChannelTestUsageForBilling(usage *dto.Usage, estimatePromptTokens int, automatic bool) *dto.Usage {
+	if usage == nil || !automatic {
+		return usage
+	}
+
+	normalized := *usage
+	normalized.PromptCacheHitTokens = 0
+	normalized.PromptTokensDetails.CachedTokens = 0
+	normalized.PromptTokensDetails.CachedCreationTokens = 0
+	normalized.ClaudeCacheCreation5mTokens = 0
+	normalized.ClaudeCacheCreation1hTokens = 0
+	if normalized.InputTokensDetails != nil {
+		inputDetails := *normalized.InputTokensDetails
+		inputDetails.CachedTokens = 0
+		inputDetails.CachedCreationTokens = 0
+		normalized.InputTokensDetails = &inputDetails
+	}
+
+	if estimatePromptTokens > 0 {
+		normalized.PromptTokens = estimatePromptTokens
+		normalized.InputTokens = estimatePromptTokens
+		if normalized.PromptTokensDetails.TextTokens > 0 {
+			normalized.PromptTokensDetails.TextTokens = estimatePromptTokens
+		}
+		if normalized.InputTokensDetails != nil && normalized.InputTokensDetails.TextTokens > 0 {
+			normalized.InputTokensDetails.TextTokens = estimatePromptTokens
+		}
+	}
+	normalized.TotalTokens = normalized.PromptTokens + normalized.CompletionTokens
+	return &normalized
 }
 
 func readTestResponseBody(body io.ReadCloser, isStream bool) ([]byte, error) {
