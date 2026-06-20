@@ -4,7 +4,9 @@ WORKDIR /build/web
 COPY web/package.json web/bun.lock ./
 COPY web/default/package.json ./default/package.json
 COPY web/classic/package.json ./classic/package.json
-RUN bun install --frozen-lockfile --network-concurrency 8
+ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org
+RUN if [ -n "$NPM_CONFIG_REGISTRY" ]; then printf 'registry=%s\n' "$NPM_CONFIG_REGISTRY" > .npmrc; fi \
+    && bun install --frozen-lockfile --network-concurrency 8
 COPY ./web/default ./default
 COPY ./VERSION /build/VERSION
 RUN DESKTOP_DOWNLOAD_VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' default/public/downloads/latest.json 2>/dev/null | head -n 1)" && \
