@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -1187,15 +1188,32 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		if len(subs) == 0 {
 			return errors.New("no active subscription")
 		}
-		for _, candidate := range subs {
-			sub := candidate
-			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+		for i := range subs {
+			plan, err := getSubscriptionPlanByIdTx(tx, subs[i].PlanId)
 			if err != nil {
 				return err
 			}
-			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
+			if err := maybeResetUserSubscriptionWithPlanTx(tx, &subs[i], plan, now); err != nil {
 				return err
 			}
+		}
+		// Sort on normalized reset state so due resets do not keep stale priority.
+		sort.Slice(subs, func(i, j int) bool {
+			leftHasReset := subs[i].NextResetTime > 0
+			rightHasReset := subs[j].NextResetTime > 0
+			if leftHasReset != rightHasReset {
+				return leftHasReset
+			}
+			if leftHasReset && subs[i].NextResetTime != subs[j].NextResetTime {
+				return subs[i].NextResetTime < subs[j].NextResetTime
+			}
+			if subs[i].EndTime != subs[j].EndTime {
+				return subs[i].EndTime < subs[j].EndTime
+			}
+			return subs[i].Id < subs[j].Id
+		})
+		for _, candidate := range subs {
+			sub := candidate
 			usedBefore := sub.AmountUsed
 			if sub.AmountTotal > 0 {
 				remain := sub.AmountTotal - usedBefore
