@@ -143,8 +143,7 @@ export default function GeneralSettings(props) {
         currentInputs[key] = props.options[key];
       }
     }
-    // 若旧字段存在且新字段缺失，则做一次兜底映射
-    if (
+    // ponytail: classic UI 固定 USD；需要恢复多币种时再接回上游完整逻辑。
     currentInputs['general_setting.quota_display_type'] = 'USD';
     currentInputs.DisplayInCurrencyEnabled = true;
     setInputs(currentInputs);
