@@ -16,9 +16,10 @@ import (
 func setupSalesModelTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	originalMainDatabaseType := common.MainDatabaseType()
+	originalLogDatabaseType := common.LogDatabaseType()
+	originalRedisEnabled := common.RedisEnabled
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	initCol()
 
@@ -33,6 +34,8 @@ func setupSalesModelTestDB(t *testing.T) *gorm.DB {
 		require.NoError(t, db.Exec("DELETE FROM top_ups").Error)
 		require.NoError(t, db.Exec("DELETE FROM logs").Error)
 		require.NoError(t, db.Exec("DELETE FROM users").Error)
+		common.SetDatabaseTypes(originalMainDatabaseType, originalLogDatabaseType)
+		common.RedisEnabled = originalRedisEnabled
 	})
 
 	return db
@@ -41,9 +44,10 @@ func setupSalesModelTestDB(t *testing.T) *gorm.DB {
 func setupSplitSalesModelTestDB(t *testing.T) (*gorm.DB, *gorm.DB) {
 	t.Helper()
 
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	originalMainDatabaseType := common.MainDatabaseType()
+	originalLogDatabaseType := common.LogDatabaseType()
+	originalRedisEnabled := common.RedisEnabled
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 
 	oldDB := DB
@@ -64,6 +68,8 @@ func setupSplitSalesModelTestDB(t *testing.T) (*gorm.DB, *gorm.DB) {
 	t.Cleanup(func() {
 		DB = oldDB
 		LOG_DB = oldLogDB
+		common.SetDatabaseTypes(originalMainDatabaseType, originalLogDatabaseType)
+		common.RedisEnabled = originalRedisEnabled
 		if sqlDB, err := appDB.DB(); err == nil {
 			_ = sqlDB.Close()
 		}

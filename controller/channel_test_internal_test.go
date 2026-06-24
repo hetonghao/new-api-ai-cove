@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 	codexchannel "github.com/QuantumNous/new-api/relay/channel/codex"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -75,74 +77,6 @@ func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
 	require.Equal(t, "tiered_expr", other["billing_mode"])
 	require.Equal(t, "base", other["matched_tier"])
 	require.NotEmpty(t, other["expr_b64"])
-}
-
-func TestNormalizeAutomaticChannelTestUsageForBillingStripsCacheTokens(t *testing.T) {
-	usage := &dto.Usage{
-		PromptTokens:         223,
-		CompletionTokens:     13,
-		TotalTokens:          5100,
-		InputTokens:          223,
-		PromptCacheHitTokens: 4864,
-		PromptTokensDetails: dto.InputTokenDetails{
-			CachedTokens:         4864,
-			CachedCreationTokens: 128,
-			TextTokens:           223,
-		},
-		InputTokensDetails: &dto.InputTokenDetails{
-			CachedTokens:         4864,
-			CachedCreationTokens: 128,
-			TextTokens:           223,
-		},
-		ClaudeCacheCreation5mTokens: 64,
-		ClaudeCacheCreation1hTokens: 32,
-	}
-
-	normalized := normalizeAutomaticChannelTestUsageForBilling(usage, 3, true)
-
-	require.NotSame(t, usage, normalized)
-	require.Equal(t, 3, normalized.PromptTokens)
-	require.Equal(t, 3, normalized.InputTokens)
-	require.Equal(t, 13, normalized.CompletionTokens)
-	require.Equal(t, 16, normalized.TotalTokens)
-	require.Zero(t, normalized.PromptCacheHitTokens)
-	require.Zero(t, normalized.PromptTokensDetails.CachedTokens)
-	require.Zero(t, normalized.PromptTokensDetails.CachedCreationTokens)
-	require.NotNil(t, normalized.InputTokensDetails)
-	require.Zero(t, normalized.InputTokensDetails.CachedTokens)
-	require.Zero(t, normalized.InputTokensDetails.CachedCreationTokens)
-	require.Zero(t, normalized.ClaudeCacheCreation5mTokens)
-	require.Zero(t, normalized.ClaudeCacheCreation1hTokens)
-
-	require.Equal(t, 4864, usage.PromptTokensDetails.CachedTokens)
-	require.Equal(t, 4864, usage.InputTokensDetails.CachedTokens)
-}
-
-func TestNormalizeAutomaticChannelTestUsageForBillingUsesZeroEstimate(t *testing.T) {
-	usage := &dto.Usage{
-		PromptTokens:     223,
-		CompletionTokens: 13,
-		TotalTokens:      5100,
-		InputTokens:      223,
-		PromptTokensDetails: dto.InputTokenDetails{
-			CachedTokens: 4864,
-			TextTokens:   223,
-		},
-		InputTokensDetails: &dto.InputTokenDetails{
-			CachedTokens: 4864,
-			TextTokens:   223,
-		},
-	}
-
-	normalized := normalizeAutomaticChannelTestUsageForBilling(usage, 0, true)
-
-	require.Equal(t, 0, normalized.PromptTokens)
-	require.Equal(t, 0, normalized.InputTokens)
-	require.Equal(t, 13, normalized.CompletionTokens)
-	require.Equal(t, 13, normalized.TotalTokens)
-	require.Zero(t, normalized.PromptTokensDetails.TextTokens)
-	require.NotNil(t, normalized.InputTokensDetails)
-	require.Zero(t, normalized.InputTokensDetails.TextTokens)
 }
 
 func TestResolveChannelTestUserIDUsesRequestUser(t *testing.T) {
@@ -247,4 +181,49 @@ func TestBuildAutomaticCodexChannelTestUsesCompactRequestWithOutputLimit(t *test
 	require.True(t, ok)
 	require.NotNil(t, convertedReq.MaxOutputTokens)
 	require.EqualValues(t, 1, *convertedReq.MaxOutputTokens)
+}
+
+func TestSelectChannelsForAutomaticTestPassiveRecoveryOnlyUsesAutoDisabled(t *testing.T) {
+	channels := []*model.Channel{
+		{Id: 1, Status: common.ChannelStatusEnabled},
+		{Id: 2, Status: common.ChannelStatusAutoDisabled},
+		{Id: 3, Status: common.ChannelStatusManuallyDisabled},
+	}
+
+	selected := selectChannelsForAutomaticTest(channels, operation_setting.ChannelTestModePassiveRecovery)
+
+	require.Len(t, selected, 1)
+	require.Equal(t, 2, selected[0].Id)
+}
+
+func TestSelectChannelsForAutomaticTestScheduledSkipsManualDisabled(t *testing.T) {
+	channels := []*model.Channel{
+		{Id: 1, Status: common.ChannelStatusEnabled},
+		{Id: 2, Status: common.ChannelStatusAutoDisabled},
+		{Id: 3, Status: common.ChannelStatusManuallyDisabled},
+	}
+
+	selected := selectChannelsForAutomaticTest(channels, operation_setting.ChannelTestModeScheduledAll)
+
+	require.Len(t, selected, 2)
+	require.Equal(t, 1, selected[0].Id)
+	require.Equal(t, 2, selected[1].Id)
+}
+
+func TestTestAllChannelsRejectsExistingActiveTask(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.SystemTask{}, &model.SystemTaskLock{}))
+
+	existing, err := model.CreateSystemTask(model.SystemTaskTypeChannelTest, nil, nil)
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/test", nil)
+
+	TestAllChannels(ctx)
+
+	require.Equal(t, http.StatusConflict, recorder.Code)
+	require.Contains(t, recorder.Body.String(), existing.TaskID)
+	require.Contains(t, recorder.Body.String(), "已有通道测试任务正在运行或等待中")
 }

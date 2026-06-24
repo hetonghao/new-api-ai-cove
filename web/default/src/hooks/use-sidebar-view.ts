@@ -50,8 +50,9 @@ export function useSidebarView(): ResolvedSidebarView {
   const configFilteredRoot = useSidebarConfig(rootSidebarData.navGroups)
 
   const rootNavGroups = useMemo<NavGroup[]>(() => {
-    const isAdmin = userRole !== undefined && userRole >= ROLE.ADMIN
-    const canAccessSales = userRole !== undefined && userRole >= ROLE.SALES
+    const role = userRole ?? ROLE.GUEST
+    const isAdmin = role >= ROLE.ADMIN
+    const canAccessSales = role >= ROLE.SALES
     return configFilteredRoot.filter((group) =>
       group.id === 'admin'
         ? isAdmin
@@ -59,6 +60,12 @@ export function useSidebarView(): ResolvedSidebarView {
           ? canAccessSales
           : true
     )
+      .map((group) => {
+        const items = group.items.filter(
+          (item) => item.requiredRole === undefined || role >= item.requiredRole
+        )
+        return items.length === group.items.length ? group : { ...group, items }
+      })
   }, [configFilteredRoot, userRole])
 
   const view = resolveSidebarView(pathname)

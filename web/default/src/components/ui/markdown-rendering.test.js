@@ -7,11 +7,15 @@ import { fileURLToPath } from 'node:url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const source = readFileSync(join(__dirname, 'markdown.tsx'), 'utf8')
 
-test('shared markdown component applies explicit heading styles instead of relying on prose defaults', () => {
-  assert.match(source, /h1:\s*\(\{[^)]*\}\)\s*=>/)
-  assert.match(source, /h2:\s*\(\{[^)]*\}\)\s*=>/)
-  assert.match(source, /h3:\s*\(\{[^)]*\}\)\s*=>/)
-  assert.match(source, /cn\('mt-6 mb-3 text-2xl font-semibold tracking-tight'/)
-  assert.match(source, /cn\('mt-5 mb-3 text-xl font-semibold tracking-tight'/)
-  assert.match(source, /cn\('mt-4 mb-2 text-lg font-semibold tracking-tight'/)
+test('shared markdown component uses the upstream marked renderer with sanitization', () => {
+  assert.match(source, /new Marked\(/)
+  assert.match(source, /DOMPurify\.sanitize/)
+  assert.match(source, /dangerouslySetInnerHTML/)
+  assert.doesNotMatch(source, /ReactMarkdown/)
+})
+
+test('shared markdown component keeps AI Cove overflow-safe display styles', () => {
+  assert.match(source, /'prose prose-sm dark:prose-invert max-w-none'/)
+  assert.match(source, /'prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg'/)
+  assert.match(source, /'\[overflow-wrap:anywhere\] break-words'/)
 })
