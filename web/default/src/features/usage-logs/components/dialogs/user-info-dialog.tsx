@@ -16,14 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { formatQuota, formatCompactNumber } from '@/lib/format'
+
+import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { Dialog } from '@/components/dialog'
+import { formatCompactNumber, formatQuota } from '@/lib/format'
+
 import { getUserInfo } from '../../api'
 import type { UserInfo } from '../../types'
 
@@ -93,118 +95,51 @@ export function UserInfoDialog({
     </div>
   )
 
-  const canFilterByUsername =
-    !isLoading && !!userInfo?.username && !!onFilterByUsername
-
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
       title={t('User Information')}
-      description={t(
-        'View detailed information about this user including balance, usage statistics, and invitation details.'
-      )}
-      contentClassName='sm:max-w-lg'
-      contentHeight='auto'
-      bodyClassName='space-y-4'
-      footer={
-        canFilterByUsername ? (
-          <Button
-            type='button'
-            onClick={() => {
-              if (userInfo?.username) {
-                onFilterByUsername?.(userInfo.username)
-              }
-            }}
-          >
-            {t('Filter by this username')}
-          </Button>
-        ) : null
-      }
+      contentClassName='max-w-md'
     >
       {isLoading ? (
         <div className='flex items-center justify-center py-8'>
-          <Loader2 className='text-muted-foreground size-6 animate-spin' />
+          <Loader2 className='h-6 w-6 animate-spin' />
         </div>
       ) : userInfo ? (
-        <div className='space-y-4 py-4'>
-          {/* Basic Info */}
+        <div className='space-y-4'>
           <div className='grid grid-cols-2 gap-4'>
             <InfoItem label={t('Username')} value={userInfo.username} />
-            {userInfo.display_name && (
-              <InfoItem
-                label={t('Display Name')}
-                value={userInfo.display_name}
-              />
-            )}
-          </div>
-
-          {/* Balance Info */}
-          <div className='grid grid-cols-2 gap-4'>
+            <InfoItem label={t('Group')} value={userInfo.group ?? '-'} />
             <InfoItem
-              label={t('Balance')}
+              label={t('Remaining Quota')}
               value={formatQuota(userInfo.quota)}
             />
             <InfoItem
               label={t('Used Quota')}
               value={formatQuota(userInfo.used_quota)}
             />
-          </div>
-
-          {/* Statistics */}
-          <div className='grid grid-cols-2 gap-4'>
             <InfoItem
               label={t('Request Count')}
               value={formatCompactNumber(userInfo.request_count)}
             />
-            {userInfo.group && (
-              <InfoItem label={t('User Group')} value={userInfo.group} />
-            )}
           </div>
-
-          {/* Invitation Info */}
-          {(userInfo.aff_code ||
-            userInfo.aff_count !== undefined ||
-            (userInfo.aff_quota !== undefined && userInfo.aff_quota > 0)) && (
-            <>
-              <div className='grid grid-cols-2 gap-4'>
-                {userInfo.aff_code && (
-                  <InfoItem
-                    label={t('Invitation Code')}
-                    value={userInfo.aff_code}
-                  />
-                )}
-                {userInfo.aff_count !== undefined && (
-                  <InfoItem
-                    label={t('Invited Users')}
-                    value={formatCompactNumber(userInfo.aff_count)}
-                  />
-                )}
-              </div>
-
-              {userInfo.aff_quota !== undefined && userInfo.aff_quota > 0 && (
-                <InfoItem
-                  label={t('Invitation Quota')}
-                  value={formatQuota(userInfo.aff_quota)}
-                />
-              )}
-            </>
-          )}
-
-          {/* Remark */}
-          {userInfo.remark && (
-            <div className='space-y-1.5'>
-              <Label className='text-muted-foreground text-xs'>
-                {t('Remark')}
-              </Label>
-              <div className='text-sm leading-relaxed font-semibold break-words'>
-                {userInfo.remark}
-              </div>
-            </div>
+          {onFilterByUsername && (
+            <Button
+              type='button'
+              variant='outline'
+              className='w-full'
+              onClick={() => {
+                onFilterByUsername(userInfo.username)
+                onOpenChange(false)
+              }}
+            >
+              {t('Filter logs by this user')}
+            </Button>
           )}
         </div>
       ) : (
-        <div className='text-muted-foreground py-8 text-center text-sm'>
+        <div className='text-muted-foreground py-8 text-center'>
           {t('No user information available')}
         </div>
       )}

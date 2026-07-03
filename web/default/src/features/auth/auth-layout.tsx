@@ -27,9 +27,9 @@ import OpenClaw from '@lobehub/icons/es/OpenClaw'
 import OpenCode from '@lobehub/icons/es/OpenCode'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
-import { useSystemConfig } from '@/hooks/use-system-config'
 import { FloatingLines } from '@/components/backgrounds/floating-lines'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useSystemConfig } from '@/hooks/use-system-config'
 
 type AuthLayoutProps = {
   children: React.ReactNode

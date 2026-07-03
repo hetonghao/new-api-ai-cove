@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Activity, KeyRound, PlugZap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+
 import { AnimateInView } from '@/components/animate-in-view'
 
 export function HowItWorks() {
