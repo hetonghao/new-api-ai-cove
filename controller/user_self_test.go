@@ -111,6 +111,7 @@ func TestCheckUpdatePasswordAllowsFirstPasswordSetup(t *testing.T) {
 		Id:       2001,
 		Username: "oauth-user",
 		Password: "",
+		GitHubId: "oauth-github-2001",
 		Role:     common.RoleCommonUser,
 		Status:   common.UserStatusEnabled,
 		Group:    "default",

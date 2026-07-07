@@ -9,6 +9,7 @@ import (
 
 func insertSubscriptionPlanForPreConsumeTest(t *testing.T, id int, resetPeriod string, resetSeconds int64) *SubscriptionPlan {
 	t.Helper()
+	InvalidateSubscriptionPlanCache(id)
 	plan := &SubscriptionPlan{
 		Id:                      id,
 		Title:                   "PreConsume Test Plan",
@@ -22,6 +23,7 @@ func insertSubscriptionPlanForPreConsumeTest(t *testing.T, id int, resetPeriod s
 		QuotaResetCustomSeconds: resetSeconds,
 	}
 	require.NoError(t, DB.Create(plan).Error)
+	InvalidateSubscriptionPlanCache(id)
 	return plan
 }
 
