@@ -1422,6 +1422,13 @@ For commercial licensing, please contact support@quantumnous.com
   background: var(--home-line-strong);
 }
 
+.home-stats-band,
+.ai-cove-home > .home-section,
+.home-footer {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 720px;
+}
+
 .home-stats-band {
   position: relative;
   z-index: 1;
