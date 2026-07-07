@@ -214,6 +214,10 @@ export function HeroTerminalDemo(props: HeroTerminalDemoProps) {
 
   const handleSelect = (index: number) => {
     if (index === activeIndex) return
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = undefined
+    }
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
     setTransitioning(true)
     timeoutRef.current = setTimeout(() => {

@@ -65,6 +65,7 @@ export function useHomePageContent(): HomePageContentResult {
           import('sonner'),
           import('i18next'),
         ])
+        if (!mounted) return
         toast.error(i18next.default.t('Failed to load home page content'))
       } finally {
         if (mounted) {
