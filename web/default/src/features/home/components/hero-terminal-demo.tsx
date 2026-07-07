@@ -157,8 +157,14 @@ const API_DEMOS: ApiDemoConfig[] = [
   },
 ]
 
-const CYCLE_INTERVAL = 4500
 const TRANSITION_MS = 220
+const CYCLE_INTERVAL = 4500
+const AUTOPLAY_START_EVENTS = [
+  'pointerdown',
+  'keydown',
+  'wheel',
+  'touchstart',
+] as const
 
 interface HeroTerminalDemoProps {
   className?: string
@@ -171,18 +177,36 @@ export function HeroTerminalDemo(props: HeroTerminalDemoProps) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    if (mq.matches) return
+    const reducedMotionQuery = window.matchMedia(
+      '(prefers-reduced-motion: reduce)'
+    )
 
-    intervalRef.current = setInterval(() => {
+    const advanceDemo = () => {
       setTransitioning(true)
       timeoutRef.current = setTimeout(() => {
         setActiveIndex((prev) => (prev + 1) % API_DEMOS.length)
         setTransitioning(false)
       }, TRANSITION_MS)
-    }, CYCLE_INTERVAL)
+    }
+
+    const startAutoplay = () => {
+      if (reducedMotionQuery.matches || intervalRef.current) return
+      intervalRef.current = setInterval(advanceDemo, CYCLE_INTERVAL)
+    }
+
+    const listenerOptions: AddEventListenerOptions = {
+      once: true,
+      passive: true,
+    }
+
+    for (const eventName of AUTOPLAY_START_EVENTS) {
+      window.addEventListener(eventName, startAutoplay, listenerOptions)
+    }
 
     return () => {
+      for (const eventName of AUTOPLAY_START_EVENTS) {
+        window.removeEventListener(eventName, startAutoplay, listenerOptions)
+      }
       if (intervalRef.current) clearInterval(intervalRef.current)
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
     }
@@ -190,7 +214,6 @@ export function HeroTerminalDemo(props: HeroTerminalDemoProps) {
 
   const handleSelect = (index: number) => {
     if (index === activeIndex) return
-    if (intervalRef.current) clearInterval(intervalRef.current)
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
     setTransitioning(true)
     timeoutRef.current = setTimeout(() => {
