@@ -34,6 +34,7 @@ import { applyFaviconToDom } from '@/lib/dom-utils'
 import '@/lib/dayjs'
 import { initializeFrontendCache } from '@/lib/frontend-cache'
 import { handleServerError } from '@/lib/handle-server-error'
+import { syncStatusToSystemConfig } from '@/hooks/use-system-config'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { DirectionProvider } from './context/direction-provider'
@@ -108,6 +109,12 @@ const router = createRouter({
   defaultPreloadStaleTime: 0,
 })
 
+type CachedStatus = Awaited<ReturnType<typeof getStatus>>
+
+function isCachedStatus(value: unknown): value is NonNullable<CachedStatus> {
+  return typeof value === 'object' && value !== null
+}
+
 // Register the router instance for type safety
 declare module '@tanstack/react-router' {
   interface Register {
@@ -116,7 +123,7 @@ declare module '@tanstack/react-router' {
 }
 
 // Render the app
-const rootElement = document.getElementById('root')!
+const rootElement = document.querySelector<HTMLElement>('#root')
 // Set document.title and favicon from cached status, then refresh from network
 ;(function initSystemBranding() {
   try {
@@ -135,6 +142,10 @@ const rootElement = document.getElementById('root')!
         const s = JSON.parse(saved)
         if (s?.system_name) apply(s.system_name)
         if (s?.logo) applyFaviconToDom(s.logo)
+        if (isCachedStatus(s)) {
+          queryClient.setQueryData(['status'], s)
+          syncStatusToSystemConfig(s)
+        }
       }
     } catch {
       /* empty */
@@ -142,24 +153,26 @@ const rootElement = document.getElementById('root')!
     // Background refresh
     getStatus()
       .then((s) => {
+        queryClient.setQueryData(['status'], s)
+        syncStatusToSystemConfig(s)
         if (s?.system_name) {
-          apply(s.system_name as string)
+          apply(s.system_name)
           try {
             localStorage.setItem('status', JSON.stringify(s))
           } catch {
             /* empty */
           }
         }
-        if (s?.logo) applyFaviconToDom(s.logo as string)
+        if (s?.logo) applyFaviconToDom(s.logo)
       })
       .catch(() => {
-        /* empty */
+        syncStatusToSystemConfig(null)
       })
   } catch {
     /* empty */
   }
 })()
-if (!rootElement.innerHTML) {
+if (rootElement && !rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement)
   root.render(
     <StrictMode>

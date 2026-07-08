@@ -17,9 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useNavigate, useRouter } from '@tanstack/react-router'
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { recoverFromChunkLoadError } from '@/lib/chunk-load-recovery'
 import { cn } from '@/lib/utils'
 
 type GeneralErrorProps = React.HTMLAttributes<HTMLDivElement> & {
@@ -51,6 +53,10 @@ export function GeneralError({
   const description = isRateLimited
     ? t('Please wait a moment before trying again.')
     : t('Please try again later.')
+
+  useEffect(() => {
+    recoverFromChunkLoadError(error)
+  }, [error])
 
   return (
     <div className={cn('h-svh w-full', className)}>

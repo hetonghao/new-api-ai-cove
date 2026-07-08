@@ -21,12 +21,35 @@ type ThemeAssets struct {
 	ClassicIndexPage []byte
 }
 
+var webGzipExcludedExtensions = []string{
+	".avif",
+	".css",
+	".gif",
+	".ico",
+	".jpeg",
+	".jpg",
+	".js",
+	".map",
+	".mjs",
+	".otf",
+	".png",
+	".svg",
+	".ttf",
+	".webp",
+	".woff",
+	".woff2",
+}
+
 func SetWebRouter(router *gin.Engine, assets ThemeAssets) {
 	defaultFS := common.EmbedFolder(assets.DefaultBuildFS, "web/default/dist")
 	classicFS := common.EmbedFolder(assets.ClassicBuildFS, "web/classic/dist")
 	themeFS := common.NewThemeAwareFS(defaultFS, classicFS)
 
-	router.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{"/downloads/"})))
+	router.Use(gzip.Gzip(
+		gzip.DefaultCompression,
+		gzip.WithExcludedPaths([]string{"/downloads/"}),
+		gzip.WithExcludedExtensions(webGzipExcludedExtensions),
+	))
 	router.Use(middleware.GlobalWebRateLimit())
 	router.Use(middleware.Cache())
 	router.Use(static.Serve("/", themeFS))

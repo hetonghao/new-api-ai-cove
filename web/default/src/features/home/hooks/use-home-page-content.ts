@@ -21,28 +21,33 @@ import { useEffect, useState } from 'react'
 import { isHttpUrl } from '@/lib/content-format'
 
 import { getHomePageContent } from '../api'
+import { getInitialHomePageContentState } from '../lib/home-page-content-state'
 import type { HomePageContentResult } from '../types'
 
 const STORAGE_KEY = 'home_page_content'
+
+function readCachedHomePageContent(): string | null {
+  try {
+    if (typeof window === 'undefined') return null
+    return window.localStorage.getItem(STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
 
 /**
  * Hook to load and manage custom home page content
  * Supports both Markdown/HTML content and iframe URLs
  */
 export function useHomePageContent(): HomePageContentResult {
-  const [content, setContent] = useState<string>('')
-  const [isLoaded, setIsLoaded] = useState(false)
+  const [{ content, isLoaded }, setState] = useState(() =>
+    getInitialHomePageContentState(readCachedHomePageContent())
+  )
 
   useEffect(() => {
     let mounted = true
 
     const loadContent = async () => {
-      // Load from localStorage first for immediate display
-      const cached = localStorage.getItem(STORAGE_KEY)
-      if (cached && mounted) {
-        setContent(cached)
-      }
-
       try {
         const response = await getHomePageContent()
         const { success, data } = response
@@ -50,11 +55,11 @@ export function useHomePageContent(): HomePageContentResult {
         if (!mounted) return
 
         if (success && data) {
-          setContent(data)
+          setState({ content: data, isLoaded: true })
           localStorage.setItem(STORAGE_KEY, data)
         } else {
           // Clear content if API returns empty
-          setContent('')
+          setState({ content: '', isLoaded: true })
           localStorage.removeItem(STORAGE_KEY)
         }
       } catch (error) {
@@ -69,7 +74,9 @@ export function useHomePageContent(): HomePageContentResult {
         toast.error(i18next.default.t('Failed to load home page content'))
       } finally {
         if (mounted) {
-          setIsLoaded(true)
+          setState((state) =>
+            state.isLoaded ? state : { ...state, isLoaded: true }
+          )
         }
       }
     }

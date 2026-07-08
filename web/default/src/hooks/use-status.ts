@@ -20,9 +20,8 @@ import { useQuery } from '@tanstack/react-query'
 
 import type { SystemStatus } from '@/features/auth/types'
 import { getStatus } from '@/lib/api'
-import { useSystemConfigStore } from '@/stores/system-config-store'
 
-import { mapStatusDataToConfig } from './use-system-config'
+import { syncStatusToSystemConfig } from './use-system-config'
 
 // Get initial cache from localStorage
 function getInitialStatus(): SystemStatus | undefined {
@@ -43,10 +42,7 @@ export function useStatus() {
     queryFn: async () => {
       const status = await getStatus()
       try {
-        if (status) {
-          const { setConfig } = useSystemConfigStore.getState()
-          setConfig(mapStatusDataToConfig(status))
-        }
+        syncStatusToSystemConfig(status)
       } catch (err) {
         if (import.meta.env.DEV) {
           // eslint-disable-next-line no-console

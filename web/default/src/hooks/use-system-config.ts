@@ -16,39 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useCallback } from 'react'
+import { useEffect } from 'react'
 
+import type { SystemStatusData } from '@/lib/api'
 import { DEFAULT_SYSTEM_NAME, DEFAULT_LOGO } from '@/lib/constants'
 import { applyFaviconToDom } from '@/lib/dom-utils'
 import {
   useSystemConfigStore,
   type CurrencyConfig,
-  type CurrencyDisplayType,
   type SystemConfig,
   DEFAULT_CURRENCY_CONFIG,
 } from '@/stores/system-config-store'
-
-interface UseSystemConfigOptions {
-  /** Automatically fetch config from backend (use only in root component) */
-  autoLoad?: boolean
-}
-
-interface StatusApiResponse {
-  success: boolean
-  data: {
-    system_name?: string
-    logo?: string
-    footer_html?: string
-    demo_site_enabled?: boolean
-    display_token_stat_enabled?: boolean
-    display_in_currency?: boolean
-    quota_display_type?: CurrencyDisplayType
-    quota_per_unit?: number
-    usd_exchange_rate?: number
-    custom_currency_symbol?: string
-    custom_currency_exchange_rate?: number
-  }
-}
 
 function toNumber(value: unknown, fallback: number): number {
   if (typeof value === 'number' && !Number.isNaN(value)) return value
@@ -63,7 +41,7 @@ function toNumber(value: unknown, fallback: number): number {
  * Map `/api/status` response data to our persisted system config structure
  */
 export function mapStatusDataToConfig(
-  data: StatusApiResponse['data'] | undefined
+  data: SystemStatusData | null | undefined
 ): Partial<SystemConfig> {
   if (!data) return {}
 
@@ -82,22 +60,22 @@ export function mapStatusDataToConfig(
   return {
     systemName: data.system_name || DEFAULT_SYSTEM_NAME,
     logo: data.logo || DEFAULT_LOGO,
-    footerHtml: data.footer_html,
+    footerHtml:
+      typeof data.footer_html === 'string' ? data.footer_html : undefined,
     demoSiteEnabled: data.demo_site_enabled,
     displayTokenStatEnabled: data.display_token_stat_enabled,
     currency,
   }
 }
 
-// Fetch system config from API
-async function fetchSystemConfig(): Promise<Partial<SystemConfig>> {
-  const response = await fetch('/api/status')
-  if (!response.ok) throw new Error('Failed to fetch status')
-
-  const data: StatusApiResponse = await response.json()
-  if (!data.success) throw new Error('API returned error')
-
-  return mapStatusDataToConfig(data.data)
+export function syncStatusToSystemConfig(
+  data: SystemStatusData | null | undefined
+): void {
+  const { setConfig, setLoading } = useSystemConfigStore.getState()
+  if (data) {
+    setConfig(mapStatusDataToConfig(data))
+  }
+  setLoading(false)
 }
 
 // Preload image and return cleanup function
@@ -107,55 +85,26 @@ function preloadImage(
   onError: () => void
 ): () => void {
   const img = new Image()
-  img.onload = onLoad
-  img.onerror = onError
+  img.addEventListener('load', onLoad)
+  img.addEventListener('error', onError)
   img.src = src
 
   return () => {
-    img.onload = null
-    img.onerror = null
+    img.removeEventListener('load', onLoad)
+    img.removeEventListener('error', onError)
   }
 }
 
 /**
  * System configuration hook with auto-loading and logo preloading
- *
- * @example
- * // Root component - auto-load from backend
- * useSystemConfig({ autoLoad: true })
- *
- * @example
- * // Other components - use cached config
- * const { systemName, logo, loading } = useSystemConfig()
  */
-export function useSystemConfig(options: UseSystemConfigOptions = {}) {
-  const { autoLoad = false } = options
+export function useSystemConfig() {
   const {
     config,
     loading,
     loadedLogoUrl,
-    setConfig,
     setLoadedLogoUrl,
-    setLoading,
   } = useSystemConfigStore()
-
-  // Load config from backend
-  const loadConfig = useCallback(async () => {
-    try {
-      setLoading(true)
-      const newConfig = await fetchSystemConfig()
-      setConfig(newConfig)
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to load system config:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [setConfig, setLoading])
-
-  useEffect(() => {
-    if (autoLoad) loadConfig()
-  }, [autoLoad, loadConfig])
 
   // Preload logo image when URL changes
   useEffect(() => {

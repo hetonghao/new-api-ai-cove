@@ -16,13 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type QueryClient } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
-import {
-  createRootRouteWithContext,
-  Outlet,
-  redirect,
-} from '@tanstack/react-router'
+import { createRootRouteWithContext, Outlet } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { useEffect } from 'react'
 
@@ -34,10 +30,22 @@ import { GeneralError } from '@/features/errors/general-error'
 import { NotFoundError } from '@/features/errors/not-found-error'
 import { getSetupStatus } from '@/features/setup/api'
 import { useSystemConfig } from '@/hooks/use-system-config'
+import { clearChunkLoadRecoveryMarker } from '@/lib/chunk-load-recovery'
+
+const CHUNK_LOAD_RECOVERY_CLEAR_DELAY_MS = 30_000
 
 function RootComponent() {
-  // Load system configuration (logo, system name, etc.) from backend
-  useSystemConfig({ autoLoad: true })
+  useSystemConfig()
+
+  useEffect(() => {
+    const clearTimer = window.setTimeout(() => {
+      clearChunkLoadRecoveryMarker()
+    }, CHUNK_LOAD_RECOVERY_CLEAR_DELAY_MS)
+
+    return () => {
+      window.clearTimeout(clearTimer)
+    }
+  }, [])
 
   useEffect(() => {
     const aff = new URLSearchParams(window.location.search).get('aff')?.trim()
@@ -92,14 +100,48 @@ function setSetupStatusCache(value: boolean): void {
 
 // 内存中的标记，避免同一会话中重复检查
 let setupStatusChecked = getSetupStatusFromCache()
+let setupStatusCheckInFlight: Promise<void> | null = null
+
+function refreshSetupStatusInBackground(): void {
+  if (setupStatusCheckInFlight) return
+
+  setupStatusCheckInFlight = getSetupStatus()
+    .then((status) => {
+      if (!status.success || !status.data) return
+
+      if (status.data.status) {
+        setupStatusChecked = true
+        setSetupStatusCache(true)
+        return
+      }
+
+      setupStatusChecked = false
+      setSetupStatusCache(false)
+      if (
+        typeof window !== 'undefined' &&
+        !window.location.pathname.startsWith('/setup')
+      ) {
+        window.location.assign('/setup')
+      }
+    })
+    .catch((error) => {
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn('[root.beforeLoad] setup status check failed', error)
+      }
+    })
+    .finally(() => {
+      setupStatusCheckInFlight = null
+    })
+}
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient
 }>()({
   // 应用初始化与路由解析前统一校验会话
-  beforeLoad: async ({ location }) => {
+  beforeLoad: ({ location }) => {
     const pathname = location?.pathname || ''
-    const needsSetupCheck =
+    const shouldRefreshSetupStatus =
       !setupStatusChecked && !pathname.startsWith('/setup')
 
     // 用户信息已通过 auth-store 从 localStorage 恢复
@@ -107,21 +149,8 @@ export const Route = createRootRouteWithContext<{
     // 如果 auth.user 为 null，说明用户未登录，直接让 _authenticated 路由处理重定向
     // 不再调用 getSelf() API，避免不必要的网络请求和等待
 
-    // 只检查 setup 状态（如果需要）
-    if (needsSetupCheck) {
-      const status = await getSetupStatus().catch((error) => {
-        if (import.meta.env.DEV) {
-          // eslint-disable-next-line no-console
-          console.warn('[root.beforeLoad] setup status check failed', error)
-        }
-        return null
-      })
-
-      if (status?.success && status.data && !status.data.status) {
-        throw redirect({ to: '/setup' })
-      }
-      setupStatusChecked = true
-      setSetupStatusCache(true)
+    if (shouldRefreshSetupStatus) {
+      refreshSetupStatusInBackground()
     }
     // 用户认证状态完全依赖 localStorage 缓存
     // 如果用户有有效 session 但 localStorage 被清空，会被重定向到登录页重新登录
