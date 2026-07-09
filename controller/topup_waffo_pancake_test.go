@@ -73,11 +73,11 @@ func TestGetWaffoPancakePayMoney(t *testing.T) {
 			expected:         2250000,
 		},
 		{
-			name:             "non-positive discount falls back to no discount",
+			name:             "non-positive discount falls back to previous valid tier",
 			amount:           20,
 			group:            "default",
 			quotaDisplayType: operation_setting.QuotaDisplayTypeUSD,
-			expected:         50,
+			expected:         40,
 		},
 	}
 

@@ -57,6 +57,33 @@ function isSafeHttpCheckoutUrl(value) {
   }
 }
 
+function getApplicableDiscount(discounts, amount) {
+  if (!discounts || !Number.isFinite(amount) || amount <= 0) {
+    return 1.0;
+  }
+
+  let matchedAmount = -1;
+  let matchedDiscount = 1.0;
+  Object.entries(discounts).forEach(([key, value]) => {
+    const threshold = Number(key);
+    const discount = Number(value);
+    if (
+      !Number.isFinite(threshold) ||
+      threshold <= 0 ||
+      threshold > amount ||
+      !Number.isFinite(discount) ||
+      discount <= 0
+    ) {
+      return;
+    }
+    if (threshold > matchedAmount) {
+      matchedAmount = threshold;
+      matchedDiscount = discount;
+    }
+  });
+  return matchedDiscount;
+}
+
 const TopUp = () => {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -699,7 +726,12 @@ const TopUp = () => {
 
           // 如果没有自定义充值数量选项，根据最小充值金额生成预设充值额度选项
           if (topupInfo.amount_options.length === 0) {
-            setPresetAmounts(generatePresetAmounts(minTopUpValue));
+            setPresetAmounts(
+              generatePresetAmounts(minTopUpValue).map((preset) => ({
+                ...preset,
+                discount: getApplicableDiscount(data.discount, preset.value),
+              })),
+            );
           }
 
           // 初始化显示实付金额
@@ -712,7 +744,7 @@ const TopUp = () => {
         if (data.amount_options && data.amount_options.length > 0) {
           const customPresets = data.amount_options.map((amount) => ({
             value: amount,
-            discount: data.discount[amount] || 1.0,
+            discount: getApplicableDiscount(data.discount, amount),
           }));
           setPresetAmounts(customPresets);
         }
@@ -884,7 +916,8 @@ const TopUp = () => {
     setSelectedPreset(preset.value);
 
     // 计算实际支付金额，考虑折扣
-    const discount = preset.discount || topupInfo.discount[preset.value] || 1.0;
+    const discount =
+      preset.discount || getApplicableDiscount(topupInfo.discount, preset.value);
     const discountedAmount = preset.value * priceRatio * discount;
     setAmount(discountedAmount);
   };
@@ -931,7 +964,7 @@ const TopUp = () => {
         payWay={payWay}
         payMethods={confirmPayMethods}
         amountNumber={amount}
-        discountRate={topupInfo?.discount?.[topUpCount] || 1.0}
+        discountRate={getApplicableDiscount(topupInfo?.discount, topUpCount)}
       />
 
       {/* 充值账单模态框 */}

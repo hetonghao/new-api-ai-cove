@@ -30,6 +30,29 @@ func GetPaymentSetting() *PaymentSetting {
 	return &paymentSetting
 }
 
+func ResolveTopupAmountDiscount(amount int64) float64 {
+	if amount <= 0 {
+		return 1
+	}
+
+	matchedAmount := int64(-1)
+	matchedDiscount := 1.0
+	for threshold, discount := range paymentSetting.AmountDiscount {
+		if discount <= 0 {
+			continue
+		}
+		thresholdAmount := int64(threshold)
+		if thresholdAmount <= 0 || thresholdAmount > amount {
+			continue
+		}
+		if thresholdAmount > matchedAmount {
+			matchedAmount = thresholdAmount
+			matchedDiscount = discount
+		}
+	}
+	return matchedDiscount
+}
+
 func IsPaymentComplianceConfirmed() bool {
 	return paymentSetting.ComplianceConfirmed &&
 		paymentSetting.ComplianceTermsVersion == CurrentComplianceTermsVersion

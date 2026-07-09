@@ -150,6 +150,34 @@ export function generatePresetAmounts(minAmount: number): PresetAmount[] {
   }))
 }
 
+export function getApplicableDiscountRate(
+  discounts: Record<number, number> | undefined,
+  amount: number
+): number {
+  if (!discounts || !Number.isFinite(amount) || amount <= 0) {
+    return 1
+  }
+
+  let matchedAmount = -1
+  let matchedDiscount = 1
+
+  Object.entries(discounts).forEach(([key, value]) => {
+    const threshold = Number(key)
+    if (!Number.isFinite(threshold) || threshold <= 0 || threshold > amount) {
+      return
+    }
+    if (!Number.isFinite(value) || value <= 0) {
+      return
+    }
+    if (threshold > matchedAmount) {
+      matchedAmount = threshold
+      matchedDiscount = value
+    }
+  })
+
+  return matchedDiscount
+}
+
 /**
  * Merge custom preset amounts with discounts
  */
@@ -163,6 +191,6 @@ export function mergePresetAmounts(
 
   return amountOptions.map((amount) => ({
     value: amount,
-    discount: discounts[amount] || 1.0,
+    discount: getApplicableDiscountRate(discounts, amount),
   }))
 }
