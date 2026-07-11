@@ -20,16 +20,16 @@ import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { useAuthStore } from '@/stores/auth-store'
+
 import {
   DataTablePage,
   DataTableRow,
   useDataTable,
 } from '@/components/data-table'
 import { useMediaQuery } from '@/hooks'
-import { useIsAdmin } from '@/hooks/use-admin'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   DEFAULT_LOGS_DATA,
@@ -43,7 +43,7 @@ import type { LogCategory } from '../types'
 import { CommonLogsFilterBar } from './common-logs-filter-bar'
 import { TaskLogsFilterBar } from './task-logs-filter-bar'
 import { UsageLogsMobileList } from './usage-logs-mobile-card'
-import { useUsageLogsContext } from './usage-logs-provider'
+import { useLogsViewScope, useUsageLogsContext } from './usage-logs-provider'
 
 const logTypeRowTint: Record<number, string> = {
   [LOG_TYPE_ENUM.ERROR]: 'bg-rose-50/40 dark:bg-rose-950/20',
@@ -77,7 +77,7 @@ interface UsageLogsTableProps {
 
 export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   const { t } = useTranslation()
-  const isAdminUser = useIsAdmin()
+  const { isAdminView } = useLogsViewScope()
   const currentUserId = useAuthStore((state) => state.auth.user?.id)
   const isMobile = useMediaQuery('(max-width: 640px)')
   const {
@@ -88,8 +88,8 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     hideSelfControl,
     queryKeyScope,
   } = useUsageLogsContext()
-  const canUseAdminControls = adminControls ?? isAdminUser
-  const canHideSelf = hideSelfControl ?? isAdminUser
+  const canUseAdminControls = adminControls ?? isAdminView
+  const canHideSelf = hideSelfControl ?? isAdminView
 
   const {
     columnFilters,

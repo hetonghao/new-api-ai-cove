@@ -18,10 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { AreaChart, BarChart3, Loader2, Users } from 'lucide-react'
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { IconBadge } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTheme } from '@/context/theme-provider'
@@ -251,7 +252,9 @@ export function UserCharts({
             >
               <div className='flex w-full flex-col gap-2 border-b px-3 py-2 sm:px-5 sm:py-3 lg:flex-row lg:items-center lg:justify-between'>
                 <div className='flex items-center gap-2'>
-                  <Users className='text-muted-foreground/60 size-4' />
+                  <IconBadge tone='info' size='sm'>
+                    <Users />
+                  </IconBadge>
                   <div className='text-sm font-semibold'>
                     {t(chart.labelKey)}
                   </div>

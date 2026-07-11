@@ -20,7 +20,6 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
-import { useIsAdmin } from '@/hooks/use-admin'
 import { formatLogQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
@@ -28,7 +27,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { getLogStats, getSalesLogStats, getUserLogStats } from '../api'
 import { DEFAULT_LOG_STATS } from '../constants'
 import { buildApiParams } from '../lib/utils'
-import { useUsageLogsContext } from './usage-logs-provider'
+import { useLogsViewScope, useUsageLogsContext } from './usage-logs-provider'
 
 function StatBadge(props: {
   label: string
@@ -48,7 +47,7 @@ function StatBadge(props: {
 
 export function CommonLogsStats() {
   const { t } = useTranslation()
-  const isAdminUser = useIsAdmin()
+  const { isAdminView } = useLogsViewScope()
   const currentUserId = useAuthStore((state) => state.auth.user?.id)
   const {
     sensitiveVisible,
@@ -58,8 +57,8 @@ export function CommonLogsStats() {
     hideSelfControl,
     queryKeyScope,
   } = useUsageLogsContext()
-  const canUseAdminControls = adminControls ?? isAdminUser
-  const canHideSelf = hideSelfControl ?? isAdminUser
+  const canUseAdminControls = adminControls ?? isAdminView
+  const canHideSelf = hideSelfControl ?? isAdminView
 
   const { data: stats, isLoading } = useQuery({
     queryKey: [
@@ -69,7 +68,7 @@ export function CommonLogsStats() {
       canUseAdminControls,
       canHideSelf,
       currentUserId,
-      isAdminUser,
+      isAdminView,
       searchParams,
     ],
     queryFn: async () => {
@@ -85,7 +84,7 @@ export function CommonLogsStats() {
       const result =
         dataScope === 'sales'
           ? await getSalesLogStats(params)
-          : isAdminUser
+          : canUseAdminControls
             ? await getLogStats(params)
             : await getUserLogStats(params)
 

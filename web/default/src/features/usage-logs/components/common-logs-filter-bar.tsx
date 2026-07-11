@@ -38,7 +38,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useIsAdmin } from '@/hooks/use-admin'
 
 import { LOG_TYPE_ALL_VALUE, LOG_TYPE_FILTERS } from '../constants'
 import { buildSearchParams } from '../lib/filter'
@@ -51,7 +50,7 @@ import {
   LogsFilterInput,
   LogsFilterToolbar,
 } from './logs-filter-toolbar'
-import { useUsageLogsContext } from './usage-logs-provider'
+import { useLogsViewScope, useUsageLogsContext } from './usage-logs-provider'
 
 type LogTypeValue = (typeof LOG_TYPE_FILTERS)[number]['value']
 const logTypeValueSet = new Set<string>(
@@ -124,7 +123,7 @@ export function CommonLogsFilterBar<TData>(
 ) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const isAdminUser = useIsAdmin()
+  const { isAdminView } = useLogsViewScope()
   const {
     sensitiveVisible,
     setSensitiveVisible,
@@ -136,8 +135,8 @@ export function CommonLogsFilterBar<TData>(
     queryKeyScope,
   } = useUsageLogsContext()
   const fetchingLogs = useIsFetching({ queryKey: ['logs', queryKeyScope] })
-  const canUseAdminControls = adminControls ?? isAdminUser
-  const canHideSelf = hideSelfControl ?? isAdminUser
+  const canUseAdminControls = adminControls ?? isAdminView
+  const canHideSelf = hideSelfControl ?? isAdminView
 
   const searchState = useMemo<CommonLogDraft>(() => {
     const { start, end } = getDefaultTimeRange()

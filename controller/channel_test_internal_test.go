@@ -11,10 +11,10 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
-	claudechannel "github.com/QuantumNous/new-api/relay/channel/claude"
 	codexchannel "github.com/QuantumNous/new-api/relay/channel/codex"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/service/relayconvert"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -150,7 +150,7 @@ func TestBuildAutomaticChannelTestRequestAvoidsClaudeThinkingBudget(t *testing.T
 	require.NotNil(t, chatReq.MaxTokens)
 	require.EqualValues(t, 1, *chatReq.MaxTokens)
 
-	claudeReq, err := claudechannel.RequestOpenAI2ClaudeMessage(nil, *chatReq)
+	claudeReq, err := relayconvert.OpenAIChatRequestToClaudeMessages(nil, *chatReq)
 	require.NoError(t, err)
 	require.NotNil(t, claudeReq.MaxTokens)
 	require.EqualValues(t, 1, *claudeReq.MaxTokens)
