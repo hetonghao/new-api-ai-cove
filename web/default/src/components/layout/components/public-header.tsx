@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
@@ -27,6 +27,7 @@ import { ProfileDropdown } from '@/components/profile-dropdown'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
@@ -38,6 +39,8 @@ import type { TopNavLink } from '../types'
 import { HeaderLogo } from './header-logo'
 
 const AUTH_PROMPT_SECONDS = 5
+const OPEN_MENU_FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 type AuthPromptTarget = {
   title: string
@@ -77,6 +80,7 @@ export function PublicHeader(props: PublicHeaderProps) {
   const navigate = useNavigate()
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const mobileMenuTriggerRef = useRef<HTMLButtonElement>(null)
   const [authPromptTarget, setAuthPromptTarget] =
     useState<AuthPromptTarget | null>(null)
   const [authPromptSecondsLeft, setAuthPromptSecondsLeft] =
@@ -90,6 +94,8 @@ export function PublicHeader(props: PublicHeaderProps) {
   } = useSystemConfig()
   const dynamicLinks = useTopNavLinks()
   const notifications = useNotifications()
+  const isAtLeastSmall = useMediaQuery('(min-width: 640px)')
+  const isDesktopNavigation = useMediaQuery('(min-width: 1024px)')
   const routerState = useRouterState()
   const pathname = routerState.location.pathname
 
@@ -97,6 +103,20 @@ export function PublicHeader(props: PublicHeaderProps) {
   const isAuthenticated = !!user
   const displaySiteName = customSiteName || systemName
   const links = dynamicLinks.length > 0 ? dynamicLinks : navLinks
+  const showCompactUtilities = isAtLeastSmall && !isDesktopNavigation
+  const languageSwitcher = showLanguageSwitcher ? <LanguageSwitcher /> : null
+  const notificationPopover = showNotifications ? (
+    <NotificationPopover
+      open={notifications.popoverOpen}
+      onOpenChange={notifications.setPopoverOpen}
+      unreadCount={notifications.unreadCount}
+      activeTab={notifications.activeTab}
+      onTabChange={notifications.setActiveTab}
+      notice={notifications.notice}
+      announcements={notifications.announcements}
+      loading={notifications.loading}
+    />
+  ) : null
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20)
@@ -106,9 +126,98 @@ export function PublicHeader(props: PublicHeaderProps) {
   }, [])
 
   useEffect(() => {
+    const desktopQuery = window.matchMedia('(min-width: 1024px)')
+    const closeMobileMenuOnDesktop = (event: MediaQueryListEvent) => {
+      if (event.matches) {
+        setMobileOpen(false)
+      }
+    }
+    desktopQuery.addEventListener('change', closeMobileMenuOnDesktop)
+    return () =>
+      desktopQuery.removeEventListener('change', closeMobileMenuOnDesktop)
+  }, [])
+
+  useEffect(() => {
     document.body.style.overflow = mobileOpen ? 'hidden' : ''
     return () => {
       document.body.style.overflow = ''
+    }
+  }, [mobileOpen])
+
+  useEffect(() => {
+    if (!mobileOpen) return
+
+    const backgroundRegions = [
+      ...document.querySelectorAll<HTMLElement>('main, footer'),
+    ]
+    const previousInertStates = backgroundRegions.map((element) => ({
+      element,
+      inert: element.inert,
+    }))
+    for (const element of backgroundRegions) {
+      element.inert = true
+    }
+
+    const handleOpenMenuKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Tab') {
+        const overlay = document.querySelector<HTMLElement>(
+          '#public-header-mobile-menu'
+        )
+        const trigger = mobileMenuTriggerRef.current
+        if (!overlay || !trigger) return
+        const header = trigger.closest('header')
+        if (!header) return
+
+        const headerFocusTargets = [
+          ...header.querySelectorAll<HTMLElement>(OPEN_MENU_FOCUSABLE_SELECTOR),
+        ]
+        const overlayFocusTargets = [
+          ...overlay.querySelectorAll<HTMLElement>(
+            OPEN_MENU_FOCUSABLE_SELECTOR
+          ),
+        ]
+        const focusTargets = [
+          ...headerFocusTargets,
+          ...overlayFocusTargets,
+        ].filter((element) => {
+          if (element.closest('[inert]')) return false
+          const style = window.getComputedStyle(element)
+          const rect = element.getBoundingClientRect()
+          return (
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            style.pointerEvents !== 'none' &&
+            rect.width > 0 &&
+            rect.height > 0
+          )
+        })
+        const firstFocusTarget = focusTargets[0]
+        const lastFocusTarget = focusTargets.at(-1)
+        if (!firstFocusTarget || !lastFocusTarget) return
+
+        if (!event.shiftKey && document.activeElement === lastFocusTarget) {
+          event.preventDefault()
+          firstFocusTarget.focus()
+          return
+        }
+        if (event.shiftKey && document.activeElement === firstFocusTarget) {
+          event.preventDefault()
+          lastFocusTarget.focus()
+        }
+        return
+      }
+
+      if (event.key !== 'Escape') return
+      setMobileOpen(false)
+      window.requestAnimationFrame(() => mobileMenuTriggerRef.current?.focus())
+    }
+    document.addEventListener('keydown', handleOpenMenuKeyDown)
+
+    return () => {
+      document.removeEventListener('keydown', handleOpenMenuKeyDown)
+      for (const { element, inert } of previousInertStates) {
+        element.inert = inert
+      }
     }
   }, [mobileOpen])
 
@@ -202,11 +311,9 @@ export function PublicHeader(props: PublicHeaderProps) {
               className='public-header-brand group flex shrink-0 items-center gap-2.5'
             >
               <div className='flex size-7 shrink-0 items-center justify-center transition-all duration-300 group-hover:scale-105'>
-                {loading ? (
-                  <Skeleton className='size-full rounded-lg' />
-                ) : customLogo ? (
-                  customLogo
-                ) : (
+                {loading && <Skeleton className='size-full rounded-lg' />}
+                {!loading && customLogo}
+                {!loading && !customLogo && (
                   <HeaderLogo
                     src={systemLogo}
                     loading={loading}
@@ -221,13 +328,14 @@ export function PublicHeader(props: PublicHeaderProps) {
             </Link>
 
             {/* Desktop nav */}
-            <div className='public-header-desktop hidden items-center gap-0.5 sm:flex'>
-              {links.map((link, i) => {
+            <div className='public-header-desktop hidden items-center gap-0.5 lg:flex'>
+              {links.map((link) => {
                 const isActive = pathname === link.href
+                const linkKey = `${link.href}-${link.title}`
                 if (link.external) {
                   return (
                     <a
-                      key={i}
+                      key={linkKey}
                       href={link.href}
                       target={link.newTab === false ? undefined : '_blank'}
                       rel={
@@ -249,7 +357,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                 }
                 return (
                   <Link
-                    key={i}
+                    key={linkKey}
                     to={link.href}
                     disabled={link.disabled}
                     onClick={(event) => handleNavLinkClick(event, link)}
@@ -272,29 +380,16 @@ export function PublicHeader(props: PublicHeaderProps) {
                 <div className='bg-border/40 mx-2 h-4 w-px' />
               )}
 
-              {showLanguageSwitcher && <LanguageSwitcher />}
+              {isDesktopNavigation && languageSwitcher}
               {showThemeSwitch && <ThemeSwitch />}
-              {showNotifications && (
-                <NotificationPopover
-                  open={notifications.popoverOpen}
-                  onOpenChange={notifications.setPopoverOpen}
-                  unreadCount={notifications.unreadCount}
-                  activeTab={notifications.activeTab}
-                  onTabChange={notifications.setActiveTab}
-                  notice={notifications.notice}
-                  announcements={notifications.announcements}
-                  loading={notifications.loading}
-                />
-              )}
+              {isDesktopNavigation && notificationPopover}
 
               {showAuthButtons && (
                 <>
                   <div className='bg-border/40 mx-1 h-4 w-px' />
-                  {loading ? (
-                    <Skeleton className='h-8 w-20 rounded-lg' />
-                  ) : isAuthenticated ? (
-                    <ProfileDropdown />
-                  ) : (
+                  {loading && <Skeleton className='h-8 w-20 rounded-lg' />}
+                  {!loading && isAuthenticated && <ProfileDropdown />}
+                  {!loading && !isAuthenticated && (
                     <Button
                       size='sm'
                       className='public-header-auth-button h-8 rounded-lg px-3.5 text-xs font-medium'
@@ -308,18 +403,23 @@ export function PublicHeader(props: PublicHeaderProps) {
             </div>
 
             {/* Mobile: compact actions + hamburger */}
-            <div className='flex items-center gap-2 sm:hidden'>
+            <div className='flex items-center gap-2 lg:hidden'>
+              {showCompactUtilities && languageSwitcher}
               {showThemeSwitch && <ThemeSwitch />}
+              {showCompactUtilities && notificationPopover}
               {showAuthButtons && !loading && isAuthenticated && (
                 <ProfileDropdown />
               )}
               <Button
+                ref={mobileMenuTriggerRef}
                 type='button'
                 variant='ghost'
                 size='icon'
-                className='size-9'
+                className='size-11'
                 onClick={() => setMobileOpen((v) => !v)}
                 aria-label={t('Toggle navigation menu')}
+                aria-expanded={mobileOpen}
+                aria-controls='public-header-mobile-menu'
               >
                 <div className='relative size-4'>
                   <span
@@ -349,9 +449,12 @@ export function PublicHeader(props: PublicHeaderProps) {
 
       {/* Mobile full-screen overlay */}
       <div
+        id='public-header-mobile-menu'
+        aria-hidden={!mobileOpen}
+        inert={!mobileOpen}
         className={cn(
           'public-header-mobile-overlay',
-          'bg-background/98 fixed inset-0 z-40 backdrop-blur-2xl transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] sm:pointer-events-none sm:hidden',
+          'bg-background/98 fixed inset-0 z-40 backdrop-blur-2xl transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] lg:pointer-events-none lg:hidden',
           mobileOpen
             ? 'pointer-events-auto opacity-100'
             : 'pointer-events-none opacity-0'
@@ -361,6 +464,7 @@ export function PublicHeader(props: PublicHeaderProps) {
           <nav className='flex flex-col gap-1'>
             {links.map((link, i) => {
               const isActive = pathname === link.href
+              const linkKey = `${link.href}-${link.title}`
               const linkClassName = cn(
                 'flex items-center gap-3 py-3 text-base font-medium tracking-tight transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
                 mobileOpen
@@ -375,7 +479,7 @@ export function PublicHeader(props: PublicHeaderProps) {
               if (link.external) {
                 return (
                   <a
-                    key={i}
+                    key={linkKey}
                     href={link.href}
                     target={link.newTab === false ? undefined : '_blank'}
                     rel={
@@ -393,7 +497,7 @@ export function PublicHeader(props: PublicHeaderProps) {
               }
               return (
                 <Link
-                  key={i}
+                  key={linkKey}
                   to={link.href}
                   disabled={link.disabled}
                   onClick={(event) => handleNavLinkClick(event, link, true)}
@@ -419,7 +523,7 @@ export function PublicHeader(props: PublicHeaderProps) {
               <Link
                 to={isAuthenticated ? '/dashboard' : '/sign-in'}
                 onClick={() => setMobileOpen(false)}
-                className='public-header-mobile-auth-button inline-flex h-10 items-center justify-center rounded-lg text-sm font-medium transition-opacity hover:opacity-90 active:opacity-80'
+                className='public-header-mobile-auth-button inline-flex min-h-11 items-center justify-center rounded-lg text-sm font-medium transition-opacity hover:opacity-90 active:opacity-80'
               >
                 {isAuthenticated ? t('Go to Dashboard') : t('Sign in')}
               </Link>

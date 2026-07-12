@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useEffect, useRef, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { cn } from '@/lib/utils'
 
@@ -45,17 +46,17 @@ const ACCENT_CLASSES: Record<
   }
 > = {
   emerald: {
-    tone: '#60915d',
+    tone: '#477545',
     toneSoft: '#e0eddc',
     toneDark: '#5f895c',
   },
   amber: {
-    tone: '#bd7d3f',
+    tone: '#92561f',
     toneSoft: '#fce4cf',
     toneDark: '#8a5a2a',
   },
   blue: {
-    tone: '#2f86ad',
+    tone: '#246784',
     toneSoft: '#def0fa',
     toneDark: '#2d6e89',
   },
@@ -171,6 +172,7 @@ interface HeroTerminalDemoProps {
 }
 
 export function HeroTerminalDemo(props: HeroTerminalDemoProps) {
+  const { t } = useTranslation()
   const [activeIndex, setActiveIndex] = useState(0)
   const [transitioning, setTransitioning] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined)
@@ -241,7 +243,11 @@ export function HeroTerminalDemo(props: HeroTerminalDemoProps) {
           } as React.CSSProperties
         }
       >
-        <div className='home-tab-strip' role='tablist' aria-label='API 示例'>
+        <div
+          className='home-tab-strip'
+          role='group'
+          aria-label={`${t('API')} ${t('Example')}`}
+        >
           {API_DEMOS.map((item, index) => {
             const tone = ACCENT_CLASSES[item.accent]
             const isActive = index === activeIndex
@@ -249,8 +255,7 @@ export function HeroTerminalDemo(props: HeroTerminalDemoProps) {
               <button
                 key={item.id}
                 type='button'
-                role='tab'
-                aria-selected={isActive}
+                aria-pressed={isActive}
                 onClick={() => handleSelect(index)}
                 className={cn('home-api-tab', isActive && 'active')}
                 style={{ '--tone': tone.tone } as React.CSSProperties}
@@ -329,8 +334,8 @@ function RequestBlock(props: { demo: ApiDemoConfig; transitioning: boolean }) {
         <CodeLine indent={2}>
           <Flag>-d</Flag> <StringText>&apos;{'{'}</StringText>
         </CodeLine>
-        {demo.request.map((line, i) => (
-          <CodeLine key={i} indent={4}>
+        {demo.request.map((line) => (
+          <CodeLine key={`${demo.id}-request-${line}`} indent={4}>
             {renderJsonLine(line)}
           </CodeLine>
         ))}
@@ -354,8 +359,10 @@ function ResponseBlock(props: { demo: ApiDemoConfig; transitioning: boolean }) {
           transitioning ? 'opacity-0' : 'opacity-100'
         )}
       >
-        {demo.response.map((line, i) => (
-          <CodeLine key={i}>{renderResponseLine(line, demo)}</CodeLine>
+        {demo.response.map((line) => (
+          <CodeLine key={`${demo.id}-response-${line}`}>
+            {renderResponseLine(line, demo)}
+          </CodeLine>
         ))}
       </div>
     </div>
@@ -383,36 +390,36 @@ function renderResponseLine(line: string, demo: ApiDemoConfig): ReactNode {
 
   if (matches.length === 0) return tokenize(line)
 
-  matches.forEach((match, idx) => {
+  matches.forEach((match) => {
     const start = match.index ?? 0
     if (start > cursor) {
       segments.push(
-        <span key={`pre-${idx}`}>{tokenize(line.slice(cursor, start))}</span>
+        <span key={`pre-${start}`}>{tokenize(line.slice(cursor, start))}</span>
       )
     }
     const placeholder = match[0]
     if (placeholder === '<text>') {
       segments.push(
-        <Accent key={`ph-${idx}`} accent={demo.accent}>
+        <Accent key={`ph-${start}`} accent={demo.accent}>
           {`"${truncateResponse(demo)}"`}
         </Accent>
       )
     } else if (placeholder === '<tokens>') {
-      segments.push(<NumberText key={`ph-${idx}`}>{demo.tokens}</NumberText>)
+      segments.push(<NumberText key={`ph-${start}`}>{demo.tokens}</NumberText>)
     } else if (placeholder === '<in>') {
       segments.push(
-        <NumberText key={`ph-${idx}`}>
+        <NumberText key={`ph-${start}`}>
           {Math.floor(demo.tokens * 0.4)}
         </NumberText>
       )
     } else if (placeholder === '<out>') {
       segments.push(
-        <NumberText key={`ph-${idx}`}>
+        <NumberText key={`ph-${start}`}>
           {Math.ceil(demo.tokens * 0.6)}
         </NumberText>
       )
     } else {
-      segments.push(<Muted key={`ph-${idx}`}>{placeholder}</Muted>)
+      segments.push(<Muted key={`ph-${start}`}>{placeholder}</Muted>)
     }
     cursor = start + placeholder.length
   })
@@ -440,20 +447,20 @@ function tokenize(input: string): ReactNode {
   let cursor = 0
   const matches = [...input.matchAll(STRING_RE)]
 
-  matches.forEach((match, idx) => {
+  matches.forEach((match) => {
     const start = match.index ?? 0
     if (start > cursor) {
       segments.push(
-        <Muted key={`m-${idx}`}>{input.slice(cursor, start)}</Muted>
+        <Muted key={`m-${start}`}>{input.slice(cursor, start)}</Muted>
       )
     }
     const text = match[0]
     const after = input.slice(start + text.length).trimStart()
     const isKey = after.startsWith(':')
     if (isKey) {
-      segments.push(<Key key={`k-${idx}`}>{text}</Key>)
+      segments.push(<Key key={`k-${start}`}>{text}</Key>)
     } else {
-      segments.push(<StringText key={`s-${idx}`}>{text}</StringText>)
+      segments.push(<StringText key={`s-${start}`}>{text}</StringText>)
     }
     cursor = start + text.length
   })

@@ -18,10 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
 import { ArrowRight, Download } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
+
+import { getDesktopDownloadTarget } from '../../lib/desktop-download'
 import { HeroFloatingLines } from '../hero-floating-lines'
 import { HeroTerminalDemo } from '../hero-terminal-demo'
-import { getDesktopDownloadTarget } from '../../lib/desktop-download'
 
 interface HeroProps {
   className?: string
@@ -54,9 +55,12 @@ export function Hero(props: HeroProps) {
             {t('Built for AI applications, global developers, and teams')}
           </span>
           <span className='home-hero-sub-muted'>
-            {t(
-              'Fast direct access, no account-ban risk, non-expiring balance, and better value. Low-latency access to ChatGPT, Claude, Gemini, and other frontier models.'
-            )}
+            <Trans
+              i18nKey='Fast direct access, no account-ban risk, non-expiring balance, and better value. Low-latency access to ChatGPT, Claude, Gemini, and other frontier models.'
+              components={{
+                nowrap: <span className='home-cjk-nowrap' />,
+              }}
+            />
           </span>
         </p>
         <div className='home-actions'>

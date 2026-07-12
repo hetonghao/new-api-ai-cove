@@ -43,7 +43,7 @@ export function CTA(props: CTAProps) {
         </h2>
         <p>
           {t(
-            'Sign up, create a key, check pricing, paste the Base URL into your project: first 200 OK in four steps.'
+            'Sign up and create a key, check pricing, enter the Base URL: get your first 200 OK in three steps.'
           )}
         </p>
         <div className='home-actions'>

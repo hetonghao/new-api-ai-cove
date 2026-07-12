@@ -57,8 +57,8 @@ test('builds the Windows desktop download target', () => {
     {
       platform: 'windows',
       href: '/downloads/ai-cove-design-desktop-windows.exe',
-      labelKey: 'Download Cove-Desgin Windows desktop app',
-      ariaLabelKey: 'Download Cove-Desgin for Windows',
+      labelKey: 'Download AI Cove Design Windows desktop app',
+      ariaLabelKey: 'Download AI Cove Design for Windows',
     }
   )
 })
@@ -67,8 +67,8 @@ test('builds the macOS desktop download target by default', () => {
   assert.deepEqual(getDesktopDownloadTarget({}), {
     platform: 'macos',
     href: '/downloads/ai-cove-design-desktop-macos.dmg',
-    labelKey: 'Download Cove-Desgin macOS desktop app',
-    ariaLabelKey: 'Download Cove-Desgin for macOS',
+    labelKey: 'Download AI Cove Design macOS desktop app',
+    ariaLabelKey: 'Download AI Cove Design for macOS',
   })
 })
 
@@ -86,11 +86,11 @@ test('maps desktop download labels to the requested Chinese copy', () => {
   const zh = readLocale('zh.json')
 
   assert.equal(
-    zh['Download Cove-Desgin macOS desktop app'],
-    '下载 Cove-Desgin macOS桌面版'
+    zh['Download AI Cove Design macOS desktop app'],
+    '下载 AI Cove Design macOS 桌面版'
   )
   assert.equal(
-    zh['Download Cove-Desgin Windows desktop app'],
-    '下载 Cove-Desgin Windows桌面版'
+    zh['Download AI Cove Design Windows desktop app'],
+    '下载 AI Cove Design Windows 桌面版'
   )
 })

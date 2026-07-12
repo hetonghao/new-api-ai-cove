@@ -10,10 +10,16 @@ const source = readFileSync(
 const styles = readFileSync(join(process.cwd(), 'src/styles/index.css'), 'utf8')
 
 test('home footer uses the shared AI Cove Design wordmark', () => {
-  assert.match(source, /className='ai-cove-design-wordmark home-footer-design-wordmark'/)
-  assert.match(source, /aria-label='AI  Cove Design'/)
+  assert.match(
+    source,
+    /className='ai-cove-design-wordmark home-footer-design-wordmark'/
+  )
+  assert.match(source, /aria-label='AI {2}Cove Design'/)
   assert.match(source, /className='ai-cove-design-wordmark__prefix'/)
-  assert.match(source, /className='ai-cove-design-wordmark__space ai-cove-design-wordmark__space--after-prefix'/)
+  assert.match(
+    source,
+    /className='ai-cove-design-wordmark__space ai-cove-design-wordmark__space--after-prefix'/
+  )
   assert.match(source, /className='ai-cove-design-wordmark__image'/)
   assert.match(source, /className='ai-cove-design-wordmark__canvas'/)
   assert.doesNotMatch(source, /<strong>\{t\('AI Cove Design'\)\}<\/strong>/)
@@ -21,6 +27,33 @@ test('home footer uses the shared AI Cove Design wordmark', () => {
 
 test('home footer product wordmark keeps the product landing style', () => {
   assert.match(styles, /\.home-footer-design-wordmark\s*\{/)
-  assert.match(styles, /\.ai-cove-design-wordmark__prefix\s*\{[\s\S]*font-style:\s*italic/)
-  assert.match(styles, /\.ai-cove-design-wordmark__image\s*\{[\s\S]*background-clip:\s*text/)
+  assert.match(
+    styles,
+    /\.ai-cove-design-wordmark__prefix\s*\{[\s\S]*font-style:\s*italic/
+  )
+  assert.match(
+    styles,
+    /\.ai-cove-design-wordmark__image\s*\{[\s\S]*background-clip:\s*text/
+  )
+})
+
+test('home footer pulse uses a lightweight flowing gradient', () => {
+  assert.match(source, /className='home-footer-system-pulse-rail'/)
+  assert.match(source, /className='home-footer-system-pulse-flow'/)
+  assert.match(
+    styles,
+    /\.home-footer-system-pulse-flow\s*\{[\s\S]*animation:\s*homeFooterPulseFlow/
+  )
+  assert.match(styles, /@keyframes homeFooterPulseFlow/)
+  assert.match(
+    styles,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.home-footer-system-pulse-flow\s*\{[\s\S]*animation:\s*none !important/
+  )
+})
+
+test('shared AI prefix stays readable in dark mode', () => {
+  assert.match(
+    styles,
+    /\.dark \.ai-cove-design-wordmark__prefix\s*\{[\s\S]*color:\s*var\(--home-ink\)/
+  )
 })

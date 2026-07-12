@@ -567,7 +567,7 @@ For commercial licensing, please contact support@quantumnous.com
   --home-hairline: rgba(60, 40, 20, 0.07);
   --home-ink: #2a2520;
   --home-ink-soft: #4d433b;
-  --home-muted: #8a7e72;
+  --home-muted: #70645a;
   --home-brand-blue: #129bd7;
   --home-brand-orange: #f47a16;
   --home-serif: 'Instrument Serif', 'Iowan Old Style', Charter, Georgia, serif;
@@ -762,7 +762,7 @@ For commercial licensing, please contact support@quantumnous.com
   --home-paper: #fffffc;
   --home-line: #ece2d5;
   --home-ink: #2a2520;
-  --home-muted: #8a7e72;
+  --home-muted: #70645a;
   --home-brand-blue: #129bd7;
   --home-brand-orange: #f47a16;
   --home-serif: 'Instrument Serif', 'Iowan Old Style', Charter, Georgia, serif;
@@ -772,7 +772,11 @@ For commercial licensing, please contact support@quantumnous.com
   align-items: center;
   justify-content: center;
   background:
-    radial-gradient(520px 260px at 50% 18%, rgba(18, 155, 215, 0.1), transparent 68%),
+    radial-gradient(
+      520px 260px at 50% 18%,
+      rgba(18, 155, 215, 0.1),
+      transparent 68%
+    ),
     var(--home-bg);
   padding: 48px 20px;
 }
@@ -780,10 +784,15 @@ For commercial licensing, please contact support@quantumnous.com
 .desktop-auth-card {
   width: min(460px, 100%);
   overflow: hidden;
-  border: 1px solid color-mix(in oklab, var(--home-brand-blue) 16%, var(--home-line));
+  border: 1px solid
+    color-mix(in oklab, var(--home-brand-blue) 16%, var(--home-line));
   border-radius: 22px;
   background:
-    radial-gradient(180px 92px at 0% 42%, rgba(179, 212, 232, 0.34), transparent 72%),
+    radial-gradient(
+      180px 92px at 0% 42%,
+      rgba(179, 212, 232, 0.34),
+      transparent 72%
+    ),
     linear-gradient(135deg, rgba(255, 255, 252, 0.9), rgba(250, 245, 239, 0.66));
   box-shadow: 0 20px 46px rgba(60, 40, 20, 0.08);
   color: var(--home-ink);
@@ -923,8 +932,8 @@ For commercial licensing, please contact support@quantumnous.com
   --home-hairline: rgba(60, 40, 20, 0.07);
   --home-ink: #2a2520;
   --home-ink-soft: #4d433b;
-  --home-muted: #8a7e72;
-  --home-muted-2: #b3a89a;
+  --home-muted: #70645a;
+  --home-muted-2: #75695f;
   --home-peach: #f5b885;
   --home-peach-soft: #fce4cf;
   --home-sage: #9ec79e;
@@ -1078,6 +1087,10 @@ For commercial licensing, please contact support@quantumnous.com
   display: block;
 }
 
+.home-cjk-nowrap {
+  white-space: nowrap;
+}
+
 .home-title-api {
   display: inline-block;
   padding-inline: 0.02em;
@@ -1130,7 +1143,7 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .home-btn {
-  min-height: 42px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1254,6 +1267,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 .home-api-tab {
   position: relative;
+  min-height: 44px;
   min-width: max-content;
   border: 0;
   border-bottom: 2px solid transparent;
@@ -1381,7 +1395,7 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .ai-cove-home .code-muted {
-  color: rgba(77, 67, 59, 0.72);
+  color: var(--home-muted);
 }
 
 .home-terminal-footer {
@@ -1669,24 +1683,23 @@ For commercial licensing, please contact support@quantumnous.com
   font-weight: 700;
 }
 
-.eco-symbol {
-  width: 40px;
-  height: 40px;
+.eco-tool-title {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  margin-bottom: 18px;
-  border-radius: 50%;
-  background: var(--tone-soft);
-  box-shadow: inset 0 0 0 1px
-    color-mix(in oklab, var(--tone-dark) 22%, transparent);
-  color: var(--tone-dark);
+  gap: 10px;
 }
 
-.eco-symbol svg {
-  width: 20px;
-  height: 20px;
-  stroke-width: 1.5;
+.eco-tool-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+}
+
+.eco-tool-icon svg {
+  display: block;
+  width: 22px;
+  height: 22px;
 }
 
 .eco-tool h4 {
@@ -2221,11 +2234,21 @@ For commercial licensing, please contact support@quantumnous.com
 
 .home-footer-system-pulse path {
   fill: none;
-  stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2.2;
+}
+
+.home-footer-system-pulse-rail {
+  stroke: currentColor;
+  opacity: 0.18;
+}
+
+.home-footer-system-pulse-flow {
+  stroke: url('#home-footer-pulse-gradient');
+  stroke-dasharray: 44 124;
   filter: drop-shadow(0 5px 12px rgba(18, 155, 215, 0.18));
+  animation: homeFooterPulseFlow 2.8s linear infinite;
 }
 
 .home-footer-design-card {
@@ -2386,7 +2409,7 @@ For commercial licensing, please contact support@quantumnous.com
   --home-hairline: oklch(74% 0.05 74 / 0.12);
   --home-ink: oklch(91% 0.026 78);
   --home-ink-soft: oklch(80% 0.034 75);
-  --home-muted: oklch(66% 0.03 75);
+  --home-muted: oklch(68% 0.03 75);
   --home-brand-blue: oklch(72% 0.13 219);
   --home-brand-orange: oklch(76% 0.15 55);
 
@@ -2458,8 +2481,8 @@ For commercial licensing, please contact support@quantumnous.com
   --home-hairline: oklch(74% 0.05 74 / 0.11);
   --home-ink: oklch(91% 0.026 78);
   --home-ink-soft: oklch(81% 0.034 75);
-  --home-muted: oklch(66% 0.03 75);
-  --home-muted-2: oklch(56% 0.026 75);
+  --home-muted: oklch(68% 0.03 75);
+  --home-muted-2: oklch(66% 0.03 75);
   --home-peach: oklch(77% 0.13 56);
   --home-peach-soft: oklch(30% 0.054 58);
   --home-sage: oklch(72% 0.09 145);
@@ -2561,6 +2584,11 @@ For commercial licensing, please contact support@quantumnous.com
   );
 }
 
+.dark .home-api-tab.active {
+  border-bottom-color: var(--tone-soft);
+  color: var(--tone-soft);
+}
+
 .dark .home-endpoint-row {
   background: color-mix(in oklab, var(--home-paper-tint) 52%, transparent);
 }
@@ -2615,7 +2643,6 @@ For commercial licensing, please contact support@quantumnous.com
   background: color-mix(in oklab, var(--tone-dark) 16%, var(--home-paper));
 }
 
-.dark .eco-symbol,
 .dark .sig-thinking,
 .dark .sig-code,
 .dark .sig-diamond {
@@ -2707,6 +2734,10 @@ For commercial licensing, please contact support@quantumnous.com
     );
 }
 
+.dark .ai-cove-design-wordmark__prefix {
+  color: var(--home-ink);
+}
+
 .dark .home-footer-brand img,
 .dark .home-footer-design-logo {
   background: var(--home-paper);
@@ -2731,8 +2762,8 @@ For commercial licensing, please contact support@quantumnous.com
   --home-hairline: rgba(60, 40, 20, 0.07);
   --home-ink: #2a2520;
   --home-ink-soft: #4d433b;
-  --home-muted: #8a7e72;
-  --home-muted-2: #b3a89a;
+  --home-muted: #70645a;
+  --home-muted-2: #75695f;
   --home-peach: #f5b885;
   --home-sky: #b3d4e8;
   --home-brand-blue: #129bd7;
@@ -2818,91 +2849,8 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .ai-cove-auth-brand {
-    animation: authBrandEnter 540ms cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
-  }
-
-  .ai-cove-auth-kicker,
-  .ai-cove-auth-title-line,
-  .ai-cove-auth-story p,
-  .ai-cove-auth-proof,
-  .ai-cove-auth-card,
-  .ai-cove-auth-heading h2,
-  .ai-cove-auth-heading p,
-  .ai-cove-auth-content > p,
-  .ai-cove-auth-form > * {
-    will-change: opacity, transform;
-  }
-
-  .ai-cove-auth-kicker {
-    animation: authStoryEnter 560ms cubic-bezier(0.16, 1, 0.3, 1) 130ms both;
-  }
-
-  .ai-cove-auth-title-line {
-    animation: authStoryEnter 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-
-  .ai-cove-auth-title-line:nth-child(1) {
-    animation-delay: 190ms;
-  }
-
-  .ai-cove-auth-title-line:nth-child(2) {
-    animation-delay: 270ms;
-  }
-
-  .ai-cove-auth-title-line:nth-child(3) {
-    animation-delay: 350ms;
-  }
-
-  .ai-cove-auth-story p {
-    animation: authStoryEnter 560ms cubic-bezier(0.16, 1, 0.3, 1) 440ms both;
-  }
-
-  .ai-cove-auth-proof {
-    animation: authStoryEnter 560ms cubic-bezier(0.16, 1, 0.3, 1) 520ms both;
-  }
-
   .ai-cove-auth-card {
-    animation: authCardEnter 660ms cubic-bezier(0.16, 1, 0.3, 1) 180ms both;
-  }
-
-  .ai-cove-auth-heading h2 {
-    animation: authFormElementEnter 520ms cubic-bezier(0.16, 1, 0.3, 1) 360ms
-      both;
-  }
-
-  .ai-cove-auth-heading p {
-    animation: authFormElementEnter 500ms cubic-bezier(0.16, 1, 0.3, 1) 430ms
-      both;
-  }
-
-  .ai-cove-auth-form > * {
-    animation: authFormElementEnter 500ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-
-  .ai-cove-auth-form > :nth-child(1) {
-    animation-delay: 500ms;
-  }
-
-  .ai-cove-auth-form > :nth-child(2) {
-    animation-delay: 580ms;
-  }
-
-  .ai-cove-auth-form > :nth-child(3) {
-    animation-delay: 660ms;
-  }
-
-  .ai-cove-auth-form > :nth-child(4) {
-    animation-delay: 740ms;
-  }
-
-  .ai-cove-auth-form > :nth-child(n + 5) {
-    animation-delay: 820ms;
-  }
-
-  .ai-cove-auth-content > p {
-    animation: authFormElementEnter 500ms cubic-bezier(0.16, 1, 0.3, 1) 900ms
-      both;
+    animation: authCardEnter 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 }
 
@@ -3143,6 +3091,9 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .ai-cove-auth-card {
+  --auth-card-shift-x: 0px;
+  --auth-card-shift-y: 0px;
+
   position: relative;
   z-index: 1;
   width: min(100%, 480px) !important;
@@ -3163,6 +3114,13 @@ For commercial licensing, please contact support@quantumnous.com
   box-shadow:
     var(--home-shadow),
     inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .ai-cove-auth-card {
+    translate: var(--auth-card-shift-x) var(--auth-card-shift-y);
+    transition: translate 120ms var(--home-ease);
+  }
 }
 
 .ai-cove-auth-card::after {
@@ -3235,7 +3193,7 @@ For commercial licensing, please contact support@quantumnous.com
 .ai-cove-auth-shell [data-slot='input'],
 .ai-cove-auth-shell [data-slot='form-control'],
 .ai-cove-auth-form input:not([type='checkbox']) {
-  height: 42px;
+  height: 44px;
   border-color: var(--home-line);
   background: color-mix(in oklab, var(--home-paper) 78%, transparent);
   color: var(--home-ink);
@@ -3297,14 +3255,6 @@ For commercial licensing, please contact support@quantumnous.com
   animation: homeButtonFloat 5.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .ai-cove-auth-form > [data-slot='button'][type='submit'] {
-    animation:
-      authFormElementEnter 500ms cubic-bezier(0.16, 1, 0.3, 1) 660ms both,
-      homeButtonFloat 5.6s cubic-bezier(0.22, 1, 0.36, 1) 1300ms infinite;
-  }
-}
-
 .ai-cove-auth-form [data-slot='button'][type='submit']:hover,
 .ai-cove-auth-form [data-slot='button'][type='submit']:focus-visible {
   border-color: color-mix(
@@ -3319,7 +3269,7 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .ai-cove-auth-form [data-slot='button'][type='button'] {
-  min-height: 42px;
+  min-height: 44px;
   border-color: var(--home-line);
   background: color-mix(in oklab, var(--home-paper) 68%, transparent);
   color: var(--home-ink-soft);
@@ -3341,9 +3291,6 @@ For commercial licensing, please contact support@quantumnous.com
 .password-visibility-toggle,
 .ai-cove-auth-form
   [data-slot='button'].password-visibility-toggle[type='button'] {
-  width: 1.5rem;
-  height: 1.5rem;
-  min-height: 1.5rem;
   border-color: transparent;
   background: transparent;
   box-shadow: none;
@@ -3361,6 +3308,12 @@ For commercial licensing, please contact support@quantumnous.com
   color: var(--home-ink-soft);
   translate: 0 0;
   transform: translateY(-50%);
+}
+
+.ai-cove-auth-form
+  [data-slot='button'].password-visibility-toggle[type='button']:focus-visible {
+  box-shadow: 0 0 0 3px
+    color-mix(in oklab, var(--home-brand-orange) 62%, var(--home-ink));
 }
 
 .password-visibility-toggle:active,
@@ -3408,8 +3361,8 @@ For commercial licensing, please contact support@quantumnous.com
   --home-hairline: oklch(74% 0.05 74 / 0.11);
   --home-ink: oklch(91% 0.026 78);
   --home-ink-soft: oklch(81% 0.034 75);
-  --home-muted: oklch(66% 0.03 75);
-  --home-muted-2: oklch(56% 0.026 75);
+  --home-muted: oklch(68% 0.03 75);
+  --home-muted-2: oklch(66% 0.03 75);
   --home-peach: oklch(77% 0.13 56);
   --home-sky: oklch(73% 0.095 219);
   --home-brand-blue: oklch(72% 0.13 219);
@@ -3559,19 +3512,16 @@ For commercial licensing, please contact support@quantumnous.com
     .public-header-mobile-auth-button,
   .ai-cove-auth-proof-track,
   .ai-cove-auth-form [data-slot='button'][type='submit'],
-  .ai-cove-auth-brand,
-  .ai-cove-auth-kicker,
-  .ai-cove-auth-title-line,
-  .ai-cove-auth-story p,
-  .ai-cove-auth-proof,
-  .ai-cove-auth-card,
-  .ai-cove-auth-heading h2,
-  .ai-cove-auth-heading p,
-  .ai-cove-auth-content > p,
-  .ai-cove-auth-form > * {
+  .ai-cove-auth-card {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
+    translate: none !important;
+  }
+
+  .home-footer-system-pulse-flow {
+    animation: none !important;
+    stroke-dasharray: none;
   }
 
   .ai-cove-auth-floating-field {
@@ -3913,47 +3863,12 @@ For commercial licensing, please contact support@quantumnous.com
   }
 }
 
-@keyframes authBrandEnter {
-  from {
-    opacity: 0;
-    transform: translate3d(-10px, -8px, 0);
-  }
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-  }
-}
-
-@keyframes authStoryEnter {
-  from {
-    opacity: 0;
-    transform: translate3d(-18px, 14px, 0);
-  }
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-  }
-}
-
 @keyframes authCardEnter {
   from {
-    opacity: 0;
-    transform: translate3d(22px, 16px, 0) scale(0.982);
+    transform: translate3d(0, 10px, 0) scale(0.99);
   }
   to {
-    opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
-  }
-}
-
-@keyframes authFormElementEnter {
-  from {
-    opacity: 0;
-    transform: translate3d(0, 12px, 0);
-  }
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
   }
 }
 
@@ -3963,6 +3878,12 @@ For commercial licensing, please contact support@quantumnous.com
   }
   to {
     transform: translate3d(-100%, 0, 0);
+  }
+}
+
+@keyframes homeFooterPulseFlow {
+  to {
+    stroke-dashoffset: -168;
   }
 }
 

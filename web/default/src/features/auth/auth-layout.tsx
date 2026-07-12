@@ -1,3 +1,11 @@
+import Antigravity from '@lobehub/icons/es/Antigravity'
+import CherryStudio from '@lobehub/icons/es/CherryStudio'
+import ClaudeCode from '@lobehub/icons/es/ClaudeCode'
+import Codex from '@lobehub/icons/es/Codex'
+import Gemini from '@lobehub/icons/es/Gemini'
+import NousResearch from '@lobehub/icons/es/NousResearch'
+import OpenClaw from '@lobehub/icons/es/OpenClaw'
+import OpenCode from '@lobehub/icons/es/OpenCode'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -17,19 +25,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
-import Antigravity from '@lobehub/icons/es/Antigravity'
-import CherryStudio from '@lobehub/icons/es/CherryStudio'
-import ClaudeCode from '@lobehub/icons/es/ClaudeCode'
-import Codex from '@lobehub/icons/es/Codex'
-import Gemini from '@lobehub/icons/es/Gemini'
-import NousResearch from '@lobehub/icons/es/NousResearch'
-import OpenClaw from '@lobehub/icons/es/OpenClaw'
-import OpenCode from '@lobehub/icons/es/OpenCode'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { cn } from '@/lib/utils'
+
 import { FloatingLines } from '@/components/backgrounds/floating-lines'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSystemConfig } from '@/hooks/use-system-config'
+import { cn } from '@/lib/utils'
 
 type AuthLayoutProps = {
   children: React.ReactNode
@@ -82,7 +84,7 @@ const AUTH_MARQUEE_LABELS = [
     Icon: ZedIcon,
     iconClassName: 'ai-cove-auth-proof-icon-zed',
   },
-  { label: '高性价比' },
+  { label: 'Better value' },
 ] satisfies AuthMarqueeLabel[]
 const AUTH_MARQUEE_CYCLES = [0, 1]
 const AUTH_FLOATING_WAVES: Array<'top' | 'middle' | 'bottom'> = ['middle']
@@ -91,9 +93,53 @@ const AUTH_LINE_GRADIENT = ['#1a9fd3', '#7d95b7', '#6a6a6a']
 export function AuthLayout({ children, variant = 'default' }: AuthLayoutProps) {
   const { t } = useTranslation()
   const { systemName, logo, loading } = useSystemConfig()
+  const authCardRef = useRef<HTMLDivElement>(null)
+  const authCardMotionFrameRef = useRef<number | null>(null)
   const isHomeVariant = variant === 'home'
   const displayName = isHomeVariant ? 'AI Cove' : systemName
   const [oneApiSitePrefix, oneApiSiteSuffix] = t('One API site').split('API')
+
+  const moveAuthCard = (x: number, y: number) => {
+    if (authCardMotionFrameRef.current !== null) {
+      window.cancelAnimationFrame(authCardMotionFrameRef.current)
+    }
+
+    authCardMotionFrameRef.current = window.requestAnimationFrame(() => {
+      authCardRef.current?.style.setProperty(
+        '--auth-card-shift-x',
+        `${x.toFixed(2)}px`
+      )
+      authCardRef.current?.style.setProperty(
+        '--auth-card-shift-y',
+        `${y.toFixed(2)}px`
+      )
+      authCardMotionFrameRef.current = null
+    })
+  }
+
+  const handleAuthPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (
+      !isHomeVariant ||
+      event.pointerType !== 'mouse' ||
+      !window.matchMedia(
+        '(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)'
+      ).matches
+    ) {
+      return
+    }
+
+    const x = (event.clientX / window.innerWidth - 0.5) * 8
+    const y = (event.clientY / window.innerHeight - 0.5) * 8
+    moveAuthCard(x, y)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (authCardMotionFrameRef.current !== null) {
+        window.cancelAnimationFrame(authCardMotionFrameRef.current)
+      }
+    }
+  }, [])
 
   return (
     <div
@@ -101,6 +147,8 @@ export function AuthLayout({ children, variant = 'default' }: AuthLayoutProps) {
         'relative grid h-svh max-w-none',
         isHomeVariant && 'ai-cove-auth-shell'
       )}
+      onPointerLeave={isHomeVariant ? () => moveAuthCard(0, 0) : undefined}
+      onPointerMove={isHomeVariant ? handleAuthPointerMove : undefined}
     >
       {isHomeVariant && (
         <div className='ai-cove-auth-atmosphere' aria-hidden='true'>
@@ -180,7 +228,8 @@ export function AuthLayout({ children, variant = 'default' }: AuthLayoutProps) {
                     <span
                       className={cn(
                         'ai-cove-auth-proof-pill',
-                        Icon && 'ai-cove-auth-proof-pill-with-icon'
+                        Icon && 'ai-cove-auth-proof-pill-with-icon',
+                        label === 'Better value' && 'home-cjk-nowrap'
                       )}
                       key={`${cycle}-${label}`}
                     >
@@ -194,7 +243,7 @@ export function AuthLayout({ children, variant = 'default' }: AuthLayoutProps) {
                           <Icon size={14} aria-hidden='true' />
                         </span>
                       )}
-                      {label}
+                      {t(label)}
                     </span>
                   ))}
                 </div>
@@ -203,6 +252,7 @@ export function AuthLayout({ children, variant = 'default' }: AuthLayoutProps) {
           </aside>
         )}
         <div
+          ref={authCardRef}
           className={cn(
             'mx-auto flex w-full flex-col justify-center space-y-2 px-4 py-8 sm:w-[480px] sm:p-8',
             isHomeVariant && 'ai-cove-auth-card'

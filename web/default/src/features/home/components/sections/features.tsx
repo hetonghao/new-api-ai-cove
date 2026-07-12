@@ -16,13 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  Code2,
-  PanelTop,
-  Sparkles,
-  Terminal,
-  type LucideIcon,
-} from 'lucide-react'
+import ClaudeCodeIcon from '@lobehub/icons/es/ClaudeCode/components/Color'
+import CodexIcon from '@lobehub/icons/es/Codex/components/Color'
+import GeminiIcon from '@lobehub/icons/es/Gemini/components/Color'
+import OpenClawIcon from '@lobehub/icons/es/OpenClaw/components/Color'
+import type { ElementType } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AnimateInView } from '@/components/animate-in-view'
@@ -39,7 +37,7 @@ interface EcosystemTool {
   badge: string
   toneSoft: string
   toneDark: string
-  icon: LucideIcon
+  icon: ElementType<{ size?: number | string }>
   signature: 'terminal' | 'thinking' | 'code' | 'diamond'
 }
 
@@ -111,16 +109,16 @@ export function Features(_props: FeaturesProps) {
   const ecosystemTools: EcosystemTool[] = [
     {
       num: '01 / 04',
-      vendor: 'Open Source',
-      title: 'OpenClaw',
+      vendor: 'OpenAI',
+      title: 'Codex',
       description: t(
-        'Open-source local AI assistant that can execute tasks on your computer through chat, not just respond.'
+        'OpenAI coding agent for larger refactors, bug fixes, and tests across real repositories.'
       ),
-      badge: t('Open source · local runtime'),
-      toneSoft: 'var(--home-peach-soft)',
-      toneDark: '#8a5a2a',
-      icon: Sparkles,
-      signature: 'terminal',
+      badge: t('OpenAI official'),
+      toneSoft: 'var(--home-sky-soft)',
+      toneDark: '#2d6e89',
+      icon: CodexIcon,
+      signature: 'code',
     },
     {
       num: '02 / 04',
@@ -132,21 +130,21 @@ export function Features(_props: FeaturesProps) {
       badge: t('Anthropic official'),
       toneSoft: 'var(--home-sage-soft)',
       toneDark: '#5f895c',
-      icon: Terminal,
+      icon: ClaudeCodeIcon,
       signature: 'thinking',
     },
     {
       num: '03 / 04',
-      vendor: 'OpenAI',
-      title: 'Codex',
+      vendor: 'Open Source',
+      title: 'OpenClaw',
       description: t(
-        'OpenAI coding agent for larger refactors, bug fixes, and tests across real repositories.'
+        'Open-source local AI assistant that can execute tasks on your computer through chat, not just respond.'
       ),
-      badge: t('OpenAI official'),
-      toneSoft: 'var(--home-sky-soft)',
-      toneDark: '#2d6e89',
-      icon: Code2,
-      signature: 'code',
+      badge: t('Open source · local runtime'),
+      toneSoft: 'var(--home-peach-soft)',
+      toneDark: '#8a5a2a',
+      icon: OpenClawIcon,
+      signature: 'terminal',
     },
     {
       num: '04 / 04',
@@ -158,7 +156,7 @@ export function Features(_props: FeaturesProps) {
       badge: t('Google open source'),
       toneSoft: 'var(--home-lavender-soft)',
       toneDark: '#6e5e9e',
-      icon: PanelTop,
+      icon: GeminiIcon,
       signature: 'diamond',
     },
   ]
@@ -243,10 +241,12 @@ export function Features(_props: FeaturesProps) {
                     <span className='num'>{tool.num}</span>
                     <span className='vendor'>{tool.vendor}</span>
                   </div>
-                  <span className='eco-symbol' aria-hidden='true'>
-                    <Icon />
-                  </span>
-                  <h4>{tool.title}</h4>
+                  <h4 className='eco-tool-title'>
+                    <span className='eco-tool-icon' aria-hidden='true'>
+                      <Icon size={22} />
+                    </span>
+                    <span>{tool.title}</span>
+                  </h4>
                   <p>{tool.description}</p>
                   <EcosystemSignature type={tool.signature} />
                   <span className='eco-badge'>{tool.badge}</span>

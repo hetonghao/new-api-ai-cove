@@ -90,7 +90,9 @@ export function HowItWorks() {
               {step.icon}
             </div>
             <span className='step-tag'>
-              <span className='step-tag-num'>Step {step.num}</span>
+              <span className='step-tag-num'>
+                {t('Step {{number}}', { number: step.num })}
+              </span>
             </span>
             <h3>{step.title}</h3>
             <p>{step.desc}</p>

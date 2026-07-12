@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
+
 import { useSystemConfig } from '@/hooks/use-system-config'
 
 const AI_COVE_DESIGN_DESCRIPTION =
@@ -48,7 +49,21 @@ export function HomeFooter() {
           </div>
           <div className='home-footer-system-pulse' aria-hidden='true'>
             <svg viewBox='0 0 168 40' focusable='false'>
-              <path d={FOOTER_PULSE_PATH} />
+              <defs>
+                <linearGradient id='home-footer-pulse-gradient' x1='0' x2='1'>
+                  <stop offset='0' stopColor='var(--home-brand-blue)' />
+                  <stop offset='0.58' stopColor='var(--home-muted)' />
+                  <stop offset='1' stopColor='var(--home-brand-orange)' />
+                </linearGradient>
+              </defs>
+              <path
+                className='home-footer-system-pulse-rail'
+                d={FOOTER_PULSE_PATH}
+              />
+              <path
+                className='home-footer-system-pulse-flow'
+                d={FOOTER_PULSE_PATH}
+              />
             </svg>
           </div>
           <div className='home-footer-design-card'>
@@ -68,18 +83,30 @@ export function HomeFooter() {
                 className='ai-cove-design-wordmark home-footer-design-wordmark'
                 aria-label='AI  Cove Design'
               >
-                <span className='ai-cove-design-wordmark__prefix' aria-hidden='true'>
+                <span
+                  className='ai-cove-design-wordmark__prefix'
+                  aria-hidden='true'
+                >
                   AI
                 </span>
                 <span
                   className='ai-cove-design-wordmark__space ai-cove-design-wordmark__space--after-prefix'
                   aria-hidden='true'
                 />
-                <span className='ai-cove-design-wordmark__image' aria-hidden='true'>
+                <span
+                  className='ai-cove-design-wordmark__image'
+                  aria-hidden='true'
+                >
                   Cove
                 </span>
-                <span className='ai-cove-design-wordmark__space' aria-hidden='true' />
-                <span className='ai-cove-design-wordmark__canvas' aria-hidden='true'>
+                <span
+                  className='ai-cove-design-wordmark__space'
+                  aria-hidden='true'
+                />
+                <span
+                  className='ai-cove-design-wordmark__canvas'
+                  aria-hidden='true'
+                >
                   Design
                 </span>
               </strong>
