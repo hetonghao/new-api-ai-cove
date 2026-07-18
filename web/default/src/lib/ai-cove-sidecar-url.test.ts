@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+
 import { createAiCoveDesignSidecarUrl } from './ai-cove-sidecar-url'
 
 type WindowLike = {
@@ -35,11 +36,11 @@ test('createAiCoveDesignSidecarUrl appends the current user id', () => {
     () => {
       const url = new URL(createAiCoveDesignSidecarUrl(42))
 
-      assert.equal(url.origin, 'http://127.0.0.1:4174')
+      assert.equal(url.origin, 'http://127.0.0.1:44174')
       assert.equal(url.searchParams.get('base_url'), 'http://127.0.0.1:38080')
       assert.equal(url.searchParams.get('ui_mode'), 'embedded')
       assert.equal(url.searchParams.get('user_id'), '42')
-    },
+    }
   )
 })
 
@@ -58,6 +59,6 @@ test('createAiCoveDesignSidecarUrl forwards the resolved host theme', () => {
 
       assert.equal(lightUrl.searchParams.get('theme'), 'light')
       assert.equal(darkUrl.searchParams.get('theme'), 'dark')
-    },
+    }
   )
 })

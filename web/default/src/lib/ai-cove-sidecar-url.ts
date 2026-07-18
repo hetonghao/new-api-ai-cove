@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 const AI_COVE_DESIGN_SIDECAR_PATH = '/sidecars/gpt-image-canvas/'
 const AI_COVE_HELP_DOCS_SIDECAR_PATH = '/sidecars/help-docs/'
-const DEFAULT_LOCAL_SIDECAR_PORT = 4174
+const DEFAULT_LOCAL_SIDECAR_PORT = 44174
 
 type AiCoveSidecarEnv = {
   VITE_AI_COVE_GATEWAY_BASE_URL?: string
@@ -43,9 +43,7 @@ function getCurrentOrigin(): string {
 
 function isLoopbackHostname(hostname: string): boolean {
   return (
-    hostname === '127.0.0.1' ||
-    hostname === 'localhost' ||
-    hostname === '::1'
+    hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1'
   )
 }
 
