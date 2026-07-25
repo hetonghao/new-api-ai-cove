@@ -51,7 +51,10 @@ export const riskRecordSchema = z
     completion_tokens: z.number().int().nonnegative(),
     total_tokens: z.number().int().nonnegative(),
     neurons: z.number().int().nonnegative(),
-    chunks: z.array(riskRecordChunkSchema).readonly().default([]),
+    chunks: z.preprocess(
+      (value) => value ?? [],
+      z.array(riskRecordChunkSchema).readonly()
+    ),
     error_code: z.string(),
     observed_at: z.string().min(1),
   })

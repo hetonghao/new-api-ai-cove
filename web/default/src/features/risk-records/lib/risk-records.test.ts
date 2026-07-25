@@ -132,6 +132,25 @@ describe('risk record behavior', () => {
     }
   })
 
+  it('normalizes historical null chunks to an empty array', () => {
+    // Given
+    const payload = {
+      items: [{ ...VALID_RECORD, chunks: null }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    }
+
+    // When
+    const result = riskRecordPageSchema.safeParse(payload)
+
+    // Then
+    assert.equal(result.success, true)
+    if (result.success) {
+      assert.deepEqual(result.data.items[0]?.chunks, [])
+    }
+  })
+
   it('maps parsed chunk results to visible labels and status variants', () => {
     // Given
     const payload = {
