@@ -77,57 +77,6 @@ func (c *HybridCache[V]) memCache() *hot.HotCache[string, V] {
 	return c.mem
 }
 
-func (c *HybridCache[V]) Get(key string) (value V, found bool, err error) {
-	full := c.ns.FullKey(key)
-	if full == "" {
-		var zero V
-		return zero, false, nil
-	}
-
-	if c.redisOn() {
-		ctx, cancel := context.WithTimeout(context.Background(), defaultRedisOpTimeout)
-		defer cancel()
-
-		raw, e := c.redis.Get(ctx, full).Result()
-		if e == nil {
-			v, decErr := c.redisCodec.Decode(raw)
-			if decErr != nil {
-				var zero V
-				return zero, false, decErr
-			}
-			return v, true, nil
-		}
-		if errors.Is(e, redis.Nil) {
-			var zero V
-			return zero, false, nil
-		}
-		var zero V
-		return zero, false, e
-	}
-
-	return c.memCache().Get(full)
-}
-
-func (c *HybridCache[V]) SetWithTTL(key string, v V, ttl time.Duration) error {
-	full := c.ns.FullKey(key)
-	if full == "" {
-		return nil
-	}
-
-	if c.redisOn() {
-		raw, err := c.redisCodec.Encode(v)
-		if err != nil {
-			return err
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), defaultRedisOpTimeout)
-		defer cancel()
-		return c.redis.Set(ctx, full, raw, ttl).Err()
-	}
-
-	c.memCache().SetWithTTL(full, v, ttl)
-	return nil
-}
-
 // Keys returns keys with valid values. In Redis, it returns all matching keys.
 func (c *HybridCache[V]) Keys() ([]string, error) {
 	if c.redisOn() {

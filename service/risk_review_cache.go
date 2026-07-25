@@ -55,12 +55,12 @@ type hybridRiskReviewCacheStore struct {
 	cache *cachex.HybridCache[RiskReviewResult]
 }
 
-func (s hybridRiskReviewCacheStore) Get(_ context.Context, key string) (RiskReviewResult, bool, error) {
-	return s.cache.Get(key)
+func (s hybridRiskReviewCacheStore) Get(ctx context.Context, key string) (RiskReviewResult, bool, error) {
+	return s.cache.GetContext(ctx, key)
 }
 
-func (s hybridRiskReviewCacheStore) Set(_ context.Context, key string, result RiskReviewResult, ttl time.Duration) error {
-	return s.cache.SetWithTTL(key, result, ttl)
+func (s hybridRiskReviewCacheStore) Set(ctx context.Context, key string, result RiskReviewResult, ttl time.Duration) error {
+	return s.cache.SetWithTTLContext(ctx, key, result, ttl)
 }
 
 type RiskReviewCacheService struct {
@@ -114,15 +114,18 @@ func (s *RiskReviewCacheService) Review(ctx context.Context, input RiskReviewCac
 	if cached, found, cacheErr := s.store.Get(ctx, key); cacheErr == nil && found && cacheableRiskReview(cached) {
 		return RiskReviewOutcome{Result: cloneRiskReviewResult(cached), Source: RiskReviewSourceCache}, nil
 	}
+	if err := ctx.Err(); err != nil {
+		return RiskReviewOutcome{}, err
+	}
 
 	executed := false
 	resultChannel := s.flights.DoChan(key, func() (any, error) {
 		executed = true
 		result, reviewErr := review(ctx)
-		if reviewErr != nil {
-			return nil, reviewErr
-		}
 		result = cloneRiskReviewResult(result)
+		if reviewErr != nil {
+			return result, reviewErr
+		}
 		if cacheableRiskReview(result) {
 			_ = s.store.Set(ctx, key, result, riskReviewCacheTTL)
 		}
@@ -133,16 +136,20 @@ func (s *RiskReviewCacheService) Review(ctx context.Context, input RiskReviewCac
 	case <-ctx.Done():
 		return RiskReviewOutcome{}, ctx.Err()
 	case flight := <-resultChannel:
+		source := RiskReviewSourceInflight
+		if executed {
+			source = RiskReviewSourceProvider
+		}
+		outcome := RiskReviewOutcome{Source: source}
+		if result, ok := flight.Val.(RiskReviewResult); ok {
+			outcome.Result = cloneRiskReviewResult(result)
+		}
 		if flight.Err != nil {
-			return RiskReviewOutcome{}, fmt.Errorf("review risk content: %w", flight.Err)
+			return outcome, fmt.Errorf("review risk content: %w", flight.Err)
 		}
 		result, ok := flight.Val.(RiskReviewResult)
 		if !ok {
 			return RiskReviewOutcome{}, ErrRiskReviewCacheInternal
-		}
-		source := RiskReviewSourceInflight
-		if executed {
-			source = RiskReviewSourceProvider
 		}
 		return RiskReviewOutcome{Result: cloneRiskReviewResult(result), Source: source}, nil
 	}
