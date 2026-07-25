@@ -24,7 +24,7 @@ func setupRiskRecordModelTest(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	DB = db
-	require.NoError(t, db.AutoMigrate(&RiskRecord{}))
+	require.NoError(t, db.AutoMigrate(&RiskRecord{}, &RiskRecordGovernance{}))
 	t.Cleanup(func() {
 		DB = originalDB
 		common.SetDatabaseTypes(originalMainType, originalLogType)
@@ -222,7 +222,7 @@ func TestRecordRiskObservation_acceptsEmptyRuleList(t *testing.T) {
 	assert.Empty(t, records[0].RuleIDs)
 }
 
-func TestRiskRecordMigration_hasNoTextBearingColumns(t *testing.T) {
+func TestRiskRecordMigration_hasNoFullContentOrSecretColumns(t *testing.T) {
 	// Given
 	db := setupRiskRecordModelTest(t)
 
@@ -235,7 +235,7 @@ func TestRiskRecordMigration_hasNoTextBearingColumns(t *testing.T) {
 	for _, column := range columns {
 		columnNames[column.Name()] = struct{}{}
 	}
-	for _, forbidden := range []string{"content", "text", "prompt", "excerpt", "error_message", "model", "path", "source", "save_policy"} {
+	for _, forbidden := range []string{"content", "text", "excerpt", "error_message", "credential", "query"} {
 		_, exists := columnNames[forbidden]
 		assert.False(t, exists, "forbidden column %q", forbidden)
 	}
@@ -245,7 +245,9 @@ func TestMigrateDB_includesRiskRecord(t *testing.T) {
 	// Given
 	db := setupRiskRecordModelTest(t)
 	require.NoError(t, db.Migrator().DropTable(&RiskRecord{}))
+	require.NoError(t, db.Migrator().DropTable(&RiskRecordGovernance{}))
 	require.False(t, db.Migrator().HasTable(&RiskRecord{}))
+	require.False(t, db.Migrator().HasTable(&RiskRecordGovernance{}))
 
 	// When
 	err := migrateDB()
@@ -253,4 +255,5 @@ func TestMigrateDB_includesRiskRecord(t *testing.T) {
 	// Then
 	require.NoError(t, err)
 	require.True(t, db.Migrator().HasTable(&RiskRecord{}))
+	require.True(t, db.Migrator().HasTable(&RiskRecordGovernance{}))
 }

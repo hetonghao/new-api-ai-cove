@@ -10,9 +10,15 @@ import (
 )
 
 const (
-	RiskObservationSafe   RiskObservationResult = "safe"
-	RiskObservationUnsafe RiskObservationResult = "unsafe"
-	RiskObservationError  RiskObservationResult = "error"
+	RiskObservationNotReviewed RiskObservationResult = "not_reviewed"
+	RiskObservationSafe        RiskObservationResult = "safe"
+	RiskObservationUnsafe      RiskObservationResult = "unsafe"
+	RiskObservationError       RiskObservationResult = "error"
+
+	RiskObservationSourceLocal    RiskObservationSource = "local"
+	RiskObservationSourceProvider RiskObservationSource = "provider"
+	RiskObservationSourceCache    RiskObservationSource = "cache"
+	RiskObservationSourceInflight RiskObservationSource = "inflight"
 
 	riskObservationQueueCapacity = 64
 	riskObservationPolicyError   = "policy_error"
@@ -21,11 +27,17 @@ const (
 )
 
 type RiskObservationResult string
+type RiskObservationSource string
 
 type RiskObservationEvent struct {
 	RequestID        string
 	ChannelID        int
 	UserID           int
+	TokenID          int
+	Model            string
+	Path             string
+	Preview          string
+	ContentHash      string
 	RuleIDs          []int
 	ProviderID       int
 	ProviderName     string
@@ -37,6 +49,10 @@ type RiskObservationEvent struct {
 	TotalTokens      int
 	Neurons          int64
 	ErrorCode        string
+	Source           RiskObservationSource
+	CacheHit         bool
+	ProviderCalled   bool
+	Blocked          bool
 	ObservedAt       time.Time
 }
 
