@@ -146,7 +146,7 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
             id='risk-record-provider-id'
             type='number'
             inputMode='numeric'
-            min='1'
+            min='0'
             step='1'
             value={draft.provider_id}
             onChange={(event) =>

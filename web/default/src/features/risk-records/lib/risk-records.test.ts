@@ -162,6 +162,26 @@ describe('risk record behavior', () => {
     })
   })
 
+  it('preserves provider ID zero in the risk record API params', () => {
+    // Given
+    const draft = {
+      start_time: '',
+      end_time: '',
+      channel_id: '',
+      user_id: '',
+      provider_id: '0',
+      result: '',
+      source: '',
+    }
+
+    // When
+    const filters = commitRiskRecordFilters(draft)
+    const params = buildRiskRecordQueryParams(1, 20, filters)
+
+    // Then
+    assert.deepEqual(params, { p: 1, page_size: 20, provider_id: 0 })
+  })
+
   it('omits cleared filters from the risk record API params', () => {
     // Given
     const draft = {
