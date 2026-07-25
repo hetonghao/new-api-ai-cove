@@ -16,11 +16,85 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { z } from 'zod'
+
 import type { StatusVariant } from '@/components/status-badge'
 
 import type { RiskRecordFilterDraft, RiskRecordFilters } from '../types'
 
-export const EMPTY_RISK_RECORD_FILTER_DRAFT: RiskRecordFilterDraft = {
+const RISK_RECORD_FILTER_RESULTS = [
+  '',
+  'safe',
+  'unsafe',
+  'error',
+  'not_reviewed',
+] as const
+
+const RISK_RECORD_FILTER_SOURCES = [
+  '',
+  'provider',
+  'cache',
+  'inflight',
+  'local',
+] as const
+
+type Translate = (key: string) => string
+
+export function createRiskRecordFilterFormSchema(t: Translate) {
+  const validDateTime = z
+    .string()
+    .refine(
+      (value) => value === '' || !Number.isNaN(new Date(value).getTime()),
+      t('Invalid configuration')
+    )
+  const positiveInteger = z
+    .string()
+    .refine(
+      (value) => value === '' || /^[1-9]\d*$/.test(value),
+      t('Please enter a valid number')
+    )
+  const nonnegativeInteger = z
+    .string()
+    .refine(
+      (value) => value === '' || /^(0|[1-9]\d*)$/.test(value),
+      t('Please enter a valid number')
+    )
+
+  return z
+    .object({
+      start_time: validDateTime,
+      end_time: validDateTime,
+      channel_id: positiveInteger,
+      user_id: positiveInteger,
+      provider_id: nonnegativeInteger,
+      result: z.enum(RISK_RECORD_FILTER_RESULTS, {
+        error: t('Invalid configuration'),
+      }),
+      source: z.enum(RISK_RECORD_FILTER_SOURCES, {
+        error: t('Invalid configuration'),
+      }),
+    })
+    .superRefine((values, context) => {
+      if (!values.start_time || !values.end_time) return
+      if (
+        new Date(values.end_time).getTime() >=
+        new Date(values.start_time).getTime()
+      ) {
+        return
+      }
+      context.addIssue({
+        code: 'custom',
+        path: ['end_time'],
+        message: t('Invalid configuration'),
+      })
+    })
+}
+
+export type RiskRecordFilterFormValues = z.infer<
+  ReturnType<typeof createRiskRecordFilterFormSchema>
+>
+
+export const EMPTY_RISK_RECORD_FILTER_DRAFT: RiskRecordFilterFormValues = {
   start_time: '',
   end_time: '',
   channel_id: '',
