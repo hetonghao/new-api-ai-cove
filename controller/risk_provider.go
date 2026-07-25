@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -89,6 +90,10 @@ func UpdateRiskProvider(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	connectionChanged := provider.ProviderType != request.ProviderType ||
+		provider.Model != strings.TrimSpace(request.Model) ||
+		provider.BaseURL != strings.TrimRight(strings.TrimSpace(request.BaseURL), "/") ||
+		request.Credential != ""
 	provider.Name = request.Name
 	provider.ProviderType = request.ProviderType
 	provider.Model = request.Model
@@ -102,6 +107,10 @@ func UpdateRiskProvider(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
+	}
+	if connectionChanged {
+		provider.ValidatedAt = nil
+		provider.Active = false
 	}
 	if err := model.UpdateRiskProvider(provider); err != nil {
 		common.ApiError(c, err)
