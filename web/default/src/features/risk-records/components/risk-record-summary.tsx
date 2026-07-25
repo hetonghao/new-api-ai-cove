@@ -52,7 +52,11 @@ export function RiskRecordCategoryList(props: {
           variant='neutral'
           copyable={false}
           className='h-auto max-w-full py-0.5 whitespace-normal'
-        />
+        >
+          <span className='min-w-0 leading-normal break-words whitespace-normal'>
+            {category}
+          </span>
+        </StatusBadge>
       ))}
     </div>
   ) : (
