@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -231,11 +232,45 @@ func TestRiskModerationExecutor_Execute_cachesFinalFullReviewAggregate(t *testin
 	assert.Equal(t, RiskReviewSourceProvider, first.Source)
 	assert.False(t, first.CacheHit)
 	assert.True(t, first.ProviderCalled)
+	require.Len(t, first.Chunks, 3)
+	assert.Equal(t, 0, first.Chunks[0].Index)
+	assert.Equal(t, RiskReviewSafe, first.Chunks[0].Status)
+	assert.Equal(t, 1, first.Chunks[1].Index)
+	assert.Equal(t, RiskReviewUnsafe, first.Chunks[1].Status)
+	assert.Equal(t, []string{"S1"}, first.Chunks[1].Categories)
+	assert.Equal(t, RiskReviewUsage{PromptTokens: 2, TotalTokens: 2}, first.Chunks[1].Usage)
 	assert.Equal(t, first.Result, second.Result)
 	assert.Equal(t, RiskReviewSourceCache, second.Source)
 	assert.True(t, second.CacheHit)
 	assert.False(t, second.ProviderCalled)
+	assert.Empty(t, second.Chunks)
 	assert.Equal(t, 3, calls)
+}
+
+func TestRiskModerationExecutor_Execute_exposesChunkAuditWithoutChunkText(t *testing.T) {
+	// Given
+	reviewer := func(context.Context, *model.RiskProvider, string) (RiskReviewResult, error) {
+		return RiskReviewResult{Status: RiskReviewSafe}, nil
+	}
+	executor := newRiskModerationExecutor(riskModerationExecutorDeps{
+		Cache:    newRiskReviewCacheService(newFakeRiskReviewCacheStore(), "chunk-privacy-test-secret"),
+		Reviewer: reviewer,
+		Now:      time.Now,
+	})
+
+	// When
+	outcome, err := executor.Execute(context.Background(), RiskModerationInput{
+		Provider: riskModerationProviderForTest(), Content: "private-oneprivate-two",
+		ReviewMode: model.RiskReviewFull, FullReviewChunkRunes: 11,
+	})
+
+	// Then
+	require.NoError(t, err)
+	require.Len(t, outcome.Chunks, 2)
+	encoded, err := common.Marshal(outcome.Chunks)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), "private-one")
+	assert.NotContains(t, string(encoded), "private-two")
 }
 
 func TestRiskModerationExecutor_Execute_usesCloudflareFullReviewChunkDefault(t *testing.T) {

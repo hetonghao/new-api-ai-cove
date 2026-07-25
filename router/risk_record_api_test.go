@@ -87,10 +87,18 @@ func TestRiskRecordAPI_returnsRootOnlyPaginatedMetadata(t *testing.T) {
 	server, client := setupRiskRecordRouterTest(t, common.RoleRootUser)
 	baseTime := time.Date(2026, time.July, 25, 10, 0, 0, 0, time.UTC)
 	for index, requestID := range []string{"req-old", "req-new"} {
+		chunks := []model.RiskRecordChunk{}
+		if index == 1 {
+			chunks = []model.RiskRecordChunk{{
+				Index: 0, Result: model.RiskRecordResultSafe, Categories: []string{"clean"}, LatencyMS: 41,
+				PromptTokens: 11, CompletionTokens: 2, TotalTokens: 13, Neurons: 7,
+			}}
+		}
 		require.NoError(t, model.RecordRiskObservation(context.Background(), model.RiskRecordInput{
 			RequestID: requestID, ChannelID: 12, UserID: 34, RuleIDs: []int{5}, ProviderID: 21,
 			ProviderName: "Cloudflare", Result: model.RiskRecordResultSafe, Categories: []string{},
 			LatencyMS: 93, PromptTokens: 11, CompletionTokens: 2, TotalTokens: 13, Neurons: 7,
+			Chunks:         chunks,
 			ProviderCalled: index == 1,
 			ObservedAt:     baseTime.Add(time.Duration(index) * time.Minute),
 		}))
@@ -127,6 +135,10 @@ func TestRiskRecordAPI_returnsRootOnlyPaginatedMetadata(t *testing.T) {
 	assert.Equal(t, 2, record.CompletionTokens)
 	assert.Equal(t, 13, record.TotalTokens)
 	assert.EqualValues(t, 7, record.Neurons)
+	assert.Equal(t, []model.RiskRecordChunk{{
+		Index: 0, Result: model.RiskRecordResultSafe, Categories: []string{"clean"}, LatencyMS: 41,
+		PromptTokens: 11, CompletionTokens: 2, TotalTokens: 13, Neurons: 7,
+	}}, record.Chunks)
 	assert.Empty(t, record.ErrorCode)
 	assert.True(t, record.ProviderCalled)
 	assert.Equal(t, baseTime.Add(time.Minute), record.ObservedAt)

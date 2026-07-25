@@ -34,9 +34,18 @@ type RiskModerationInput struct {
 
 type RiskModerationOutcome struct {
 	Result         RiskReviewResult
+	Chunks         []RiskReviewChunkAudit
 	Source         RiskReviewSource
 	CacheHit       bool
 	ProviderCalled bool
+}
+
+type RiskReviewChunkAudit struct {
+	Index      int
+	Status     RiskReviewStatus
+	Categories []string
+	LatencyMS  int64
+	Usage      RiskReviewUsage
 }
 
 type riskProviderReviewer func(context.Context, *model.RiskProvider, string) (RiskReviewResult, error)
@@ -132,6 +141,7 @@ func (e *RiskModerationExecutor) Execute(ctx context.Context, input RiskModerati
 	reviewCtx, cancel := context.WithTimeout(ctx, time.Duration(input.Provider.TimeoutMs)*time.Millisecond)
 	defer cancel()
 	var providerCalled atomic.Bool
+	var providerChunks atomic.Pointer[[]RiskReviewChunkAudit]
 	cacheOutcome, reviewErr := e.cache.Review(reviewCtx, RiskReviewCacheInput{
 		Content: input.Content, PolicyVersion: policyVersion,
 	}, func(reviewParent context.Context) (RiskReviewResult, error) {
@@ -143,7 +153,8 @@ func (e *RiskModerationExecutor) Execute(ctx context.Context, input RiskModerati
 		if allowErr != nil {
 			return RiskReviewResult{}, allowErr
 		}
-		result, providerErr := e.executeProviderReview(reviewParent, resolvedInput, &providerCalled)
+		result, chunks, providerErr := e.executeProviderReview(reviewParent, resolvedInput, &providerCalled)
+		providerChunks.Store(&chunks)
 		if providerErr != nil {
 			if ctx.Err() != nil {
 				e.circuit.Abandon(permit)
@@ -160,14 +171,22 @@ func (e *RiskModerationExecutor) Execute(ctx context.Context, input RiskModerati
 	if source == "" && called {
 		source = RiskReviewSourceProvider
 	}
+	chunks := []RiskReviewChunkAudit(nil)
+	if captured := providerChunks.Load(); captured != nil {
+		chunks = cloneRiskReviewChunkAudits(*captured)
+	}
 	return RiskModerationOutcome{
-		Result: cacheOutcome.Result, Source: source,
+		Result: cacheOutcome.Result, Chunks: chunks, Source: source,
 		CacheHit:       cacheOutcome.Source == RiskReviewSourceCache,
 		ProviderCalled: called && source == RiskReviewSourceProvider,
 	}, reviewErr
 }
 
-func (e *RiskModerationExecutor) executeProviderReview(ctx context.Context, input RiskModerationInput, providerCalled *atomic.Bool) (RiskReviewResult, error) {
+func (e *RiskModerationExecutor) executeProviderReview(
+	ctx context.Context,
+	input RiskModerationInput,
+	providerCalled *atomic.Bool,
+) (RiskReviewResult, []RiskReviewChunkAudit, error) {
 	review := func(reviewCtx context.Context, content string) (RiskReviewResult, error) {
 		if err := reviewCtx.Err(); err != nil {
 			return RiskReviewResult{}, err
@@ -178,26 +197,46 @@ func (e *RiskModerationExecutor) executeProviderReview(ctx context.Context, inpu
 	if input.ReviewMode == model.RiskReviewSelective {
 		result, err := review(ctx, input.Content)
 		if err != nil {
-			return result, fmt.Errorf("%w: %w", ErrRiskModerationProvider, err)
+			return result, nil, fmt.Errorf("%w: %w", ErrRiskModerationProvider, err)
 		}
 		if !cacheableRiskReview(result) {
-			return result, fmt.Errorf("%w: %w", ErrRiskModerationProvider, ErrInvalidFullReviewStatus)
+			return result, nil, fmt.Errorf("%w: %w", ErrRiskModerationProvider, ErrInvalidFullReviewStatus)
 		}
-		return result, nil
+		return result, nil, nil
 	}
 
 	full, err := ReviewFullRiskText(ctx, input.Content, input.FullReviewChunkRunes, review)
 	if err != nil {
-		return RiskReviewResult{}, err
+		return RiskReviewResult{}, nil, err
 	}
 	result := RiskReviewResult{Status: full.Status, Categories: full.Categories, Usage: full.Usage}
+	chunks := make([]RiskReviewChunkAudit, 0, len(full.Chunks))
+	for _, chunk := range full.Chunks {
+		chunks = append(chunks, RiskReviewChunkAudit{
+			Index: chunk.Index, Status: chunk.Status,
+			Categories: append([]string(nil), chunk.Categories...),
+			LatencyMS:  chunk.LatencyMS, Usage: chunk.Usage,
+		})
+	}
 	if full.Status != RiskReviewError {
-		return result, nil
+		return result, chunks, nil
 	}
 	for _, chunk := range full.Chunks {
 		if chunk.Err != nil {
-			return result, fmt.Errorf("%w: %w", ErrRiskModerationProvider, chunk.Err)
+			return result, chunks, fmt.Errorf("%w: %w", ErrRiskModerationProvider, chunk.Err)
 		}
 	}
-	return result, ErrRiskModerationProvider
+	return result, chunks, ErrRiskModerationProvider
+}
+
+func cloneRiskReviewChunkAudits(chunks []RiskReviewChunkAudit) []RiskReviewChunkAudit {
+	if chunks == nil {
+		return nil
+	}
+	cloned := make([]RiskReviewChunkAudit, len(chunks))
+	for index, chunk := range chunks {
+		cloned[index] = chunk
+		cloned[index].Categories = append([]string(nil), chunk.Categories...)
+	}
+	return cloned
 }

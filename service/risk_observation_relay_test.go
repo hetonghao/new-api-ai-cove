@@ -80,7 +80,11 @@ func TestProcessRiskObservationForRelay_blocks_unsafe_result_and_enqueues_comple
 			require.Equal(t, model.RiskReviewFull, input.ReviewMode)
 			require.Zero(t, input.FullReviewChunkRunes)
 			return RiskModerationOutcome{
-				Result:         RiskReviewResult{Status: RiskReviewUnsafe, Categories: []string{"S1"}},
+				Result: RiskReviewResult{Status: RiskReviewUnsafe, Categories: []string{"S1"}},
+				Chunks: []RiskReviewChunkAudit{{
+					Index: 0, Status: RiskReviewUnsafe, Categories: []string{"S1"}, LatencyMS: 41,
+					Usage: RiskReviewUsage{PromptTokens: 5, CompletionTokens: 1, TotalTokens: 6, Neurons: 9},
+				}},
 				Source:         RiskReviewSourceProvider,
 				ProviderCalled: true,
 			}, nil
@@ -106,6 +110,10 @@ func TestProcessRiskObservationForRelay_blocks_unsafe_result_and_enqueues_comple
 	require.Equal(t, RiskObservationUnsafe, completed.Result)
 	require.Equal(t, providerID, completed.ProviderID)
 	require.Equal(t, []string{"S1"}, completed.Categories)
+	require.Equal(t, []RiskReviewChunkAudit{{
+		Index: 0, Status: RiskReviewUnsafe, Categories: []string{"S1"}, LatencyMS: 41,
+		Usage: RiskReviewUsage{PromptTokens: 5, CompletionTokens: 1, TotalTokens: 6, Neurons: 9},
+	}}, completed.Chunks)
 }
 
 func TestProcessRiskObservationForRelay_skips_non_cpa_pro_channel(t *testing.T) {
