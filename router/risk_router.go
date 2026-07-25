@@ -17,5 +17,6 @@ func registerRiskPolicyRoutes(apiRouter *gin.RouterGroup) {
 		riskRoute.POST("/rules/test", controller.TestRiskRule)
 		riskRoute.PUT("/rules/:id", controller.UpdateRiskRule)
 		riskRoute.DELETE("/rules/:id", controller.DeleteRiskRule)
+		riskRoute.GET("/records", controller.ListRiskRecords)
 	}
 }
