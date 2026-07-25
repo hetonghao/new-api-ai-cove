@@ -51,6 +51,16 @@ const RISK_RECORD_SOURCE_LABELS: Readonly<Record<string, string>> = {
   local: 'Local source',
 }
 
+const RISK_RECORD_RESULT_FILTER_LABELS: Readonly<Record<string, string>> = {
+  'all-results': 'All results',
+  ...RISK_RECORD_RESULT_LABELS,
+}
+
+const RISK_RECORD_SOURCE_FILTER_LABELS: Readonly<Record<string, string>> = {
+  'all-sources': 'All sources',
+  ...RISK_RECORD_SOURCE_LABELS,
+}
+
 export function getRiskRecordResultLabel(result: string) {
   return RISK_RECORD_RESULT_LABELS[result]
 }
@@ -61,6 +71,14 @@ export function getRiskRecordResultVariant(result: string): StatusVariant {
 
 export function getRiskRecordSourceLabel(source: string) {
   return RISK_RECORD_SOURCE_LABELS[source]
+}
+
+export function getRiskRecordResultFilterLabel(result: string) {
+  return RISK_RECORD_RESULT_FILTER_LABELS[result] ?? result
+}
+
+export function getRiskRecordSourceFilterLabel(source: string) {
+  return RISK_RECORD_SOURCE_FILTER_LABELS[source] ?? source
 }
 
 export function getRiskRecordSourceVariant(source: string): StatusVariant {

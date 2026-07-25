@@ -23,7 +23,9 @@ import { riskRecordPageSchema } from '../types.ts'
 import {
   buildRiskRecordQueryParams,
   commitRiskRecordFilters,
+  getRiskRecordResultFilterLabel,
   getRiskRecordResultVariant,
+  getRiskRecordSourceFilterLabel,
   getRiskRecordSourceVariant,
   getRiskRecordTotalPages,
 } from './risk-records.ts'
@@ -118,6 +120,44 @@ describe('risk record behavior', () => {
 
     // Then
     assert.equal(variant, 'neutral')
+  })
+
+  it('maps every risk record filter value to a visible label', () => {
+    // Given
+    const resultValues = [
+      'all-results',
+      'safe',
+      'unsafe',
+      'error',
+      'not_reviewed',
+    ]
+    const sourceValues = [
+      'all-sources',
+      'provider',
+      'cache',
+      'inflight',
+      'local',
+    ]
+
+    // When
+    const resultLabels = resultValues.map(getRiskRecordResultFilterLabel)
+    const sourceLabels = sourceValues.map(getRiskRecordSourceFilterLabel)
+
+    // Then
+    assert.deepEqual(resultLabels, [
+      'All results',
+      'Safe',
+      'Unsafe',
+      'Error',
+      'Not reviewed',
+    ])
+    assert.deepEqual(sourceLabels, [
+      'All sources',
+      'Provider source',
+      'Cache source',
+      'In-flight source',
+      'Local source',
+    ])
   })
 
   it('calculates the final partial page when total is not divisible', () => {
