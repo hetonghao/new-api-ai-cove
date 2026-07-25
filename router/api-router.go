@@ -240,6 +240,16 @@ func SetApiRouter(router *gin.Engine) {
 			performanceRoute.GET("/logs", controller.GetLogFiles)
 			performanceRoute.DELETE("/logs", controller.CleanupLogFiles)
 		}
+		riskProviderRoute := apiRouter.Group("/risk/providers")
+		riskProviderRoute.Use(middleware.RootAuth())
+		{
+			riskProviderRoute.GET("/", controller.ListRiskProviders)
+			riskProviderRoute.POST("/", controller.CreateRiskProvider)
+			riskProviderRoute.PUT("/:id", controller.UpdateRiskProvider)
+			riskProviderRoute.DELETE("/:id", controller.DeleteRiskProvider)
+			riskProviderRoute.POST("/:id/validate", controller.ValidateRiskProvider)
+			riskProviderRoute.PUT("/:id/active", controller.ActivateRiskProvider)
+		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
 		ratioSyncRoute.Use(middleware.RootAuth())
 		{
