@@ -148,9 +148,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		meta = fastTokenCountMetaForPricing(request)
 	}
 
-	newAPIError = applyRelayRiskGate(c, relayRiskContext{request: request, info: relayInfo, meta: meta}, func(c *gin.Context, job service.RiskObservationJob) bool {
-		return service.ProcessRiskObservationForRelay(c.Request.Context(), job)
-	})
+	newAPIError = applyRelaySensitiveWordGate(c, meta)
 	if newAPIError != nil {
 		return
 	}
@@ -224,16 +222,20 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
-		switch relayFormat {
-		case types.RelayFormatOpenAIRealtime:
-			newAPIError = relay.WssHelper(c, relayInfo)
-		case types.RelayFormatClaude:
-			newAPIError = relay.ClaudeHelper(c, relayInfo)
-		case types.RelayFormatGemini:
-			newAPIError = geminiRelayHandler(c, relayInfo)
-		default:
-			newAPIError = relayHandler(c, relayInfo)
-		}
+		newAPIError = executeRelayAttempt(c, relayRiskContext{request: request, info: relayInfo}, func(c *gin.Context, job service.RiskObservationJob) bool {
+			return service.ProcessRiskObservationForRelay(c.Request.Context(), job)
+		}, func() *types.NewAPIError {
+			switch relayFormat {
+			case types.RelayFormatOpenAIRealtime:
+				return relay.WssHelper(c, relayInfo)
+			case types.RelayFormatClaude:
+				return relay.ClaudeHelper(c, relayInfo)
+			case types.RelayFormatGemini:
+				return geminiRelayHandler(c, relayInfo)
+			default:
+				return relayHandler(c, relayInfo)
+			}
+		})
 
 		if newAPIError == nil {
 			relayInfo.LastError = nil

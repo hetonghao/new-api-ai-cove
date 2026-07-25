@@ -25,13 +25,23 @@ type relayRiskContext struct {
 
 type relayRiskProcessor func(*gin.Context, service.RiskObservationJob) bool
 
+type relayUpstreamAttempt func() *types.NewAPIError
+
+func applyRelaySensitiveWordGate(c *gin.Context, meta *types.TokenCountMeta) *types.NewAPIError {
+	if !setting.ShouldCheckPromptSensitive() || meta == nil {
+		return nil
+	}
+	contains, words := service.CheckSensitiveText(meta.CombineText)
+	if contains {
+		logger.LogWarn(c, fmt.Sprintf("user sensitive words detected: %s", strings.Join(words, ", ")))
+		return newSensitiveWordsDetectedError()
+	}
+	return nil
+}
+
 func applyRelayRiskGate(c *gin.Context, risk relayRiskContext, process relayRiskProcessor) *types.NewAPIError {
-	if setting.ShouldCheckPromptSensitive() && risk.meta != nil {
-		contains, words := service.CheckSensitiveText(risk.meta.CombineText)
-		if contains {
-			logger.LogWarn(c, fmt.Sprintf("user sensitive words detected: %s", strings.Join(words, ", ")))
-			return newSensitiveWordsDetectedError()
-		}
+	if err := applyRelaySensitiveWordGate(c, risk.meta); err != nil {
+		return err
 	}
 	text := service.ExtractRiskObservationText(risk.request)
 	if risk.info == nil || process == nil {
@@ -56,4 +66,11 @@ func applyRelayRiskGate(c *gin.Context, risk relayRiskContext, process relayRisk
 		http.StatusBadRequest,
 		types.ErrOptionWithSkipRetry(),
 	)
+}
+
+func executeRelayAttempt(c *gin.Context, risk relayRiskContext, process relayRiskProcessor, upstream relayUpstreamAttempt) *types.NewAPIError {
+	if err := applyRelayRiskGate(c, risk, process); err != nil {
+		return err
+	}
+	return upstream()
 }

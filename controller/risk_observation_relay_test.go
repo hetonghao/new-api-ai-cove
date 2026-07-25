@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -121,4 +122,41 @@ func TestApplyRelayRiskGate_routes_empty_current_turn_to_processor(t *testing.T)
 	// Then
 	require.Nil(t, err)
 	require.Equal(t, 1, processorCalls)
+}
+
+func TestExecuteRelayAttempt_blocks_retry_to_cpa_pro_before_upstream(t *testing.T) {
+	// Given
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	risk := relayRiskContext{
+		request: &dto.GeneralOpenAIRequest{},
+		info:    &relaycommon.RelayInfo{OriginModelName: "gpt-test"},
+	}
+	events := make([]string, 0, 2)
+	process := func(c *gin.Context, _ service.RiskObservationJob) bool {
+		if common.GetContextKeyString(c, constant.ContextKeyChannelName) != "CPA Pro" {
+			return false
+		}
+		events = append(events, "review:CPA Pro")
+		return true
+	}
+	upstream := func() *types.NewAPIError {
+		channelName := common.GetContextKeyString(ctx, constant.ContextKeyChannelName)
+		events = append(events, "upstream:"+channelName)
+		return types.NewError(errors.New("retryable upstream failure"), types.ErrorCodeBadResponse)
+	}
+
+	// When: the first attempt uses a non-protected channel and fails upstream.
+	common.SetContextKey(ctx, constant.ContextKeyChannelName, "Standard")
+	firstErr := executeRelayAttempt(ctx, risk, process, upstream)
+
+	// And: retry channel selection switches the same request to CPA Pro.
+	common.SetContextKey(ctx, constant.ContextKeyChannelName, "CPA Pro")
+	secondErr := executeRelayAttempt(ctx, risk, process, upstream)
+
+	// Then: the unsafe CPA Pro retry is reviewed and blocked before its upstream call.
+	require.NotNil(t, firstErr)
+	require.NotNil(t, secondErr)
+	require.Equal(t, types.ErrorCodeContentPolicyViolation, secondErr.GetErrorCode())
+	require.Equal(t, []string{"upstream:Standard", "review:CPA Pro"}, events)
 }
