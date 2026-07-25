@@ -25,6 +25,14 @@ import type {
   RiskProviderPayload,
 } from '../types'
 
+type RiskProviderServerFormError = {
+  readonly name: 'root.server'
+  readonly error: {
+    readonly type: 'server'
+    readonly message: string
+  }
+}
+
 export const RISK_PROVIDER_DEFAULT_VALUES: RiskProviderFormValues = {
   name: '',
   provider_type: 'cloudflare',
@@ -101,6 +109,15 @@ export function formValuesToPayload(
   const credential = values.credential.trim()
 
   return credential ? { ...payload, credential } : payload
+}
+
+export function getRiskProviderServerFormError(
+  message: string
+): RiskProviderServerFormError {
+  return {
+    name: 'root.server',
+    error: { type: 'server', message },
+  }
 }
 
 export function canActivateProvider(provider: RiskProvider): boolean {
