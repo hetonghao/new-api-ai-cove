@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -23,9 +24,14 @@ type relayRiskContext struct {
 	meta    *types.TokenCountMeta
 }
 
-type relayRiskProcessor func(*gin.Context, service.RiskObservationJob) bool
+type relayRiskProcessor func(*gin.Context, service.RiskObservationJob) service.RiskObservationRelayDecision
 
 type relayUpstreamAttempt func() *types.NewAPIError
+
+type relayAttemptRiskGate struct {
+	process      relayRiskProcessor
+	recordDirect func(context.Context, service.RiskObservationDirectRecord)
+}
 
 func applyRelaySensitiveWordGate(c *gin.Context, meta *types.TokenCountMeta) *types.NewAPIError {
 	if !setting.ShouldCheckPromptSensitive() || meta == nil {
@@ -39,15 +45,15 @@ func applyRelaySensitiveWordGate(c *gin.Context, meta *types.TokenCountMeta) *ty
 	return nil
 }
 
-func applyRelayRiskGate(c *gin.Context, risk relayRiskContext, process relayRiskProcessor) *types.NewAPIError {
+func applyRelayRiskGate(c *gin.Context, risk relayRiskContext, process relayRiskProcessor) (*types.NewAPIError, *service.RiskObservationDirectRecord) {
 	if err := applyRelaySensitiveWordGate(c, risk.meta); err != nil {
-		return err
+		return err, nil
 	}
 	text := service.ExtractRiskObservationText(risk.request)
 	if risk.info == nil || process == nil {
-		return nil
+		return nil, nil
 	}
-	blocked := process(c, service.RiskObservationJob{
+	decision := process(c, service.RiskObservationJob{
 		RequestID:   c.GetString(common.RequestIdKey),
 		ChannelID:   common.GetContextKeyInt(c, constant.ContextKeyChannelId),
 		ChannelName: common.GetContextKeyString(c, constant.ContextKeyChannelName),
@@ -57,19 +63,23 @@ func applyRelayRiskGate(c *gin.Context, risk relayRiskContext, process relayRisk
 		Path:        c.Request.URL.Path,
 		Text:        text,
 	})
-	if !blocked {
-		return nil
+	if !decision.Blocked {
+		return nil, decision.DirectRecord
 	}
 	return types.NewErrorWithStatusCode(
 		errors.New("request rejected by content policy"),
 		types.ErrorCodeContentPolicyViolation,
 		http.StatusBadRequest,
 		types.ErrOptionWithSkipRetry(),
-	)
+	), decision.DirectRecord
 }
 
-func executeRelayAttempt(c *gin.Context, risk relayRiskContext, process relayRiskProcessor, upstream relayUpstreamAttempt) *types.NewAPIError {
-	if err := applyRelayRiskGate(c, risk, process); err != nil {
+func executeRelayAttempt(c *gin.Context, risk relayRiskContext, riskGate relayAttemptRiskGate, upstream relayUpstreamAttempt) *types.NewAPIError {
+	err, directRecord := applyRelayRiskGate(c, risk, riskGate.process)
+	if directRecord != nil && riskGate.recordDirect != nil {
+		defer riskGate.recordDirect(c.Request.Context(), *directRecord)
+	}
+	if err != nil {
 		return err
 	}
 	return upstream()

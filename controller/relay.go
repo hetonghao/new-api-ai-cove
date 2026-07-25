@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -222,8 +223,18 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
-		newAPIError = executeRelayAttempt(c, relayRiskContext{request: request, info: relayInfo}, func(c *gin.Context, job service.RiskObservationJob) bool {
-			return service.ProcessRiskObservationForRelay(c.Request.Context(), job)
+		newAPIError = executeRelayAttempt(c, relayRiskContext{request: request, info: relayInfo}, relayAttemptRiskGate{
+			process: func(c *gin.Context, job service.RiskObservationJob) service.RiskObservationRelayDecision {
+				return service.ProcessRiskObservationForRelay(c.Request.Context(), job)
+			},
+			recordDirect: func(ctx context.Context, direct service.RiskObservationDirectRecord) {
+				if direct.Job != nil {
+					service.RecordRiskObservationDegradationDirect(ctx, *direct.Job, direct.ErrorCode)
+				}
+				if direct.Event != nil {
+					service.RecordRiskObservationEventDirect(ctx, *direct.Event)
+				}
+			},
 		}, func() *types.NewAPIError {
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:

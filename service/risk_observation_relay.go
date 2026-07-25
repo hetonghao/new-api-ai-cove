@@ -16,30 +16,37 @@ type riskModerationRunner interface {
 type riskObservationRelayDeps struct {
 	loadPolicy   func() (model.RiskPolicyState, error)
 	executor     riskModerationRunner
-	enqueueJob   func(RiskObservationJob) bool
-	enqueueEvent func(RiskObservationEvent) bool
+	enqueueJob   func(RiskObservationJob) RiskObservationEnqueueResult
+	enqueueEvent func(RiskObservationEvent) RiskObservationEnqueueResult
+}
+
+type RiskObservationDirectRecord struct {
+	Job       *RiskObservationJob
+	Event     *RiskObservationEvent
+	ErrorCode string
+}
+
+type RiskObservationRelayDecision struct {
+	Blocked      bool
+	DirectRecord *RiskObservationDirectRecord
 }
 
 var riskObservationModerationExecutor = sync.OnceValue(func() riskModerationRunner {
 	return NewRiskModerationExecutor()
 })
 
-func ProcessRiskObservationForRelay(ctx context.Context, job RiskObservationJob) bool {
+func ProcessRiskObservationForRelay(ctx context.Context, job RiskObservationJob) RiskObservationRelayDecision {
 	return processRiskObservationForRelay(ctx, job, riskObservationRelayDeps{
-		loadPolicy: model.GetRiskPolicyState,
-		executor:   riskObservationModerationExecutor(),
-		enqueueJob: func(job RiskObservationJob) bool {
-			return EnqueueRiskObservation(job).Outcome != RiskObservationEnqueueDirectRecordRequired
-		},
-		enqueueEvent: func(event RiskObservationEvent) bool {
-			return EnqueueRiskObservationEvent(event).Outcome != RiskObservationEnqueueDirectRecordRequired
-		},
+		loadPolicy:   model.GetRiskPolicyState,
+		executor:     riskObservationModerationExecutor(),
+		enqueueJob:   EnqueueRiskObservation,
+		enqueueEvent: EnqueueRiskObservationEvent,
 	})
 }
 
-func processRiskObservationForRelay(ctx context.Context, job RiskObservationJob, deps riskObservationRelayDeps) bool {
+func processRiskObservationForRelay(ctx context.Context, job RiskObservationJob, deps riskObservationRelayDeps) RiskObservationRelayDecision {
 	if !riskChannelEnabled([]model.RiskChannel{model.RiskChannelCPAPro}, job.ChannelName) {
-		return false
+		return RiskObservationRelayDecision{}
 	}
 	loadPolicy := deps.loadPolicy
 	if loadPolicy == nil {
@@ -47,29 +54,48 @@ func processRiskObservationForRelay(ctx context.Context, job RiskObservationJob,
 	}
 	state, err := loadPolicy()
 	if err != nil {
-		deps.enqueueEvent(riskObservationErrorEvent(job, riskObservationPolicyError))
-		return false
+		event := riskObservationErrorEvent(job, riskObservationPolicyError)
+		result := deps.enqueueEvent(event)
+		decision := RiskObservationRelayDecision{}
+		if result.Outcome == RiskObservationEnqueueDirectRecordRequired {
+			decision.DirectRecord = &RiskObservationDirectRecord{Event: &event}
+		}
+		return decision
 	}
 	if !state.Enabled || !riskChannelEnabled(state.EnabledChannels, job.ChannelName) {
-		return false
+		return RiskObservationRelayDecision{}
 	}
 	if state.ProviderID == nil {
-		deps.enqueueEvent(riskObservationErrorEvent(job, riskObservationProviderConfigError))
-		return false
+		event := riskObservationErrorEvent(job, riskObservationProviderConfigError)
+		result := deps.enqueueEvent(event)
+		decision := RiskObservationRelayDecision{}
+		if result.Outcome == RiskObservationEnqueueDirectRecordRequired {
+			decision.DirectRecord = &RiskObservationDirectRecord{Event: &event}
+		}
+		return decision
 	}
 	job.ProviderID = *state.ProviderID
 	job.ReviewMode = state.ReviewMode
 	job.ActionMode = state.ActionMode
 	if state.ActionMode == model.RiskActionObserve {
-		deps.enqueueJob(job)
-		return false
+		result := deps.enqueueJob(job)
+		decision := RiskObservationRelayDecision{}
+		if result.Outcome == RiskObservationEnqueueDirectRecordRequired {
+			decision.DirectRecord = &RiskObservationDirectRecord{Job: &job, ErrorCode: result.ErrorCode}
+		}
+		return decision
 	}
 
 	event, ok := evaluateRiskObservation(ctx, job, deps.executor)
 	if ok {
-		deps.enqueueEvent(event)
+		result := deps.enqueueEvent(event)
+		decision := RiskObservationRelayDecision{Blocked: event.Blocked}
+		if result.Outcome == RiskObservationEnqueueDirectRecordRequired {
+			decision.DirectRecord = &RiskObservationDirectRecord{Event: &event}
+		}
+		return decision
 	}
-	return ok && event.Blocked
+	return RiskObservationRelayDecision{}
 }
 
 func evaluateRiskObservation(ctx context.Context, job RiskObservationJob, executor riskModerationRunner) (RiskObservationEvent, bool) {

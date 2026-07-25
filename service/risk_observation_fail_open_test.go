@@ -27,26 +27,27 @@ func TestProcessRiskObservationForRelay_fails_open_when_enabled_policy_has_no_pr
 			executorCalls++
 			return RiskModerationOutcome{}, nil
 		}),
-		enqueueJob: func(RiskObservationJob) bool {
+		enqueueJob: func(RiskObservationJob) RiskObservationEnqueueResult {
 			queuedJobs++
-			return true
+			return queuedRiskObservationResult()
 		},
-		enqueueEvent: func(event RiskObservationEvent) bool {
+		enqueueEvent: func(event RiskObservationEvent) RiskObservationEnqueueResult {
 			completed = event
-			return true
+			return queuedRiskObservationResult()
 		},
 	}
-	var blocked bool
+	var decision RiskObservationRelayDecision
 
 	// When
 	require.NotPanics(t, func() {
-		blocked = processRiskObservationForRelay(context.Background(), RiskObservationJob{
+		decision = processRiskObservationForRelay(context.Background(), RiskObservationJob{
 			RequestID: "missing-provider", ChannelName: "cpa-pro", Text: "current",
 		}, deps)
 	})
 
 	// Then
-	require.False(t, blocked)
+	require.False(t, decision.Blocked)
+	require.Nil(t, decision.DirectRecord)
 	require.Zero(t, executorCalls)
 	require.Zero(t, queuedJobs)
 	require.Equal(t, RiskObservationError, completed.Result)
@@ -76,19 +77,20 @@ func TestProcessRiskObservationForRelay_records_empty_text_as_local_not_reviewed
 			executorCalls++
 			return RiskModerationOutcome{}, nil
 		}),
-		enqueueEvent: func(event RiskObservationEvent) bool {
+		enqueueEvent: func(event RiskObservationEvent) RiskObservationEnqueueResult {
 			completed = event
-			return true
+			return queuedRiskObservationResult()
 		},
 	}
 
 	// When
-	blocked := processRiskObservationForRelay(context.Background(), RiskObservationJob{
+	decision := processRiskObservationForRelay(context.Background(), RiskObservationJob{
 		RequestID: "attachment-only", ChannelName: "cpa-pro",
 	}, deps)
 
 	// Then
-	require.False(t, blocked)
+	require.False(t, decision.Blocked)
+	require.Nil(t, decision.DirectRecord)
 	require.Zero(t, executorCalls)
 	require.Equal(t, RiskObservationNotReviewed, completed.Result)
 	require.Equal(t, RiskObservationSourceLocal, completed.Source)

@@ -15,7 +15,11 @@ func (execute riskModerationExecutorFunc) Execute(ctx context.Context, input Ris
 	return execute(ctx, input)
 }
 
-func TestProcessRiskObservationForRelay_enqueues_observe_job_without_executor_call(t *testing.T) {
+func queuedRiskObservationResult() RiskObservationEnqueueResult {
+	return RiskObservationEnqueueResult{Outcome: RiskObservationEnqueueQueued}
+}
+
+func TestProcessRiskObservationForRelay_does_not_direct_record_retained_observe_job(t *testing.T) {
 	// Given
 	setupRiskObservationTest(t)
 	provider := createActiveRiskProvider(t, "https://example.com")
@@ -35,28 +39,64 @@ func TestProcessRiskObservationForRelay_enqueues_observe_job_without_executor_ca
 			executorCalls++
 			return RiskModerationOutcome{}, nil
 		}),
-		enqueueJob: func(job RiskObservationJob) bool {
+		enqueueJob: func(job RiskObservationJob) RiskObservationEnqueueResult {
 			queuedJob = job
-			return true
+			return RiskObservationEnqueueResult{Outcome: RiskObservationEnqueueFallbackRetained}
 		},
-		enqueueEvent: func(RiskObservationEvent) bool {
+		enqueueEvent: func(RiskObservationEvent) RiskObservationEnqueueResult {
 			completedEvents++
-			return true
+			return queuedRiskObservationResult()
 		},
 	}
 	job := RiskObservationJob{RequestID: "observe", ChannelName: " CPA-Pro ", Text: "current"}
 
 	// When
-	blocked := processRiskObservationForRelay(context.Background(), job, deps)
+	decision := processRiskObservationForRelay(context.Background(), job, deps)
 
 	// Then
-	require.False(t, blocked)
+	require.False(t, decision.Blocked)
+	require.Nil(t, decision.DirectRecord)
 	require.Zero(t, executorCalls)
 	require.Equal(t, job.RequestID, queuedJob.RequestID)
 	require.Equal(t, providerID, queuedJob.ProviderID)
 	require.Equal(t, model.RiskReviewFull, queuedJob.ReviewMode)
 	require.Equal(t, model.RiskActionObserve, queuedJob.ActionMode)
 	require.Zero(t, completedEvents)
+}
+
+func TestProcessRiskObservationForRelay_returns_direct_record_for_unretained_observe_job(t *testing.T) {
+	// Given
+	providerID := 17
+	job := RiskObservationJob{RequestID: "overflow", ChannelName: "CPA-Pro", Text: "current"}
+	deps := riskObservationRelayDeps{
+		loadPolicy: func() (model.RiskPolicyState, error) {
+			return model.RiskPolicyState{
+				Enabled:         true,
+				ProviderID:      &providerID,
+				EnabledChannels: []model.RiskChannel{model.RiskChannelCPAPro},
+				ReviewMode:      model.RiskReviewFull,
+				ActionMode:      model.RiskActionObserve,
+			}, nil
+		},
+		enqueueJob: func(RiskObservationJob) RiskObservationEnqueueResult {
+			return RiskObservationEnqueueResult{
+				Outcome:   RiskObservationEnqueueDirectRecordRequired,
+				ErrorCode: RiskObservationErrorQueueFull,
+			}
+		},
+	}
+
+	// When
+	decision := processRiskObservationForRelay(context.Background(), job, deps)
+
+	// Then
+	require.False(t, decision.Blocked)
+	require.NotNil(t, decision.DirectRecord)
+	require.NotNil(t, decision.DirectRecord.Job)
+	require.Nil(t, decision.DirectRecord.Event)
+	require.Equal(t, RiskObservationErrorQueueFull, decision.DirectRecord.ErrorCode)
+	require.Equal(t, providerID, decision.DirectRecord.Job.ProviderID)
+	require.Equal(t, model.RiskActionObserve, decision.DirectRecord.Job.ActionMode)
 }
 
 func TestProcessRiskObservationForRelay_blocks_unsafe_result_and_enqueues_completed_event(t *testing.T) {
@@ -89,23 +129,24 @@ func TestProcessRiskObservationForRelay_blocks_unsafe_result_and_enqueues_comple
 				ProviderCalled: true,
 			}, nil
 		}),
-		enqueueJob: func(RiskObservationJob) bool {
+		enqueueJob: func(RiskObservationJob) RiskObservationEnqueueResult {
 			t.Fatal("block mode must not enqueue a pending review job")
-			return false
+			return RiskObservationEnqueueResult{}
 		},
-		enqueueEvent: func(event RiskObservationEvent) bool {
+		enqueueEvent: func(event RiskObservationEvent) RiskObservationEnqueueResult {
 			completed = event
-			return true
+			return queuedRiskObservationResult()
 		},
 	}
 
 	// When
-	blocked := processRiskObservationForRelay(context.Background(), RiskObservationJob{
+	decision := processRiskObservationForRelay(context.Background(), RiskObservationJob{
 		RequestID: "block", ChannelName: "cpa-pro", Text: "current",
 	}, deps)
 
 	// Then
-	require.True(t, blocked)
+	require.True(t, decision.Blocked)
+	require.Nil(t, decision.DirectRecord)
 	require.Equal(t, 1, executorCalls)
 	require.Equal(t, RiskObservationUnsafe, completed.Result)
 	require.Equal(t, providerID, completed.ProviderID)
@@ -126,23 +167,24 @@ func TestProcessRiskObservationForRelay_skips_non_cpa_pro_channel(t *testing.T) 
 			executorCalls++
 			return RiskModerationOutcome{}, nil
 		}),
-		enqueueJob: func(RiskObservationJob) bool {
+		enqueueJob: func(RiskObservationJob) RiskObservationEnqueueResult {
 			queueCalls++
-			return true
+			return queuedRiskObservationResult()
 		},
-		enqueueEvent: func(RiskObservationEvent) bool {
+		enqueueEvent: func(RiskObservationEvent) RiskObservationEnqueueResult {
 			queueCalls++
-			return true
+			return queuedRiskObservationResult()
 		},
 	}
 
 	// When
-	blocked := processRiskObservationForRelay(context.Background(), RiskObservationJob{
+	decision := processRiskObservationForRelay(context.Background(), RiskObservationJob{
 		RequestID: "core", ChannelName: "CPA-core", Text: "current",
 	}, deps)
 
 	// Then
-	require.False(t, blocked)
+	require.False(t, decision.Blocked)
+	require.Nil(t, decision.DirectRecord)
 	require.Zero(t, executorCalls)
 	require.Zero(t, queueCalls)
 }
@@ -193,19 +235,20 @@ func TestProcessRiskObservationForRelay_fails_open_for_safe_provider_error_and_o
 				executor: riskModerationExecutorFunc(func(context.Context, RiskModerationInput) (RiskModerationOutcome, error) {
 					return test.outcome, test.executeErr
 				}),
-				enqueueEvent: func(event RiskObservationEvent) bool {
+				enqueueEvent: func(event RiskObservationEvent) RiskObservationEnqueueResult {
 					completed = event
-					return true
+					return queuedRiskObservationResult()
 				},
 			}
 
 			// When
-			blocked := processRiskObservationForRelay(context.Background(), RiskObservationJob{
+			decision := processRiskObservationForRelay(context.Background(), RiskObservationJob{
 				RequestID: "fail-open", ChannelName: "CPA-pro", Text: "current",
 			}, deps)
 
 			// Then
-			require.False(t, blocked)
+			require.False(t, decision.Blocked)
+			require.Nil(t, decision.DirectRecord)
 			require.Equal(t, test.wantResult, completed.Result)
 			require.Equal(t, test.wantErrorCode, completed.ErrorCode)
 		})
@@ -228,16 +271,22 @@ func TestProcessRiskObservationForRelay_keeps_unsafe_block_when_completed_event_
 		executor: riskModerationExecutorFunc(func(context.Context, RiskModerationInput) (RiskModerationOutcome, error) {
 			return RiskModerationOutcome{Result: RiskReviewResult{Status: RiskReviewUnsafe}}, nil
 		}),
-		enqueueEvent: func(RiskObservationEvent) bool { return false },
+		enqueueEvent: func(RiskObservationEvent) RiskObservationEnqueueResult {
+			return RiskObservationEnqueueResult{Outcome: RiskObservationEnqueueDirectRecordRequired}
+		},
 	}
 
 	// When
-	blocked := processRiskObservationForRelay(context.Background(), RiskObservationJob{
+	decision := processRiskObservationForRelay(context.Background(), RiskObservationJob{
 		RequestID: "overflow", ChannelName: "CPA-pro", Text: "current",
 	}, deps)
 
 	// Then
-	require.True(t, blocked)
+	require.True(t, decision.Blocked)
+	require.NotNil(t, decision.DirectRecord)
+	require.Nil(t, decision.DirectRecord.Job)
+	require.NotNil(t, decision.DirectRecord.Event)
+	require.True(t, decision.DirectRecord.Event.Blocked)
 }
 
 func TestRiskObservationErrorMapping_matches_typed_executor_errors(t *testing.T) {

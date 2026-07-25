@@ -50,27 +50,27 @@ func TestProcessRiskObservationForRelay_does_not_wait_for_slow_sink_in_block_mod
 				executor: riskModerationExecutorFunc(func(context.Context, RiskModerationInput) (RiskModerationOutcome, error) {
 					return RiskModerationOutcome{Result: RiskReviewResult{Status: test.status}}, nil
 				}),
-				enqueueEvent: func(event RiskObservationEvent) bool {
-					return queue.EnqueueEvent(event).Outcome != RiskObservationEnqueueDirectRecordRequired
+				enqueueEvent: func(event RiskObservationEvent) RiskObservationEnqueueResult {
+					return queue.EnqueueEvent(event)
 				},
 			}
-			decision := make(chan bool, 1)
+			decisions := make(chan RiskObservationRelayDecision, 1)
 
 			// When
 			go func() {
-				decision <- processRiskObservationForRelay(context.Background(), RiskObservationJob{
+				decisions <- processRiskObservationForRelay(context.Background(), RiskObservationJob{
 					RequestID: "slow-sink", ChannelName: "cpa-pro", Text: "current",
 				}, deps)
 			}()
 
 			// Then
 			select {
-			case blocked := <-decision:
-				require.Equal(t, test.wantBlocked, blocked)
+			case decision := <-decisions:
+				require.Equal(t, test.wantBlocked, decision.Blocked)
 			case <-recording:
 				select {
-				case blocked := <-decision:
-					require.Equal(t, test.wantBlocked, blocked)
+				case decision := <-decisions:
+					require.Equal(t, test.wantBlocked, decision.Blocked)
 				case <-time.After(500 * time.Millisecond):
 					t.Fatal("block decision waited for the observation sink")
 				}

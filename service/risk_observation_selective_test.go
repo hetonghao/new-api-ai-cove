@@ -28,9 +28,9 @@ func TestProcessRiskObservationForRelay_records_not_reviewed_when_selective_rule
 			executorCalls++
 			return RiskModerationOutcome{}, nil
 		}),
-		enqueueEvent: func(event RiskObservationEvent) bool {
+		enqueueEvent: func(event RiskObservationEvent) RiskObservationEnqueueResult {
 			completed = event
-			return true
+			return queuedRiskObservationResult()
 		},
 	}
 	job := RiskObservationJob{
@@ -40,10 +40,11 @@ func TestProcessRiskObservationForRelay_records_not_reviewed_when_selective_rule
 	wantMetadata := BuildRiskRecordContentMetadata(job.Text)
 
 	// When
-	blocked := processRiskObservationForRelay(context.Background(), job, deps)
+	decision := processRiskObservationForRelay(context.Background(), job, deps)
 
 	// Then
-	require.False(t, blocked)
+	require.False(t, decision.Blocked)
+	require.Nil(t, decision.DirectRecord)
 	require.Zero(t, executorCalls)
 	require.Equal(t, RiskObservationNotReviewed, completed.Result)
 	require.Equal(t, RiskObservationSourceLocal, completed.Source)
@@ -85,19 +86,20 @@ func TestProcessRiskObservationForRelay_sends_bounded_excerpt_when_selective_rul
 				CacheHit: true,
 			}, nil
 		}),
-		enqueueEvent: func(event RiskObservationEvent) bool {
+		enqueueEvent: func(event RiskObservationEvent) RiskObservationEnqueueResult {
 			completed = event
-			return true
+			return queuedRiskObservationResult()
 		},
 	}
 
 	// When
-	blocked := processRiskObservationForRelay(context.Background(), RiskObservationJob{
+	decision := processRiskObservationForRelay(context.Background(), RiskObservationJob{
 		RequestID: "hit", ChannelID: 24, ChannelName: "cpa-pro", UserID: 42, Text: text,
 	}, deps)
 
 	// Then
-	require.False(t, blocked)
+	require.False(t, decision.Blocked)
+	require.Nil(t, decision.DirectRecord)
 	require.Equal(t, model.RiskReviewSelective, reviewed.ReviewMode)
 	require.LessOrEqual(t, len([]rune(reviewed.Content)), riskExcerptLimit)
 	require.Contains(t, reviewed.Content, "danger")
