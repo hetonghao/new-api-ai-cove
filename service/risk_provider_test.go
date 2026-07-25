@@ -23,7 +23,7 @@ func TestReviewRiskContentMapsCloudflareResponses(t *testing.T) {
 		wantStatus RiskReviewStatus
 		categories []string
 	}{
-		{name: "safe object", response: `{"success":true,"result":{"response":{"safe":true,"categories":[]},"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4}}}`, wantStatus: RiskReviewSafe, categories: []string{}},
+		{name: "safe object", response: `{"success":true,"result":{"response":{"safe":true,"categories":[]},"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4,"neurons":12}}}`, wantStatus: RiskReviewSafe, categories: []string{}},
 		{name: "unsafe text", response: `{"success":true,"result":{"response":"unsafe\nS1,S9","usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}}`, wantStatus: RiskReviewUnsafe, categories: []string{"S1", "S9"}},
 	}
 
@@ -52,6 +52,9 @@ func TestReviewRiskContentMapsCloudflareResponses(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantStatus, result.Status)
 			assert.Equal(t, tt.categories, result.Categories)
+			if tt.name == "safe object" {
+				assert.Equal(t, int64(12), result.Usage.Neurons)
+			}
 		})
 	}
 }
