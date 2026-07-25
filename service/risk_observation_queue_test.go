@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/QuantumNous/new-api/model"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,15 +30,16 @@ func TestRiskObservationQueue_returns_immediately_when_full(t *testing.T) {
 	t.Cleanup(func() {
 		queue.Close(context.Background())
 	})
-	require.True(t, queue.Enqueue(RiskObservationJob{RequestID: "running"}))
+	require.Equal(t, RiskObservationEnqueueQueued, queue.Enqueue(RiskObservationJob{RequestID: "running"}).Outcome)
 	<-started
-	require.True(t, queue.Enqueue(RiskObservationJob{RequestID: "queued"}))
+	require.Equal(t, RiskObservationEnqueueQueued, queue.Enqueue(RiskObservationJob{RequestID: "queued"}).Outcome)
 
 	// When
-	accepted := queue.Enqueue(RiskObservationJob{RequestID: "overflow"})
+	result := queue.Enqueue(RiskObservationJob{RequestID: "overflow"})
 
 	// Then
-	require.False(t, accepted)
+	require.Equal(t, RiskObservationEnqueueFallbackRetained, result.Outcome)
+	require.Equal(t, RiskObservationErrorQueueFull, result.ErrorCode)
 	close(release)
 	require.Equal(t, RiskObservationErrorQueueFull, <-degraded)
 }
@@ -65,25 +67,26 @@ func TestRiskObservationQueue_preserves_queue_full_degradation_when_primary_degr
 			degradationMu.Unlock()
 		},
 	})
-	require.True(t, queue.Enqueue(RiskObservationJob{RequestID: "running"}))
+	require.Equal(t, RiskObservationEnqueueQueued, queue.Enqueue(RiskObservationJob{RequestID: "running"}).Outcome)
 	<-started
-	require.True(t, queue.Enqueue(RiskObservationJob{RequestID: "queued"}))
-	require.False(t, queue.Enqueue(RiskObservationJob{RequestID: "overflow-primary"}))
+	require.Equal(t, RiskObservationEnqueueQueued, queue.Enqueue(RiskObservationJob{RequestID: "queued"}).Outcome)
+	require.Equal(t, RiskObservationEnqueueFallbackRetained, queue.Enqueue(RiskObservationJob{RequestID: "overflow-primary"}).Outcome)
 
 	// When
-	accepted := queue.Enqueue(RiskObservationJob{RequestID: "overflow-spillway"})
+	result := queue.Enqueue(RiskObservationJob{RequestID: "overflow-spillway"})
 	close(release)
 	queue.Close(context.Background())
 
 	// Then
-	require.False(t, accepted)
+	require.Equal(t, RiskObservationEnqueueFallbackRetained, result.Outcome)
+	require.Equal(t, RiskObservationErrorQueueFull, result.ErrorCode)
 	degradationMu.Lock()
 	gotRequestIDs := append([]string(nil), degradedRequestIDs...)
 	degradationMu.Unlock()
 	require.ElementsMatch(t, []string{"overflow-primary", "overflow-spillway"}, gotRequestIDs)
 }
 
-func TestRiskObservationQueue_counts_loss_when_bounded_degradation_spillway_is_full(t *testing.T) {
+func TestRiskObservationQueue_requires_direct_queue_full_record_when_bounded_fallback_is_full(t *testing.T) {
 	// Given
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -102,27 +105,107 @@ func TestRiskObservationQueue_counts_loss_when_bounded_degradation_spillway_is_f
 			}
 		},
 	})
-	require.True(t, queue.Enqueue(RiskObservationJob{RequestID: "running"}))
+	require.Equal(t, RiskObservationEnqueueQueued, queue.Enqueue(RiskObservationJob{RequestID: "running"}).Outcome)
 	<-started
-	require.True(t, queue.Enqueue(RiskObservationJob{RequestID: "queued"}))
-	require.False(t, queue.Enqueue(RiskObservationJob{RequestID: "overflow-primary"}))
-	require.False(t, queue.Enqueue(RiskObservationJob{RequestID: "overflow-spillway"}))
+	require.Equal(t, RiskObservationEnqueueQueued, queue.Enqueue(RiskObservationJob{RequestID: "queued"}).Outcome)
+	require.Equal(t, RiskObservationEnqueueFallbackRetained, queue.Enqueue(RiskObservationJob{RequestID: "overflow-primary"}).Outcome)
+	require.Equal(t, RiskObservationEnqueueFallbackRetained, queue.Enqueue(RiskObservationJob{RequestID: "overflow-spillway"}).Outcome)
 
 	// When
-	accepted := queue.Enqueue(RiskObservationJob{RequestID: "overflow-beyond-ceiling"})
-	lossCount := queue.DegradationLossCount()
+	result := queue.Enqueue(RiskObservationJob{RequestID: "overflow-direct"})
 	close(release)
 	queue.Close(context.Background())
 
 	// Then
-	require.False(t, accepted)
-	require.Equal(t, uint64(1), lossCount)
+	require.Equal(t, RiskObservationEnqueueDirectRecordRequired, result.Outcome)
+	require.Equal(t, RiskObservationErrorQueueFull, result.ErrorCode)
 	close(degradedRequestIDs)
 	gotRequestIDs := make([]string, 0, len(degradedRequestIDs))
 	for requestID := range degradedRequestIDs {
 		gotRequestIDs = append(gotRequestIDs, requestID)
 	}
 	require.ElementsMatch(t, []string{"overflow-primary", "overflow-spillway"}, gotRequestIDs)
+}
+
+func TestRiskObservationQueue_requires_direct_shutdown_record_when_closed(t *testing.T) {
+	// Given
+	queue := NewRiskObservationQueue(context.Background(), RiskObservationQueueConfig{Capacity: 1})
+	queue.Close(context.Background())
+
+	// When
+	result := queue.Enqueue(RiskObservationJob{RequestID: "after-close"})
+
+	// Then
+	require.Equal(t, RiskObservationEnqueueDirectRecordRequired, result.Outcome)
+	require.Equal(t, RiskObservationErrorShutdown, result.ErrorCode)
+}
+
+func TestRiskObservationQueue_requires_direct_original_event_record_when_closed(t *testing.T) {
+	// Given
+	queue := NewRiskObservationQueue(context.Background(), RiskObservationQueueConfig{Capacity: 1})
+	queue.Close(context.Background())
+
+	// When
+	result := queue.EnqueueEvent(RiskObservationEvent{RequestID: "event-after-close"})
+
+	// Then
+	require.Equal(t, RiskObservationEnqueueDirectRecordRequired, result.Outcome)
+	require.Empty(t, result.ErrorCode)
+}
+
+func TestRecordRiskObservationDegradationDirect_uses_live_bounded_context_after_cancel(t *testing.T) {
+	// Given
+	var recordedCtxErr error
+	var recordedCtxHasDeadline bool
+	var recordedEvent RiskObservationEvent
+	SetRiskObservationSink(riskObservationSinkFunc(func(ctx context.Context, event RiskObservationEvent) error {
+		recordedCtxErr = ctx.Err()
+		_, recordedCtxHasDeadline = ctx.Deadline()
+		recordedEvent = event
+		return nil
+	}))
+	t.Cleanup(func() { SetRiskObservationSink(nil) })
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// When
+	RecordRiskObservationDegradationDirect(ctx, RiskObservationJob{RequestID: "direct"}, RiskObservationErrorQueueFull)
+
+	// Then
+	require.NoError(t, recordedCtxErr)
+	require.True(t, recordedCtxHasDeadline)
+	require.Equal(t, "direct", recordedEvent.RequestID)
+	require.Equal(t, RiskObservationErrorQueueFull, recordedEvent.ErrorCode)
+}
+
+func TestProcessRiskObservation_records_shutdown_with_live_bounded_context(t *testing.T) {
+	// Given
+	setupRiskObservationTest(t)
+	provider := createActiveRiskProvider(t, "https://example.com")
+	var recordedCtxErr error
+	var recordedCtxHasDeadline bool
+	var recordedEvent RiskObservationEvent
+	SetRiskObservationSink(riskObservationSinkFunc(func(ctx context.Context, event RiskObservationEvent) error {
+		recordedCtxErr = ctx.Err()
+		_, recordedCtxHasDeadline = ctx.Deadline()
+		recordedEvent = event
+		return nil
+	}))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// When
+	processRiskObservation(ctx, RiskObservationJob{
+		RequestID: "running-at-shutdown", ProviderID: provider.Id,
+		ReviewMode: model.RiskReviewFull, ActionMode: model.RiskActionObserve,
+		Text: "current",
+	})
+
+	// Then
+	require.NoError(t, recordedCtxErr)
+	require.True(t, recordedCtxHasDeadline)
+	require.Equal(t, RiskObservationError, recordedEvent.Result)
+	require.Equal(t, RiskObservationErrorShutdown, recordedEvent.ErrorCode)
 }
 
 func TestRiskObservationQueue_degrades_pending_jobs_on_close(t *testing.T) {
@@ -141,16 +224,16 @@ func TestRiskObservationQueue_degrades_pending_jobs_on_close(t *testing.T) {
 			}
 		},
 	})
-	require.True(t, queue.Enqueue(RiskObservationJob{RequestID: "running"}))
+	require.Equal(t, RiskObservationEnqueueQueued, queue.Enqueue(RiskObservationJob{RequestID: "running"}).Outcome)
 	<-started
-	require.True(t, queue.Enqueue(RiskObservationJob{RequestID: "pending"}))
+	require.Equal(t, RiskObservationEnqueueQueued, queue.Enqueue(RiskObservationJob{RequestID: "pending"}).Outcome)
 
 	// When
 	queue.Close(context.Background())
 
 	// Then
 	require.Equal(t, "pending", (<-degraded).RequestID)
-	require.False(t, queue.Enqueue(RiskObservationJob{RequestID: "after-close"}))
+	require.Equal(t, RiskObservationEnqueueDirectRecordRequired, queue.Enqueue(RiskObservationJob{RequestID: "after-close"}).Outcome)
 }
 
 func TestRiskObservationQueue_records_precomputed_event_without_processing_job(t *testing.T) {
@@ -172,14 +255,14 @@ func TestRiskObservationQueue_records_precomputed_event_without_processing_job(t
 	event := RiskObservationEvent{RequestID: "precomputed", Result: RiskObservationUnsafe}
 
 	// When
-	accepted := queue.EnqueueEvent(event)
+	result := queue.EnqueueEvent(event)
 
 	// Then
-	require.True(t, accepted)
+	require.Equal(t, RiskObservationEnqueueQueued, result.Outcome)
 	require.Equal(t, event, <-recorded)
 	select {
 	case job := <-processed:
-		t.Fatalf("precomputed event was processed as a review job: %+v", job)
+		require.Failf(t, "precomputed event was processed as a review job", "job: %+v", job)
 	default:
 	}
 }
@@ -200,12 +283,12 @@ func TestRiskObservationQueue_returns_immediately_when_precomputed_event_sink_is
 		close(release)
 		queue.Close(context.Background())
 	})
-	require.True(t, queue.EnqueueEvent(RiskObservationEvent{RequestID: "slow"}))
+	require.Equal(t, RiskObservationEnqueueQueued, queue.EnqueueEvent(RiskObservationEvent{RequestID: "slow"}).Outcome)
 	<-recording
 
 	// When
-	accepted := queue.EnqueueEvent(RiskObservationEvent{RequestID: "queued"})
+	result := queue.EnqueueEvent(RiskObservationEvent{RequestID: "queued"})
 
 	// Then
-	require.True(t, accepted)
+	require.Equal(t, RiskObservationEnqueueQueued, result.Outcome)
 }

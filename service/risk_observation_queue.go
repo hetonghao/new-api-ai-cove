@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 
 	"github.com/QuantumNous/new-api/model"
 )
@@ -29,10 +28,23 @@ type RiskObservationJob struct {
 
 type riskObservationQueueItemKind uint8
 
+type RiskObservationEnqueueOutcome uint8
+
 const (
 	riskObservationQueueItemJob riskObservationQueueItemKind = iota
 	riskObservationQueueItemEvent
 )
+
+const (
+	RiskObservationEnqueueQueued RiskObservationEnqueueOutcome = iota
+	RiskObservationEnqueueFallbackRetained
+	RiskObservationEnqueueDirectRecordRequired
+)
+
+type RiskObservationEnqueueResult struct {
+	Outcome   RiskObservationEnqueueOutcome
+	ErrorCode string
+}
 
 type riskObservationQueueItem struct {
 	kind  riskObservationQueueItemKind
@@ -62,7 +74,6 @@ type RiskObservationQueue struct {
 	record              func(context.Context, RiskObservationEvent)
 	degrade             func(context.Context, RiskObservationJob, string)
 	done                chan struct{}
-	degradationLosses   atomic.Uint64
 	mu                  sync.RWMutex
 	closed              bool
 	closeOnce           sync.Once
@@ -88,44 +99,54 @@ func NewRiskObservationQueue(ctx context.Context, config RiskObservationQueueCon
 	return queue
 }
 
-func (queue *RiskObservationQueue) Enqueue(job RiskObservationJob) bool {
+func (queue *RiskObservationQueue) Enqueue(job RiskObservationJob) RiskObservationEnqueueResult {
 	return queue.enqueue(riskObservationQueueItem{kind: riskObservationQueueItemJob, job: job})
 }
 
-func (queue *RiskObservationQueue) EnqueueEvent(event RiskObservationEvent) bool {
+func (queue *RiskObservationQueue) EnqueueEvent(event RiskObservationEvent) RiskObservationEnqueueResult {
 	return queue.enqueue(riskObservationQueueItem{kind: riskObservationQueueItemEvent, event: event})
 }
 
-// DegradationLossCount reports queue-full identities that exceeded the bounded
-// degradation buffer. It is operational loss accounting, not a persisted risk row.
-func (queue *RiskObservationQueue) DegradationLossCount() uint64 {
-	return queue.degradationLosses.Load()
-}
-
-func (queue *RiskObservationQueue) enqueue(item riskObservationQueueItem) bool {
+func (queue *RiskObservationQueue) enqueue(item riskObservationQueueItem) RiskObservationEnqueueResult {
 	queue.mu.RLock()
 	defer queue.mu.RUnlock()
+	errorCode := ""
+	switch item.kind {
+	case riskObservationQueueItemJob:
+		if queue.closed {
+			errorCode = RiskObservationErrorShutdown
+		} else {
+			errorCode = RiskObservationErrorQueueFull
+		}
+	case riskObservationQueueItemEvent:
+	}
 	if queue.closed {
-		return false
+		return RiskObservationEnqueueResult{
+			Outcome: RiskObservationEnqueueDirectRecordRequired, ErrorCode: errorCode,
+		}
 	}
 	select {
 	case queue.items <- item:
-		return true
+		return RiskObservationEnqueueResult{Outcome: RiskObservationEnqueueQueued}
 	default:
 		degradation := riskObservationDegradation{item: item, code: RiskObservationErrorQueueFull}
 		select {
 		case queue.degradations <- degradation:
+			return RiskObservationEnqueueResult{
+				Outcome: RiskObservationEnqueueFallbackRetained, ErrorCode: errorCode,
+			}
 		default:
 			select {
 			case queue.degradationSpillway <- degradation:
+				return RiskObservationEnqueueResult{
+					Outcome: RiskObservationEnqueueFallbackRetained, ErrorCode: errorCode,
+				}
 			default:
-				// A non-blocking in-memory queue cannot retain arbitrary identities.
-				// The bounded spillway preserves one more capacity window; accounting
-				// makes exhaustion explicit without creating backlog.
-				queue.degradationLosses.Add(1)
+				return RiskObservationEnqueueResult{
+					Outcome: RiskObservationEnqueueDirectRecordRequired, ErrorCode: errorCode,
+				}
 			}
 		}
-		return false
 	}
 }
 

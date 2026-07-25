@@ -21,6 +21,7 @@ const (
 	RiskObservationSourceInflight RiskObservationSource = "inflight"
 
 	riskObservationQueueCapacity       = 64
+	riskObservationDirectRecordTimeout = 3 * time.Second
 	riskObservationPolicyError         = "policy_error"
 	riskObservationRulesError          = "rules_error"
 	riskObservationProviderError       = "provider_error"
@@ -82,11 +83,11 @@ func SetRiskObservationSink(sink RiskObservationSink) {
 	riskObservationSinkMu.Unlock()
 }
 
-func EnqueueRiskObservation(job RiskObservationJob) bool {
+func EnqueueRiskObservation(job RiskObservationJob) RiskObservationEnqueueResult {
 	return riskObservationQueue.Enqueue(job)
 }
 
-func EnqueueRiskObservationEvent(event RiskObservationEvent) bool {
+func EnqueueRiskObservationEvent(event RiskObservationEvent) RiskObservationEnqueueResult {
 	return riskObservationQueue.EnqueueEvent(event)
 }
 
@@ -97,7 +98,7 @@ func CloseRiskObservationQueue(ctx context.Context) {
 func processRiskObservation(ctx context.Context, job RiskObservationJob) {
 	event, ok := evaluateRiskObservation(ctx, job, riskObservationModerationExecutor())
 	if ok {
-		recordRiskObservationEvent(ctx, event)
+		RecordRiskObservationEventDirect(ctx, event)
 	}
 }
 
@@ -113,6 +114,22 @@ func riskChannelEnabled(channels []model.RiskChannel, selectedChannel string) bo
 
 func recordRiskObservationDegradation(ctx context.Context, job RiskObservationJob, code string) {
 	recordRiskObservationEvent(ctx, riskObservationErrorEvent(job, code))
+}
+
+// RecordRiskObservationDegradationDirect persists a caller-owned degradation
+// after the upstream path completes, using a live context with a strict deadline.
+func RecordRiskObservationDegradationDirect(ctx context.Context, job RiskObservationJob, code string) {
+	recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), riskObservationDirectRecordTimeout)
+	defer cancel()
+	recordRiskObservationDegradation(recordCtx, job, code)
+}
+
+// RecordRiskObservationEventDirect persists a caller-owned completed event
+// after the upstream path completes, using a live context with a strict deadline.
+func RecordRiskObservationEventDirect(ctx context.Context, event RiskObservationEvent) {
+	recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), riskObservationDirectRecordTimeout)
+	defer cancel()
+	recordRiskObservationEvent(recordCtx, event)
 }
 
 func riskObservationErrorEvent(job RiskObservationJob, code string) RiskObservationEvent {

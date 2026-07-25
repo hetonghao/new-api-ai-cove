@@ -50,7 +50,9 @@ func TestProcessRiskObservationForRelay_does_not_wait_for_slow_sink_in_block_mod
 				executor: riskModerationExecutorFunc(func(context.Context, RiskModerationInput) (RiskModerationOutcome, error) {
 					return RiskModerationOutcome{Result: RiskReviewResult{Status: test.status}}, nil
 				}),
-				enqueueEvent: queue.EnqueueEvent,
+				enqueueEvent: func(event RiskObservationEvent) bool {
+					return queue.EnqueueEvent(event).Outcome != RiskObservationEnqueueDirectRecordRequired
+				},
 			}
 			decision := make(chan bool, 1)
 

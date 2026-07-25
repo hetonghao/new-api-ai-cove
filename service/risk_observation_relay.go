@@ -26,10 +26,14 @@ var riskObservationModerationExecutor = sync.OnceValue(func() riskModerationRunn
 
 func ProcessRiskObservationForRelay(ctx context.Context, job RiskObservationJob) bool {
 	return processRiskObservationForRelay(ctx, job, riskObservationRelayDeps{
-		loadPolicy:   model.GetRiskPolicyState,
-		executor:     riskObservationModerationExecutor(),
-		enqueueJob:   EnqueueRiskObservation,
-		enqueueEvent: EnqueueRiskObservationEvent,
+		loadPolicy: model.GetRiskPolicyState,
+		executor:   riskObservationModerationExecutor(),
+		enqueueJob: func(job RiskObservationJob) bool {
+			return EnqueueRiskObservation(job).Outcome != RiskObservationEnqueueDirectRecordRequired
+		},
+		enqueueEvent: func(event RiskObservationEvent) bool {
+			return EnqueueRiskObservationEvent(event).Outcome != RiskObservationEnqueueDirectRecordRequired
+		},
 	})
 }
 
