@@ -52,6 +52,7 @@ type RiskObservationEvent struct {
 	CompletionTokens int
 	TotalTokens      int
 	Neurons          int64
+	Chunks           []RiskReviewChunkAudit
 	ErrorCode        string
 	Source           RiskObservationSource
 	CacheHit         bool
@@ -131,5 +132,6 @@ func recordRiskObservationEvent(ctx context.Context, event RiskObservationEvent)
 	}
 	event.RuleIDs = append([]int(nil), event.RuleIDs...)
 	event.Categories = append([]string(nil), event.Categories...)
+	event.Chunks = cloneRiskReviewChunkAudits(event.Chunks)
 	_ = sink.RecordRiskObservation(ctx, event)
 }

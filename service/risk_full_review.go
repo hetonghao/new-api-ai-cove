@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 const RiskReviewError RiskReviewStatus = "error"
@@ -18,6 +19,7 @@ type FullRiskReviewChunkResult struct {
 	Index      int
 	Status     RiskReviewStatus
 	Categories []string
+	LatencyMS  int64
 	Usage      RiskReviewUsage
 	Err        error
 }
@@ -75,7 +77,9 @@ func ReviewFullRiskText(
 			chunkResult.Err = ctxErr
 			errorFound = true
 		} else {
+			startedAt := time.Now()
 			review, reviewErr := reviewer(ctx, chunk)
+			chunkResult.LatencyMS = time.Since(startedAt).Milliseconds()
 			chunkResult.Categories = append([]string(nil), review.Categories...)
 			chunkResult.Usage = review.Usage
 			switch {

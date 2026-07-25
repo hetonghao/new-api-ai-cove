@@ -116,6 +116,7 @@ func evaluateRiskObservation(ctx context.Context, job RiskObservationJob, execut
 	event.CompletionTokens = outcome.Result.Usage.CompletionTokens
 	event.TotalTokens = outcome.Result.Usage.TotalTokens
 	event.Neurons = outcome.Result.Usage.Neurons
+	event.Chunks = cloneRiskReviewChunkAudits(outcome.Chunks)
 	event.Source = riskObservationSource(outcome, executeErr)
 	event.CacheHit = outcome.CacheHit
 	event.ProviderCalled = outcome.ProviderCalled

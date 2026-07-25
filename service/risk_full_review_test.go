@@ -68,6 +68,9 @@ func TestReviewFullRiskText_unsafe_dominates_errors_and_aggregates_trace(t *test
 	require.Equal(t, RiskReviewError, got.Chunks[1].Status)
 	require.ErrorIs(t, got.Chunks[1].Err, providerErr)
 	require.Equal(t, []string{"partial"}, got.Chunks[1].Categories)
+	for _, chunk := range got.Chunks {
+		require.GreaterOrEqual(t, chunk.LatencyMS, int64(0))
+	}
 }
 
 func TestReviewFullRiskText_errors_fail_open_when_no_chunk_is_unsafe(t *testing.T) {

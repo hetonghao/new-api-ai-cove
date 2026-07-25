@@ -145,6 +145,21 @@ func TestRecordRiskObservation_rejectsInvalidMetadata(t *testing.T) {
 		{name: "error without code", mutate: func(input *RiskRecordInput) { input.Result = RiskRecordResultError }},
 		{name: "safe with error code", mutate: func(input *RiskRecordInput) { input.ErrorCode = "unexpected" }},
 		{name: "zero observation time", mutate: func(input *RiskRecordInput) { input.ObservedAt = time.Time{} }},
+		{name: "chunk audit on cache hit", mutate: func(input *RiskRecordInput) {
+			input.Source = RiskRecordSourceCache
+			input.CacheHit = true
+			input.Chunks = []RiskRecordChunk{{Index: 0, Result: RiskRecordResultSafe}}
+		}},
+		{name: "non-contiguous chunk index", mutate: func(input *RiskRecordInput) {
+			input.Source = RiskRecordSourceProvider
+			input.ProviderCalled = true
+			input.Chunks = []RiskRecordChunk{{Index: 1, Result: RiskRecordResultSafe}}
+		}},
+		{name: "negative chunk usage", mutate: func(input *RiskRecordInput) {
+			input.Source = RiskRecordSourceProvider
+			input.ProviderCalled = true
+			input.Chunks = []RiskRecordChunk{{Index: 0, Result: RiskRecordResultSafe, TotalTokens: -1}}
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -222,6 +237,34 @@ func TestRecordRiskObservation_acceptsEmptyRuleList(t *testing.T) {
 	assert.Empty(t, records[0].RuleIDs)
 }
 
+func TestRecordRiskObservation_persistsFullReviewChunkAudit(t *testing.T) {
+	// Given
+	setupRiskRecordModelTest(t)
+	input := validRiskRecordInput(RiskRecordResultUnsafe)
+	input.Source = RiskRecordSourceProvider
+	input.ProviderCalled = true
+	input.Chunks = []RiskRecordChunk{
+		{
+			Index: 0, Result: RiskRecordResultSafe, Categories: []string{}, LatencyMS: 21,
+			PromptTokens: 4, CompletionTokens: 1, TotalTokens: 5, Neurons: 7,
+		},
+		{
+			Index: 1, Result: RiskRecordResultUnsafe, Categories: []string{"S1"}, LatencyMS: 34,
+			PromptTokens: 6, CompletionTokens: 2, TotalTokens: 8, Neurons: 9,
+		},
+	}
+
+	// When
+	err := RecordRiskObservation(context.Background(), input)
+
+	// Then
+	require.NoError(t, err)
+	records, _, err := ListRiskRecords(context.Background(), 0, 1)
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	assert.Equal(t, input.Chunks, records[0].Chunks)
+}
+
 func TestRiskRecordMigration_hasNoFullContentOrSecretColumns(t *testing.T) {
 	// Given
 	db := setupRiskRecordModelTest(t)
@@ -239,6 +282,28 @@ func TestRiskRecordMigration_hasNoFullContentOrSecretColumns(t *testing.T) {
 		_, exists := columnNames[forbidden]
 		assert.False(t, exists, "forbidden column %q", forbidden)
 	}
+}
+
+func TestRiskRecordMigration_addsChunkAuditToExistingRows(t *testing.T) {
+	// Given
+	db := setupRiskRecordModelTest(t)
+	input := validRiskRecordInput(RiskRecordResultSafe)
+	require.NoError(t, RecordRiskObservation(context.Background(), input))
+	require.NoError(t, db.Migrator().DropColumn(&RiskRecord{}, "chunks"))
+	require.False(t, db.Migrator().HasColumn(&RiskRecord{}, "chunks"))
+
+	// When
+	err := db.AutoMigrate(&RiskRecord{})
+
+	// Then
+	require.NoError(t, err)
+	require.True(t, db.Migrator().HasColumn(&RiskRecord{}, "chunks"))
+	records, total, err := ListRiskRecords(context.Background(), 0, 1)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, records, 1)
+	assert.Equal(t, input.RequestID, records[0].RequestID)
+	assert.Empty(t, records[0].Chunks)
 }
 
 func TestMigrateDB_includesRiskRecord(t *testing.T) {
