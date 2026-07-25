@@ -13,7 +13,7 @@ type RiskRecordQuery struct {
 	EndTimestamp   int64
 	ChannelID      int
 	UserID         int
-	ProviderID     int
+	ProviderID     *int
 	Result         RiskRecordResult
 	Source         RiskRecordSource
 }
@@ -36,8 +36,8 @@ func QueryRiskRecords(ctx context.Context, filter RiskRecordQuery) ([]*RiskRecor
 	if filter.UserID > 0 {
 		query = query.Where("user_id = ?", filter.UserID)
 	}
-	if filter.ProviderID > 0 {
-		query = query.Where("provider_id = ?", filter.ProviderID)
+	if filter.ProviderID != nil {
+		query = query.Where("provider_id = ?", *filter.ProviderID)
 	}
 	if filter.Result != "" {
 		query = query.Where("result = ?", filter.Result)
@@ -65,7 +65,7 @@ func validateRiskRecordQuery(filter RiskRecordQuery) error {
 		(filter.StartTimestamp > 0 && filter.EndTimestamp > 0 && filter.StartTimestamp > filter.EndTimestamp) {
 		return ErrInvalidRiskRecordPage
 	}
-	if filter.ChannelID < 0 || filter.UserID < 0 || filter.ProviderID < 0 {
+	if filter.ChannelID < 0 || filter.UserID < 0 || (filter.ProviderID != nil && *filter.ProviderID < 0) {
 		return ErrInvalidRiskRecordPage
 	}
 	switch filter.Result {

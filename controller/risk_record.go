@@ -11,7 +11,7 @@ type riskRecordListQuery struct {
 	EndTimestamp   int64                  `form:"end_timestamp"`
 	ChannelID      int                    `form:"channel_id"`
 	UserID         int                    `form:"user_id"`
-	ProviderID     int                    `form:"provider_id"`
+	ProviderID     *int                   `form:"provider_id"`
 	Result         model.RiskRecordResult `form:"result"`
 	Source         model.RiskRecordSource `form:"source"`
 }
