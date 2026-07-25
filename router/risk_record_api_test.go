@@ -43,7 +43,7 @@ func setupRiskRecordRouterTest(t *testing.T, role int) (*httptest.Server, *http.
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB = db
-	require.NoError(t, db.AutoMigrate(&model.RiskRecord{}))
+	require.NoError(t, db.AutoMigrate(&model.RiskRecord{}, &model.RiskRecordGovernance{}))
 
 	engine := gin.New()
 	engine.Use(sessions.Sessions("session", cookie.NewStore([]byte("risk-record-route-test"))))
@@ -91,7 +91,8 @@ func TestRiskRecordAPI_returnsRootOnlyPaginatedMetadata(t *testing.T) {
 			RequestID: requestID, ChannelID: 12, UserID: 34, RuleIDs: []int{5}, ProviderID: 21,
 			ProviderName: "Cloudflare", Result: model.RiskRecordResultSafe, Categories: []string{},
 			LatencyMS: 93, PromptTokens: 11, CompletionTokens: 2, TotalTokens: 13, Neurons: 7,
-			ObservedAt: baseTime.Add(time.Duration(index) * time.Minute),
+			ProviderCalled: index == 1,
+			ObservedAt:     baseTime.Add(time.Duration(index) * time.Minute),
 		}))
 	}
 	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/api/risk/records?p=1&page_size=1", nil)
@@ -127,6 +128,7 @@ func TestRiskRecordAPI_returnsRootOnlyPaginatedMetadata(t *testing.T) {
 	assert.Equal(t, 13, record.TotalTokens)
 	assert.EqualValues(t, 7, record.Neurons)
 	assert.Empty(t, record.ErrorCode)
+	assert.True(t, record.ProviderCalled)
 	assert.Equal(t, baseTime.Add(time.Minute), record.ObservedAt)
 }
 
@@ -147,4 +149,91 @@ func TestRiskRecordAPI_rejectsNonRootAdmin(t *testing.T) {
 	var payload riskRecordAPIResponse
 	require.NoError(t, common.DecodeJson(response.Body, &payload))
 	assert.False(t, payload.Success)
+}
+
+func TestRiskRecordAPI_filtersGovernedRecords(t *testing.T) {
+	// Given
+	server, client := setupRiskRecordRouterTest(t, common.RoleRootUser)
+	observedAt := time.Date(2026, time.July, 25, 10, 0, 0, 0, time.UTC)
+	for _, input := range []model.RiskRecordInput{
+		{
+			RequestID: "req-match", ChannelID: 12, UserID: 34, ProviderID: 21, ProviderName: "Cloudflare",
+			Result: model.RiskRecordResultUnsafe, Source: model.RiskRecordSourceInflight,
+			ObservedAt: observedAt,
+		},
+		{
+			RequestID: "req-other", ChannelID: 99, UserID: 88, ProviderID: 77, ProviderName: "Other",
+			Result: model.RiskRecordResultSafe, Source: model.RiskRecordSourceProvider,
+			ObservedAt: observedAt.Add(time.Minute),
+		},
+	} {
+		require.NoError(t, model.RecordRiskObservation(context.Background(), input))
+	}
+	url := fmt.Sprintf(
+		"%s/api/risk/records?p=1&page_size=20&start_timestamp=%d&end_timestamp=%d&channel_id=12&user_id=34&result=unsafe&source=inflight&provider_id=21",
+		server.URL, observedAt.Unix(), observedAt.Unix(),
+	)
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	require.NoError(t, err)
+	request.Header.Set("New-Api-User", "1")
+
+	// When
+	response, err := client.Do(request)
+
+	// Then
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	var payload riskRecordAPIResponse
+	require.NoError(t, common.DecodeJson(response.Body, &payload))
+	require.True(t, payload.Success, payload.Message)
+	assert.Equal(t, 1, payload.Data.Total)
+	require.Len(t, payload.Data.Items, 1)
+	assert.Equal(t, "req-match", payload.Data.Items[0].RequestID)
+}
+
+func TestRiskRecordGovernanceAPI_getsDefaultsAndUpdatesValidatedSettings(t *testing.T) {
+	// Given
+	server, client := setupRiskRecordRouterTest(t, common.RoleRootUser)
+
+	// When
+	getRequest, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/api/risk/records/settings", nil)
+	require.NoError(t, err)
+	getRequest.Header.Set("New-Api-User", "1")
+	getResponse, err := client.Do(getRequest)
+	require.NoError(t, err)
+	defer getResponse.Body.Close()
+
+	// Then
+	var defaults struct {
+		Success bool                       `json:"success"`
+		Data    model.RiskRecordGovernance `json:"data"`
+	}
+	require.NoError(t, common.DecodeJson(getResponse.Body, &defaults))
+	require.True(t, defaults.Success)
+	assert.Equal(t, model.RiskRecordSaveAll, defaults.Data.SaveScope)
+	assert.Equal(t, 30, defaults.Data.RetentionDays)
+
+	// When
+	updateRequest, err := http.NewRequestWithContext(
+		context.Background(), http.MethodPut, server.URL+"/api/risk/records/settings",
+		strings.NewReader(`{"save_scope":"unsafe","retention_days":90}`),
+	)
+	require.NoError(t, err)
+	updateRequest.Header.Set("Content-Type", "application/json")
+	updateRequest.Header.Set("New-Api-User", "1")
+	updateResponse, err := client.Do(updateRequest)
+	require.NoError(t, err)
+	defer updateResponse.Body.Close()
+
+	// Then
+	var updated struct {
+		Success bool                       `json:"success"`
+		Message string                     `json:"message"`
+		Data    model.RiskRecordGovernance `json:"data"`
+	}
+	require.NoError(t, common.DecodeJson(updateResponse.Body, &updated))
+	require.True(t, updated.Success, updated.Message)
+	assert.Equal(t, model.RiskRecordSaveUnsafe, updated.Data.SaveScope)
+	assert.Equal(t, 90, updated.Data.RetentionDays)
 }

@@ -13,6 +13,11 @@ func (riskObservationModelSink) RecordRiskObservation(ctx context.Context, event
 		RequestID:        event.RequestID,
 		ChannelID:        event.ChannelID,
 		UserID:           event.UserID,
+		TokenID:          event.TokenID,
+		Model:            event.Model,
+		Path:             event.Path,
+		Preview:          event.Preview,
+		ContentHash:      event.ContentHash,
 		RuleIDs:          event.RuleIDs,
 		ProviderID:       event.ProviderID,
 		ProviderName:     event.ProviderName,
@@ -24,6 +29,10 @@ func (riskObservationModelSink) RecordRiskObservation(ctx context.Context, event
 		TotalTokens:      event.TotalTokens,
 		Neurons:          event.Neurons,
 		ErrorCode:        event.ErrorCode,
+		Source:           model.RiskRecordSource(event.Source),
+		CacheHit:         event.CacheHit,
+		ProviderCalled:   event.ProviderCalled,
+		Blocked:          event.Blocked,
 		ObservedAt:       event.ObservedAt,
 	})
 }

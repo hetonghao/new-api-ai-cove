@@ -6,9 +6,29 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type riskRecordListQuery struct {
+	StartTimestamp int64                  `form:"start_timestamp"`
+	EndTimestamp   int64                  `form:"end_timestamp"`
+	ChannelID      int                    `form:"channel_id"`
+	UserID         int                    `form:"user_id"`
+	ProviderID     int                    `form:"provider_id"`
+	Result         model.RiskRecordResult `form:"result"`
+	Source         model.RiskRecordSource `form:"source"`
+}
+
 func ListRiskRecords(c *gin.Context) {
+	var query riskRecordListQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		common.ApiErrorMsg(c, "无效的风控记录筛选条件")
+		return
+	}
 	pageInfo := common.GetPageQuery(c)
-	records, total, err := model.ListRiskRecords(c.Request.Context(), pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	records, total, err := model.QueryRiskRecords(c.Request.Context(), model.RiskRecordQuery{
+		Offset: pageInfo.GetStartIdx(), Limit: pageInfo.GetPageSize(),
+		StartTimestamp: query.StartTimestamp, EndTimestamp: query.EndTimestamp,
+		ChannelID: query.ChannelID, UserID: query.UserID, ProviderID: query.ProviderID,
+		Result: query.Result, Source: query.Source,
+	})
 	if err != nil {
 		common.ApiError(c, err)
 		return
