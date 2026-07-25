@@ -16,11 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useFormContext } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
 import {
   Field,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
 } from '@/components/ui/field'
@@ -30,35 +32,35 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import type { RiskProviderFormValues } from '../types'
 
 type RiskProviderFormFieldsProps = {
-  readonly values: RiskProviderFormValues
   readonly hasCredential: boolean
-  readonly onChange: (values: RiskProviderFormValues) => void
 }
 
 export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
   const { t } = useTranslation()
+  const form = useFormContext<RiskProviderFormValues>()
+  const errors = form.formState.errors
 
   return (
     <FieldGroup className='grid gap-4 sm:grid-cols-2'>
-      <Field>
+      <Field data-invalid={Boolean(errors.name)}>
         <FieldLabel htmlFor='risk-provider-name'>{t('Name')}</FieldLabel>
         <Input
           id='risk-provider-name'
-          value={props.values.name}
-          onChange={(event) =>
-            props.onChange({ ...props.values, name: event.target.value })
-          }
+          aria-invalid={Boolean(errors.name)}
           autoFocus
+          {...form.register('name')}
         />
+        <FieldError errors={[errors.name]} />
       </Field>
       <Field>
         <FieldLabel htmlFor='risk-provider-type'>
           {t('Provider type')}
         </FieldLabel>
+        <input type='hidden' {...form.register('provider_type')} />
         <NativeSelect
           id='risk-provider-type'
           className='w-full'
-          value={props.values.provider_type}
+          value='cloudflare'
           disabled
         >
           <NativeSelectOption value='cloudflare'>
@@ -66,31 +68,32 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
           </NativeSelectOption>
         </NativeSelect>
       </Field>
-      <Field className='sm:col-span-2'>
+      <Field className='sm:col-span-2' data-invalid={Boolean(errors.base_url)}>
         <FieldLabel htmlFor='risk-provider-base-url'>
           {t('Connection URL')}
         </FieldLabel>
         <Input
           id='risk-provider-base-url'
           type='url'
-          value={props.values.base_url}
+          aria-invalid={Boolean(errors.base_url)}
           placeholder='https://api.cloudflare.com/client/v4/accounts/.../ai/run'
-          onChange={(event) =>
-            props.onChange({ ...props.values, base_url: event.target.value })
-          }
+          {...form.register('base_url')}
         />
+        <FieldError errors={[errors.base_url]} />
       </Field>
-      <Field className='sm:col-span-2'>
+      <Field className='sm:col-span-2' data-invalid={Boolean(errors.model)}>
         <FieldLabel htmlFor='risk-provider-model'>{t('Model')}</FieldLabel>
         <Input
           id='risk-provider-model'
-          value={props.values.model}
-          onChange={(event) =>
-            props.onChange({ ...props.values, model: event.target.value })
-          }
+          aria-invalid={Boolean(errors.model)}
+          {...form.register('model')}
         />
+        <FieldError errors={[errors.model]} />
       </Field>
-      <Field className='sm:col-span-2'>
+      <Field
+        className='sm:col-span-2'
+        data-invalid={Boolean(errors.credential)}
+      >
         <FieldLabel htmlFor='risk-provider-credential'>
           {t('Credential')}
         </FieldLabel>
@@ -98,23 +101,22 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
           id='risk-provider-credential'
           type='password'
           autoComplete='new-password'
-          value={props.values.credential}
+          aria-invalid={Boolean(errors.credential)}
           placeholder={
             props.hasCredential
               ? t('Credential configured; leave blank to keep it')
               : t('Enter a provider credential')
           }
-          onChange={(event) =>
-            props.onChange({ ...props.values, credential: event.target.value })
-          }
+          {...form.register('credential')}
         />
         <FieldDescription>
           {props.hasCredential
             ? t('Enter a new credential only when you want to replace it.')
             : t('The credential is write-only after saving.')}
         </FieldDescription>
+        <FieldError errors={[errors.credential]} />
       </Field>
-      <Field>
+      <Field data-invalid={Boolean(errors.timeout_ms)}>
         <FieldLabel htmlFor='risk-provider-timeout'>
           {t('Review timeout (ms)')}
         </FieldLabel>
@@ -122,16 +124,12 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
           id='risk-provider-timeout'
           type='number'
           min={1}
-          value={props.values.timeout_ms}
-          onChange={(event) =>
-            props.onChange({
-              ...props.values,
-              timeout_ms: event.target.valueAsNumber,
-            })
-          }
+          aria-invalid={Boolean(errors.timeout_ms)}
+          {...form.register('timeout_ms', { valueAsNumber: true })}
         />
+        <FieldError errors={[errors.timeout_ms]} />
       </Field>
-      <Field>
+      <Field data-invalid={Boolean(errors.failure_threshold)}>
         <FieldLabel htmlFor='risk-provider-failure-threshold'>
           {t('Failure threshold')}
         </FieldLabel>
@@ -139,16 +137,12 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
           id='risk-provider-failure-threshold'
           type='number'
           min={1}
-          value={props.values.failure_threshold}
-          onChange={(event) =>
-            props.onChange({
-              ...props.values,
-              failure_threshold: event.target.valueAsNumber,
-            })
-          }
+          aria-invalid={Boolean(errors.failure_threshold)}
+          {...form.register('failure_threshold', { valueAsNumber: true })}
         />
+        <FieldError errors={[errors.failure_threshold]} />
       </Field>
-      <Field>
+      <Field data-invalid={Boolean(errors.cooldown_seconds)}>
         <FieldLabel htmlFor='risk-provider-cooldown'>
           {t('Circuit pause (seconds)')}
         </FieldLabel>
@@ -156,14 +150,10 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
           id='risk-provider-cooldown'
           type='number'
           min={1}
-          value={props.values.cooldown_seconds}
-          onChange={(event) =>
-            props.onChange({
-              ...props.values,
-              cooldown_seconds: event.target.valueAsNumber,
-            })
-          }
+          aria-invalid={Boolean(errors.cooldown_seconds)}
+          {...form.register('cooldown_seconds', { valueAsNumber: true })}
         />
+        <FieldError errors={[errors.cooldown_seconds]} />
       </Field>
     </FieldGroup>
   )

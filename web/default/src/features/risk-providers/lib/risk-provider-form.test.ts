@@ -19,10 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
+import { t } from 'i18next'
+
 import type { RiskProvider, RiskProviderFormValues } from '../types'
 import {
   canActivateProvider,
   formValuesToPayload,
+  getRiskProviderFormSchema,
+  getRiskProviderServerFormError,
 } from './risk-provider-form.ts'
 
 const formValues: RiskProviderFormValues = {
@@ -75,6 +79,39 @@ describe('risk provider form behavior', () => {
 
     // Then only the entered replacement is sent
     assert.equal(payload.credential, 'replacement-token')
+  })
+
+  test('maps an API failure to the form-level server error', () => {
+    // Given an unstructured API failure message
+    // When the failure is mapped to React Hook Form
+    const formError = getRiskProviderServerFormError('Provider already exists')
+
+    // Then the dialog can render it as a form-level error
+    assert.deepEqual(formError, {
+      name: 'root.server',
+      error: { type: 'server', message: 'Provider already exists' },
+    })
+  })
+
+  test('requires a credential when creating a provider', () => {
+    // Given a new provider form with a blank credential
+    // When the form schema validates the values
+    const result = getRiskProviderFormSchema(t, true).safeParse(formValues)
+
+    // Then the credential field receives the validation issue
+    assert.equal(result.success, false)
+    if (!result.success) {
+      assert.deepEqual(result.error.issues[0]?.path, ['credential'])
+    }
+  })
+
+  test('allows a blank credential when editing a configured provider', () => {
+    // Given an edit form whose existing credential stays masked
+    // When the form schema validates the untouched credential field
+    const result = getRiskProviderFormSchema(t, false).safeParse(formValues)
+
+    // Then the values remain valid and the stored credential can be retained
+    assert.equal(result.success, true)
   })
 
   test('allows activation only after successful validation', () => {
