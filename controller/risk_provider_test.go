@@ -133,3 +133,72 @@ func TestRiskProviderAPIWorkflowKeepsCredentialsMaskedAndActiveEditsDirect(t *te
 	deleted := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodDelete, Target: "/api/risk/providers/1", Id: created.Id, Handler: DeleteRiskProvider})
 	require.True(t, deleted.Success, deleted.Message)
 }
+
+func TestUpdateRiskProviderRevokesValidationWhenConnectionChanges(t *testing.T) {
+	tests := []struct {
+		name   string
+		change func(map[string]any)
+	}{
+		{
+			name: "model changes",
+			change: func(body map[string]any) {
+				body["model"] = "@cf/meta/llama-guard-4-12b"
+			},
+		},
+		{
+			name: "base URL changes",
+			change: func(body map[string]any) {
+				body["base_url"] = "https://example.net/account/ai/run"
+			},
+		},
+		{
+			name: "new credential is supplied",
+			change: func(body map[string]any) {
+				body["credential"] = "replacement-secret"
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			setupRiskProviderControllerTest(t)
+			ciphertext, err := common.EncryptCredential("original-secret")
+			require.NoError(t, err)
+			provider := &model.RiskProvider{
+				Name: "Cloudflare primary", ProviderType: model.RiskProviderCloudflare,
+				Model: "@cf/meta/llama-guard-3-8b", BaseURL: "https://example.com/account/ai/run",
+				CredentialEncrypted: ciphertext,
+			}
+			require.NoError(t, model.CreateRiskProvider(provider))
+			require.NoError(t, model.MarkRiskProviderValidated(provider.Id))
+			require.NoError(t, model.ActivateRiskProvider(provider.Id))
+
+			body := map[string]any{
+				"name": "Cloudflare primary", "provider_type": "cloudflare",
+				"model": "@cf/meta/llama-guard-3-8b", "base_url": "https://example.com/account/ai/run",
+				"credential": "", "timeout_ms": 800, "failure_threshold": 5, "cooldown_seconds": 30,
+			}
+			test.change(body)
+
+			response := callRiskProviderHandler(t, riskProviderTestCall{
+				Method: http.MethodPut, Target: "/api/risk/providers/1", Body: body,
+				Id: provider.Id, Handler: UpdateRiskProvider,
+			})
+			require.True(t, response.Success, response.Message)
+			var updated RiskProviderResponse
+			require.NoError(t, common.Unmarshal(response.Data, &updated))
+			assert.Nil(t, updated.ValidatedAt)
+			assert.False(t, updated.Active)
+
+			listed := callRiskProviderHandler(t, riskProviderTestCall{
+				Method: http.MethodGet, Target: "/api/risk/providers/", Handler: ListRiskProviders,
+			})
+			require.True(t, listed.Success, listed.Message)
+			var providers []RiskProviderResponse
+			require.NoError(t, common.Unmarshal(listed.Data, &providers))
+			require.Len(t, providers, 1)
+			assert.Nil(t, providers[0].ValidatedAt)
+			assert.False(t, providers[0].Active)
+		})
+	}
+}
