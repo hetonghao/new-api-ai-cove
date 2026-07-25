@@ -250,6 +250,7 @@ func SetApiRouter(router *gin.Engine) {
 			riskProviderRoute.POST("/:id/validate", controller.ValidateRiskProvider)
 			riskProviderRoute.PUT("/:id/active", controller.ActivateRiskProvider)
 		}
+		registerRiskPolicyRoutes(apiRouter)
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
 		ratioSyncRoute.Use(middleware.RootAuth())
 		{
