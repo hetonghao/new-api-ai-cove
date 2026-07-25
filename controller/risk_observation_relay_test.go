@@ -98,3 +98,27 @@ func TestApplyRelayRiskGate_maps_block_and_builds_governed_job(t *testing.T) {
 	require.Equal(t, "/v1/responses", job.Path)
 	require.Equal(t, "current", job.Text)
 }
+
+func TestApplyRelayRiskGate_routes_empty_current_turn_to_processor(t *testing.T) {
+	// Given
+	originalCheckEnabled := setting.CheckSensitiveEnabled
+	setting.CheckSensitiveEnabled = false
+	t.Cleanup(func() { setting.CheckSensitiveEnabled = originalCheckEnabled })
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	processorCalls := 0
+
+	// When
+	err := applyRelayRiskGate(ctx, relayRiskContext{
+		request: &dto.GeneralOpenAIRequest{},
+		info:    &relaycommon.RelayInfo{OriginModelName: "gpt-test"},
+	}, func(_ *gin.Context, job service.RiskObservationJob) bool {
+		processorCalls++
+		require.Empty(t, job.Text)
+		return false
+	})
+
+	// Then
+	require.Nil(t, err)
+	require.Equal(t, 1, processorCalls)
+}

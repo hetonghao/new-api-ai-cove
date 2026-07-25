@@ -14,6 +14,7 @@ type riskModerationRunner interface {
 }
 
 type riskObservationRelayDeps struct {
+	loadPolicy   func() (model.RiskPolicyState, error)
 	executor     riskModerationRunner
 	enqueueJob   func(RiskObservationJob) bool
 	enqueueEvent func(RiskObservationEvent) bool
@@ -25,6 +26,7 @@ var riskObservationModerationExecutor = sync.OnceValue(func() riskModerationRunn
 
 func ProcessRiskObservationForRelay(ctx context.Context, job RiskObservationJob) bool {
 	return processRiskObservationForRelay(ctx, job, riskObservationRelayDeps{
+		loadPolicy:   model.GetRiskPolicyState,
 		executor:     riskObservationModerationExecutor(),
 		enqueueJob:   EnqueueRiskObservation,
 		enqueueEvent: EnqueueRiskObservationEvent,
@@ -35,12 +37,20 @@ func processRiskObservationForRelay(ctx context.Context, job RiskObservationJob,
 	if !riskChannelEnabled([]model.RiskChannel{model.RiskChannelCPAPro}, job.ChannelName) {
 		return false
 	}
-	state, err := model.GetRiskPolicyState()
+	loadPolicy := deps.loadPolicy
+	if loadPolicy == nil {
+		loadPolicy = model.GetRiskPolicyState
+	}
+	state, err := loadPolicy()
 	if err != nil {
 		deps.enqueueEvent(riskObservationErrorEvent(job, riskObservationPolicyError))
 		return false
 	}
 	if !state.Enabled || !riskChannelEnabled(state.EnabledChannels, job.ChannelName) {
+		return false
+	}
+	if state.ProviderID == nil {
+		deps.enqueueEvent(riskObservationErrorEvent(job, riskObservationProviderConfigError))
 		return false
 	}
 	job.ProviderID = *state.ProviderID
@@ -59,7 +69,13 @@ func processRiskObservationForRelay(ctx context.Context, job RiskObservationJob,
 }
 
 func evaluateRiskObservation(ctx context.Context, job RiskObservationJob, executor riskModerationRunner) (RiskObservationEvent, bool) {
-	if job.Text == "" || job.ProviderID < 1 || executor == nil {
+	if job.Text == "" {
+		event := newRiskObservationEvent(job)
+		event.Result = RiskObservationNotReviewed
+		event.Source = RiskObservationSourceLocal
+		return event, true
+	}
+	if job.ProviderID < 1 || executor == nil {
 		return RiskObservationEvent{}, false
 	}
 	event := newRiskObservationEvent(job)

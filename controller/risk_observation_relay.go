@@ -34,7 +34,7 @@ func applyRelayRiskGate(c *gin.Context, risk relayRiskContext, process relayRisk
 		}
 	}
 	text := service.ExtractRiskObservationText(risk.request)
-	if text == "" || risk.info == nil || process == nil {
+	if risk.info == nil || process == nil {
 		return nil
 	}
 	blocked := process(c, service.RiskObservationJob{
