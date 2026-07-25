@@ -17,25 +17,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { Plus, RefreshCw, ShieldCheck } from 'lucide-react'
+import { Plus, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { ErrorState } from '@/components/error-state'
 import { SectionPageLayout } from '@/components/layout'
 import { Button } from '@/components/ui/button'
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
-import { Skeleton } from '@/components/ui/skeleton'
-import { TitledCard } from '@/components/ui/titled-card'
+import { LocalRuleManager } from '@/features/risk-policy/components/local-rule-manager'
+import { RiskPolicySettings } from '@/features/risk-policy/components/risk-policy-settings'
 
 import {
   activateRiskProvider,
@@ -43,14 +34,14 @@ import {
   listRiskProviders,
   validateRiskProvider,
 } from './api'
-import { RiskProviderCard } from './components/risk-provider-card'
 import { RiskProviderFormDialog } from './components/risk-provider-form-dialog'
+import {
+  RiskProviderList,
+  type RiskProviderPendingAction,
+} from './components/risk-provider-list'
 import type { RiskProvider } from './types'
 
 const QUERY_KEY = ['risk', 'providers'] as const
-const SKELETON_KEYS = ['risk-provider-1', 'risk-provider-2'] as const
-
-type PendingAction = 'validate' | 'activate' | 'delete'
 
 function assertNever(action: never): never {
   throw new Error(`Unsupported provider action: ${action}`)
@@ -68,7 +59,8 @@ export function RiskProviders() {
   const [pendingProviderId, setPendingProviderId] = useState<number | null>(
     null
   )
-  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
+  const [pendingAction, setPendingAction] =
+    useState<RiskProviderPendingAction | null>(null)
 
   const providersQuery = useQuery({
     queryKey: QUERY_KEY,
@@ -84,7 +76,7 @@ export function RiskProviders() {
 
   async function runProviderAction(
     provider: RiskProvider,
-    action: PendingAction
+    action: RiskProviderPendingAction
   ) {
     setPendingProviderId(provider.id)
     setPendingAction(action)
@@ -137,69 +129,6 @@ export function RiskProviders() {
     setFormOpen(true)
   }
 
-  let content = (
-    <div className='grid gap-4 lg:grid-cols-2'>
-      {SKELETON_KEYS.map((key) => (
-        <Skeleton key={key} className='h-72 rounded-xl' />
-      ))}
-    </div>
-  )
-
-  if (providersQuery.isError) {
-    content = (
-      <ErrorState
-        title={t('Failed to load providers')}
-        description={
-          providersQuery.error instanceof Error
-            ? providersQuery.error.message
-            : t('Request failed')
-        }
-        onRetry={() => providersQuery.refetch()}
-      />
-    )
-  } else if (!providersQuery.isLoading) {
-    const providers = providersQuery.data ?? []
-    content = providers.length ? (
-      <div className='grid gap-4 lg:grid-cols-2'>
-        {providers.map((provider) => (
-          <RiskProviderCard
-            key={provider.id}
-            provider={provider}
-            pendingAction={
-              pendingProviderId === provider.id ? pendingAction : null
-            }
-            onEdit={openEditDialog}
-            onValidate={(selected) =>
-              void runProviderAction(selected, 'validate')
-            }
-            onActivate={(selected) =>
-              void runProviderAction(selected, 'activate')
-            }
-            onDelete={setDeletingProvider}
-          />
-        ))}
-      </div>
-    ) : (
-      <Empty className='min-h-72 border'>
-        <EmptyHeader>
-          <EmptyMedia variant='icon'>
-            <ShieldCheck />
-          </EmptyMedia>
-          <EmptyTitle>{t('No cloud review providers')}</EmptyTitle>
-          <EmptyDescription>
-            {t('Add a provider, test its connection, then set it active.')}
-          </EmptyDescription>
-        </EmptyHeader>
-        <EmptyContent>
-          <Button size='sm' onClick={openCreateDialog}>
-            <Plus className='size-4' />
-            {t('Add provider')}
-          </Button>
-        </EmptyContent>
-      </Empty>
-    )
-  }
-
   return (
     <>
       <SectionPageLayout>
@@ -216,7 +145,7 @@ export function RiskProviders() {
                 providersQuery.isFetching ? 'size-4 animate-spin' : 'size-4'
               }
             />
-            {t('Refresh')}
+            {t('Refresh providers')}
           </Button>
           <Button size='sm' onClick={openCreateDialog}>
             <Plus className='size-4' />
@@ -224,17 +153,30 @@ export function RiskProviders() {
           </Button>
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <TitledCard
-            title={t('Cloud review providers')}
-            description={t(
-              'Manage encrypted credentials, connection checks, timeouts, and the single active provider.'
-            )}
-            descriptionClassName='text-pretty'
-            icon={<ShieldCheck className='size-5' />}
-            disableHoverEffect
-          >
-            {content}
-          </TitledCard>
+          <div className='space-y-4'>
+            <RiskPolicySettings
+              providers={providersQuery.data ?? []}
+              onSaved={() => void providersQuery.refetch()}
+            />
+            <LocalRuleManager />
+            <RiskProviderList
+              providers={providersQuery.data ?? []}
+              isLoading={providersQuery.isLoading}
+              error={providersQuery.error}
+              pendingProviderId={pendingProviderId}
+              pendingAction={pendingAction}
+              onRetry={() => void providersQuery.refetch()}
+              onCreate={openCreateDialog}
+              onEdit={openEditDialog}
+              onValidate={(provider) =>
+                void runProviderAction(provider, 'validate')
+              }
+              onActivate={(provider) =>
+                void runProviderAction(provider, 'activate')
+              }
+              onDelete={setDeletingProvider}
+            />
+          </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>
       <RiskProviderFormDialog
