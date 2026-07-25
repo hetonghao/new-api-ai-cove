@@ -16,11 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, type FormEvent } from 'react'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { Controller, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
-import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -33,11 +39,13 @@ import {
 
 import {
   commitRiskRecordFilters,
+  createRiskRecordFilterFormSchema,
   EMPTY_RISK_RECORD_FILTER_DRAFT,
   getRiskRecordResultFilterLabel,
   getRiskRecordSourceFilterLabel,
+  type RiskRecordFilterFormValues,
 } from '../lib/risk-records'
-import type { RiskRecordFilterDraft, RiskRecordFilters } from '../types'
+import type { RiskRecordFilters } from '../types'
 
 const ALL_RESULTS = 'all-results'
 const ALL_SOURCES = 'all-sources'
@@ -63,58 +71,55 @@ type RiskRecordFiltersProps = {
 
 export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
   const { t } = useTranslation()
-  const [draft, setDraft] = useState<RiskRecordFilterDraft>(
-    EMPTY_RISK_RECORD_FILTER_DRAFT
-  )
-  const resultValue = draft.result || ALL_RESULTS
-  const sourceValue = draft.source || ALL_SOURCES
-  const resultLabel = getRiskRecordResultFilterLabel(resultValue)
-  const sourceLabel = getRiskRecordSourceFilterLabel(sourceValue)
+  const form = useForm<RiskRecordFilterFormValues>({
+    resolver: zodResolver(createRiskRecordFilterFormSchema(t)),
+    defaultValues: EMPTY_RISK_RECORD_FILTER_DRAFT,
+  })
+  const startTime = form.watch('start_time')
+  const errors = form.formState.errors
 
-  function submitFilters(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    props.onApply(commitRiskRecordFilters(draft))
+  function submitFilters(values: RiskRecordFilterFormValues) {
+    props.onApply(commitRiskRecordFilters(values))
   }
 
   function clearFilters() {
-    setDraft(EMPTY_RISK_RECORD_FILTER_DRAFT)
+    form.reset(EMPTY_RISK_RECORD_FILTER_DRAFT)
     props.onApply({})
   }
 
   return (
     <form
       className='bg-muted/40 mb-3 rounded-lg border p-3'
-      onSubmit={submitFilters}
+      onSubmit={form.handleSubmit(submitFilters)}
+      noValidate
     >
       <FieldGroup className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
-        <Field>
+        <Field data-invalid={Boolean(errors.start_time)}>
           <FieldLabel htmlFor='risk-record-start-time'>
             {t('Start Time')}
           </FieldLabel>
           <Input
             id='risk-record-start-time'
             type='datetime-local'
-            value={draft.start_time}
-            onChange={(event) =>
-              setDraft({ ...draft, start_time: event.target.value })
-            }
+            aria-invalid={Boolean(errors.start_time)}
+            {...form.register('start_time')}
           />
+          <FieldError>{errors.start_time?.message}</FieldError>
         </Field>
-        <Field>
+        <Field data-invalid={Boolean(errors.end_time)}>
           <FieldLabel htmlFor='risk-record-end-time'>
             {t('End Time')}
           </FieldLabel>
           <Input
             id='risk-record-end-time'
             type='datetime-local'
-            value={draft.end_time}
-            min={draft.start_time || undefined}
-            onChange={(event) =>
-              setDraft({ ...draft, end_time: event.target.value })
-            }
+            min={startTime || undefined}
+            aria-invalid={Boolean(errors.end_time)}
+            {...form.register('end_time')}
           />
+          <FieldError>{errors.end_time?.message}</FieldError>
         </Field>
-        <Field>
+        <Field data-invalid={Boolean(errors.channel_id)}>
           <FieldLabel htmlFor='risk-record-channel-id'>
             {t('Channel ID')}
           </FieldLabel>
@@ -124,13 +129,12 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
             inputMode='numeric'
             min='1'
             step='1'
-            value={draft.channel_id}
-            onChange={(event) =>
-              setDraft({ ...draft, channel_id: event.target.value })
-            }
+            aria-invalid={Boolean(errors.channel_id)}
+            {...form.register('channel_id')}
           />
+          <FieldError>{errors.channel_id?.message}</FieldError>
         </Field>
-        <Field>
+        <Field data-invalid={Boolean(errors.user_id)}>
           <FieldLabel htmlFor='risk-record-user-id'>{t('User ID')}</FieldLabel>
           <Input
             id='risk-record-user-id'
@@ -138,13 +142,12 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
             inputMode='numeric'
             min='1'
             step='1'
-            value={draft.user_id}
-            onChange={(event) =>
-              setDraft({ ...draft, user_id: event.target.value })
-            }
+            aria-invalid={Boolean(errors.user_id)}
+            {...form.register('user_id')}
           />
+          <FieldError>{errors.user_id?.message}</FieldError>
         </Field>
-        <Field>
+        <Field data-invalid={Boolean(errors.provider_id)}>
           <FieldLabel htmlFor='risk-record-provider-id'>
             {t('Provider ID')}
           </FieldLabel>
@@ -154,66 +157,89 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
             inputMode='numeric'
             min='0'
             step='1'
-            value={draft.provider_id}
-            onChange={(event) =>
-              setDraft({ ...draft, provider_id: event.target.value })
-            }
+            aria-invalid={Boolean(errors.provider_id)}
+            {...form.register('provider_id')}
           />
+          <FieldError>{errors.provider_id?.message}</FieldError>
         </Field>
-        <Field>
-          <FieldLabel htmlFor='risk-record-result'>{t('Result')}</FieldLabel>
-          <Select
-            value={resultValue}
-            onValueChange={(value) =>
-              value !== null &&
-              setDraft({
-                ...draft,
-                result: value === ALL_RESULTS ? '' : value,
-              })
-            }
-          >
-            <SelectTrigger id='risk-record-result' className='w-full'>
-              <SelectValue>{t(resultLabel)}</SelectValue>
-            </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false}>
-              <SelectGroup>
-                <SelectItem value={ALL_RESULTS}>{t('All results')}</SelectItem>
-                {RESULT_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {t(option.label)}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor='risk-record-source'>{t('Source')}</FieldLabel>
-          <Select
-            value={sourceValue}
-            onValueChange={(value) =>
-              value !== null &&
-              setDraft({
-                ...draft,
-                source: value === ALL_SOURCES ? '' : value,
-              })
-            }
-          >
-            <SelectTrigger id='risk-record-source' className='w-full'>
-              <SelectValue>{t(sourceLabel)}</SelectValue>
-            </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false}>
-              <SelectGroup>
-                <SelectItem value={ALL_SOURCES}>{t('All sources')}</SelectItem>
-                {SOURCE_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {t(option.label)}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </Field>
+        <Controller
+          control={form.control}
+          name='result'
+          render={({ field, fieldState }) => {
+            const value = field.value || ALL_RESULTS
+            const label = getRiskRecordResultFilterLabel(value)
+            return (
+              <Field data-invalid={fieldState.invalid}>
+                <FieldLabel htmlFor='risk-record-result'>
+                  {t('Result')}
+                </FieldLabel>
+                <Select
+                  value={value}
+                  onValueChange={(nextValue) => {
+                    if (nextValue === null) return
+                    field.onChange(nextValue === ALL_RESULTS ? '' : nextValue)
+                  }}
+                >
+                  <SelectTrigger id='risk-record-result' className='w-full'>
+                    <SelectValue>{t(label)}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    <SelectGroup>
+                      <SelectItem value={ALL_RESULTS}>
+                        {t('All results')}
+                      </SelectItem>
+                      {RESULT_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {t(option.label)}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <FieldError>{fieldState.error?.message}</FieldError>
+              </Field>
+            )
+          }}
+        />
+        <Controller
+          control={form.control}
+          name='source'
+          render={({ field, fieldState }) => {
+            const value = field.value || ALL_SOURCES
+            const label = getRiskRecordSourceFilterLabel(value)
+            return (
+              <Field data-invalid={fieldState.invalid}>
+                <FieldLabel htmlFor='risk-record-source'>
+                  {t('Source')}
+                </FieldLabel>
+                <Select
+                  value={value}
+                  onValueChange={(nextValue) => {
+                    if (nextValue === null) return
+                    field.onChange(nextValue === ALL_SOURCES ? '' : nextValue)
+                  }}
+                >
+                  <SelectTrigger id='risk-record-source' className='w-full'>
+                    <SelectValue>{t(label)}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    <SelectGroup>
+                      <SelectItem value={ALL_SOURCES}>
+                        {t('All sources')}
+                      </SelectItem>
+                      {SOURCE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {t(option.label)}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <FieldError>{fieldState.error?.message}</FieldError>
+              </Field>
+            )
+          }}
+        />
         <div className='flex flex-wrap items-end gap-2 md:col-span-2 xl:col-span-1'>
           <Button type='submit' size='sm' disabled={props.disabled}>
             {t('Run query')}
