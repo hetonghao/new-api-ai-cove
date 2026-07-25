@@ -25,6 +25,7 @@ import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { SectionPageLayout } from '@/components/layout'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { LocalRuleManager } from '@/features/risk-policy/components/local-rule-manager'
 import { RiskPolicySettings } from '@/features/risk-policy/components/risk-policy-settings'
 import { RiskRecordList } from '@/features/risk-records/components/risk-record-list'
@@ -44,12 +45,15 @@ import type { RiskProvider } from './types'
 
 const QUERY_KEY = ['risk', 'providers'] as const
 
+type RiskCenterTab = 'configuration' | 'records'
+
 function assertNever(action: never): never {
   throw new Error(`Unsupported provider action: ${action}`)
 }
 
 export function RiskProviders() {
   const { t } = useTranslation()
+  const [activeTab, setActiveTab] = useState<RiskCenterTab>('configuration')
   const [formOpen, setFormOpen] = useState(false)
   const [editingProvider, setEditingProvider] = useState<RiskProvider | null>(
     null
@@ -134,51 +138,72 @@ export function RiskProviders() {
     <>
       <SectionPageLayout>
         <SectionPageLayout.Title>{t('Risk Center')}</SectionPageLayout.Title>
-        <SectionPageLayout.Actions>
-          <Button
-            size='sm'
-            variant='outline'
-            onClick={() => providersQuery.refetch()}
-            disabled={providersQuery.isFetching}
-          >
-            <RefreshCw
-              className={
-                providersQuery.isFetching ? 'size-4 animate-spin' : 'size-4'
-              }
-            />
-            {t('Refresh providers')}
-          </Button>
-          <Button size='sm' onClick={openCreateDialog}>
-            <Plus className='size-4' />
-            {t('Add provider')}
-          </Button>
-        </SectionPageLayout.Actions>
+        {activeTab === 'configuration' && (
+          <SectionPageLayout.Actions>
+            <Button
+              size='sm'
+              variant='outline'
+              onClick={() => providersQuery.refetch()}
+              disabled={providersQuery.isFetching}
+            >
+              <RefreshCw
+                className={
+                  providersQuery.isFetching ? 'size-4 animate-spin' : 'size-4'
+                }
+              />
+              {t('Refresh providers')}
+            </Button>
+            <Button size='sm' onClick={openCreateDialog}>
+              <Plus className='size-4' />
+              {t('Add provider')}
+            </Button>
+          </SectionPageLayout.Actions>
+        )}
         <SectionPageLayout.Content>
-          <div className='space-y-4'>
-            <RiskPolicySettings
-              providers={providersQuery.data ?? []}
-              onSaved={() => void providersQuery.refetch()}
-            />
-            <LocalRuleManager />
-            <RiskProviderList
-              providers={providersQuery.data ?? []}
-              isLoading={providersQuery.isLoading}
-              error={providersQuery.error}
-              pendingProviderId={pendingProviderId}
-              pendingAction={pendingAction}
-              onRetry={() => void providersQuery.refetch()}
-              onCreate={openCreateDialog}
-              onEdit={openEditDialog}
-              onValidate={(provider) =>
-                void runProviderAction(provider, 'validate')
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => {
+              if (value === 'configuration' || value === 'records') {
+                setActiveTab(value)
               }
-              onActivate={(provider) =>
-                void runProviderAction(provider, 'activate')
-              }
-              onDelete={setDeletingProvider}
-            />
-            <RiskRecordList />
-          </div>
+            }}
+          >
+            <TabsList>
+              <TabsTrigger value='configuration'>
+                {t('Risk Configuration')}
+              </TabsTrigger>
+              <TabsTrigger value='records'>{t('Risk records')}</TabsTrigger>
+            </TabsList>
+            <TabsContent value='configuration' className='mt-2'>
+              <div className='space-y-4'>
+                <RiskPolicySettings
+                  providers={providersQuery.data ?? []}
+                  onSaved={() => void providersQuery.refetch()}
+                />
+                <LocalRuleManager />
+                <RiskProviderList
+                  providers={providersQuery.data ?? []}
+                  isLoading={providersQuery.isLoading}
+                  error={providersQuery.error}
+                  pendingProviderId={pendingProviderId}
+                  pendingAction={pendingAction}
+                  onRetry={() => void providersQuery.refetch()}
+                  onCreate={openCreateDialog}
+                  onEdit={openEditDialog}
+                  onValidate={(provider) =>
+                    void runProviderAction(provider, 'validate')
+                  }
+                  onActivate={(provider) =>
+                    void runProviderAction(provider, 'activate')
+                  }
+                  onDelete={setDeletingProvider}
+                />
+              </div>
+            </TabsContent>
+            <TabsContent value='records' className='mt-2'>
+              <RiskRecordList />
+            </TabsContent>
+          </Tabs>
         </SectionPageLayout.Content>
       </SectionPageLayout>
       <RiskProviderFormDialog

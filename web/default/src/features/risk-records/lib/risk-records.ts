@@ -18,6 +18,18 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { StatusVariant } from '@/components/status-badge'
 
+import type { RiskRecordFilterDraft, RiskRecordFilters } from '../types'
+
+export const EMPTY_RISK_RECORD_FILTER_DRAFT: RiskRecordFilterDraft = {
+  start_time: '',
+  end_time: '',
+  channel_id: '',
+  user_id: '',
+  provider_id: '',
+  result: '',
+  source: '',
+}
+
 const RISK_RECORD_RESULT_LABELS: Readonly<Record<string, string>> = {
   safe: 'Safe',
   unsafe: 'Unsafe',
@@ -57,4 +69,44 @@ export function getRiskRecordSourceVariant(source: string): StatusVariant {
 
 export function getRiskRecordTotalPages(total: number, pageSize: number) {
   return Math.max(1, Math.ceil(total / pageSize))
+}
+
+function toUnixSeconds(value: string): number | undefined {
+  if (!value) return undefined
+  const timestamp = new Date(value).getTime()
+  return Number.isNaN(timestamp) ? undefined : Math.floor(timestamp / 1000)
+}
+
+function toPositiveInteger(value: string): number | undefined {
+  return value ? Number(value) : undefined
+}
+
+export function commitRiskRecordFilters(
+  draft: RiskRecordFilterDraft
+): RiskRecordFilters {
+  const startTimestamp = toUnixSeconds(draft.start_time)
+  const endTimestamp = toUnixSeconds(draft.end_time)
+  const channelId = toPositiveInteger(draft.channel_id)
+  const userId = toPositiveInteger(draft.user_id)
+  const providerId = toPositiveInteger(draft.provider_id)
+
+  return {
+    ...(startTimestamp === undefined
+      ? {}
+      : { start_timestamp: startTimestamp }),
+    ...(endTimestamp === undefined ? {} : { end_timestamp: endTimestamp }),
+    ...(channelId === undefined ? {} : { channel_id: channelId }),
+    ...(userId === undefined ? {} : { user_id: userId }),
+    ...(providerId === undefined ? {} : { provider_id: providerId }),
+    ...(draft.result ? { result: draft.result } : {}),
+    ...(draft.source ? { source: draft.source } : {}),
+  }
+}
+
+export function buildRiskRecordQueryParams(
+  page: number,
+  pageSize: number,
+  filters: RiskRecordFilters
+) {
+  return { p: page, page_size: pageSize, ...filters }
 }

@@ -21,6 +21,8 @@ import { describe, it } from 'node:test'
 
 import { riskRecordPageSchema } from '../types.ts'
 import {
+  buildRiskRecordQueryParams,
+  commitRiskRecordFilters,
   getRiskRecordResultVariant,
   getRiskRecordSourceVariant,
   getRiskRecordTotalPages,
@@ -128,5 +130,55 @@ describe('risk record behavior', () => {
 
     // Then
     assert.equal(pages, 2)
+  })
+
+  it('serializes committed filters into the risk record API params', () => {
+    // Given
+    const draft = {
+      start_time: '2026-07-25T12:34:00Z',
+      end_time: '2026-07-26T01:02:00Z',
+      channel_id: '12',
+      user_id: '34',
+      provider_id: '7',
+      result: 'unsafe',
+      source: 'provider',
+    }
+
+    // When
+    const filters = commitRiskRecordFilters(draft)
+    const params = buildRiskRecordQueryParams(2, 20, filters)
+
+    // Then
+    assert.deepEqual(params, {
+      p: 2,
+      page_size: 20,
+      start_timestamp: 1_784_982_840,
+      end_timestamp: 1_785_027_720,
+      channel_id: 12,
+      user_id: 34,
+      provider_id: 7,
+      result: 'unsafe',
+      source: 'provider',
+    })
+  })
+
+  it('omits cleared filters from the risk record API params', () => {
+    // Given
+    const draft = {
+      start_time: '',
+      end_time: '',
+      channel_id: '',
+      user_id: '',
+      provider_id: '',
+      result: '',
+      source: '',
+    }
+
+    // When
+    const filters = commitRiskRecordFilters(draft)
+    const params = buildRiskRecordQueryParams(1, 20, filters)
+
+    // Then
+    assert.deepEqual(params, { p: 1, page_size: 20 })
   })
 })

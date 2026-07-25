@@ -5303,6 +5303,11 @@
     "In-flight source": "Повтор текущего запроса",
     "Local source": "Локально",
     "Unknown value: {{value}}": "Неизвестно: {{value}}",
-    "Cloud call": "Фактический облачный вызов"
+    "Cloud call": "Фактический облачный вызов",
+    "Risk Configuration": "Настройки контроля рисков",
+    "Provider ID": "ID провайдера",
+    "All results": "Все результаты",
+    "All sources": "Все источники",
+    "Run query": "Выполнить поиск"
   }
 }
