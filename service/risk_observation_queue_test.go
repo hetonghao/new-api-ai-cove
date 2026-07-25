@@ -42,6 +42,89 @@ func TestRiskObservationQueue_returns_immediately_when_full(t *testing.T) {
 	require.Equal(t, RiskObservationErrorQueueFull, <-degraded)
 }
 
+func TestRiskObservationQueue_preserves_queue_full_degradation_when_primary_degradation_buffer_is_full(t *testing.T) {
+	// Given
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var degradationMu sync.Mutex
+	degradedRequestIDs := make([]string, 0, 2)
+	queue := NewRiskObservationQueue(context.Background(), RiskObservationQueueConfig{
+		Capacity: 1,
+		Process: func(_ context.Context, job RiskObservationJob) {
+			if job.RequestID == "running" {
+				close(started)
+			}
+			<-release
+		},
+		Degrade: func(_ context.Context, job RiskObservationJob, code string) {
+			if code != RiskObservationErrorQueueFull {
+				return
+			}
+			degradationMu.Lock()
+			degradedRequestIDs = append(degradedRequestIDs, job.RequestID)
+			degradationMu.Unlock()
+		},
+	})
+	require.True(t, queue.Enqueue(RiskObservationJob{RequestID: "running"}))
+	<-started
+	require.True(t, queue.Enqueue(RiskObservationJob{RequestID: "queued"}))
+	require.False(t, queue.Enqueue(RiskObservationJob{RequestID: "overflow-primary"}))
+
+	// When
+	accepted := queue.Enqueue(RiskObservationJob{RequestID: "overflow-spillway"})
+	close(release)
+	queue.Close(context.Background())
+
+	// Then
+	require.False(t, accepted)
+	degradationMu.Lock()
+	gotRequestIDs := append([]string(nil), degradedRequestIDs...)
+	degradationMu.Unlock()
+	require.ElementsMatch(t, []string{"overflow-primary", "overflow-spillway"}, gotRequestIDs)
+}
+
+func TestRiskObservationQueue_counts_loss_when_bounded_degradation_spillway_is_full(t *testing.T) {
+	// Given
+	started := make(chan struct{})
+	release := make(chan struct{})
+	degradedRequestIDs := make(chan string, 2)
+	queue := NewRiskObservationQueue(context.Background(), RiskObservationQueueConfig{
+		Capacity: 1,
+		Process: func(_ context.Context, job RiskObservationJob) {
+			if job.RequestID == "running" {
+				close(started)
+			}
+			<-release
+		},
+		Degrade: func(_ context.Context, job RiskObservationJob, code string) {
+			if code == RiskObservationErrorQueueFull {
+				degradedRequestIDs <- job.RequestID
+			}
+		},
+	})
+	require.True(t, queue.Enqueue(RiskObservationJob{RequestID: "running"}))
+	<-started
+	require.True(t, queue.Enqueue(RiskObservationJob{RequestID: "queued"}))
+	require.False(t, queue.Enqueue(RiskObservationJob{RequestID: "overflow-primary"}))
+	require.False(t, queue.Enqueue(RiskObservationJob{RequestID: "overflow-spillway"}))
+
+	// When
+	accepted := queue.Enqueue(RiskObservationJob{RequestID: "overflow-beyond-ceiling"})
+	lossCount := queue.DegradationLossCount()
+	close(release)
+	queue.Close(context.Background())
+
+	// Then
+	require.False(t, accepted)
+	require.Equal(t, uint64(1), lossCount)
+	close(degradedRequestIDs)
+	gotRequestIDs := make([]string, 0, len(degradedRequestIDs))
+	for requestID := range degradedRequestIDs {
+		gotRequestIDs = append(gotRequestIDs, requestID)
+	}
+	require.ElementsMatch(t, []string{"overflow-primary", "overflow-spillway"}, gotRequestIDs)
+}
+
 func TestRiskObservationQueue_degrades_pending_jobs_on_close(t *testing.T) {
 	// Given
 	started := make(chan struct{})

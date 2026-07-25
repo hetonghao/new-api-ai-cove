@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/QuantumNous/new-api/model"
 )
@@ -52,17 +53,19 @@ type RiskObservationQueueConfig struct {
 }
 
 type RiskObservationQueue struct {
-	ctx          context.Context
-	cancel       context.CancelFunc
-	items        chan riskObservationQueueItem
-	degradations chan riskObservationDegradation
-	process      func(context.Context, RiskObservationJob)
-	record       func(context.Context, RiskObservationEvent)
-	degrade      func(context.Context, RiskObservationJob, string)
-	done         chan struct{}
-	mu           sync.RWMutex
-	closed       bool
-	closeOnce    sync.Once
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	items               chan riskObservationQueueItem
+	degradations        chan riskObservationDegradation
+	degradationSpillway chan riskObservationDegradation
+	process             func(context.Context, RiskObservationJob)
+	record              func(context.Context, RiskObservationEvent)
+	degrade             func(context.Context, RiskObservationJob, string)
+	done                chan struct{}
+	degradationLosses   atomic.Uint64
+	mu                  sync.RWMutex
+	closed              bool
+	closeOnce           sync.Once
 }
 
 func NewRiskObservationQueue(ctx context.Context, config RiskObservationQueueConfig) *RiskObservationQueue {
@@ -71,14 +74,15 @@ func NewRiskObservationQueue(ctx context.Context, config RiskObservationQueueCon
 	}
 	queueCtx, cancel := context.WithCancel(ctx)
 	queue := &RiskObservationQueue{
-		ctx:          queueCtx,
-		cancel:       cancel,
-		items:        make(chan riskObservationQueueItem, config.Capacity),
-		degradations: make(chan riskObservationDegradation, config.Capacity),
-		process:      config.Process,
-		record:       config.Record,
-		degrade:      config.Degrade,
-		done:         make(chan struct{}),
+		ctx:                 queueCtx,
+		cancel:              cancel,
+		items:               make(chan riskObservationQueueItem, config.Capacity),
+		degradations:        make(chan riskObservationDegradation, config.Capacity),
+		degradationSpillway: make(chan riskObservationDegradation, config.Capacity),
+		process:             config.Process,
+		record:              config.Record,
+		degrade:             config.Degrade,
+		done:                make(chan struct{}),
 	}
 	go queue.run()
 	return queue
@@ -92,6 +96,12 @@ func (queue *RiskObservationQueue) EnqueueEvent(event RiskObservationEvent) bool
 	return queue.enqueue(riskObservationQueueItem{kind: riskObservationQueueItemEvent, event: event})
 }
 
+// DegradationLossCount reports queue-full identities that exceeded the bounded
+// degradation buffer. It is operational loss accounting, not a persisted risk row.
+func (queue *RiskObservationQueue) DegradationLossCount() uint64 {
+	return queue.degradationLosses.Load()
+}
+
 func (queue *RiskObservationQueue) enqueue(item riskObservationQueueItem) bool {
 	queue.mu.RLock()
 	defer queue.mu.RUnlock()
@@ -102,9 +112,18 @@ func (queue *RiskObservationQueue) enqueue(item riskObservationQueueItem) bool {
 	case queue.items <- item:
 		return true
 	default:
+		degradation := riskObservationDegradation{item: item, code: RiskObservationErrorQueueFull}
 		select {
-		case queue.degradations <- riskObservationDegradation{item: item, code: RiskObservationErrorQueueFull}:
+		case queue.degradations <- degradation:
 		default:
+			select {
+			case queue.degradationSpillway <- degradation:
+			default:
+				// A non-blocking in-memory queue cannot retain arbitrary identities.
+				// The bounded spillway preserves one more capacity window; accounting
+				// makes exhaustion explicit without creating backlog.
+				queue.degradationLosses.Add(1)
+			}
 		}
 		return false
 	}
@@ -135,6 +154,8 @@ func (queue *RiskObservationQueue) run() {
 			queue.drain()
 			return
 		case degradation := <-queue.degradations:
+			queue.handleDegradation(degradation)
+		case degradation := <-queue.degradationSpillway:
 			queue.handleDegradation(degradation)
 		case item := <-queue.items:
 			queue.handleItem(queue.ctx, item)
@@ -170,6 +191,8 @@ func (queue *RiskObservationQueue) drain() {
 	for {
 		select {
 		case degradation := <-queue.degradations:
+			queue.handleDegradation(degradation)
+		case degradation := <-queue.degradationSpillway:
 			queue.handleDegradation(degradation)
 		case item := <-queue.items:
 			if item.kind == riskObservationQueueItemEvent {
