@@ -260,6 +260,7 @@ func InitLogDB() (err error) {
 	return err
 }
 
+// allow: SIZE_OK — legacy migration registry; feature registration only.
 func migrateDB() error {
 	// Migrate price_amount column from float/double to decimal for existing tables
 	migrateSubscriptionPlanPriceAmount()
@@ -297,6 +298,7 @@ func migrateDB() error {
 		&RiskProvider{},
 		&RiskPolicy{},
 		&RiskRule{},
+		&RiskRecord{},
 		&PerfMetric{},
 		&SystemInstance{},
 		&SystemTask{},
@@ -355,6 +357,7 @@ func migrateDBFast() error {
 		{&RiskProvider{}, "RiskProvider"},
 		{&RiskPolicy{}, "RiskPolicy"},
 		{&RiskRule{}, "RiskRule"},
+		{&RiskRecord{}, "RiskRecord"},
 		{&PerfMetric{}, "PerfMetric"},
 		{&SystemInstance{}, "SystemInstance"},
 		{&SystemTask{}, "SystemTask"},
