@@ -95,15 +95,16 @@ func newRiskRecord(input RiskRecordInput) (RiskRecord, error) {
 	input.RequestID = strings.TrimSpace(input.RequestID)
 	input.ProviderName = strings.TrimSpace(input.ProviderName)
 	input.ErrorCode = strings.TrimSpace(input.ErrorCode)
-	if input.RequestID == "" || len(input.RequestID) > 256 || input.ChannelID < 1 || input.UserID < 1 || input.ProviderID < 1 {
+	if input.RequestID == "" || len(input.RequestID) > 256 || input.ChannelID < 1 || input.UserID < 1 {
 		return RiskRecord{}, ErrInvalidRiskRecord
 	}
-	if input.ProviderName == "" || len(input.ProviderName) > 128 || input.ObservedAt.IsZero() {
+	if len(input.ProviderName) > 128 || input.ObservedAt.IsZero() {
 		return RiskRecord{}, ErrInvalidRiskRecord
 	}
 	if input.LatencyMS < 0 || input.PromptTokens < 0 || input.CompletionTokens < 0 || input.TotalTokens < 0 || input.Neurons < 0 {
 		return RiskRecord{}, ErrInvalidRiskRecord
 	}
+	providerOptional := false
 	switch input.Result {
 	case RiskRecordResultSafe, RiskRecordResultUnsafe:
 		if input.ErrorCode != "" {
@@ -113,7 +114,16 @@ func newRiskRecord(input RiskRecordInput) (RiskRecord, error) {
 		if input.ErrorCode == "" || len(input.ErrorCode) > 128 || !riskRecordCode.MatchString(input.ErrorCode) {
 			return RiskRecord{}, ErrInvalidRiskRecord
 		}
+		switch input.ErrorCode {
+		case "queue_full", "service_shutdown", "policy_error", "rules_error":
+			providerOptional = true
+		}
 	default:
+		return RiskRecord{}, ErrInvalidRiskRecord
+	}
+	providerPresent := input.ProviderID > 0 && input.ProviderName != ""
+	providerMissing := input.ProviderID == 0 && input.ProviderName == ""
+	if !providerPresent && (!providerOptional || !providerMissing) {
 		return RiskRecord{}, ErrInvalidRiskRecord
 	}
 	if len(input.RuleIDs) > 64 || len(input.Categories) > 64 {
