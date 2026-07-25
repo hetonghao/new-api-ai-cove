@@ -24,6 +24,7 @@ import {
   buildRiskRecordQueryParams,
   commitRiskRecordFilters,
   getRiskRecordResultFilterLabel,
+  getRiskRecordResultLabel,
   getRiskRecordResultVariant,
   getRiskRecordSourceFilterLabel,
   getRiskRecordSourceVariant,
@@ -50,6 +51,29 @@ const VALID_RECORD = {
   error_code: '',
   observed_at: '2026-07-25T12:00:00Z',
 } as const
+
+const VALID_CHUNKS = [
+  {
+    index: 0,
+    result: 'safe',
+    categories: ['clean'],
+    latency_ms: 41,
+    prompt_tokens: 11,
+    completion_tokens: 2,
+    total_tokens: 13,
+    neurons: 7,
+  },
+  {
+    index: 1,
+    result: 'unsafe',
+    categories: ['violence', 'threat'],
+    latency_ms: 52,
+    prompt_tokens: 17,
+    completion_tokens: 3,
+    total_tokens: 20,
+    neurons: 9,
+  },
+] as const
 
 describe('risk record behavior', () => {
   it('parses a valid paginated API payload when records are returned', () => {
@@ -87,6 +111,49 @@ describe('risk record behavior', () => {
       assert.equal(result.data.items[0]?.source, 'future-source')
       assert.equal(result.data.items[0]?.provider_called, true)
     }
+  })
+
+  it('keeps per-chunk audit details from the risk record API', () => {
+    // Given
+    const payload = {
+      items: [{ ...VALID_RECORD, chunks: VALID_CHUNKS }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    }
+
+    // When
+    const result = riskRecordPageSchema.safeParse(payload)
+
+    // Then
+    assert.equal(result.success, true)
+    if (result.success) {
+      assert.deepEqual(result.data.items[0]?.chunks, VALID_CHUNKS)
+    }
+  })
+
+  it('maps parsed chunk results to visible labels and status variants', () => {
+    // Given
+    const payload = {
+      items: [{ ...VALID_RECORD, chunks: VALID_CHUNKS }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    }
+
+    // When
+    const result = riskRecordPageSchema.safeParse(payload)
+    const chunks = result.success ? (result.data.items[0]?.chunks ?? []) : []
+
+    // Then
+    assert.deepEqual(
+      chunks.map((chunk) => getRiskRecordResultLabel(chunk.result)),
+      ['Safe', 'Unsafe']
+    )
+    assert.deepEqual(
+      chunks.map((chunk) => getRiskRecordResultVariant(chunk.result)),
+      ['success', 'danger']
+    )
   })
 
   it('maps unsafe records to the danger status when rendered', () => {

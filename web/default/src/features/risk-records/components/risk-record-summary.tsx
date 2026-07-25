@@ -26,7 +26,7 @@ import {
   getRiskRecordSourceLabel,
   getRiskRecordSourceVariant,
 } from '../lib/risk-records'
-import type { RiskRecord } from '../types'
+import type { RiskRecord, RiskRecordChunk } from '../types'
 
 export function RiskRecordIdList(props: {
   readonly values: readonly number[]
@@ -57,6 +57,76 @@ export function RiskRecordCategoryList(props: {
     </div>
   ) : (
     <span className='text-muted-foreground'>-</span>
+  )
+}
+
+export function RiskRecordChunkList(props: {
+  readonly chunks: readonly RiskRecordChunk[]
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <div className='space-y-2'>
+      {props.chunks.map((chunk) => {
+        const resultLabel = getRiskRecordResultLabel(chunk.result)
+
+        return (
+          <div
+            key={chunk.index}
+            className='bg-muted/40 min-w-0 rounded-md border p-2'
+          >
+            <div className='flex min-w-0 items-start justify-between gap-2'>
+              <p className='text-xs font-medium tabular-nums'>
+                {t('Cloud call')} #{chunk.index + 1}
+              </p>
+              <StatusBadge
+                label={
+                  resultLabel
+                    ? t(resultLabel)
+                    : t('Unknown value: {{value}}', { value: chunk.result })
+                }
+                variant={getRiskRecordResultVariant(chunk.result)}
+                copyable={false}
+                className='h-auto max-w-full py-0.5 whitespace-normal'
+              />
+            </div>
+            <div className='mt-1.5'>
+              <RiskRecordCategoryList values={chunk.categories} />
+            </div>
+            <dl className='mt-2 grid min-w-0 grid-cols-2 gap-2 text-xs sm:grid-cols-3 xl:grid-cols-5'>
+              <div>
+                <dt className='text-muted-foreground'>{t('Latency')}</dt>
+                <dd className='tabular-nums'>{chunk.latency_ms} ms</dd>
+              </div>
+              <div>
+                <dt className='text-muted-foreground'>{t('Prompt')}</dt>
+                <dd className='tabular-nums'>
+                  {chunk.prompt_tokens.toLocaleString()}
+                </dd>
+              </div>
+              <div>
+                <dt className='text-muted-foreground'>{t('Completion')}</dt>
+                <dd className='tabular-nums'>
+                  {chunk.completion_tokens.toLocaleString()}
+                </dd>
+              </div>
+              <div>
+                <dt className='text-muted-foreground'>{t('Total tokens')}</dt>
+                <dd className='tabular-nums'>
+                  {chunk.total_tokens.toLocaleString()}
+                </dd>
+              </div>
+              <div>
+                <dt className='text-muted-foreground'>{t('Neurons')}</dt>
+                <dd className='tabular-nums'>
+                  {chunk.neurons.toLocaleString()}
+                </dd>
+              </div>
+            </dl>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 

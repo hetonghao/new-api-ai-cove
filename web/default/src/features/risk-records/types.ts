@@ -20,6 +20,19 @@ import { z } from 'zod'
 
 export const riskRecordResultSchema = z.string().min(1)
 
+export const riskRecordChunkSchema = z
+  .object({
+    index: z.number().int().nonnegative(),
+    result: riskRecordResultSchema,
+    categories: z.array(z.string()).readonly(),
+    latency_ms: z.number().int().nonnegative(),
+    prompt_tokens: z.number().int().nonnegative(),
+    completion_tokens: z.number().int().nonnegative(),
+    total_tokens: z.number().int().nonnegative(),
+    neurons: z.number().int().nonnegative(),
+  })
+  .readonly()
+
 export const riskRecordSchema = z
   .object({
     id: z.number().int().positive(),
@@ -38,6 +51,7 @@ export const riskRecordSchema = z
     completion_tokens: z.number().int().nonnegative(),
     total_tokens: z.number().int().nonnegative(),
     neurons: z.number().int().nonnegative(),
+    chunks: z.array(riskRecordChunkSchema).readonly().default([]),
     error_code: z.string(),
     observed_at: z.string().min(1),
   })
@@ -61,6 +75,7 @@ export const riskRecordResponseSchema = z
   .readonly()
 
 export type RiskRecordResult = z.infer<typeof riskRecordResultSchema>
+export type RiskRecordChunk = z.infer<typeof riskRecordChunkSchema>
 export type RiskRecord = z.infer<typeof riskRecordSchema>
 export type RiskRecordPage = z.infer<typeof riskRecordPageSchema>
 export type RiskRecordResponse = z.infer<typeof riskRecordResponseSchema>

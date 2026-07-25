@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -32,6 +33,7 @@ import type { RiskRecord } from '../types'
 import {
   RiskRecordBadges,
   RiskRecordCategoryList,
+  RiskRecordChunkList,
   RiskRecordIdList,
   RiskRecordProviderSummary,
   RiskRecordResultSummary,
@@ -59,40 +61,52 @@ export function RiskRecordDesktopTable(props: {
         </TableHeader>
         <TableBody>
           {props.records.map((record) => (
-            <TableRow key={record.id}>
-              <TableCell className='whitespace-normal'>
-                <p
-                  className='truncate font-mono text-xs font-medium'
-                  title={record.request_id}
-                >
-                  {record.request_id}
-                </p>
-                <p className='text-muted-foreground mt-1 text-xs'>
-                  {formatDateTimeStr(new Date(record.observed_at))}
-                </p>
-              </TableCell>
-              <TableCell className='whitespace-normal'>
-                <dl className='grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs'>
-                  <dt className='text-muted-foreground'>{t('Channel')}</dt>
-                  <dd>#{record.channel_id}</dd>
-                  <dt className='text-muted-foreground'>{t('User')}</dt>
-                  <dd>#{record.user_id}</dd>
-                  <dt className='text-muted-foreground'>{t('Rules')}</dt>
-                  <dd className='min-w-0'>
-                    <RiskRecordIdList values={record.rule_ids} />
-                  </dd>
-                </dl>
-              </TableCell>
-              <TableCell className='whitespace-normal'>
-                <RiskRecordProviderSummary record={record} />
-              </TableCell>
-              <TableCell className='whitespace-normal'>
-                <RiskRecordResultSummary record={record} />
-              </TableCell>
-              <TableCell className='whitespace-normal'>
-                <RiskRecordUsageSummary record={record} />
-              </TableCell>
-            </TableRow>
+            <Fragment key={record.id}>
+              <TableRow>
+                <TableCell className='whitespace-normal'>
+                  <p
+                    className='truncate font-mono text-xs font-medium'
+                    title={record.request_id}
+                  >
+                    {record.request_id}
+                  </p>
+                  <p className='text-muted-foreground mt-1 text-xs'>
+                    {formatDateTimeStr(new Date(record.observed_at))}
+                  </p>
+                </TableCell>
+                <TableCell className='whitespace-normal'>
+                  <dl className='grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs'>
+                    <dt className='text-muted-foreground'>{t('Channel')}</dt>
+                    <dd>#{record.channel_id}</dd>
+                    <dt className='text-muted-foreground'>{t('User')}</dt>
+                    <dd>#{record.user_id}</dd>
+                    <dt className='text-muted-foreground'>{t('Rules')}</dt>
+                    <dd className='min-w-0'>
+                      <RiskRecordIdList values={record.rule_ids} />
+                    </dd>
+                  </dl>
+                </TableCell>
+                <TableCell className='whitespace-normal'>
+                  <RiskRecordProviderSummary record={record} />
+                </TableCell>
+                <TableCell className='whitespace-normal'>
+                  <RiskRecordResultSummary record={record} />
+                </TableCell>
+                <TableCell className='whitespace-normal'>
+                  <RiskRecordUsageSummary record={record} />
+                </TableCell>
+              </TableRow>
+              {record.chunks.length > 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className='bg-muted/20 p-3 whitespace-normal'
+                  >
+                    <RiskRecordChunkList chunks={record.chunks} />
+                  </TableCell>
+                </TableRow>
+              )}
+            </Fragment>
           ))}
         </TableBody>
       </Table>
@@ -166,6 +180,11 @@ export function RiskRecordMobileList(props: {
               <RiskRecordUsageSummary record={record} />
             </div>
           </dl>
+          {record.chunks.length > 0 && (
+            <div className='mt-3 min-w-0'>
+              <RiskRecordChunkList chunks={record.chunks} />
+            </div>
+          )}
         </article>
       ))}
     </div>
