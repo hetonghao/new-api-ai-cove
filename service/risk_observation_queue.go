@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"sync"
+
+	"github.com/QuantumNous/new-api/model"
 )
 
 const (
@@ -15,26 +17,47 @@ type RiskObservationJob struct {
 	ChannelID   int
 	ChannelName string
 	UserID      int
+	TokenID     int
+	Model       string
+	Path        string
 	Text        string
+	ProviderID  int
+	ReviewMode  model.RiskReviewMode
+	ActionMode  model.RiskActionMode
+}
+
+type riskObservationQueueItemKind uint8
+
+const (
+	riskObservationQueueItemJob riskObservationQueueItemKind = iota
+	riskObservationQueueItemEvent
+)
+
+type riskObservationQueueItem struct {
+	kind  riskObservationQueueItemKind
+	job   RiskObservationJob
+	event RiskObservationEvent
 }
 
 type riskObservationDegradation struct {
-	job  RiskObservationJob
+	item riskObservationQueueItem
 	code string
 }
 
 type RiskObservationQueueConfig struct {
 	Capacity int
 	Process  func(context.Context, RiskObservationJob)
+	Record   func(context.Context, RiskObservationEvent)
 	Degrade  func(context.Context, RiskObservationJob, string)
 }
 
 type RiskObservationQueue struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
-	jobs         chan RiskObservationJob
+	items        chan riskObservationQueueItem
 	degradations chan riskObservationDegradation
 	process      func(context.Context, RiskObservationJob)
+	record       func(context.Context, RiskObservationEvent)
 	degrade      func(context.Context, RiskObservationJob, string)
 	done         chan struct{}
 	mu           sync.RWMutex
@@ -50,9 +73,10 @@ func NewRiskObservationQueue(ctx context.Context, config RiskObservationQueueCon
 	queue := &RiskObservationQueue{
 		ctx:          queueCtx,
 		cancel:       cancel,
-		jobs:         make(chan RiskObservationJob, config.Capacity),
+		items:        make(chan riskObservationQueueItem, config.Capacity),
 		degradations: make(chan riskObservationDegradation, config.Capacity),
 		process:      config.Process,
+		record:       config.Record,
 		degrade:      config.Degrade,
 		done:         make(chan struct{}),
 	}
@@ -61,17 +85,25 @@ func NewRiskObservationQueue(ctx context.Context, config RiskObservationQueueCon
 }
 
 func (queue *RiskObservationQueue) Enqueue(job RiskObservationJob) bool {
+	return queue.enqueue(riskObservationQueueItem{kind: riskObservationQueueItemJob, job: job})
+}
+
+func (queue *RiskObservationQueue) EnqueueEvent(event RiskObservationEvent) bool {
+	return queue.enqueue(riskObservationQueueItem{kind: riskObservationQueueItemEvent, event: event})
+}
+
+func (queue *RiskObservationQueue) enqueue(item riskObservationQueueItem) bool {
 	queue.mu.RLock()
 	defer queue.mu.RUnlock()
 	if queue.closed {
 		return false
 	}
 	select {
-	case queue.jobs <- job:
+	case queue.items <- item:
 		return true
 	default:
 		select {
-		case queue.degradations <- riskObservationDegradation{job: job, code: RiskObservationErrorQueueFull}:
+		case queue.degradations <- riskObservationDegradation{item: item, code: RiskObservationErrorQueueFull}:
 		default:
 		}
 		return false
@@ -103,10 +135,34 @@ func (queue *RiskObservationQueue) run() {
 			queue.drain()
 			return
 		case degradation := <-queue.degradations:
-			queue.degrade(context.WithoutCancel(queue.ctx), degradation.job, degradation.code)
-		case job := <-queue.jobs:
-			queue.process(queue.ctx, job)
+			queue.handleDegradation(degradation)
+		case item := <-queue.items:
+			queue.handleItem(queue.ctx, item)
 		}
+	}
+}
+
+func (queue *RiskObservationQueue) handleItem(ctx context.Context, item riskObservationQueueItem) {
+	switch item.kind {
+	case riskObservationQueueItemJob:
+		if queue.process != nil {
+			queue.process(ctx, item.job)
+		}
+	case riskObservationQueueItemEvent:
+		if queue.record != nil {
+			queue.record(ctx, item.event)
+		}
+	}
+}
+
+func (queue *RiskObservationQueue) handleDegradation(degradation riskObservationDegradation) {
+	ctx := context.WithoutCancel(queue.ctx)
+	if degradation.item.kind == riskObservationQueueItemEvent {
+		queue.handleItem(ctx, degradation.item)
+		return
+	}
+	if queue.degrade != nil {
+		queue.degrade(ctx, degradation.item.job, degradation.code)
 	}
 }
 
@@ -114,9 +170,13 @@ func (queue *RiskObservationQueue) drain() {
 	for {
 		select {
 		case degradation := <-queue.degradations:
-			queue.degrade(context.WithoutCancel(queue.ctx), degradation.job, degradation.code)
-		case job := <-queue.jobs:
-			queue.degrade(context.WithoutCancel(queue.ctx), job, RiskObservationErrorShutdown)
+			queue.handleDegradation(degradation)
+		case item := <-queue.items:
+			if item.kind == riskObservationQueueItemEvent {
+				queue.handleItem(context.WithoutCancel(queue.ctx), item)
+			} else if queue.degrade != nil {
+				queue.degrade(context.WithoutCancel(queue.ctx), item.job, RiskObservationErrorShutdown)
+			}
 		default:
 			return
 		}

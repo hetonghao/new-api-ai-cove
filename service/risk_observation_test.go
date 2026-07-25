@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -16,6 +17,8 @@ import (
 )
 
 type riskObservationSinkFunc func(context.Context, RiskObservationEvent) error
+
+var riskObservationTestDatabaseSequence atomic.Uint64
 
 func (sink riskObservationSinkFunc) RecordRiskObservation(ctx context.Context, event RiskObservationEvent) error {
 	return sink(ctx, event)
@@ -59,6 +62,9 @@ func TestProcessRiskObservation_reviews_selective_hit_and_records_usage(t *testi
 		RequestID: "req-1", ChannelID: 7, UserID: 42,
 		ChannelName: " CPA-Pro ",
 		Text:        strings.Repeat("safe ", 600) + "danger" + strings.Repeat(" tail", 600),
+		ProviderID:  providerID,
+		ReviewMode:  model.RiskReviewSelective,
+		ActionMode:  model.RiskActionObserve,
 	})
 
 	// Then
@@ -170,7 +176,10 @@ func TestProcessRiskObservation_records_safe_and_provider_error(t *testing.T) {
 			}))
 
 			// When
-			processRiskObservation(context.Background(), RiskObservationJob{RequestID: "req", ChannelName: "CPA-pro", Text: "current"})
+			processRiskObservation(context.Background(), RiskObservationJob{
+				RequestID: "req", ChannelName: "CPA-pro", Text: "current",
+				ProviderID: providerID, ReviewMode: model.RiskReviewFull, ActionMode: model.RiskActionObserve,
+			})
 
 			// Then
 			event := <-events
@@ -188,7 +197,11 @@ func setupRiskObservationTest(t *testing.T) {
 	originalLogType := common.LogDatabaseType()
 	common.CryptoSecret = "risk-observation-test-key"
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
-	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	dsn := fmt.Sprintf(
+		"file:%s_%d?mode=memory&cache=shared",
+		strings.ReplaceAll(t.Name(), "/", "_"),
+		riskObservationTestDatabaseSequence.Add(1),
+	)
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB = db

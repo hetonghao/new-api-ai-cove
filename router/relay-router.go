@@ -80,19 +80,27 @@ func SetRelayRouter(router *gin.Engine) {
 		})
 	}
 	{
-		//http router
+		// http router
 		httpRouter := relayV1Router.Group("")
 		httpRouter.Use(middleware.Distribute())
 
 		// claude related routes
-		httpRouter.POST("/messages", controller.RelayWithRiskObservation(types.RelayFormatClaude))
+		httpRouter.POST("/messages", func(c *gin.Context) {
+			controller.Relay(c, types.RelayFormatClaude)
+		})
 
 		// chat related routes
-		httpRouter.POST("/completions", controller.RelayWithRiskObservation(types.RelayFormatOpenAI))
-		httpRouter.POST("/chat/completions", controller.RelayWithRiskObservation(types.RelayFormatOpenAI))
+		httpRouter.POST("/completions", func(c *gin.Context) {
+			controller.Relay(c, types.RelayFormatOpenAI)
+		})
+		httpRouter.POST("/chat/completions", func(c *gin.Context) {
+			controller.Relay(c, types.RelayFormatOpenAI)
+		})
 
 		// response related routes
-		httpRouter.POST("/responses", controller.RelayWithRiskObservation(types.RelayFormatOpenAIResponses))
+		httpRouter.POST("/responses", func(c *gin.Context) {
+			controller.Relay(c, types.RelayFormatOpenAIResponses)
+		})
 		httpRouter.POST("/responses/compact", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatOpenAIResponsesCompaction)
 		})
@@ -133,10 +141,14 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.POST("/engines/:model/embeddings", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatGemini)
 		})
-		httpRouter.POST("/models/*path", controller.RelayWithRiskObservation(types.RelayFormatGemini))
+		httpRouter.POST("/models/*path", func(c *gin.Context) {
+			controller.Relay(c, types.RelayFormatGemini)
+		})
 
 		// other relay routes
-		httpRouter.POST("/moderations", controller.RelayWithRiskObservation(types.RelayFormatOpenAI))
+		httpRouter.POST("/moderations", func(c *gin.Context) {
+			controller.Relay(c, types.RelayFormatOpenAI)
+		})
 
 		// not implemented
 		httpRouter.POST("/images/variations", controller.RelayNotImplemented)
@@ -162,7 +174,7 @@ func SetRelayRouter(router *gin.Engine) {
 	relayMjModeRouter.Use(middleware.RouteTag("relay"))
 	relayMjModeRouter.Use(middleware.SystemPerformanceCheck())
 	registerMjRouterGroup(relayMjModeRouter)
-	//relayMjRouter.Use()
+	// relayMjRouter.Use()
 
 	relaySunoRouter := router.Group("/suno")
 	relaySunoRouter.Use(middleware.RouteTag("relay"))
@@ -182,7 +194,9 @@ func SetRelayRouter(router *gin.Engine) {
 	relayGeminiRouter.Use(middleware.Distribute())
 	{
 		// Gemini API 路径格式: /v1beta/models/{model_name}:{action}
-		relayGeminiRouter.POST("/models/*path", controller.RelayWithRiskObservation(types.RelayFormatGemini))
+		relayGeminiRouter.POST("/models/*path", func(c *gin.Context) {
+			controller.Relay(c, types.RelayFormatGemini)
+		})
 	}
 }
 
@@ -200,7 +214,7 @@ func registerMjRouterGroup(relayMjRouter *gin.RouterGroup) {
 		relayMjRouter.POST("/submit/blend", controller.RelayMidjourney)
 		relayMjRouter.POST("/submit/edits", controller.RelayMidjourney)
 		relayMjRouter.POST("/submit/video", controller.RelayMidjourney)
-		//relayMjRouter.POST("/notify", controller.RelayMidjourney)
+		// relayMjRouter.POST("/notify", controller.RelayMidjourney)
 		relayMjRouter.GET("/task/:id/fetch", controller.RelayMidjourney)
 		relayMjRouter.GET("/task/:id/image-seed", controller.RelayMidjourney)
 		relayMjRouter.POST("/task/list-by-condition", controller.RelayMidjourney)
