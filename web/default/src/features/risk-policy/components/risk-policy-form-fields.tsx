@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Controller, useFormContext } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -23,6 +24,7 @@ import {
   Field,
   FieldContent,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
   FieldTitle,
@@ -34,13 +36,16 @@ import type { RiskProvider } from '@/features/risk-providers/types'
 import type { RiskPolicyFormValues } from '../lib/risk-policy-form'
 
 type RiskPolicyFormFieldsProps = {
-  readonly values: RiskPolicyFormValues
   readonly validatedProviders: readonly RiskProvider[]
-  readonly onChange: (values: RiskPolicyFormValues) => void
 }
 
 export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
   const { t } = useTranslation()
+  const form = useFormContext<RiskPolicyFormValues>()
+  const enabled = form.watch('enabled')
+  const reviewMode = form.watch('review_mode')
+  const actionMode = form.watch('action_mode')
+  const errors = form.formState.errors
 
   return (
     <>
@@ -67,31 +72,28 @@ export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
               )}
             </FieldDescription>
           </FieldContent>
-          <Switch
-            checked={props.values.enabled}
-            onCheckedChange={(enabled) =>
-              props.onChange({ ...props.values, enabled })
-            }
-            aria-label={t('Enable CPA Pro risk control')}
+          <Controller
+            control={form.control}
+            name='enabled'
+            render={({ field }) => (
+              <Switch
+                checked={field.value}
+                onCheckedChange={field.onChange}
+                aria-label={t('Enable CPA Pro risk control')}
+              />
+            )}
           />
         </Field>
-        <Field>
+        <Field data-invalid={Boolean(errors.provider_id)}>
           <FieldLabel htmlFor='risk-policy-provider'>
             {t('Active cloud review provider')}
           </FieldLabel>
           <NativeSelect
             id='risk-policy-provider'
             className='w-full'
-            value={props.values.provider_id}
-            disabled={
-              !props.values.enabled || props.validatedProviders.length === 0
-            }
-            onChange={(event) =>
-              props.onChange({
-                ...props.values,
-                provider_id: event.target.value,
-              })
-            }
+            disabled={!enabled || props.validatedProviders.length === 0}
+            aria-invalid={Boolean(errors.provider_id)}
+            {...form.register('provider_id')}
           >
             <NativeSelectOption value=''>
               {t('Select a validated provider')}
@@ -105,22 +107,17 @@ export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
           <FieldDescription>
             {t('Saving the policy makes this validated provider active.')}
           </FieldDescription>
+          <FieldError errors={[errors.provider_id]} />
         </Field>
-        <Field>
+        <Field data-invalid={Boolean(errors.review_mode)}>
           <FieldLabel htmlFor='risk-policy-review-mode'>
             {t('Cloud review scope')}
           </FieldLabel>
           <NativeSelect
             id='risk-policy-review-mode'
             className='w-full'
-            value={props.values.review_mode}
-            onChange={(event) =>
-              props.onChange({
-                ...props.values,
-                review_mode:
-                  event.target.value === 'full' ? 'full' : 'selective',
-              })
-            }
+            aria-invalid={Boolean(errors.review_mode)}
+            {...form.register('review_mode')}
           >
             <NativeSelectOption value='selective'>
               {t('Selective cloud review')}
@@ -130,26 +127,21 @@ export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
             </NativeSelectOption>
           </NativeSelect>
           <FieldDescription>
-            {props.values.review_mode === 'selective'
+            {reviewMode === 'selective'
               ? t('Only local rule matches are sent to cloud review.')
               : t('Every new user message is sent to cloud review.')}
           </FieldDescription>
+          <FieldError errors={[errors.review_mode]} />
         </Field>
-        <Field>
+        <Field data-invalid={Boolean(errors.action_mode)}>
           <FieldLabel htmlFor='risk-policy-action-mode'>
             {t('Decision action')}
           </FieldLabel>
           <NativeSelect
             id='risk-policy-action-mode'
             className='w-full'
-            value={props.values.action_mode}
-            onChange={(event) =>
-              props.onChange({
-                ...props.values,
-                action_mode:
-                  event.target.value === 'block' ? 'block' : 'observe',
-              })
-            }
+            aria-invalid={Boolean(errors.action_mode)}
+            {...form.register('action_mode')}
           >
             <NativeSelectOption value='observe'>
               {t('Observe only')}
@@ -159,7 +151,7 @@ export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
             </NativeSelectOption>
           </NativeSelect>
           <FieldDescription>
-            {props.values.action_mode === 'observe'
+            {actionMode === 'observe'
               ? t(
                   'Review runs asynchronously without adding first-token latency.'
                 )
@@ -167,6 +159,7 @@ export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
                   'Confirmed unsafe content is rejected before upstream dispatch.'
                 )}
           </FieldDescription>
+          <FieldError errors={[errors.action_mode]} />
         </Field>
       </FieldGroup>
     </>

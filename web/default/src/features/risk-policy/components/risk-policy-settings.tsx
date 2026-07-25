@@ -16,13 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { ShieldCheck } from 'lucide-react'
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo } from 'react'
+import { FormProvider, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { ErrorState } from '@/components/error-state'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -53,8 +56,6 @@ type RiskPolicySettingsProps = {
 
 export function RiskPolicySettings(props: RiskPolicySettingsProps) {
   const { t } = useTranslation()
-  const [values, setValues] = useState(DEFAULT_VALUES)
-  const [isSaving, setIsSaving] = useState(false)
   const validatedProviders = useMemo(
     () => props.providers.filter((provider) => provider.validated_at !== null),
     [props.providers]
@@ -63,6 +64,10 @@ export function RiskPolicySettings(props: RiskPolicySettingsProps) {
     () => validatedProviders.map((provider) => provider.id),
     [validatedProviders]
   )
+  const form = useForm<RiskPolicyFormValues>({
+    resolver: zodResolver(createRiskPolicyFormSchema(validatedProviderIds, t)),
+    defaultValues: DEFAULT_VALUES,
+  })
 
   const policyQuery = useQuery({
     queryKey: QUERY_KEY,
@@ -78,37 +83,32 @@ export function RiskPolicySettings(props: RiskPolicySettingsProps) {
 
   useEffect(() => {
     if (policyQuery.data) {
-      setValues(riskPolicyToFormValues(policyQuery.data))
+      form.reset(riskPolicyToFormValues(policyQuery.data))
     }
-  }, [policyQuery.data])
+  }, [form, policyQuery.data])
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const parsed = createRiskPolicyFormSchema(
-      validatedProviderIds,
-      t
-    ).safeParse(values)
-    if (!parsed.success) {
-      toast.error(parsed.error.issues[0]?.message ?? t('Invalid configuration'))
-      return
-    }
-
-    setIsSaving(true)
+  async function handleSubmit(values: RiskPolicyFormValues) {
+    form.clearErrors('root.server')
     try {
       const response = await updateRiskPolicy(
-        riskPolicyFormValuesToPayload(parsed.data)
+        riskPolicyFormValuesToPayload(values)
       )
       if (!response.success || !response.data) {
-        throw new Error(response.message)
+        form.setError('root.server', {
+          type: 'server',
+          message: response.message || t('Request failed'),
+        })
+        return
       }
-      setValues(riskPolicyToFormValues(response.data))
+      form.reset(riskPolicyToFormValues(response.data))
       toast.success(t('Risk policy saved'))
       props.onSaved()
       await policyQuery.refetch()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('Request failed'))
-    } finally {
-      setIsSaving(false)
+      form.setError('root.server', {
+        type: 'server',
+        message: error instanceof Error ? error.message : t('Request failed'),
+      })
     }
   }
 
@@ -127,18 +127,24 @@ export function RiskPolicySettings(props: RiskPolicySettingsProps) {
     )
   } else if (!policyQuery.isLoading) {
     content = (
-      <form onSubmit={handleSubmit} className='space-y-5'>
-        <RiskPolicyFormFields
-          values={values}
-          validatedProviders={validatedProviders}
-          onChange={setValues}
-        />
-        <div className='flex justify-end'>
-          <Button type='submit' disabled={isSaving}>
-            {isSaving ? t('Saving...') : t('Save policy')}
-          </Button>
-        </div>
-      </form>
+      <FormProvider {...form}>
+        <form onSubmit={form.handleSubmit(handleSubmit)} className='space-y-5'>
+          <RiskPolicyFormFields validatedProviders={validatedProviders} />
+          {form.formState.errors.root?.server?.message ? (
+            <Alert variant='destructive'>
+              <AlertTitle>{t('Failed to save')}</AlertTitle>
+              <AlertDescription>
+                {form.formState.errors.root.server.message}
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          <div className='flex justify-end'>
+            <Button type='submit' disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? t('Saving...') : t('Save policy')}
+            </Button>
+          </div>
+        </form>
+      </FormProvider>
     )
   }
 
