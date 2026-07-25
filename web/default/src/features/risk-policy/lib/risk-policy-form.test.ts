@@ -19,11 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import type { RiskPolicy } from '../types'
+import type { LocalRiskRule, RiskPolicy } from '../types'
 import {
   createLocalRuleFormSchema,
+  createLocalRuleTestFormSchema,
   createRiskPolicyFormSchema,
   localRuleFormValuesToPayload,
+  localRuleTestFormValuesToPayload,
+  localRuleTestToFormValues,
   riskPolicyFormValuesToPayload,
   riskPolicyToFormValues,
 } from './risk-policy-form.ts'
@@ -68,6 +71,25 @@ describe('risk policy form behavior', () => {
 
     // Then the public form boundary rejects the unvalidated selection
     assert.equal(invalid.success, false)
+  })
+
+  test('assigns an invalid provider selection to the provider field', () => {
+    // Given an enabled policy whose provider has not passed validation
+    const schema = createRiskPolicyFormSchema([7], translate)
+
+    // When React Hook Form resolves the public form schema
+    const parsed = schema.safeParse({
+      enabled: true,
+      provider_id: '9',
+      review_mode: 'selective',
+      action_mode: 'observe',
+    })
+
+    // Then the error can render beside the provider control
+    assert.equal(parsed.success, false)
+    if (parsed.success) return
+    assert.deepEqual(parsed.error.issues[0]?.path, ['provider_id'])
+    assert.equal(parsed.error.issues[0]?.message, 'Select a validated provider')
   })
 
   test('clears provider and channels when the policy is disabled', () => {
@@ -145,6 +167,83 @@ describe('local risk rule form behavior', () => {
       rule_type: 'phrase',
       pattern: 'ignore previous',
       enabled: true,
+    })
+  })
+
+  test('assigns a missing pattern to the pattern field', () => {
+    // Given a new rule without a usable pattern
+    const schema = createLocalRuleFormSchema(translate)
+
+    // When React Hook Form resolves the public form schema
+    const parsed = schema.safeParse({
+      rule_type: 'keyword',
+      pattern: '   ',
+      enabled: true,
+    })
+
+    // Then the error can render beside the pattern control
+    assert.equal(parsed.success, false)
+    if (parsed.success) return
+    assert.deepEqual(parsed.error.issues[0]?.path, ['pattern'])
+    assert.equal(parsed.error.issues[0]?.message, 'Rule pattern is required')
+  })
+
+  test('maps the selected rule to fresh test-dialog values', () => {
+    // Given a saved regex rule and text left from a previous test
+    const rule: LocalRiskRule = {
+      id: 3,
+      rule_type: 'regex',
+      pattern: '(?P<verb>ignore)\\s+previous',
+      enabled: true,
+      created_at: '2026-07-25T00:00:00Z',
+      updated_at: '2026-07-25T00:00:00Z',
+    }
+
+    // When the test dialog opens for that rule
+    const values = localRuleTestToFormValues(rule)
+
+    // Then it uses the selected rule and clears the editable test text
+    assert.deepEqual(values, {
+      rule_type: 'regex',
+      pattern: '(?P<verb>ignore)\\s+previous',
+      text: '',
+    })
+  })
+
+  test('assigns missing test text to the text field', () => {
+    // Given a valid saved rule with blank test input
+    const schema = createLocalRuleTestFormSchema(translate)
+
+    // When React Hook Form resolves the test form schema
+    const parsed = schema.safeParse({
+      rule_type: 'keyword',
+      pattern: 'ignore',
+      text: '   ',
+    })
+
+    // Then the error can render beside the test text control
+    assert.equal(parsed.success, false)
+    if (parsed.success) return
+    assert.deepEqual(parsed.error.issues[0]?.path, ['text'])
+    assert.equal(parsed.error.issues[0]?.message, 'Test text is required')
+  })
+
+  test('preserves test text while trimming the stored rule pattern', () => {
+    // Given a test input whose whitespace is part of the server normalization case
+    const values = {
+      rule_type: 'phrase' as const,
+      pattern: '  ignore previous  ',
+      text: '  Ignore   previous  ',
+    }
+
+    // When the form is converted to the API payload
+    const payload = localRuleTestFormValuesToPayload(values)
+
+    // Then only the persisted rule pattern is trimmed
+    assert.deepEqual(payload, {
+      rule_type: 'phrase',
+      pattern: 'ignore previous',
+      text: '  Ignore   previous  ',
     })
   })
 })

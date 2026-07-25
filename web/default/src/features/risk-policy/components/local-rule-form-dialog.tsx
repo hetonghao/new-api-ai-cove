@@ -16,10 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState, type FormEvent } from 'react'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useEffect } from 'react'
+import { Controller, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -33,6 +36,7 @@ import {
   Field,
   FieldContent,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
   FieldTitle,
@@ -48,7 +52,7 @@ import {
   localRuleToFormValues,
   type LocalRiskRuleFormValues,
 } from '../lib/risk-policy-form'
-import type { LocalRiskRule, LocalRiskRuleType } from '../types'
+import type { LocalRiskRule } from '../types'
 
 type LocalRuleFormDialogProps = {
   readonly open: boolean
@@ -59,44 +63,41 @@ type LocalRuleFormDialogProps = {
 
 export function LocalRuleFormDialog(props: LocalRuleFormDialogProps) {
   const { t } = useTranslation()
-  const [values, setValues] = useState<LocalRiskRuleFormValues>(
-    localRuleToFormValues(null)
-  )
-  const [isSaving, setIsSaving] = useState(false)
+  const form = useForm<LocalRiskRuleFormValues>({
+    resolver: zodResolver(createLocalRuleFormSchema(t)),
+    defaultValues: localRuleToFormValues(null),
+  })
+  const ruleType = form.watch('rule_type')
+  const errors = form.formState.errors
 
   useEffect(() => {
-    if (props.open) setValues(localRuleToFormValues(props.rule))
-  }, [props.open, props.rule])
-
-  function handleRuleTypeChange(value: string) {
-    let ruleType: LocalRiskRuleType = 'keyword'
-    if (value === 'phrase') ruleType = 'phrase'
-    else if (value === 'regex') ruleType = 'regex'
-    setValues((current) => ({ ...current, rule_type: ruleType }))
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const parsed = createLocalRuleFormSchema(t).safeParse(values)
-    if (!parsed.success) {
-      toast.error(parsed.error.issues[0]?.message ?? t('Invalid rule'))
-      return
+    if (props.open) {
+      form.reset(localRuleToFormValues(props.rule))
     }
+  }, [form, props.open, props.rule])
 
-    setIsSaving(true)
+  async function handleSubmit(values: LocalRiskRuleFormValues) {
+    form.clearErrors('root.server')
     try {
-      const payload = localRuleFormValuesToPayload(parsed.data)
+      const payload = localRuleFormValuesToPayload(values)
       const response = props.rule
         ? await updateLocalRiskRule(props.rule.id, payload)
         : await createLocalRiskRule(payload)
-      if (!response.success) throw new Error(response.message)
+      if (!response.success) {
+        form.setError('root.server', {
+          type: 'server',
+          message: response.message || t('Request failed'),
+        })
+        return
+      }
       toast.success(props.rule ? t('Rule updated') : t('Rule created'))
       props.onOpenChange(false)
       props.onSaved()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('Request failed'))
-    } finally {
-      setIsSaving(false)
+      form.setError('root.server', {
+        type: 'server',
+        message: error instanceof Error ? error.message : t('Request failed'),
+      })
     }
   }
 
@@ -114,19 +115,19 @@ export function LocalRuleFormDialog(props: LocalRuleFormDialogProps) {
           </DialogDescription>
         </DialogHeader>
         <form
-          onSubmit={handleSubmit}
+          onSubmit={form.handleSubmit(handleSubmit)}
           className='space-y-5 overflow-y-auto pr-1'
         >
           <FieldGroup>
-            <Field>
+            <Field data-invalid={Boolean(errors.rule_type)}>
               <FieldLabel htmlFor='local-risk-rule-type'>
                 {t('Rule type')}
               </FieldLabel>
               <NativeSelect
                 id='local-risk-rule-type'
                 className='w-full'
-                value={values.rule_type}
-                onChange={(event) => handleRuleTypeChange(event.target.value)}
+                aria-invalid={Boolean(errors.rule_type)}
+                {...form.register('rule_type')}
               >
                 <NativeSelectOption value='keyword'>
                   {t('Keyword')}
@@ -138,28 +139,25 @@ export function LocalRuleFormDialog(props: LocalRuleFormDialogProps) {
                   {t('Go regular expression')}
                 </NativeSelectOption>
               </NativeSelect>
+              <FieldError errors={[errors.rule_type]} />
             </Field>
-            <Field>
+            <Field data-invalid={Boolean(errors.pattern)}>
               <FieldLabel htmlFor='local-risk-rule-pattern'>
                 {t('Rule pattern')}
               </FieldLabel>
               <Textarea
                 id='local-risk-rule-pattern'
-                value={values.pattern}
                 className='min-h-24 font-mono text-sm'
                 autoFocus
-                onChange={(event) =>
-                  setValues((current) => ({
-                    ...current,
-                    pattern: event.target.value,
-                  }))
-                }
+                aria-invalid={Boolean(errors.pattern)}
+                {...form.register('pattern')}
               />
               <FieldDescription>
-                {values.rule_type === 'regex'
+                {ruleType === 'regex'
                   ? t('Regex syntax is validated by Go RE2 when saved.')
                   : t('Matching is case-insensitive after text normalization.')}
               </FieldDescription>
+              <FieldError errors={[errors.pattern]} />
             </Field>
             <Field orientation='horizontal' className='rounded-lg border p-3'>
               <FieldContent>
@@ -170,26 +168,36 @@ export function LocalRuleFormDialog(props: LocalRuleFormDialogProps) {
                   )}
                 </FieldDescription>
               </FieldContent>
-              <Switch
-                checked={values.enabled}
-                onCheckedChange={(enabled) =>
-                  setValues((current) => ({ ...current, enabled }))
-                }
-                aria-label={t('Rule enabled')}
+              <Controller
+                control={form.control}
+                name='enabled'
+                render={({ field }) => (
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    aria-label={t('Rule enabled')}
+                  />
+                )}
               />
             </Field>
           </FieldGroup>
+          {errors.root?.server?.message ? (
+            <Alert variant='destructive'>
+              <AlertTitle>{t('Failed to save')}</AlertTitle>
+              <AlertDescription>{errors.root.server.message}</AlertDescription>
+            </Alert>
+          ) : null}
           <DialogFooter>
             <Button
               type='button'
               variant='outline'
-              disabled={isSaving}
+              disabled={form.formState.isSubmitting}
               onClick={() => props.onOpenChange(false)}
             >
               {t('Cancel')}
             </Button>
-            <Button type='submit' disabled={isSaving}>
-              {isSaving ? t('Saving...') : t('Save')}
+            <Button type='submit' disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? t('Saving...') : t('Save')}
             </Button>
           </DialogFooter>
         </form>

@@ -131,6 +131,16 @@ export type LocalRiskRuleTestFormValues = z.infer<
   ReturnType<typeof createLocalRuleTestFormSchema>
 >
 
+export function localRuleTestToFormValues(
+  rule: LocalRiskRule | null
+): LocalRiskRuleTestFormValues {
+  return {
+    rule_type: rule?.rule_type ?? 'keyword',
+    pattern: rule?.pattern ?? '',
+    text: '',
+  }
+}
+
 export function localRuleTestFormValuesToPayload(
   values: LocalRiskRuleTestFormValues
 ): LocalRiskRuleTestPayload {

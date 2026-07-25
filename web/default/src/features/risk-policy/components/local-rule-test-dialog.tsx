@@ -16,9 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState, type FormEvent } from 'react'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -31,13 +32,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Field, FieldDescription, FieldLabel } from '@/components/ui/field'
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from '@/components/ui/field'
 import { Textarea } from '@/components/ui/textarea'
 
 import { testLocalRiskRule } from '../api'
 import {
   createLocalRuleTestFormSchema,
   localRuleTestFormValuesToPayload,
+  localRuleTestToFormValues,
+  type LocalRiskRuleTestFormValues,
 } from '../lib/risk-policy-form'
 import type { LocalRiskRule, LocalRiskRuleTestResult } from '../types'
 
@@ -49,43 +57,40 @@ type LocalRuleTestDialogProps = {
 
 export function LocalRuleTestDialog(props: LocalRuleTestDialogProps) {
   const { t } = useTranslation()
-  const [text, setText] = useState('')
   const [result, setResult] = useState<LocalRiskRuleTestResult | null>(null)
-  const [isTesting, setIsTesting] = useState(false)
+  const form = useForm<LocalRiskRuleTestFormValues>({
+    resolver: zodResolver(createLocalRuleTestFormSchema(t)),
+    defaultValues: localRuleTestToFormValues(null),
+  })
+  const errors = form.formState.errors
 
   useEffect(() => {
     if (!props.open) return
-    setText('')
+    form.reset(localRuleTestToFormValues(props.rule))
     setResult(null)
-  }, [props.open, props.rule])
+  }, [form, props.open, props.rule])
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function handleSubmit(values: LocalRiskRuleTestFormValues) {
     if (!props.rule) return
 
-    const parsed = createLocalRuleTestFormSchema(t).safeParse({
-      rule_type: props.rule.rule_type,
-      pattern: props.rule.pattern,
-      text,
-    })
-    if (!parsed.success) {
-      toast.error(parsed.error.issues[0]?.message ?? t('Invalid test input'))
-      return
-    }
-
-    setIsTesting(true)
+    form.clearErrors('root.server')
     try {
       const response = await testLocalRiskRule(
-        localRuleTestFormValuesToPayload(parsed.data)
+        localRuleTestFormValuesToPayload(values)
       )
       if (!response.success || !response.data) {
-        throw new Error(response.message)
+        form.setError('root.server', {
+          type: 'server',
+          message: response.message || t('Request failed'),
+        })
+        return
       }
       setResult(response.data)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('Request failed'))
-    } finally {
-      setIsTesting(false)
+      form.setError('root.server', {
+        type: 'server',
+        message: error instanceof Error ? error.message : t('Request failed'),
+      })
     }
   }
 
@@ -99,26 +104,33 @@ export function LocalRuleTestDialog(props: LocalRuleTestDialogProps) {
           </DialogDescription>
         </DialogHeader>
         <form
-          onSubmit={handleSubmit}
+          onSubmit={form.handleSubmit(handleSubmit)}
           className='space-y-4 overflow-y-auto pr-1'
         >
-          <Field>
+          <Field data-invalid={Boolean(errors.text)}>
             <FieldLabel htmlFor='local-risk-rule-test-text'>
               {t('Test text')}
             </FieldLabel>
             <Textarea
               id='local-risk-rule-test-text'
-              value={text}
               className='min-h-32'
               autoFocus
-              onChange={(event) => setText(event.target.value)}
+              aria-invalid={Boolean(errors.text)}
+              {...form.register('text')}
             />
             <FieldDescription>
               {t(
                 'The server applies Unicode normalization, lowercase conversion, trimming, and whitespace collapse.'
               )}
             </FieldDescription>
+            <FieldError errors={[errors.text]} />
           </Field>
+          {errors.root?.server?.message ? (
+            <Alert variant='destructive'>
+              <AlertTitle>{t('Request failed')}</AlertTitle>
+              <AlertDescription>{errors.root.server.message}</AlertDescription>
+            </Alert>
+          ) : null}
           {result ? (
             <Alert>
               <AlertTitle className='flex items-center gap-2'>
@@ -145,8 +157,8 @@ export function LocalRuleTestDialog(props: LocalRuleTestDialogProps) {
             >
               {t('Close')}
             </Button>
-            <Button type='submit' disabled={isTesting}>
-              {isTesting ? t('Testing...') : t('Run test')}
+            <Button type='submit' disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? t('Testing...') : t('Run test')}
             </Button>
           </DialogFooter>
         </form>
