@@ -5422,6 +5422,24 @@
     "The server applies Unicode normalization, lowercase conversion, trimming, and whitespace collapse.": "The server applies Unicode normalization, lowercase conversion, trimming, and whitespace collapse.",
     "This permanently removes the local risk trigger rule.": "This permanently removes the local risk trigger rule.",
     "Toggle rule: {{pattern}}": "Toggle rule: {{pattern}}",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Safe": "Safe",
+    "Unsafe": "Unsafe",
+    "Neurons": "Neurons",
+    "Categories": "Categories",
+    "No risk records": "No risk records",
+    "Records appear here after cloud review runs.": "Records appear here after cloud review runs.",
+    "Failed to load risk records": "Failed to load risk records",
+    "Risk records": "Risk records",
+    "Review metadata only. Message content is never stored.": "Review metadata only. Message content is never stored.",
+    "Refresh records": "Refresh records",
+    "{{count}} risk records": "{{count}} risk records",
+    "Not reviewed": "Not reviewed",
+    "Provider source": "Provider",
+    "Cache source": "Cache",
+    "In-flight source": "In-flight reuse",
+    "Local source": "Local",
+    "Unknown value: {{value}}": "Unknown: {{value}}",
+    "Cloud call": "Cloud call"
   }
 }

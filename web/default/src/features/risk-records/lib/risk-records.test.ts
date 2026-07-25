@@ -1,0 +1,132 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
+
+import { riskRecordPageSchema } from '../types.ts'
+import {
+  getRiskRecordResultVariant,
+  getRiskRecordSourceVariant,
+  getRiskRecordTotalPages,
+} from './risk-records.ts'
+
+const VALID_RECORD = {
+  id: 1,
+  request_id: 'req-123',
+  channel_id: 12,
+  user_id: 34,
+  rule_ids: [5],
+  provider_id: 7,
+  provider_name: 'Cloud review',
+  result: 'unsafe',
+  source: 'provider',
+  provider_called: true,
+  categories: ['violence'],
+  latency_ms: 93,
+  prompt_tokens: 11,
+  completion_tokens: 2,
+  total_tokens: 13,
+  neurons: 7,
+  error_code: '',
+  observed_at: '2026-07-25T12:00:00Z',
+} as const
+
+describe('risk record behavior', () => {
+  it('parses a valid paginated API payload when records are returned', () => {
+    // Given
+    const payload = {
+      items: [VALID_RECORD],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    }
+
+    // When
+    const result = riskRecordPageSchema.safeParse(payload)
+
+    // Then
+    assert.equal(result.success, true)
+  })
+
+  it('keeps an unknown result and source renderable when the API evolves', () => {
+    // Given
+    const payload = {
+      items: [{ ...VALID_RECORD, result: 'pending', source: 'future-source' }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    }
+
+    // When
+    const result = riskRecordPageSchema.safeParse(payload)
+
+    // Then
+    assert.equal(result.success, true)
+    if (result.success) {
+      assert.equal(result.data.items[0]?.result, 'pending')
+      assert.equal(result.data.items[0]?.source, 'future-source')
+      assert.equal(result.data.items[0]?.provider_called, true)
+    }
+  })
+
+  it('maps unsafe records to the danger status when rendered', () => {
+    // Given
+    const result = 'unsafe'
+
+    // When
+    const variant = getRiskRecordResultVariant(result)
+
+    // Then
+    assert.equal(variant, 'danger')
+  })
+
+  it('maps an unknown result to a neutral status when rendered', () => {
+    // Given
+    const result = 'future-result'
+
+    // When
+    const variant = getRiskRecordResultVariant(result)
+
+    // Then
+    assert.equal(variant, 'neutral')
+  })
+
+  it('maps an unknown source to a neutral status when rendered', () => {
+    // Given
+    const source = 'future-source'
+
+    // When
+    const variant = getRiskRecordSourceVariant(source)
+
+    // Then
+    assert.equal(variant, 'neutral')
+  })
+
+  it('calculates the final partial page when total is not divisible', () => {
+    // Given
+    const total = 21
+    const pageSize = 20
+
+    // When
+    const pages = getRiskRecordTotalPages(total, pageSize)
+
+    // Then
+    assert.equal(pages, 2)
+  })
+})

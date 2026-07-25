@@ -5283,6 +5283,24 @@
     "The server applies Unicode normalization, lowercase conversion, trimming, and whitespace collapse.": "伺服器會執行 Unicode 正規化、轉小寫、移除前後空白並合併連續空白。",
     "This permanently removes the local risk trigger rule.": "此操作會永久刪除該本機風險觸發規則。",
     "Toggle rule: {{pattern}}": "切換規則：{{pattern}}",
-    "Zoom": "縮放"
+    "Zoom": "縮放",
+    "Safe": "安全",
+    "Unsafe": "不安全",
+    "Neurons": "Neurons",
+    "Categories": "分類",
+    "No risk records": "暫無風控記錄",
+    "Records appear here after cloud review runs.": "雲端審核執行後，記錄會顯示在這裡。",
+    "Failed to load risk records": "風控記錄載入失敗",
+    "Risk records": "風控記錄",
+    "Review metadata only. Message content is never stored.": "僅保留審核中繼資料，不儲存訊息內容。",
+    "Refresh records": "重新整理記錄",
+    "{{count}} risk records": "共 {{count}} 筆風控記錄",
+    "Not reviewed": "未雲端審核",
+    "Provider source": "供應商",
+    "Cache source": "快取",
+    "In-flight source": "並行複用",
+    "Local source": "本機",
+    "Unknown value: {{value}}": "未知：{{value}}",
+    "Cloud call": "實際雲端呼叫"
   }
 }

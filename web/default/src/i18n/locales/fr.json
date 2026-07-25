@@ -5285,6 +5285,24 @@
     "The server applies Unicode normalization, lowercase conversion, trimming, and whitespace collapse.": "Le serveur applique la normalisation Unicode, les minuscules, le retrait des espaces en bordure et la réduction des espaces consécutifs.",
     "This permanently removes the local risk trigger rule.": "Cette action supprime définitivement la règle locale de déclenchement du risque.",
     "Toggle rule: {{pattern}}": "Activer ou désactiver la règle : {{pattern}}",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Safe": "Sûr",
+    "Unsafe": "Dangereux",
+    "Neurons": "Neurons",
+    "Categories": "Catégories",
+    "No risk records": "Aucun enregistrement de risque",
+    "Records appear here after cloud review runs.": "Les enregistrements apparaissent ici après l’analyse cloud.",
+    "Failed to load risk records": "Impossible de charger les enregistrements de risque",
+    "Risk records": "Enregistrements de risque",
+    "Review metadata only. Message content is never stored.": "Seules les métadonnées d’analyse sont conservées. Le contenu des messages ne l’est jamais.",
+    "Refresh records": "Actualiser les enregistrements",
+    "{{count}} risk records": "{{count}} enregistrements de risque",
+    "Not reviewed": "Non analysé",
+    "Provider source": "Fournisseur",
+    "Cache source": "Cache",
+    "In-flight source": "Réutilisation en cours",
+    "Local source": "Local",
+    "Unknown value: {{value}}": "Inconnu : {{value}}",
+    "Cloud call": "Appel cloud réel"
   }
 }

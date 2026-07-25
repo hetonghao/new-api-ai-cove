@@ -5285,6 +5285,24 @@
     "The server applies Unicode normalization, lowercase conversion, trimming, and whitespace collapse.": "Máy chủ áp dụng chuẩn hóa Unicode, chuyển chữ thường, cắt khoảng trắng và gộp khoảng trắng liên tiếp.",
     "This permanently removes the local risk trigger rule.": "Thao tác này xóa vĩnh viễn quy tắc kích hoạt rủi ro cục bộ.",
     "Toggle rule: {{pattern}}": "Bật hoặc tắt quy tắc: {{pattern}}",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Safe": "An toàn",
+    "Unsafe": "Không an toàn",
+    "Neurons": "Neurons",
+    "Categories": "Danh mục",
+    "No risk records": "Không có bản ghi rủi ro",
+    "Records appear here after cloud review runs.": "Bản ghi sẽ xuất hiện ở đây sau khi kiểm duyệt đám mây chạy.",
+    "Failed to load risk records": "Không thể tải bản ghi rủi ro",
+    "Risk records": "Bản ghi rủi ro",
+    "Review metadata only. Message content is never stored.": "Chỉ lưu siêu dữ liệu kiểm duyệt. Nội dung tin nhắn không bao giờ được lưu.",
+    "Refresh records": "Làm mới bản ghi",
+    "{{count}} risk records": "{{count}} bản ghi rủi ro",
+    "Not reviewed": "Chưa kiểm duyệt",
+    "Provider source": "Nhà cung cấp",
+    "Cache source": "Bộ nhớ đệm",
+    "In-flight source": "Tái sử dụng yêu cầu đang chạy",
+    "Local source": "Cục bộ",
+    "Unknown value: {{value}}": "Không xác định: {{value}}",
+    "Cloud call": "Lệnh gọi đám mây thực tế"
   }
 }
