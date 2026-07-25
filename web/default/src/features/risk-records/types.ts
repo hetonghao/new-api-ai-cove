@@ -1,0 +1,66 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { z } from 'zod'
+
+export const riskRecordResultSchema = z.string().min(1)
+
+export const riskRecordSchema = z
+  .object({
+    id: z.number().int().positive(),
+    request_id: z.string().min(1),
+    channel_id: z.number().int().positive(),
+    user_id: z.number().int().positive(),
+    rule_ids: z.array(z.number().int().positive()).readonly(),
+    provider_id: z.number().int().nonnegative(),
+    provider_name: z.string(),
+    result: riskRecordResultSchema,
+    source: z.string().default(''),
+    provider_called: z.boolean().default(false),
+    categories: z.array(z.string()).readonly(),
+    latency_ms: z.number().int().nonnegative(),
+    prompt_tokens: z.number().int().nonnegative(),
+    completion_tokens: z.number().int().nonnegative(),
+    total_tokens: z.number().int().nonnegative(),
+    neurons: z.number().int().nonnegative(),
+    error_code: z.string(),
+    observed_at: z.string().min(1),
+  })
+  .readonly()
+
+export const riskRecordPageSchema = z
+  .object({
+    items: z.array(riskRecordSchema).readonly(),
+    total: z.number().int().nonnegative(),
+    page: z.number().int().positive(),
+    page_size: z.number().int().positive().max(100),
+  })
+  .readonly()
+
+export const riskRecordResponseSchema = z
+  .object({
+    success: z.boolean(),
+    message: z.string().optional(),
+    data: riskRecordPageSchema.optional(),
+  })
+  .readonly()
+
+export type RiskRecordResult = z.infer<typeof riskRecordResultSchema>
+export type RiskRecord = z.infer<typeof riskRecordSchema>
+export type RiskRecordPage = z.infer<typeof riskRecordPageSchema>
+export type RiskRecordResponse = z.infer<typeof riskRecordResponseSchema>

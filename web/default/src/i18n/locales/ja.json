@@ -5285,6 +5285,24 @@
     "The server applies Unicode normalization, lowercase conversion, trimming, and whitespace collapse.": "サーバーは Unicode 正規化、小文字化、前後空白の除去、連続空白の圧縮を行います。",
     "This permanently removes the local risk trigger rule.": "この操作はローカルリスク起動ルールを完全に削除します。",
     "Toggle rule: {{pattern}}": "ルールを切り替え：{{pattern}}",
-    "Zoom": "ズーム"
+    "Zoom": "ズーム",
+    "Safe": "安全",
+    "Unsafe": "危険",
+    "Neurons": "Neurons",
+    "Categories": "カテゴリ",
+    "No risk records": "リスク記録はありません",
+    "Records appear here after cloud review runs.": "クラウド審査の実行後、ここに記録が表示されます。",
+    "Failed to load risk records": "リスク記録を読み込めませんでした",
+    "Risk records": "リスク記録",
+    "Review metadata only. Message content is never stored.": "審査メタデータのみを保持し、メッセージ内容は保存しません。",
+    "Refresh records": "記録を更新",
+    "{{count}} risk records": "リスク記録 {{count}} 件",
+    "Not reviewed": "未審査",
+    "Provider source": "プロバイダー",
+    "Cache source": "キャッシュ",
+    "In-flight source": "処理中の結果を再利用",
+    "Local source": "ローカル",
+    "Unknown value: {{value}}": "不明：{{value}}",
+    "Cloud call": "実際のクラウド呼び出し"
   }
 }

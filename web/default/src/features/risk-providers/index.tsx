@@ -27,6 +27,7 @@ import { SectionPageLayout } from '@/components/layout'
 import { Button } from '@/components/ui/button'
 import { LocalRuleManager } from '@/features/risk-policy/components/local-rule-manager'
 import { RiskPolicySettings } from '@/features/risk-policy/components/risk-policy-settings'
+import { RiskRecordList } from '@/features/risk-records/components/risk-record-list'
 
 import {
   activateRiskProvider,
@@ -176,6 +177,7 @@ export function RiskProviders() {
               }
               onDelete={setDeletingProvider}
             />
+            <RiskRecordList />
           </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>

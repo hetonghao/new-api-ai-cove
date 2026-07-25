@@ -5422,6 +5422,24 @@
     "The server applies Unicode normalization, lowercase conversion, trimming, and whitespace collapse.": "服务端会执行 Unicode 归一化、转小写、去除首尾空白并合并连续空白。",
     "This permanently removes the local risk trigger rule.": "此操作会永久删除该本地风险触发规则。",
     "Toggle rule: {{pattern}}": "切换规则：{{pattern}}",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Safe": "安全",
+    "Unsafe": "不安全",
+    "Neurons": "Neurons",
+    "Categories": "分类",
+    "No risk records": "暂无风控记录",
+    "Records appear here after cloud review runs.": "云审核运行后，记录会显示在这里。",
+    "Failed to load risk records": "风控记录加载失败",
+    "Risk records": "风控记录",
+    "Review metadata only. Message content is never stored.": "仅保留审核元数据，不存储消息内容。",
+    "Refresh records": "刷新记录",
+    "{{count}} risk records": "共 {{count}} 条风控记录",
+    "Not reviewed": "未云审",
+    "Provider source": "供应商",
+    "Cache source": "缓存",
+    "In-flight source": "并发复用",
+    "Local source": "本地",
+    "Unknown value: {{value}}": "未知：{{value}}",
+    "Cloud call": "实际云调用"
   }
 }

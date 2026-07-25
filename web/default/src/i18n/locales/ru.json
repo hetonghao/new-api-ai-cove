@@ -5285,6 +5285,24 @@
     "The server applies Unicode normalization, lowercase conversion, trimming, and whitespace collapse.": "Сервер выполняет нормализацию Unicode, перевод в нижний регистр, обрезку и сжатие пробелов.",
     "This permanently removes the local risk trigger rule.": "Локальное правило запуска проверки будет удалено безвозвратно.",
     "Toggle rule: {{pattern}}": "Переключить правило: {{pattern}}",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Safe": "Безопасно",
+    "Unsafe": "Небезопасно",
+    "Neurons": "Neurons",
+    "Categories": "Категории",
+    "No risk records": "Нет записей контроля рисков",
+    "Records appear here after cloud review runs.": "Записи появятся здесь после облачной проверки.",
+    "Failed to load risk records": "Не удалось загрузить записи контроля рисков",
+    "Risk records": "Записи контроля рисков",
+    "Review metadata only. Message content is never stored.": "Сохраняются только метаданные проверки. Содержимое сообщений не сохраняется.",
+    "Refresh records": "Обновить записи",
+    "{{count}} risk records": "Записей контроля рисков: {{count}}",
+    "Not reviewed": "Не проверено",
+    "Provider source": "Провайдер",
+    "Cache source": "Кэш",
+    "In-flight source": "Повтор текущего запроса",
+    "Local source": "Локально",
+    "Unknown value: {{value}}": "Неизвестно: {{value}}",
+    "Cloud call": "Фактический облачный вызов"
   }
 }
