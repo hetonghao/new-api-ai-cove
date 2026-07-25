@@ -85,22 +85,14 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.Use(middleware.Distribute())
 
 		// claude related routes
-		httpRouter.POST("/messages", func(c *gin.Context) {
-			controller.Relay(c, types.RelayFormatClaude)
-		})
+		httpRouter.POST("/messages", controller.RelayWithRiskObservation(types.RelayFormatClaude))
 
 		// chat related routes
-		httpRouter.POST("/completions", func(c *gin.Context) {
-			controller.Relay(c, types.RelayFormatOpenAI)
-		})
-		httpRouter.POST("/chat/completions", func(c *gin.Context) {
-			controller.Relay(c, types.RelayFormatOpenAI)
-		})
+		httpRouter.POST("/completions", controller.RelayWithRiskObservation(types.RelayFormatOpenAI))
+		httpRouter.POST("/chat/completions", controller.RelayWithRiskObservation(types.RelayFormatOpenAI))
 
 		// response related routes
-		httpRouter.POST("/responses", func(c *gin.Context) {
-			controller.Relay(c, types.RelayFormatOpenAIResponses)
-		})
+		httpRouter.POST("/responses", controller.RelayWithRiskObservation(types.RelayFormatOpenAIResponses))
 		httpRouter.POST("/responses/compact", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatOpenAIResponsesCompaction)
 		})
@@ -141,14 +133,10 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.POST("/engines/:model/embeddings", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatGemini)
 		})
-		httpRouter.POST("/models/*path", func(c *gin.Context) {
-			controller.Relay(c, types.RelayFormatGemini)
-		})
+		httpRouter.POST("/models/*path", controller.RelayWithRiskObservation(types.RelayFormatGemini))
 
 		// other relay routes
-		httpRouter.POST("/moderations", func(c *gin.Context) {
-			controller.Relay(c, types.RelayFormatOpenAI)
-		})
+		httpRouter.POST("/moderations", controller.RelayWithRiskObservation(types.RelayFormatOpenAI))
 
 		// not implemented
 		httpRouter.POST("/images/variations", controller.RelayNotImplemented)
@@ -194,9 +182,7 @@ func SetRelayRouter(router *gin.Engine) {
 	relayGeminiRouter.Use(middleware.Distribute())
 	{
 		// Gemini API 路径格式: /v1beta/models/{model_name}:{action}
-		relayGeminiRouter.POST("/models/*path", func(c *gin.Context) {
-			controller.Relay(c, types.RelayFormatGemini)
-		})
+		relayGeminiRouter.POST("/models/*path", controller.RelayWithRiskObservation(types.RelayFormatGemini))
 	}
 }
 
