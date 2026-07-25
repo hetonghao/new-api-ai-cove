@@ -34,6 +34,8 @@ import {
 import {
   commitRiskRecordFilters,
   EMPTY_RISK_RECORD_FILTER_DRAFT,
+  getRiskRecordResultFilterLabel,
+  getRiskRecordSourceFilterLabel,
 } from '../lib/risk-records'
 import type { RiskRecordFilterDraft, RiskRecordFilters } from '../types'
 
@@ -64,6 +66,10 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
   const [draft, setDraft] = useState<RiskRecordFilterDraft>(
     EMPTY_RISK_RECORD_FILTER_DRAFT
   )
+  const resultValue = draft.result || ALL_RESULTS
+  const sourceValue = draft.source || ALL_SOURCES
+  const resultLabel = getRiskRecordResultFilterLabel(resultValue)
+  const sourceLabel = getRiskRecordSourceFilterLabel(sourceValue)
 
   function submitFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -157,7 +163,7 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
         <Field>
           <FieldLabel htmlFor='risk-record-result'>{t('Result')}</FieldLabel>
           <Select
-            value={draft.result || ALL_RESULTS}
+            value={resultValue}
             onValueChange={(value) =>
               value !== null &&
               setDraft({
@@ -167,7 +173,7 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
             }
           >
             <SelectTrigger id='risk-record-result' className='w-full'>
-              <SelectValue />
+              <SelectValue>{t(resultLabel)}</SelectValue>
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false}>
               <SelectGroup>
@@ -184,7 +190,7 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
         <Field>
           <FieldLabel htmlFor='risk-record-source'>{t('Source')}</FieldLabel>
           <Select
-            value={draft.source || ALL_SOURCES}
+            value={sourceValue}
             onValueChange={(value) =>
               value !== null &&
               setDraft({
@@ -194,7 +200,7 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
             }
           >
             <SelectTrigger id='risk-record-source' className='w-full'>
-              <SelectValue />
+              <SelectValue>{t(sourceLabel)}</SelectValue>
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false}>
               <SelectGroup>
