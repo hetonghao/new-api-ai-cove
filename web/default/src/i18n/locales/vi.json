@@ -5303,6 +5303,11 @@
     "In-flight source": "Tái sử dụng yêu cầu đang chạy",
     "Local source": "Cục bộ",
     "Unknown value: {{value}}": "Không xác định: {{value}}",
-    "Cloud call": "Lệnh gọi đám mây thực tế"
+    "Cloud call": "Lệnh gọi đám mây thực tế",
+    "Risk Configuration": "Cấu hình kiểm soát rủi ro",
+    "Provider ID": "ID nhà cung cấp",
+    "All results": "Tất cả kết quả",
+    "All sources": "Tất cả nguồn",
+    "Run query": "Truy vấn"
   }
 }

@@ -18,7 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import { riskRecordResponseSchema, type RiskRecordResponse } from './types'
+import { buildRiskRecordQueryParams } from './lib/risk-records'
+import {
+  riskRecordResponseSchema,
+  type RiskRecordFilters,
+  type RiskRecordResponse,
+} from './types'
 
 const BASE_PATH = '/api/risk/records'
 
@@ -28,10 +33,11 @@ export class RiskRecordResponseError extends Error {
 
 export async function listRiskRecords(
   page: number,
-  pageSize: number
+  pageSize: number,
+  filters: RiskRecordFilters
 ): Promise<RiskRecordResponse> {
   const response = await api.get<unknown>(BASE_PATH, {
-    params: { p: page, page_size: pageSize },
+    params: buildRiskRecordQueryParams(page, pageSize, filters),
     skipErrorHandler: true,
   })
   const parsed = riskRecordResponseSchema.safeParse(response.data)

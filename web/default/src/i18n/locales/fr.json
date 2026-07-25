@@ -5303,6 +5303,11 @@
     "In-flight source": "Réutilisation en cours",
     "Local source": "Local",
     "Unknown value: {{value}}": "Inconnu : {{value}}",
-    "Cloud call": "Appel cloud réel"
+    "Cloud call": "Appel cloud réel",
+    "Risk Configuration": "Configuration du contrôle des risques",
+    "Provider ID": "ID du fournisseur",
+    "All results": "Tous les résultats",
+    "All sources": "Toutes les sources",
+    "Run query": "Rechercher"
   }
 }

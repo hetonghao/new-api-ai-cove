@@ -5303,6 +5303,11 @@
     "In-flight source": "処理中の結果を再利用",
     "Local source": "ローカル",
     "Unknown value: {{value}}": "不明：{{value}}",
-    "Cloud call": "実際のクラウド呼び出し"
+    "Cloud call": "実際のクラウド呼び出し",
+    "Risk Configuration": "リスク設定",
+    "Provider ID": "プロバイダー ID",
+    "All results": "すべての結果",
+    "All sources": "すべてのソース",
+    "Run query": "検索"
   }
 }

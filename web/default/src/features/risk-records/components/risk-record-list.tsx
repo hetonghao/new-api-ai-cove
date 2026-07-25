@@ -41,6 +41,8 @@ import { TitledCard } from '@/components/ui/titled-card'
 
 import { listRiskRecords } from '../api'
 import { getRiskRecordTotalPages } from '../lib/risk-records'
+import type { RiskRecordFilters } from '../types'
+import { RiskRecordFiltersForm } from './risk-record-filters'
 import {
   RiskRecordDesktopTable,
   RiskRecordMobileList,
@@ -89,10 +91,11 @@ function EmptyRecords() {
 export function RiskRecordList() {
   const { t } = useTranslation()
   const [page, setPage] = useState(1)
+  const [filters, setFilters] = useState<RiskRecordFilters>({})
   const recordsQuery = useQuery({
-    queryKey: ['risk', 'records', page, PAGE_SIZE],
+    queryKey: ['risk', 'records', page, PAGE_SIZE, filters],
     queryFn: async () => {
-      const response = await listRiskRecords(page, PAGE_SIZE)
+      const response = await listRiskRecords(page, PAGE_SIZE, filters)
       if (!response.success || !response.data) {
         throw new Error(response.message || t('Failed to load risk records'))
       }
@@ -106,6 +109,11 @@ export function RiskRecordList() {
     PAGE_SIZE
   )
   const records = recordsQuery.data?.items ?? []
+
+  function applyFilters(nextFilters: RiskRecordFilters) {
+    setPage(1)
+    setFilters(nextFilters)
+  }
 
   let content = <RecordSkeleton />
   if (recordsQuery.error) {
@@ -152,6 +160,10 @@ export function RiskRecordList() {
       }
       disableHoverEffect
     >
+      <RiskRecordFiltersForm
+        disabled={recordsQuery.isFetching}
+        onApply={applyFilters}
+      />
       {content}
       {!recordsQuery.error && !recordsQuery.isLoading && (
         <div className='bg-muted/40 mt-3 flex flex-col gap-2 rounded-lg border px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between'>

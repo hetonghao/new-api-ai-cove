@@ -64,3 +64,23 @@ export type RiskRecordResult = z.infer<typeof riskRecordResultSchema>
 export type RiskRecord = z.infer<typeof riskRecordSchema>
 export type RiskRecordPage = z.infer<typeof riskRecordPageSchema>
 export type RiskRecordResponse = z.infer<typeof riskRecordResponseSchema>
+
+export type RiskRecordFilterDraft = {
+  readonly start_time: string
+  readonly end_time: string
+  readonly channel_id: string
+  readonly user_id: string
+  readonly provider_id: string
+  readonly result: string
+  readonly source: string
+}
+
+export type RiskRecordFilters = {
+  readonly start_timestamp?: number
+  readonly end_timestamp?: number
+  readonly channel_id?: number
+  readonly user_id?: number
+  readonly provider_id?: number
+  readonly result?: string
+  readonly source?: string
+}

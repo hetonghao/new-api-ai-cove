@@ -5440,6 +5440,11 @@
     "In-flight source": "并发复用",
     "Local source": "本地",
     "Unknown value: {{value}}": "未知：{{value}}",
-    "Cloud call": "实际云调用"
+    "Cloud call": "实际云调用",
+    "Risk Configuration": "风控配置",
+    "Provider ID": "供应商 ID",
+    "All results": "全部结果",
+    "All sources": "全部来源",
+    "Run query": "查询"
   }
 }

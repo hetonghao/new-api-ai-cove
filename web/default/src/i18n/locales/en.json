@@ -5440,6 +5440,11 @@
     "In-flight source": "In-flight reuse",
     "Local source": "Local",
     "Unknown value: {{value}}": "Unknown: {{value}}",
-    "Cloud call": "Cloud call"
+    "Cloud call": "Cloud call",
+    "Risk Configuration": "Risk Configuration",
+    "Provider ID": "Provider ID",
+    "All results": "All results",
+    "All sources": "All sources",
+    "Run query": "Run query"
   }
 }

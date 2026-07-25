@@ -5301,6 +5301,11 @@
     "In-flight source": "並行複用",
     "Local source": "本機",
     "Unknown value: {{value}}": "未知：{{value}}",
-    "Cloud call": "實際雲端呼叫"
+    "Cloud call": "實際雲端呼叫",
+    "Risk Configuration": "風控設定",
+    "Provider ID": "供應商 ID",
+    "All results": "全部結果",
+    "All sources": "全部來源",
+    "Run query": "查詢"
   }
 }
