@@ -24,13 +24,17 @@ type fakeRiskReviewCacheStore struct {
 	lastKey  string
 	lastTTL  time.Duration
 	onGet    func(int)
+	get      func(context.Context, string) (RiskReviewResult, bool, error)
 }
 
 func newFakeRiskReviewCacheStore() *fakeRiskReviewCacheStore {
 	return &fakeRiskReviewCacheStore{values: make(map[string]RiskReviewResult)}
 }
 
-func (s *fakeRiskReviewCacheStore) Get(_ context.Context, key string) (RiskReviewResult, bool, error) {
+func (s *fakeRiskReviewCacheStore) Get(ctx context.Context, key string) (RiskReviewResult, bool, error) {
+	if s.get != nil {
+		return s.get(ctx, key)
+	}
 	s.mu.Lock()
 	s.getCalls++
 	call := s.getCalls
@@ -122,25 +126,31 @@ func TestRiskReviewCacheService_Review_cachesSafeAndUnsafeFor24Hours(t *testing.
 	}
 }
 
-func TestRiskReviewCacheService_Review_doesNotCacheProviderErrors(t *testing.T) {
+func TestRiskReviewCacheService_Review_preservesAndDoesNotCacheProviderErrors(t *testing.T) {
 	// Given
 	store := newFakeRiskReviewCacheStore()
 	service := newRiskReviewCacheService(store, "fixed-secret")
 	providerErr := errors.New("provider unavailable")
+	partial := RiskReviewResult{
+		Status: RiskReviewError, Categories: []string{"partial"},
+		Usage: RiskReviewUsage{PromptTokens: 3, TotalTokens: 3},
+	}
 	var calls atomic.Int32
 	reviewer := func(context.Context) (RiskReviewResult, error) {
 		if calls.Add(1) == 1 {
-			return RiskReviewResult{}, providerErr
+			return partial, providerErr
 		}
 		return RiskReviewResult{Status: RiskReviewSafe}, nil
 	}
 
 	// When
-	_, firstErr := service.Review(context.Background(), RiskReviewCacheInput{Content: "text", PolicyVersion: "v1"}, reviewer)
+	first, firstErr := service.Review(context.Background(), RiskReviewCacheInput{Content: "text", PolicyVersion: "v1"}, reviewer)
 	second, secondErr := service.Review(context.Background(), RiskReviewCacheInput{Content: "text", PolicyVersion: "v1"}, reviewer)
 
 	// Then
 	require.ErrorIs(t, firstErr, providerErr)
+	assert.Equal(t, partial, first.Result)
+	assert.Equal(t, RiskReviewSourceProvider, first.Source)
 	require.NoError(t, secondErr)
 	assert.Equal(t, RiskReviewSourceProvider, second.Source)
 	assert.EqualValues(t, 2, calls.Load())
