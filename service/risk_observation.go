@@ -20,14 +20,18 @@ const (
 	RiskObservationSourceCache    RiskObservationSource = "cache"
 	RiskObservationSourceInflight RiskObservationSource = "inflight"
 
-	riskObservationQueueCapacity = 64
-	riskObservationPolicyError   = "policy_error"
-	riskObservationRulesError    = "rules_error"
-	riskObservationProviderError = "provider_error"
+	riskObservationQueueCapacity       = 64
+	riskObservationPolicyError         = "policy_error"
+	riskObservationRulesError          = "rules_error"
+	riskObservationProviderError       = "provider_error"
+	riskObservationProviderConfigError = "provider_config_error"
+	riskObservationCircuitOpen         = "circuit_open"
 )
 
-type RiskObservationResult string
-type RiskObservationSource string
+type (
+	RiskObservationResult string
+	RiskObservationSource string
+)
 
 type RiskObservationEvent struct {
 	RequestID        string
@@ -66,6 +70,7 @@ var (
 	riskObservationQueue                      = NewRiskObservationQueue(context.Background(), RiskObservationQueueConfig{
 		Capacity: riskObservationQueueCapacity,
 		Process:  processRiskObservation,
+		Record:   recordRiskObservationEvent,
 		Degrade:  recordRiskObservationDegradation,
 	})
 )
@@ -80,70 +85,19 @@ func EnqueueRiskObservation(job RiskObservationJob) bool {
 	return riskObservationQueue.Enqueue(job)
 }
 
+func EnqueueRiskObservationEvent(event RiskObservationEvent) bool {
+	return riskObservationQueue.EnqueueEvent(event)
+}
+
 func CloseRiskObservationQueue(ctx context.Context) {
 	riskObservationQueue.Close(ctx)
 }
 
 func processRiskObservation(ctx context.Context, job RiskObservationJob) {
-	state, err := model.GetRiskPolicyState()
-	if err != nil {
-		recordRiskObservationEvent(ctx, riskObservationErrorEvent(job, riskObservationPolicyError))
-		return
-	}
-	if !state.Enabled || state.ActionMode != model.RiskActionObserve || !riskChannelEnabled(state.EnabledChannels, job.ChannelName) {
-		return
-	}
-
-	content := job.Text
-	var ruleIDs []int
-	if state.ReviewMode == model.RiskReviewSelective {
-		rules, listErr := model.GetRiskRules()
-		if listErr != nil {
-			recordRiskObservationEvent(ctx, riskObservationErrorEvent(job, riskObservationRulesError))
-			return
-		}
-		content, ruleIDs = BuildSelectiveRiskExcerpt(job.Text, rules)
-		if content == "" {
-			return
-		}
-	}
-	if content == "" || state.ProviderID == nil {
-		return
-	}
-
-	provider, err := model.GetRiskProviderByID(*state.ProviderID)
-	if err != nil {
-		event := riskObservationErrorEvent(job, riskObservationProviderError)
-		event.ProviderID = *state.ProviderID
-		event.RuleIDs = ruleIDs
+	event, ok := evaluateRiskObservation(ctx, job, riskObservationModerationExecutor())
+	if ok {
 		recordRiskObservationEvent(ctx, event)
-		return
 	}
-
-	startedAt := time.Now()
-	result, err := ReviewRiskContent(ctx, provider, content)
-	event := RiskObservationEvent{
-		RequestID: job.RequestID, ChannelID: job.ChannelID, UserID: job.UserID,
-		RuleIDs: append([]int(nil), ruleIDs...), ProviderID: provider.Id, ProviderName: provider.Name,
-		LatencyMS: time.Since(startedAt).Milliseconds(), ObservedAt: time.Now().UTC(),
-	}
-	if err != nil {
-		event.Result = RiskObservationError
-		event.ErrorCode = riskObservationProviderError
-		if ctx.Err() != nil {
-			event.ErrorCode = RiskObservationErrorShutdown
-		}
-		recordRiskObservationEvent(ctx, event)
-		return
-	}
-
-	event.Result = RiskObservationResult(result.Status)
-	event.Categories = append([]string(nil), result.Categories...)
-	event.PromptTokens = result.Usage.PromptTokens
-	event.CompletionTokens = result.Usage.CompletionTokens
-	event.TotalTokens = result.Usage.TotalTokens
-	event.Neurons = result.Usage.Neurons
-	recordRiskObservationEvent(ctx, event)
 }
 
 func riskChannelEnabled(channels []model.RiskChannel, selectedChannel string) bool {
@@ -161,10 +115,11 @@ func recordRiskObservationDegradation(ctx context.Context, job RiskObservationJo
 }
 
 func riskObservationErrorEvent(job RiskObservationJob, code string) RiskObservationEvent {
-	return RiskObservationEvent{
-		RequestID: job.RequestID, ChannelID: job.ChannelID, UserID: job.UserID,
-		Result: RiskObservationError, ErrorCode: code, ObservedAt: time.Now().UTC(),
-	}
+	event := newRiskObservationEvent(job)
+	event.Result = RiskObservationError
+	event.ErrorCode = code
+	event.Source = RiskObservationSourceLocal
+	return event
 }
 
 func recordRiskObservationEvent(ctx context.Context, event RiskObservationEvent) {

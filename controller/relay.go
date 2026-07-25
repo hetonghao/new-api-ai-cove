@@ -82,10 +82,9 @@ func newSensitiveWordsDetectedError() *types.NewAPIError {
 }
 
 func Relay(c *gin.Context, relayFormat types.RelayFormat) {
-
 	requestId := c.GetString(common.RequestIdKey)
-	//group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
-	//originalModel := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
+	// group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+	// originalModel := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
 
 	var (
 		newAPIError *types.NewAPIError
@@ -149,13 +148,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		meta = fastTokenCountMetaForPricing(request)
 	}
 
-	if needSensitiveCheck && meta != nil {
-		contains, words := service.CheckSensitiveText(meta.CombineText)
-		if contains {
-			logger.LogWarn(c, fmt.Sprintf("user sensitive words detected: %s", strings.Join(words, ", ")))
-			newAPIError = newSensitiveWordsDetectedError()
-			return
-		}
+	newAPIError = applyRelayRiskGate(c, relayRiskContext{request: request, info: relayInfo, meta: meta}, func(c *gin.Context, job service.RiskObservationJob) bool {
+		return service.ProcessRiskObservationForRelay(c.Request.Context(), job)
+	})
+	if newAPIError != nil {
+		return
 	}
 
 	tokens, err := service.EstimateRequestToken(c, meta, relayInfo)
@@ -415,12 +412,10 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		useTimeSeconds := int(time.Since(startTime).Seconds())
 		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 	}
-
 }
 
 func RelayMidjourney(c *gin.Context) {
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatMjProxy, nil, nil)
-
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"description": fmt.Sprintf("failed to generate relay info: %s", err.Error()),
@@ -443,7 +438,7 @@ func RelayMidjourney(c *gin.Context) {
 	default:
 		mjErr = relay.RelayMidjourneySubmit(c, relayInfo)
 	}
-	//err = relayMidjourneySubmit(c, relayMode)
+	// err = relayMidjourneySubmit(c, relayMode)
 	log.Println(mjErr)
 	if mjErr != nil {
 		statusCode := http.StatusBadRequest

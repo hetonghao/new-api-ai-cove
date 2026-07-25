@@ -1,36 +1,59 @@
 package controller
 
 import (
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
+
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/logger"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
 
-func RelayWithRiskObservation(format types.RelayFormat) gin.HandlerFunc {
-	return relayWithRiskObservation(format, Relay, service.EnqueueRiskObservation)
+type relayRiskContext struct {
+	request dto.Request
+	info    *relaycommon.RelayInfo
+	meta    *types.TokenCountMeta
 }
 
-func relayWithRiskObservation(
-	format types.RelayFormat,
-	relay func(*gin.Context, types.RelayFormat),
-	enqueue func(service.RiskObservationJob) bool,
-) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		request, err := helper.GetAndValidateRequest(c, format)
-		if err == nil {
-			text := service.ExtractRiskObservationText(request)
-			if text != "" {
-				enqueue(service.RiskObservationJob{
-					RequestID:   c.GetString(common.RequestIdKey),
-					ChannelID:   c.GetInt("channel_id"),
-					ChannelName: c.GetString("channel_name"),
-					UserID:      c.GetInt("id"),
-					Text:        text,
-				})
-			}
+type relayRiskProcessor func(*gin.Context, service.RiskObservationJob) bool
+
+func applyRelayRiskGate(c *gin.Context, risk relayRiskContext, process relayRiskProcessor) *types.NewAPIError {
+	if setting.ShouldCheckPromptSensitive() && risk.meta != nil {
+		contains, words := service.CheckSensitiveText(risk.meta.CombineText)
+		if contains {
+			logger.LogWarn(c, fmt.Sprintf("user sensitive words detected: %s", strings.Join(words, ", ")))
+			return newSensitiveWordsDetectedError()
 		}
-		relay(c, format)
 	}
+	text := service.ExtractRiskObservationText(risk.request)
+	if text == "" || risk.info == nil || process == nil {
+		return nil
+	}
+	blocked := process(c, service.RiskObservationJob{
+		RequestID:   c.GetString(common.RequestIdKey),
+		ChannelID:   common.GetContextKeyInt(c, constant.ContextKeyChannelId),
+		ChannelName: common.GetContextKeyString(c, constant.ContextKeyChannelName),
+		UserID:      c.GetInt("id"),
+		TokenID:     c.GetInt("token_id"),
+		Model:       risk.info.OriginModelName,
+		Path:        c.Request.URL.Path,
+		Text:        text,
+	})
+	if !blocked {
+		return nil
+	}
+	return types.NewErrorWithStatusCode(
+		errors.New("request rejected by content policy"),
+		types.ErrorCodeContentPolicyViolation,
+		http.StatusBadRequest,
+		types.ErrOptionWithSkipRetry(),
+	)
 }

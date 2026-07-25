@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -67,4 +68,61 @@ func TestRiskObservationQueue_degrades_pending_jobs_on_close(t *testing.T) {
 	// Then
 	require.Equal(t, "pending", (<-degraded).RequestID)
 	require.False(t, queue.Enqueue(RiskObservationJob{RequestID: "after-close"}))
+}
+
+func TestRiskObservationQueue_records_precomputed_event_without_processing_job(t *testing.T) {
+	// Given
+	processed := make(chan RiskObservationJob, 1)
+	recorded := make(chan RiskObservationEvent, 1)
+	queue := NewRiskObservationQueue(context.Background(), RiskObservationQueueConfig{
+		Capacity: 1,
+		Process: func(_ context.Context, job RiskObservationJob) {
+			processed <- job
+		},
+		Record: func(_ context.Context, event RiskObservationEvent) {
+			recorded <- event
+		},
+	})
+	t.Cleanup(func() {
+		queue.Close(context.Background())
+	})
+	event := RiskObservationEvent{RequestID: "precomputed", Result: RiskObservationUnsafe}
+
+	// When
+	accepted := queue.EnqueueEvent(event)
+
+	// Then
+	require.True(t, accepted)
+	require.Equal(t, event, <-recorded)
+	select {
+	case job := <-processed:
+		t.Fatalf("precomputed event was processed as a review job: %+v", job)
+	default:
+	}
+}
+
+func TestRiskObservationQueue_returns_immediately_when_precomputed_event_sink_is_slow(t *testing.T) {
+	// Given
+	recording := make(chan struct{})
+	release := make(chan struct{})
+	var recordingOnce sync.Once
+	queue := NewRiskObservationQueue(context.Background(), RiskObservationQueueConfig{
+		Capacity: 1,
+		Record: func(_ context.Context, _ RiskObservationEvent) {
+			recordingOnce.Do(func() { close(recording) })
+			<-release
+		},
+	})
+	t.Cleanup(func() {
+		close(release)
+		queue.Close(context.Background())
+	})
+	require.True(t, queue.EnqueueEvent(RiskObservationEvent{RequestID: "slow"}))
+	<-recording
+
+	// When
+	accepted := queue.EnqueueEvent(RiskObservationEvent{RequestID: "queued"})
+
+	// Then
+	require.True(t, accepted)
 }
