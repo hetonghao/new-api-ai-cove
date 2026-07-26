@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -24,6 +25,12 @@ type riskProviderAPIResponse struct {
 	Success bool            `json:"success"`
 	Message string          `json:"message"`
 	Data    json.RawMessage `json:"data"`
+}
+
+type riskProviderControllerRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn riskProviderControllerRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
 }
 
 type riskProviderTestCall struct {
@@ -123,6 +130,48 @@ func TestRiskProviderAPIWorkflowKeepsCredentialsMasked(t *testing.T) {
 
 	deleted := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodDelete, Target: "/api/risk/providers/1", Id: created.Id, Handler: DeleteRiskProvider})
 	require.True(t, deleted.Success, deleted.Message)
+}
+
+func TestValidateRiskProvider_acceptsFractionalCloudflareNeurons(t *testing.T) {
+	// Given
+	db := setupRiskProviderControllerTest(t)
+	ciphertext, err := common.EncryptCredential("cf-token")
+	require.NoError(t, err)
+	provider := &model.RiskProvider{
+		Name: "Cloudflare", ProviderType: model.RiskProviderCloudflare,
+		AccountID: "0123456789abcdef0123456789abcdef", Model: "@cf/meta/llama-guard-3-8b",
+		CredentialEncrypted: ciphertext, TimeoutMs: 800,
+	}
+	require.NoError(t, model.CreateRiskProvider(provider))
+	client := service.GetHttpClient()
+	require.NotNil(t, client)
+	originalTransport := client.Transport
+	client.Transport = riskProviderControllerRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		assert.Equal(t, "https://api.cloudflare.com/client/v4/accounts/0123456789abcdef0123456789abcdef/ai/run/@cf/meta/llama-guard-3-8b", request.URL.String())
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"success":true,"result":{"response":{"safe":true,"categories":[]},"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4,"neurons":9.072817475858999}}}`,
+			)),
+		}, nil
+	})
+	t.Cleanup(func() { client.Transport = originalTransport })
+
+	// When
+	response := callRiskProviderHandler(t, riskProviderTestCall{
+		Method: http.MethodPost, Target: "/api/risk/providers/1/validate", Id: provider.Id, Handler: ValidateRiskProvider,
+	})
+
+	// Then
+	require.True(t, response.Success, response.Message)
+	var result service.RiskReviewResult
+	require.NoError(t, common.Unmarshal(response.Data, &result))
+	assert.Equal(t, service.RiskReviewSafe, result.Status)
+	assert.InDelta(t, 9.072817475858999, result.Usage.Neurons, 1e-12)
+	var stored model.RiskProvider
+	require.NoError(t, db.First(&stored, provider.Id).Error)
+	assert.NotNil(t, stored.ValidatedAt)
 }
 
 func TestUpdateRiskProviderRevokesValidationWhenConnectionChanges(t *testing.T) {

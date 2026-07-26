@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -12,13 +13,16 @@ import (
 
 func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 	tests := []struct {
-		name       string
-		event      RiskObservationEvent
-		wantSource model.RiskRecordSource
+		name             string
+		event            RiskObservationEvent
+		wantSource       model.RiskRecordSource
+		wantNeurons      int64
+		wantChunkNeurons int64
 	}{
 		{
-			name:       "unsafe result with provider",
-			wantSource: model.RiskRecordSourceCache,
+			name:        "unsafe result with provider",
+			wantSource:  model.RiskRecordSourceCache,
+			wantNeurons: 9,
 			event: RiskObservationEvent{
 				RequestID: "req-sink", ChannelID: 12, UserID: 34, TokenID: 55,
 				Model: "gpt-5.6", Path: "/v1/responses", Preview: "masked preview",
@@ -26,7 +30,7 @@ func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 				Source:      RiskObservationSourceCache, CacheHit: true, Blocked: true, RuleIDs: []int{5, 8},
 				ProviderID: 21, ProviderName: "Cloudflare", Result: RiskObservationUnsafe,
 				Categories: []string{"violent crimes"}, LatencyMS: 93, PromptTokens: 11,
-				CompletionTokens: 2, TotalTokens: 13, Neurons: 7,
+				CompletionTokens: 2, TotalTokens: 13, Neurons: 9.072817475858999,
 				ObservedAt: time.Date(2026, time.July, 25, 12, 30, 0, 0, time.UTC),
 			},
 		},
@@ -40,15 +44,16 @@ func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 			},
 		},
 		{
-			name:       "actual provider call",
-			wantSource: model.RiskRecordSourceProvider,
+			name:             "actual provider call",
+			wantSource:       model.RiskRecordSourceProvider,
+			wantChunkNeurons: 6,
 			event: RiskObservationEvent{
 				RequestID: "req-provider", ChannelID: 12, UserID: 34,
 				ProviderID: 21, ProviderName: "Cloudflare", Result: RiskObservationSafe,
 				Source: RiskObservationSourceProvider, ProviderCalled: true,
 				Chunks: []RiskReviewChunkAudit{{
 					Index: 0, Status: RiskReviewSafe, Categories: []string{"clean"}, LatencyMS: 17,
-					Usage: RiskReviewUsage{PromptTokens: 3, CompletionTokens: 1, TotalTokens: 4, Neurons: 5},
+					Usage: RiskReviewUsage{PromptTokens: 3, CompletionTokens: 1, TotalTokens: 4, Neurons: 5.625},
 				}},
 				ObservedAt: time.Date(2026, time.July, 25, 12, 32, 0, 0, time.UTC),
 			},
@@ -99,7 +104,7 @@ func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 			assert.Equal(t, test.event.PromptTokens, record.PromptTokens)
 			assert.Equal(t, test.event.CompletionTokens, record.CompletionTokens)
 			assert.Equal(t, test.event.TotalTokens, record.TotalTokens)
-			assert.Equal(t, test.event.Neurons, record.Neurons)
+			assert.Equal(t, test.wantNeurons, record.Neurons)
 			if len(test.event.Chunks) == 0 {
 				assert.Empty(t, record.Chunks)
 			} else {
@@ -109,9 +114,41 @@ func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 				assert.Equal(t, test.event.Chunks[0].Categories, record.Chunks[0].Categories)
 				assert.Equal(t, test.event.Chunks[0].LatencyMS, record.Chunks[0].LatencyMS)
 				assert.Equal(t, test.event.Chunks[0].Usage.TotalTokens, record.Chunks[0].TotalTokens)
+				assert.Equal(t, test.wantChunkNeurons, record.Chunks[0].Neurons)
 			}
 			assert.Equal(t, test.event.ErrorCode, record.ErrorCode)
 			assert.Equal(t, test.event.ObservedAt, record.ObservedAt)
+		})
+	}
+}
+
+func TestRiskObservationNeuronsForStorage_roundsAndRejectsInvalidValues(t *testing.T) {
+	tests := []struct {
+		name    string
+		neurons float64
+		want    int64
+		wantErr bool
+	}{
+		{name: "integer", neurons: 12, want: 12},
+		{name: "fractional below half", neurons: 9.072817475858999, want: 9},
+		{name: "fractional half rounds up", neurons: 9.5, want: 10},
+		{name: "negative", neurons: -0.1, wantErr: true},
+		{name: "not a number", neurons: math.NaN(), wantErr: true},
+		{name: "infinity", neurons: math.Inf(1), wantErr: true},
+		{name: "overflow", neurons: math.Exp2(63), wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// When
+			got, err := riskObservationNeuronsForStorage(test.neurons)
+
+			// Then
+			if test.wantErr {
+				require.ErrorIs(t, err, errInvalidRiskObservationNeurons)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, test.want, got)
 		})
 	}
 }

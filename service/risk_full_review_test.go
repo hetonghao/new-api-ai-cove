@@ -49,7 +49,7 @@ func TestReviewFullRiskText_unsafe_dominates_errors_and_aggregates_trace(t *test
 	}{
 		{result: RiskReviewResult{Status: RiskReviewSafe, Categories: []string{"safe-note"}, Usage: RiskReviewUsage{PromptTokens: 3, TotalTokens: 3}}},
 		{result: RiskReviewResult{Categories: []string{"partial"}, Usage: RiskReviewUsage{PromptTokens: 2}}, err: providerErr},
-		{result: RiskReviewResult{Status: RiskReviewUnsafe, Categories: []string{"S1", "S1"}, Usage: RiskReviewUsage{PromptTokens: 5, CompletionTokens: 1, TotalTokens: 6, Neurons: 9}}},
+		{result: RiskReviewResult{Status: RiskReviewUnsafe, Categories: []string{"S1", "S1"}, Usage: RiskReviewUsage{PromptTokens: 5, CompletionTokens: 1, TotalTokens: 6, Neurons: 9.072817475858999}}},
 	}
 	call := 0
 	reviewer := func(_ context.Context, _ string) (RiskReviewResult, error) {
@@ -63,7 +63,10 @@ func TestReviewFullRiskText_unsafe_dominates_errors_and_aggregates_trace(t *test
 	require.NoError(t, err)
 	require.Equal(t, RiskReviewUnsafe, got.Status)
 	require.Equal(t, []string{"safe-note", "partial", "S1"}, got.Categories)
-	require.Equal(t, RiskReviewUsage{PromptTokens: 10, CompletionTokens: 1, TotalTokens: 9, Neurons: 9}, got.Usage)
+	require.Equal(t, 10, got.Usage.PromptTokens)
+	require.Equal(t, 1, got.Usage.CompletionTokens)
+	require.Equal(t, 9, got.Usage.TotalTokens)
+	require.InDelta(t, 9.072817475858999, got.Usage.Neurons, 1e-12)
 	require.Len(t, got.Chunks, 3)
 	require.Equal(t, RiskReviewError, got.Chunks[1].Status)
 	require.ErrorIs(t, got.Chunks[1].Err, providerErr)

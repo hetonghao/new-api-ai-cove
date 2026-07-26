@@ -49,7 +49,7 @@ type RiskObservationEvent struct {
 	PromptTokens     int
 	CompletionTokens int
 	TotalTokens      int
-	Neurons          int64
+	Neurons          float64
 	Chunks           []RiskReviewChunkAudit
 	ErrorCode        string
 	Source           RiskObservationSource

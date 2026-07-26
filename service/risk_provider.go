@@ -26,10 +26,10 @@ const (
 )
 
 type RiskReviewUsage struct {
-	PromptTokens     int   `json:"prompt_tokens"`
-	CompletionTokens int   `json:"completion_tokens"`
-	TotalTokens      int   `json:"total_tokens"`
-	Neurons          int64 `json:"neurons"`
+	PromptTokens     int     `json:"prompt_tokens"`
+	CompletionTokens int     `json:"completion_tokens"`
+	TotalTokens      int     `json:"total_tokens"`
+	Neurons          float64 `json:"neurons"`
 }
 
 type RiskReviewResult struct {

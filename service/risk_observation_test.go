@@ -38,7 +38,7 @@ func TestProcessRiskObservation_reviews_selective_hit_and_records_usage(t *testi
 		require.NoError(t, common.DecodeJson(request.Body, &body))
 		reviewedContent = body.Messages[0].Content
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"success":true,"result":{"response":{"safe":false,"categories":["S1"]},"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4,"neurons":9}}}`))
+		_, _ = w.Write([]byte(`{"success":true,"result":{"response":{"safe":false,"categories":["S1"]},"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4,"neurons":9.072817475858999}}}`))
 	}))
 	defer providerServer.Close()
 	provider := createActiveRiskProvider(t, providerServer.URL)
@@ -74,7 +74,7 @@ func TestProcessRiskObservation_reviews_selective_hit_and_records_usage(t *testi
 	require.Equal(t, []int{1}, event.RuleIDs)
 	require.Equal(t, []string{"S1"}, event.Categories)
 	require.Equal(t, 3, event.PromptTokens)
-	require.Equal(t, int64(9), event.Neurons)
+	require.InDelta(t, 9.072817475858999, event.Neurons, 1e-12)
 	require.Equal(t, provider.Id, event.ProviderID)
 	require.LessOrEqual(t, len([]rune(reviewedContent)), riskExcerptLimit)
 }

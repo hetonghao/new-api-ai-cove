@@ -25,13 +25,15 @@ func TestReviewRiskContentMapsCloudflareResponses(t *testing.T) {
 	t.Cleanup(func() { common.CryptoSecret = originalSecret })
 
 	tests := []struct {
-		name       string
-		response   string
-		legacy     bool
-		wantStatus RiskReviewStatus
-		categories []string
+		name        string
+		response    string
+		legacy      bool
+		wantStatus  RiskReviewStatus
+		categories  []string
+		wantNeurons float64
 	}{
-		{name: "safe object", response: `{"success":true,"result":{"response":{"safe":true,"categories":[]},"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4,"neurons":12}}}`, wantStatus: RiskReviewSafe, categories: []string{}},
+		{name: "safe object", response: `{"success":true,"result":{"response":{"safe":true,"categories":[]},"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4,"neurons":12}}}`, wantStatus: RiskReviewSafe, categories: []string{}, wantNeurons: 12},
+		{name: "safe object with fractional neurons", response: `{"success":true,"result":{"response":{"safe":true,"categories":[]},"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4,"neurons":9.072817475858999}}}`, wantStatus: RiskReviewSafe, categories: []string{}, wantNeurons: 9.072817475858999},
 		{name: "unsafe text from legacy row", response: `{"success":true,"result":{"response":"unsafe\nS1,S9","usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}}`, legacy: true, wantStatus: RiskReviewUnsafe, categories: []string{"S1", "S9"}},
 	}
 
@@ -68,8 +70,8 @@ func TestReviewRiskContentMapsCloudflareResponses(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantStatus, result.Status)
 			assert.Equal(t, tt.categories, result.Categories)
-			if tt.name == "safe object" {
-				assert.Equal(t, int64(12), result.Usage.Neurons)
+			if tt.wantNeurons != 0 {
+				assert.InDelta(t, tt.wantNeurons, result.Usage.Neurons, 1e-12)
 			}
 		})
 	}
