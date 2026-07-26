@@ -74,4 +74,60 @@ func TestRiskRecordCleanupHandler_deletesAtMostConfiguredBatchesAndRecordsHistor
 	var result RiskRecordCleanupResult
 	require.NoError(t, json.Unmarshal([]byte(completed.Result), &result))
 	assert.EqualValues(t, 4, result.DeletedCount)
+	var state riskRecordCleanupState
+	require.NoError(t, json.Unmarshal([]byte(completed.State), &state))
+	assert.EqualValues(t, 4, state.Total)
+	assert.EqualValues(t, 4, state.Processed)
+	assert.Equal(t, 100, state.Progress)
+}
+
+func TestRiskRecordCleanupHandler_finishesEmptyRunAtOneHundredPercent(t *testing.T) {
+	// Given
+	setupRiskRecordCleanupTest(t)
+	now := time.Date(2026, time.July, 25, 12, 0, 0, 0, time.UTC)
+	_, err := model.SaveRiskRecordGovernance(context.Background(), model.RiskRecordGovernanceInput{
+		SaveScope: model.RiskRecordSaveAll, RetentionDays: 30,
+	})
+	require.NoError(t, err)
+	task, err := model.CreateSystemTask(model.SystemTaskTypeRiskRecordCleanup, nil, nil)
+	require.NoError(t, err)
+	const runnerID = "risk-cleanup-empty-test"
+	claimedTask, claimed, err := model.ClaimSystemTask(task.ID, task.Type, runnerID, common.GetTimestamp()+60)
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	// When
+	riskRecordCleanupHandler{now: func() time.Time { return now }}.Run(context.Background(), claimedTask, runnerID)
+
+	// Then
+	completed, err := model.GetSystemTaskByTaskID(task.TaskID)
+	require.NoError(t, err)
+	require.Equal(t, model.SystemTaskStatusSucceeded, completed.Status)
+	var state riskRecordCleanupState
+	require.NoError(t, json.Unmarshal([]byte(completed.State), &state))
+	assert.Zero(t, state.Total)
+	assert.Zero(t, state.Processed)
+	assert.Equal(t, 100, state.Progress)
+}
+
+func TestRiskRecordCleanupHandler_preservesFailureStateWhenCanceled(t *testing.T) {
+	// Given
+	setupRiskRecordCleanupTest(t)
+	task, err := model.CreateSystemTask(model.SystemTaskTypeRiskRecordCleanup, nil, nil)
+	require.NoError(t, err)
+	const runnerID = "risk-cleanup-canceled-test"
+	claimedTask, claimed, err := model.ClaimSystemTask(task.ID, task.Type, runnerID, common.GetTimestamp()+60)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// When
+	riskRecordCleanupHandler{}.Run(ctx, claimedTask, runnerID)
+
+	// Then
+	completed, err := model.GetSystemTaskByTaskID(task.TaskID)
+	require.NoError(t, err)
+	assert.Equal(t, model.SystemTaskStatusFailed, completed.Status)
+	assert.Contains(t, completed.Error, context.Canceled.Error())
 }

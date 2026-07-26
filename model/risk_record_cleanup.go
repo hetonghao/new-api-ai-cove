@@ -11,6 +11,23 @@ var ErrInvalidRiskRecordCleanup = errors.New("invalid risk record cleanup")
 
 const SystemTaskTypeRiskRecordCleanup = "risk_record_cleanup"
 
+func CountExpiredRiskRecords(ctx context.Context, cutoff time.Time) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	if cutoff.IsZero() {
+		return 0, ErrInvalidRiskRecordCleanup
+	}
+
+	var count int64
+	if err := DB.WithContext(ctx).Model(&RiskRecord{}).
+		Where("observed_at < ?", cutoff.UTC()).
+		Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("count expired risk records: %w", err)
+	}
+	return count, nil
+}
+
 func DeleteExpiredRiskRecordsBatch(ctx context.Context, cutoff time.Time, limit int) (int64, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err

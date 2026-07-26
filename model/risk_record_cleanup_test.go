@@ -52,3 +52,38 @@ func TestDeleteExpiredRiskRecordsBatch_honorsCancellationAndInputBounds(t *testi
 	require.ErrorIs(t, cutoffErr, ErrInvalidRiskRecordCleanup)
 	require.ErrorIs(t, limitErr, ErrInvalidRiskRecordCleanup)
 }
+
+func TestCountExpiredRiskRecords_countsOnlyRowsStrictlyBeforeCutoff(t *testing.T) {
+	// Given
+	db := setupRiskRecordModelTest(t)
+	cutoff := time.Date(2026, time.July, 25, 12, 0, 0, 0, time.UTC)
+	for index, observedAt := range []time.Time{
+		cutoff.Add(-time.Second),
+		cutoff,
+		cutoff.Add(time.Second),
+	} {
+		require.NoError(t, db.Create(&RiskRecord{RequestID: string(rune('a' + index)), ObservedAt: observedAt}).Error)
+	}
+
+	// When
+	count, err := CountExpiredRiskRecords(context.Background(), cutoff)
+
+	// Then
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, count)
+}
+
+func TestCountExpiredRiskRecords_honorsCancellationAndCutoffBounds(t *testing.T) {
+	// Given
+	setupRiskRecordModelTest(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// When
+	_, canceledErr := CountExpiredRiskRecords(ctx, time.Now())
+	_, cutoffErr := CountExpiredRiskRecords(context.Background(), time.Time{})
+
+	// Then
+	require.ErrorIs(t, canceledErr, context.Canceled)
+	require.ErrorIs(t, cutoffErr, ErrInvalidRiskRecordCleanup)
+}
