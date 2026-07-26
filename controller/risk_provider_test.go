@@ -2,7 +2,9 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
@@ -44,6 +47,7 @@ type riskProviderTestCall struct {
 func setupRiskProviderControllerTest(t *testing.T) *gorm.DB {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
+	require.NoError(t, i18n.Init())
 	originalDB := model.DB
 	originalSecret := common.CryptoSecret
 	originalMainType := common.MainDatabaseType()
@@ -54,7 +58,7 @@ func setupRiskProviderControllerTest(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB = db
-	require.NoError(t, db.AutoMigrate(&model.RiskProvider{}))
+	require.NoError(t, db.AutoMigrate(&model.RiskProvider{}, &model.RiskRecord{}, &model.RiskRecordGovernance{}))
 	service.InitHttpClient()
 	t.Cleanup(func() {
 		model.DB = originalDB
@@ -62,6 +66,45 @@ func setupRiskProviderControllerTest(t *testing.T) *gorm.DB {
 		common.SetDatabaseTypes(originalMainType, originalLogType)
 	})
 	return db
+}
+
+func TestValidateRiskProvider_mapsDeadlineExceededToActionableMessage(t *testing.T) {
+	db := setupRiskProviderControllerTest(t)
+	ciphertext, err := common.EncryptCredential("cf-token")
+	require.NoError(t, err)
+	provider := &model.RiskProvider{
+		Name: "Cloudflare", ProviderType: model.RiskProviderCloudflare,
+		AccountID: "0123456789abcdef0123456789abcdef", Model: "@cf/meta/llama-guard-3-8b",
+		CredentialEncrypted: ciphertext, TimeoutMs: 800,
+	}
+	require.NoError(t, model.CreateRiskProvider(provider))
+	client := service.GetHttpClient()
+	require.NotNil(t, client)
+	originalTransport := client.Transport
+	client.Transport = riskProviderControllerRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, context.DeadlineExceeded
+	})
+	t.Cleanup(func() { client.Transport = originalTransport })
+
+	response := callRiskProviderHandler(t, riskProviderTestCall{
+		Method: http.MethodPost, Target: "/api/risk/providers/1/validate", Id: provider.Id, Handler: ValidateRiskProvider,
+	})
+
+	assert.False(t, response.Success)
+	assert.Equal(t, "Risk provider connection timed out (current timeout: 800 ms). Increase the timeout and try again.", response.Message)
+	assert.NotContains(t, response.Message, "api.cloudflare.com")
+	assert.NotContains(t, response.Message, provider.AccountID)
+	assert.NotContains(t, response.Message, "context deadline exceeded")
+	var record model.RiskRecord
+	require.NoError(t, db.Take(&record).Error)
+	assert.Equal(t, provider.Id, record.ProviderID)
+	assert.Equal(t, provider.Name, record.ProviderName)
+	assert.Equal(t, model.RiskRecordResultError, record.Result)
+	assert.Equal(t, model.RiskRecordSourceProvider, record.Source)
+	assert.True(t, record.ProviderCalled)
+	assert.Equal(t, "timeout", record.ErrorCode)
+	assert.Equal(t, 0, record.ChannelID)
+	assert.Equal(t, 1, record.UserID)
 }
 
 func callRiskProviderHandler(t *testing.T, call riskProviderTestCall) riskProviderAPIResponse {
@@ -76,6 +119,7 @@ func callRiskProviderHandler(t *testing.T, call riskProviderTestCall) riskProvid
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(call.Method, call.Target, bytes.NewReader(payload))
 	ctx.Request.Header.Set("Content-Type", "application/json")
+	ctx.Set("id", 1)
 	if call.Id > 0 {
 		ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(call.Id)}}
 	}
@@ -172,6 +216,92 @@ func TestValidateRiskProvider_acceptsFractionalCloudflareNeurons(t *testing.T) {
 	var stored model.RiskProvider
 	require.NoError(t, db.First(&stored, provider.Id).Error)
 	assert.NotNil(t, stored.ValidatedAt)
+	var record model.RiskRecord
+	require.NoError(t, db.Take(&record).Error)
+	assert.Equal(t, provider.Id, record.ProviderID)
+	assert.Equal(t, provider.Name, record.ProviderName)
+	assert.Equal(t, model.RiskRecordResultSafe, record.Result)
+	assert.Equal(t, model.RiskRecordSourceProvider, record.Source)
+	assert.True(t, record.ProviderCalled)
+	assert.Empty(t, record.ErrorCode)
+	assert.Equal(t, 3, record.PromptTokens)
+	assert.Equal(t, 1, record.CompletionTokens)
+	assert.Equal(t, 4, record.TotalTokens)
+	assert.EqualValues(t, 9, record.Neurons)
+}
+
+func TestValidateRiskProvider_usesCustomTestContentAndRecordsItsPreview(t *testing.T) {
+	// Given
+	db := setupRiskProviderControllerTest(t)
+	ciphertext, err := common.EncryptCredential("cf-token")
+	require.NoError(t, err)
+	provider := &model.RiskProvider{
+		Name: "Cloudflare", ProviderType: model.RiskProviderCloudflare,
+		AccountID: "0123456789abcdef0123456789abcdef", Model: "@cf/meta/llama-guard-3-8b",
+		CredentialEncrypted: ciphertext, TimeoutMs: 800,
+	}
+	require.NoError(t, model.CreateRiskProvider(provider))
+	client := service.GetHttpClient()
+	require.NotNil(t, client)
+	originalTransport := client.Transport
+	client.Transport = riskProviderControllerRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body, readErr := io.ReadAll(request.Body)
+		require.NoError(t, readErr)
+		assert.Contains(t, string(body), "custom moderation content")
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"success":true,"result":{"response":{"safe":true,"categories":[]},"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4,"neurons":9}}}`,
+			)),
+		}, nil
+	})
+	t.Cleanup(func() { client.Transport = originalTransport })
+
+	// When
+	response := callRiskProviderHandler(t, riskProviderTestCall{
+		Method: http.MethodPost, Target: "/api/risk/providers/1/validate",
+		Body: map[string]string{"text": "custom moderation content"}, Id: provider.Id, Handler: ValidateRiskProvider,
+	})
+
+	// Then
+	require.True(t, response.Success, response.Message)
+	var record model.RiskRecord
+	require.NoError(t, db.Take(&record).Error)
+	assert.Equal(t, "custom moderation content", record.Preview)
+	assert.NotEmpty(t, record.ContentHash)
+}
+
+func TestValidateRiskProvider_rejectsBlankCustomTestContent(t *testing.T) {
+	// Given
+	setupRiskProviderControllerTest(t)
+	ciphertext, err := common.EncryptCredential("cf-token")
+	require.NoError(t, err)
+	provider := &model.RiskProvider{
+		Name: "Cloudflare", ProviderType: model.RiskProviderCloudflare,
+		AccountID: "0123456789abcdef0123456789abcdef", Model: "@cf/meta/llama-guard-3-8b",
+		CredentialEncrypted: ciphertext, TimeoutMs: 800,
+	}
+	require.NoError(t, model.CreateRiskProvider(provider))
+	client := service.GetHttpClient()
+	require.NotNil(t, client)
+	originalTransport := client.Transport
+	called := false
+	client.Transport = riskProviderControllerRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		called = true
+		return nil, errors.New("unexpected upstream call")
+	})
+	t.Cleanup(func() { client.Transport = originalTransport })
+
+	// When
+	response := callRiskProviderHandler(t, riskProviderTestCall{
+		Method: http.MethodPost, Target: "/api/risk/providers/1/validate",
+		Body: map[string]string{"text": "   "}, Id: provider.Id, Handler: ValidateRiskProvider,
+	})
+
+	// Then
+	assert.False(t, response.Success)
+	assert.False(t, called)
 }
 
 func TestUpdateRiskProviderRevokesValidationWhenConnectionChanges(t *testing.T) {

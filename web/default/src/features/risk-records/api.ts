@@ -20,12 +20,16 @@ import { api } from '@/lib/api'
 
 import { buildRiskRecordQueryParams } from './lib/risk-records'
 import {
+  riskRecordGovernanceResponseSchema,
   riskRecordResponseSchema,
+  type RiskRecordGovernance,
+  type RiskRecordGovernanceResponse,
   type RiskRecordFilters,
   type RiskRecordResponse,
 } from './types'
 
 const BASE_PATH = '/api/risk/records'
+const SETTINGS_PATH = `${BASE_PATH}/settings`
 
 export class RiskRecordResponseError extends Error {
   readonly name = 'RiskRecordResponseError'
@@ -43,6 +47,30 @@ export async function listRiskRecords(
   const parsed = riskRecordResponseSchema.safeParse(response.data)
   if (!parsed.success) {
     throw new RiskRecordResponseError('Invalid risk record response')
+  }
+  return parsed.data
+}
+
+export async function getRiskRecordGovernance(): Promise<RiskRecordGovernanceResponse> {
+  const response = await api.get<unknown>(SETTINGS_PATH, {
+    skipErrorHandler: true,
+  })
+  const parsed = riskRecordGovernanceResponseSchema.safeParse(response.data)
+  if (!parsed.success) {
+    throw new RiskRecordResponseError('Invalid risk record settings response')
+  }
+  return parsed.data
+}
+
+export async function updateRiskRecordGovernance(
+  payload: RiskRecordGovernance
+): Promise<RiskRecordGovernanceResponse> {
+  const response = await api.put<unknown>(SETTINGS_PATH, payload, {
+    skipErrorHandler: true,
+  })
+  const parsed = riskRecordGovernanceResponseSchema.safeParse(response.data)
+  if (!parsed.success) {
+    throw new RiskRecordResponseError('Invalid risk record settings response')
   }
   return parsed.data
 }

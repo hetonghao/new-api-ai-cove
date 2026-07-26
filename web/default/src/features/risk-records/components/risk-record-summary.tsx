@@ -23,6 +23,7 @@ import { StatusBadge } from '@/components/status-badge'
 import {
   getRiskRecordResultLabel,
   getRiskRecordResultVariant,
+  getRiskRecordCategoryLabel,
   getRiskRecordSourceLabel,
   getRiskRecordSourceVariant,
 } from '../lib/risk-records'
@@ -41,23 +42,30 @@ export function RiskRecordIdList(props: {
 export function RiskRecordCategoryList(props: {
   readonly values: readonly string[]
 }) {
+  const { t } = useTranslation()
   const categories = [...new Set(props.values)]
 
   return categories.length ? (
     <div className='flex min-w-0 flex-wrap gap-1'>
-      {categories.map((category) => (
-        <StatusBadge
-          key={category}
-          label={category}
-          variant='neutral'
-          copyable={false}
-          className='h-auto max-w-full py-0.5 whitespace-normal'
-        >
-          <span className='min-w-0 leading-normal break-words whitespace-normal'>
-            {category}
-          </span>
-        </StatusBadge>
-      ))}
+      {categories.map((category) => {
+        const label = getRiskRecordCategoryLabel(category)
+        const displayLabel = label ? `${category} · ${t(label)}` : category
+
+        return (
+          <StatusBadge
+            key={category}
+            label={displayLabel}
+            variant='neutral'
+            type='text'
+            copyable={false}
+            className='h-auto max-w-full py-0.5 whitespace-normal'
+          >
+            <span className='min-w-0 leading-normal break-words whitespace-normal'>
+              {displayLabel}
+            </span>
+          </StatusBadge>
+        )
+      })}
     </div>
   ) : (
     <span className='text-muted-foreground'>-</span>
@@ -135,36 +143,52 @@ export function RiskRecordChunkList(props: {
 }
 
 export function RiskRecordBadges(props: { readonly record: RiskRecord }) {
-  const { t } = useTranslation()
   const { record } = props
-  const resultLabel = getRiskRecordResultLabel(record.result)
-  const sourceLabel = getRiskRecordSourceLabel(record.source)
 
   return (
     <div className='flex min-w-0 flex-wrap gap-1'>
-      <StatusBadge
-        label={
-          resultLabel
-            ? t(resultLabel)
-            : t('Unknown value: {{value}}', { value: record.result })
-        }
-        variant={getRiskRecordResultVariant(record.result)}
-        copyable={false}
-        className='h-auto max-w-full py-0.5 whitespace-normal'
-      />
-      {record.source && (
-        <StatusBadge
-          label={
-            sourceLabel
-              ? t(sourceLabel)
-              : t('Unknown value: {{value}}', { value: record.source })
-          }
-          variant={getRiskRecordSourceVariant(record.source)}
-          copyable={false}
-          className='h-auto max-w-full py-0.5 whitespace-normal'
-        />
-      )}
+      <RiskRecordSourceBadge source={record.source} />
+      <RiskRecordResultBadge result={record.result} />
     </div>
+  )
+}
+
+export function RiskRecordResultBadge(props: { readonly result: string }) {
+  const { t } = useTranslation()
+  const label = getRiskRecordResultLabel(props.result)
+
+  return (
+    <StatusBadge
+      label={
+        label
+          ? t(label)
+          : t('Unknown value: {{value}}', { value: props.result })
+      }
+      variant={getRiskRecordResultVariant(props.result)}
+      type='text'
+      copyable={false}
+      className='h-auto max-w-full py-0.5 whitespace-normal'
+    />
+  )
+}
+
+export function RiskRecordSourceBadge(props: { readonly source: string }) {
+  const { t } = useTranslation()
+  if (!props.source) return null
+  const label = getRiskRecordSourceLabel(props.source)
+
+  return (
+    <StatusBadge
+      label={
+        label
+          ? t(label)
+          : t('Unknown value: {{value}}', { value: props.source })
+      }
+      variant={getRiskRecordSourceVariant(props.source)}
+      type='text'
+      copyable={false}
+      className='h-auto max-w-full py-0.5 whitespace-normal'
+    />
   )
 }
 
@@ -201,12 +225,17 @@ export function RiskRecordProviderSummary(props: {
   }
 
   return (
-    <div className='min-w-0'>
-      <p className='font-medium break-words' title={record.provider_name}>
+    <span
+      className='inline-flex max-w-full min-w-0 items-center gap-1.5 whitespace-nowrap'
+      title={`${record.provider_name} #${record.provider_id}`}
+    >
+      <span className='min-w-0 truncate font-medium'>
         {record.provider_name}
-      </p>
-      <p className='text-muted-foreground text-xs'>#{record.provider_id}</p>
-    </div>
+      </span>
+      <span className='text-muted-foreground shrink-0 text-xs'>
+        #{record.provider_id}
+      </span>
+    </span>
   )
 }
 

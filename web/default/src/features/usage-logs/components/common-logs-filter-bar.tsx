@@ -23,8 +23,6 @@ import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -130,13 +128,11 @@ export function CommonLogsFilterBar<TData>(
     search: searchParams,
     navigateSearch,
     adminControls,
-    hideSelfControl,
     advancedFilterExpansionRequest,
     queryKeyScope,
   } = useUsageLogsContext()
   const fetchingLogs = useIsFetching({ queryKey: ['logs', queryKeyScope] })
   const canUseAdminControls = adminControls ?? isAdminView
-  const canHideSelf = hideSelfControl ?? isAdminView
 
   const searchState = useMemo<CommonLogDraft>(() => {
     const { start, end } = getDefaultTimeRange()
@@ -260,7 +256,6 @@ export function CommonLogsFilterBar<TData>(
   const hasExpandedFilters =
     !!filters.token ||
     !!filters.username ||
-    !!filters.hideSelf ||
     !!filters.channel ||
     !!filters.requestId ||
     !!filters.upstreamRequestId
@@ -272,7 +267,6 @@ export function CommonLogsFilterBar<TData>(
   const expandedFilterCount = [
     filters.token,
     canUseAdminControls ? filters.username : undefined,
-    canHideSelf && filters.hideSelf ? 'hide-self' : undefined,
     canUseAdminControls ? filters.channel : undefined,
     filters.requestId,
     filters.upstreamRequestId,
@@ -404,25 +398,6 @@ export function CommonLogsFilterBar<TData>(
             onChange={(e) => handleChange('username', e.target.value)}
             onKeyDown={handleKeyDown}
           />
-        </LogsFilterField>
-      )}
-      {canHideSelf && (
-        <LogsFilterField className='sm:col-span-2'>
-          <div className='border-input flex h-8 items-center gap-2 rounded-md border px-2.5'>
-            <Checkbox
-              id='usage-logs-hide-self'
-              checked={filters.hideSelf === true}
-              onCheckedChange={(checked) =>
-                handleChange('hideSelf', checked === true)
-              }
-            />
-            <Label
-              htmlFor='usage-logs-hide-self'
-              className='text-muted-foreground text-sm leading-5 font-normal'
-            >
-              {t('Hide my logs')}
-            </Label>
-          </div>
         </LogsFilterField>
       )}
       {canUseAdminControls && (

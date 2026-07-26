@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -30,14 +29,14 @@ import {
 import { formatDateTimeStr } from '@/lib/format'
 
 import type { RiskRecord } from '../types'
+import { RiskRecordDetailsButton } from './risk-record-details-dialog'
 import {
   RiskRecordBadges,
   RiskRecordCategoryList,
-  RiskRecordChunkList,
   RiskRecordIdList,
   RiskRecordProviderSummary,
-  RiskRecordResultSummary,
-  RiskRecordUsageSummary,
+  RiskRecordResultBadge,
+  RiskRecordSourceBadge,
 } from './risk-record-summary'
 
 export function RiskRecordDesktopTable(props: {
@@ -50,63 +49,63 @@ export function RiskRecordDesktopTable(props: {
       <Table className='table-fixed'>
         <TableHeader>
           <TableRow>
-            <TableHead className='w-[25%]'>{t('Request ID')}</TableHead>
-            <TableHead className='w-[18%]'>
+            <TableHead className='w-[13%]'>{t('Time')}</TableHead>
+            <TableHead className='w-[14%]'>
               {t('Channel')} / {t('User')}
             </TableHead>
-            <TableHead className='w-[18%]'>{t('Provider')}</TableHead>
-            <TableHead className='w-[21%]'>{t('Result')}</TableHead>
-            <TableHead className='w-[18%]'>{t('Tokens')}</TableHead>
+            <TableHead className='w-[13%]'>{t('Provider')}</TableHead>
+            <TableHead className='w-[11%]'>{t('Source')}</TableHead>
+            <TableHead className='w-[10%]'>{t('Result')}</TableHead>
+            <TableHead className='w-[16%]'>{t('Categories')}</TableHead>
+            <TableHead className='w-[10%]'>{t('Latency')}</TableHead>
+            <TableHead className='w-[13%]'>{t('Details')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {props.records.map((record) => (
-            <Fragment key={record.id}>
-              <TableRow>
-                <TableCell className='whitespace-normal'>
-                  <p
-                    className='truncate font-mono text-xs font-medium'
-                    title={record.request_id}
-                  >
-                    {record.request_id}
-                  </p>
-                  <p className='text-muted-foreground mt-1 text-xs'>
-                    {formatDateTimeStr(new Date(record.observed_at))}
-                  </p>
-                </TableCell>
-                <TableCell className='whitespace-normal'>
-                  <dl className='grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs'>
-                    <dt className='text-muted-foreground'>{t('Channel')}</dt>
-                    <dd>#{record.channel_id}</dd>
-                    <dt className='text-muted-foreground'>{t('User')}</dt>
-                    <dd>#{record.user_id}</dd>
+            <TableRow key={record.id}>
+              <TableCell className='whitespace-normal'>
+                <span className='text-xs tabular-nums'>
+                  {formatDateTimeStr(new Date(record.observed_at))}
+                </span>
+              </TableCell>
+              <TableCell className='whitespace-normal'>
+                <div className='flex min-w-0 items-center gap-1.5 text-xs whitespace-nowrap'>
+                  <span className='text-muted-foreground'>{t('Channel')}</span>
+                  <span>
+                    {record.channel_id > 0 ? `#${record.channel_id}` : '—'}
+                  </span>
+                  <span className='text-muted-foreground'>· {t('User')}</span>
+                  <span>#{record.user_id}</span>
+                </div>
+                {record.rule_ids.length > 0 && (
+                  <dl className='mt-1 grid grid-cols-[auto_1fr] gap-x-2 text-xs'>
                     <dt className='text-muted-foreground'>{t('Rules')}</dt>
                     <dd className='min-w-0'>
                       <RiskRecordIdList values={record.rule_ids} />
                     </dd>
                   </dl>
-                </TableCell>
-                <TableCell className='whitespace-normal'>
-                  <RiskRecordProviderSummary record={record} />
-                </TableCell>
-                <TableCell className='whitespace-normal'>
-                  <RiskRecordResultSummary record={record} />
-                </TableCell>
-                <TableCell className='whitespace-normal'>
-                  <RiskRecordUsageSummary record={record} />
-                </TableCell>
-              </TableRow>
-              {record.chunks.length > 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className='bg-muted/20 p-3 whitespace-normal'
-                  >
-                    <RiskRecordChunkList chunks={record.chunks} />
-                  </TableCell>
-                </TableRow>
-              )}
-            </Fragment>
+                )}
+              </TableCell>
+              <TableCell className='whitespace-normal'>
+                <RiskRecordProviderSummary record={record} />
+              </TableCell>
+              <TableCell className='whitespace-normal'>
+                <RiskRecordSourceBadge source={record.source} />
+              </TableCell>
+              <TableCell className='whitespace-normal'>
+                <RiskRecordResultBadge result={record.result} />
+              </TableCell>
+              <TableCell className='whitespace-normal'>
+                <RiskRecordCategoryList values={record.categories} />
+              </TableCell>
+              <TableCell className='text-xs whitespace-normal tabular-nums'>
+                {record.latency_ms} ms
+              </TableCell>
+              <TableCell className='whitespace-normal'>
+                <RiskRecordDetailsButton record={record} />
+              </TableCell>
+            </TableRow>
           ))}
         </TableBody>
       </Table>
@@ -124,17 +123,9 @@ export function RiskRecordMobileList(props: {
       {props.records.map((record) => (
         <article key={record.id} className='bg-table-row min-w-0 p-3'>
           <div className='flex min-w-0 items-start justify-between gap-3'>
-            <div className='min-w-0'>
-              <p
-                className='truncate font-mono text-xs font-medium'
-                title={record.request_id}
-              >
-                {record.request_id}
-              </p>
-              <p className='text-muted-foreground mt-1 text-xs'>
-                {formatDateTimeStr(new Date(record.observed_at))}
-              </p>
-            </div>
+            <p className='text-muted-foreground min-w-0 text-xs tabular-nums'>
+              {formatDateTimeStr(new Date(record.observed_at))}
+            </p>
             <div className='flex max-w-1/2 justify-end'>
               <RiskRecordBadges record={record} />
             </div>
@@ -142,18 +133,22 @@ export function RiskRecordMobileList(props: {
           <dl className='mt-3 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2'>
             <div className='min-w-0'>
               <dt className='text-muted-foreground text-xs'>{t('Channel')}</dt>
-              <dd className='text-sm'>#{record.channel_id}</dd>
+              <dd className='text-sm'>
+                {record.channel_id > 0 ? `#${record.channel_id}` : '—'}
+              </dd>
             </div>
             <div className='min-w-0'>
               <dt className='text-muted-foreground text-xs'>{t('User')}</dt>
               <dd className='text-sm'>#{record.user_id}</dd>
             </div>
-            <div className='min-w-0'>
-              <dt className='text-muted-foreground text-xs'>{t('Rules')}</dt>
-              <dd className='text-sm'>
-                <RiskRecordIdList values={record.rule_ids} />
-              </dd>
-            </div>
+            {record.rule_ids.length > 0 && (
+              <div className='min-w-0'>
+                <dt className='text-muted-foreground text-xs'>{t('Rules')}</dt>
+                <dd className='text-sm'>
+                  <RiskRecordIdList values={record.rule_ids} />
+                </dd>
+              </div>
+            )}
             <div className='min-w-0'>
               <dt className='text-muted-foreground text-xs'>{t('Provider')}</dt>
               <dd className='text-sm'>
@@ -176,15 +171,17 @@ export function RiskRecordMobileList(props: {
                 </p>
               )}
             </div>
-            <div className='min-w-0 sm:col-span-2'>
-              <RiskRecordUsageSummary record={record} />
+            <div className='min-w-0'>
+              <dt className='text-muted-foreground text-xs'>{t('Latency')}</dt>
+              <dd className='text-sm tabular-nums'>{record.latency_ms} ms</dd>
+            </div>
+            <div className='min-w-0'>
+              <dt className='text-muted-foreground text-xs'>{t('Details')}</dt>
+              <dd>
+                <RiskRecordDetailsButton record={record} />
+              </dd>
             </div>
           </dl>
-          {record.chunks.length > 0 && (
-            <div className='mt-3 min-w-0'>
-              <RiskRecordChunkList chunks={record.chunks} />
-            </div>
-          )}
         </article>
       ))}
     </div>

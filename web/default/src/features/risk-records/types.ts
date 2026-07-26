@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { z } from 'zod'
 
 export const riskRecordResultSchema = z.string().min(1)
+export const riskContentSaveScopeSchema = z.enum(['all', 'unsafe', 'none'])
 
 export const riskRecordChunkSchema = z
   .object({
@@ -37,14 +38,21 @@ export const riskRecordSchema = z
   .object({
     id: z.number().int().positive(),
     request_id: z.string().min(1),
-    channel_id: z.number().int().positive(),
+    channel_id: z.number().int().nonnegative(),
     user_id: z.number().int().positive(),
+    token_id: z.number().int().nonnegative(),
+    model: z.string(),
+    path: z.string(),
+    preview: z.string(),
+    content_hash: z.string(),
     rule_ids: z.array(z.number().int().positive()).readonly(),
     provider_id: z.number().int().nonnegative(),
     provider_name: z.string(),
     result: riskRecordResultSchema,
     source: z.string().default(''),
     provider_called: z.boolean().default(false),
+    cache_hit: z.boolean().default(false),
+    blocked: z.boolean().default(false),
     categories: z.array(z.string()).readonly(),
     latency_ms: z.number().int().nonnegative(),
     prompt_tokens: z.number().int().nonnegative(),
@@ -77,11 +85,32 @@ export const riskRecordResponseSchema = z
   })
   .readonly()
 
+export const riskRecordGovernanceSchema = z
+  .object({
+    save_scope: z.enum(['all', 'suspicious', 'unsafe']),
+    content_save_scope: riskContentSaveScopeSchema,
+    retention_days: z.number().int().min(1).max(180),
+  })
+  .readonly()
+
+export const riskRecordGovernanceResponseSchema = z
+  .object({
+    success: z.boolean(),
+    message: z.string().optional(),
+    data: riskRecordGovernanceSchema.optional(),
+  })
+  .readonly()
+
 export type RiskRecordResult = z.infer<typeof riskRecordResultSchema>
 export type RiskRecordChunk = z.infer<typeof riskRecordChunkSchema>
 export type RiskRecord = z.infer<typeof riskRecordSchema>
 export type RiskRecordPage = z.infer<typeof riskRecordPageSchema>
 export type RiskRecordResponse = z.infer<typeof riskRecordResponseSchema>
+export type RiskContentSaveScope = z.infer<typeof riskContentSaveScopeSchema>
+export type RiskRecordGovernance = z.infer<typeof riskRecordGovernanceSchema>
+export type RiskRecordGovernanceResponse = z.infer<
+  typeof riskRecordGovernanceResponseSchema
+>
 
 export type RiskRecordFilterDraft = {
   readonly start_time?: Date

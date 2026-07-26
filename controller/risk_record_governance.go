@@ -9,8 +9,9 @@ import (
 )
 
 type riskRecordGovernanceRequest struct {
-	SaveScope     model.RiskRecordSaveScope `json:"save_scope" binding:"required,oneof=all suspicious unsafe"`
-	RetentionDays int                       `json:"retention_days" binding:"required,gte=1,lte=180"`
+	SaveScope        model.RiskRecordSaveScope  `json:"save_scope" binding:"required,oneof=all suspicious unsafe"`
+	ContentSaveScope model.RiskContentSaveScope `json:"content_save_scope" binding:"required,oneof=all unsafe none"`
+	RetentionDays    int                        `json:"retention_days" binding:"required,gte=1,lte=180"`
 }
 
 func GetRiskRecordGovernance(c *gin.Context) {
@@ -29,7 +30,7 @@ func UpdateRiskRecordGovernance(c *gin.Context) {
 		return
 	}
 	governance, err := model.SaveRiskRecordGovernance(c.Request.Context(), model.RiskRecordGovernanceInput{
-		SaveScope: request.SaveScope, RetentionDays: request.RetentionDays,
+		SaveScope: request.SaveScope, ContentSaveScope: request.ContentSaveScope, RetentionDays: request.RetentionDays,
 	})
 	if err != nil {
 		if errors.Is(err, model.ErrInvalidRiskRecordGovernance) {

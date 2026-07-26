@@ -1,12 +1,16 @@
 package controller
 
 import (
+	"context"
 	"errors"
+	"math"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
@@ -38,6 +42,12 @@ type riskProviderRequest struct {
 	FailureThreshold int                    `json:"failure_threshold" binding:"omitempty,gte=1,lte=100"`
 	CooldownSeconds  int                    `json:"cooldown_seconds" binding:"omitempty,gte=1,lte=86400"`
 }
+
+type riskProviderValidationRequest struct {
+	Text string `json:"text"`
+}
+
+const riskProviderValidationDefaultText = "AI Cove provider connection test"
 
 func ListRiskProviders(c *gin.Context) {
 	providers, err := model.GetRiskProviders()
@@ -142,8 +152,37 @@ func ValidateRiskProvider(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	result, err := service.ReviewRiskContent(c.Request.Context(), provider, "AI Cove provider connection test")
+	validationText := riskProviderValidationDefaultText
+	if c.Request.ContentLength != 0 {
+		var request riskProviderValidationRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			common.ApiErrorMsg(c, "无效的连接测试内容")
+			return
+		}
+		validationText = strings.TrimSpace(request.Text)
+		if validationText == "" || len([]rune(validationText)) > 4000 {
+			common.ApiErrorMsg(c, "连接测试内容必须为 1 至 4000 个字符")
+			return
+		}
+	}
+	startedAt := time.Now()
+	result, err := service.ReviewRiskContent(c.Request.Context(), provider, validationText)
+	recordInput := riskProviderValidationRecordInput(c, provider, result, err, startedAt)
+	metadata := service.BuildRiskRecordContentMetadata(validationText)
+	recordInput.Preview = metadata.Preview
+	recordInput.ContentHash = metadata.ContentHash
 	if err != nil {
+		if recordErr := model.RecordRiskProviderValidation(c.Request.Context(), recordInput); recordErr != nil {
+			logger.LogError(c.Request.Context(), "record risk provider validation: "+recordErr.Error())
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			common.ApiErrorI18n(c, i18n.MsgRiskProviderConnectionTimeout, map[string]any{"TimeoutMs": provider.TimeoutMs})
+			return
+		}
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.RecordRiskProviderValidation(c.Request.Context(), recordInput); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -152,6 +191,42 @@ func ValidateRiskProvider(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, result)
+}
+
+func riskProviderValidationRecordInput(
+	c *gin.Context,
+	provider *model.RiskProvider,
+	result service.RiskReviewResult,
+	reviewErr error,
+	startedAt time.Time,
+) model.RiskRecordInput {
+	requestID := c.GetString(common.RequestIdKey)
+	if requestID == "" {
+		requestID = "risk-provider-validation-" + common.GetUUID()
+	}
+	recordResult := model.RiskRecordResult(result.Status)
+	errorCode := ""
+	if reviewErr != nil {
+		recordResult = model.RiskRecordResultError
+		errorCode = "provider_error"
+		if errors.Is(reviewErr, context.DeadlineExceeded) {
+			errorCode = "timeout"
+		}
+	}
+	neurons := result.Usage.Neurons
+	if math.IsNaN(neurons) || math.IsInf(neurons, 0) || neurons < 0 {
+		neurons = 0
+	}
+	return model.RiskRecordInput{
+		RequestID: requestID, UserID: c.GetInt("id"), Model: provider.Model,
+		ProviderID: provider.Id, ProviderName: provider.Name,
+		Result: recordResult, Categories: append([]string(nil), result.Categories...),
+		LatencyMS:    time.Since(startedAt).Milliseconds(),
+		PromptTokens: result.Usage.PromptTokens, CompletionTokens: result.Usage.CompletionTokens,
+		TotalTokens: result.Usage.TotalTokens, Neurons: int64(math.Round(neurons)),
+		ErrorCode: errorCode, Source: model.RiskRecordSourceProvider,
+		ProviderCalled: true, ObservedAt: time.Now(),
+	}
 }
 
 func ActivateRiskProvider(c *gin.Context) {

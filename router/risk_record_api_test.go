@@ -227,12 +227,13 @@ func TestRiskRecordGovernanceAPI_getsDefaultsAndUpdatesValidatedSettings(t *test
 	require.NoError(t, common.DecodeJson(getResponse.Body, &defaults))
 	require.True(t, defaults.Success)
 	assert.Equal(t, model.RiskRecordSaveAll, defaults.Data.SaveScope)
+	assert.Equal(t, model.RiskContentSaveAll, defaults.Data.ContentSaveScope)
 	assert.Equal(t, 30, defaults.Data.RetentionDays)
 
 	// When
 	updateRequest, err := http.NewRequestWithContext(
 		context.Background(), http.MethodPut, server.URL+"/api/risk/records/settings",
-		strings.NewReader(`{"save_scope":"unsafe","retention_days":90}`),
+		strings.NewReader(`{"save_scope":"unsafe","content_save_scope":"unsafe","retention_days":90}`),
 	)
 	require.NoError(t, err)
 	updateRequest.Header.Set("Content-Type", "application/json")
@@ -250,5 +251,6 @@ func TestRiskRecordGovernanceAPI_getsDefaultsAndUpdatesValidatedSettings(t *test
 	require.NoError(t, common.DecodeJson(updateResponse.Body, &updated))
 	require.True(t, updated.Success, updated.Message)
 	assert.Equal(t, model.RiskRecordSaveUnsafe, updated.Data.SaveScope)
+	assert.Equal(t, model.RiskContentSaveUnsafe, updated.Data.ContentSaveScope)
 	assert.Equal(t, 90, updated.Data.RetentionDays)
 }

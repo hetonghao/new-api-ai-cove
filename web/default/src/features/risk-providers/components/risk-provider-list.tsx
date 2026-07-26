@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Plus, ShieldCheck } from 'lucide-react'
+import { Plus, RefreshCw, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { ErrorState } from '@/components/error-state'
@@ -46,6 +46,8 @@ type RiskProviderListProps = {
   readonly pendingProviderId: number | null
   readonly pendingAction: RiskProviderPendingAction | null
   readonly onRetry: () => void
+  readonly onRefresh: () => void
+  readonly isRefreshing: boolean
   readonly onCreate: () => void
   readonly onEdit: (provider: RiskProvider) => void
   readonly onValidate: (provider: RiskProvider) => void
@@ -123,6 +125,25 @@ export function RiskProviderList(props: RiskProviderListProps) {
       )}
       descriptionClassName='text-pretty'
       icon={<ShieldCheck className='size-5' />}
+      action={
+        <div className='flex flex-wrap items-center justify-end gap-2'>
+          <Button
+            size='sm'
+            variant='outline'
+            onClick={props.onRefresh}
+            disabled={props.isRefreshing}
+          >
+            <RefreshCw
+              className={props.isRefreshing ? 'size-4 animate-spin' : 'size-4'}
+            />
+            {t('Refresh providers')}
+          </Button>
+          <Button size='sm' onClick={props.onCreate}>
+            <Plus className='size-4' />
+            {t('Add provider')}
+          </Button>
+        </div>
+      }
       disableHoverEffect
     >
       {content}

@@ -23,6 +23,7 @@ import type {
   RiskProvider,
   RiskProviderPayload,
   RiskProviderValidation,
+  RiskProviderValidationPayload,
 } from './types'
 
 const BASE_PATH = '/api/risk/providers'
@@ -63,10 +64,16 @@ export async function deleteRiskProvider(
 }
 
 export async function validateRiskProvider(
-  providerId: number
+  providerId: number,
+  payload: RiskProviderValidationPayload
 ): Promise<ApiResponse<RiskProviderValidation>> {
   const response = await api.post<ApiResponse<RiskProviderValidation>>(
-    `${BASE_PATH}/${providerId}/validate`
+    `${BASE_PATH}/${providerId}/validate`,
+    payload,
+    {
+      skipBusinessError: true,
+      skipErrorHandler: true,
+    }
   )
   return response.data
 }

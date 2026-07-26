@@ -17,18 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import {
-  ChevronLeft,
-  ChevronRight,
-  History,
-  RefreshCw,
-  ShieldCheck,
-} from 'lucide-react'
+import type { ColumnDef, PaginationState } from '@tanstack/react-table'
+import { ShieldCheck } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { DataTablePagination, useDataTable } from '@/components/data-table'
 import { ErrorState } from '@/components/error-state'
-import { Button } from '@/components/ui/button'
+import { PageFooterPortal } from '@/components/layout/components/page-footer'
 import {
   Empty,
   EmptyDescription,
@@ -37,24 +33,20 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import { TitledCard } from '@/components/ui/titled-card'
 import type { RiskProvider } from '@/features/risk-providers/types'
 
 import { listRiskRecords } from '../api'
 import { createDefaultRiskRecordFilterDraft } from '../lib/default-filter'
-import {
-  commitRiskRecordFilters,
-  getRiskRecordTotalPages,
-} from '../lib/risk-records'
-import type { RiskRecordFilters } from '../types'
+import { commitRiskRecordFilters } from '../lib/risk-records'
+import type { RiskRecord, RiskRecordFilters } from '../types'
 import { RiskRecordFiltersForm } from './risk-record-filters'
 import {
   RiskRecordDesktopTable,
   RiskRecordMobileList,
 } from './risk-record-layouts'
 
-const PAGE_SIZE = 20
 const SKELETON_KEYS = ['record-1', 'record-2', 'record-3'] as const
+const PAGINATION_COLUMNS: ColumnDef<RiskRecord>[] = []
 
 function RecordSkeleton() {
   return (
@@ -99,15 +91,28 @@ type RiskRecordListProps = {
 
 export function RiskRecordList(props: RiskRecordListProps) {
   const { t } = useTranslation()
-  const [page, setPage] = useState(1)
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 20,
+  })
   const [initialDraft] = useState(createDefaultRiskRecordFilterDraft)
   const [filters, setFilters] = useState<RiskRecordFilters>(() =>
     commitRiskRecordFilters(initialDraft)
   )
   const recordsQuery = useQuery({
-    queryKey: ['risk', 'records', page, PAGE_SIZE, filters],
+    queryKey: [
+      'risk',
+      'records',
+      pagination.pageIndex + 1,
+      pagination.pageSize,
+      filters,
+    ],
     queryFn: async () => {
-      const response = await listRiskRecords(page, PAGE_SIZE, filters)
+      const response = await listRiskRecords(
+        pagination.pageIndex + 1,
+        pagination.pageSize,
+        filters
+      )
       if (!response.success || !response.data) {
         throw new Error(response.message || t('Failed to load risk records'))
       }
@@ -116,14 +121,19 @@ export function RiskRecordList(props: RiskRecordListProps) {
     placeholderData: keepPreviousData,
     retry: false,
   })
-  const totalPages = getRiskRecordTotalPages(
-    recordsQuery.data?.total ?? 0,
-    PAGE_SIZE
-  )
-  const records = recordsQuery.data?.items ?? []
+  const records = [...(recordsQuery.data?.items ?? [])]
+  const { table } = useDataTable<RiskRecord>({
+    data: records,
+    columns: PAGINATION_COLUMNS,
+    pagination,
+    onPaginationChange: setPagination,
+    manualPagination: true,
+    totalCount: recordsQuery.data?.total ?? 0,
+    enableRowSelection: false,
+  })
 
   function applyFilters(nextFilters: RiskRecordFilters) {
-    setPage(1)
+    setPagination((current) => ({ ...current, pageIndex: 0 }))
     setFilters(nextFilters)
   }
 
@@ -149,79 +159,19 @@ export function RiskRecordList(props: RiskRecordListProps) {
   }
 
   return (
-    <TitledCard
-      title={t('Risk records')}
-      description={t('Review metadata only. Message content is never stored.')}
-      descriptionClassName='text-pretty'
-      icon={<History className='size-5' />}
-      action={
-        <Button
-          size='sm'
-          variant='outline'
-          className='w-full sm:w-auto'
-          onClick={() => void recordsQuery.refetch()}
+    <>
+      <div className='flex h-full min-h-0 flex-col gap-2.5 sm:gap-3'>
+        <RiskRecordFiltersForm
           disabled={recordsQuery.isFetching}
-        >
-          <RefreshCw
-            className={
-              recordsQuery.isFetching ? 'size-4 animate-spin' : 'size-4'
-            }
-          />
-          {t('Refresh records')}
-        </Button>
-      }
-      disableHoverEffect
-    >
-      <RiskRecordFiltersForm
-        disabled={recordsQuery.isFetching}
-        initialValues={initialDraft}
-        onApply={applyFilters}
-        providers={props.providers}
-      />
-      {content}
-      {!recordsQuery.error && !recordsQuery.isLoading && (
-        <div className='bg-muted/40 mt-3 flex flex-col gap-2 rounded-lg border px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between'>
-          <p className='text-muted-foreground text-xs tabular-nums'>
-            {t('{{count}} risk records', {
-              count: recordsQuery.data?.total ?? 0,
-            })}
-          </p>
-          <div className='flex items-center justify-between gap-2 sm:justify-end'>
-            <Button
-              variant='outline'
-              size='icon'
-              className='size-8'
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page === 1 || recordsQuery.isFetching}
-              aria-label={t('Previous page')}
-            >
-              <ChevronLeft className='size-4' />
-            </Button>
-            <span className='min-w-24 text-center text-xs font-medium tabular-nums'>
-              {t('Page {{current}} of {{total}}', {
-                current: page,
-                total: totalPages,
-              })}
-            </span>
-            <Button
-              variant='outline'
-              size='icon'
-              className='size-8'
-              onClick={() =>
-                setPage((current) => Math.min(totalPages, current + 1))
-              }
-              disabled={
-                page >= totalPages ||
-                recordsQuery.isFetching ||
-                (recordsQuery.data?.total ?? 0) === 0
-              }
-              aria-label={t('Next page')}
-            >
-              <ChevronRight className='size-4' />
-            </Button>
-          </div>
-        </div>
-      )}
-    </TitledCard>
+          initialValues={initialDraft}
+          onApply={applyFilters}
+          providers={props.providers}
+        />
+        <div className='min-h-0 flex-1 overflow-y-auto'>{content}</div>
+      </div>
+      <PageFooterPortal>
+        <DataTablePagination table={table} />
+      </PageFooterPortal>
+    </>
   )
 }

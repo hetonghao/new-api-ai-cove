@@ -101,10 +101,27 @@ const RISK_RECORD_RESULT_VARIANTS: Readonly<Record<string, StatusVariant>> = {
 }
 
 const RISK_RECORD_SOURCE_LABELS: Readonly<Record<string, string>> = {
-  provider: 'Provider source',
+  provider: 'Cloud review source',
   cache: 'Cache source',
   inflight: 'In-flight source',
   local: 'Local source',
+}
+
+const RISK_RECORD_CATEGORY_LABELS: Readonly<Record<string, string>> = {
+  S1: 'Violent crimes',
+  S2: 'Non-violent crimes',
+  S3: 'Sex-related crimes',
+  S4: 'Child sexual exploitation',
+  S5: 'Defamation',
+  S6: 'Specialized advice',
+  S7: 'Privacy risk',
+  S8: 'Intellectual property',
+  S9: 'Indiscriminate weapons',
+  S10: 'Hate',
+  S11: 'Suicide and self-harm',
+  S12: 'Sexual content',
+  S13: 'Election misinformation',
+  S14: 'Code interpreter abuse',
 }
 
 const RISK_RECORD_RESULT_FILTER_LABELS: Readonly<Record<string, string>> = {
@@ -127,6 +144,10 @@ export function getRiskRecordResultVariant(result: string): StatusVariant {
 
 export function getRiskRecordSourceLabel(source: string) {
   return RISK_RECORD_SOURCE_LABELS[source]
+}
+
+export function getRiskRecordCategoryLabel(category: string) {
+  return RISK_RECORD_CATEGORY_LABELS[category.toUpperCase()]
 }
 
 export function getRiskRecordResultFilterLabel(result: string) {

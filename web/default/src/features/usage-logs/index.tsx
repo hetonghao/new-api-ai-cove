@@ -116,11 +116,34 @@ function UsageLogsContent() {
 
   const handleViewScopeChange = useCallback(
     (scope: string) => {
+      if (scope === 'others') {
+        setViewScope('all')
+        navigateSearch({
+          search: { ...search, hideSelf: true, page: 1 },
+        })
+        void queryClient.invalidateQueries({ queryKey: ['logs', queryKeyScope] })
+        void queryClient.invalidateQueries({
+          queryKey: ['usage-logs-stats', queryKeyScope],
+        })
+        return
+      }
+
       if (scope === 'all' || scope === 'self') {
         setViewScope(scope as LogsViewScope)
+        if (search.hideSelf) {
+          navigateSearch({
+            search: { ...search, hideSelf: undefined, page: 1 },
+          })
+          void queryClient.invalidateQueries({
+            queryKey: ['logs', queryKeyScope],
+          })
+          void queryClient.invalidateQueries({
+            queryKey: ['usage-logs-stats', queryKeyScope],
+          })
+        }
       }
     },
-    [setViewScope]
+    [navigateSearch, queryClient, queryKeyScope, search, setViewScope]
   )
 
   const pageMeta =
@@ -158,10 +181,20 @@ function UsageLogsContent() {
         </SectionPageLayout.Title>
         {canManageScope && (
           <SectionPageLayout.Actions>
-            <Tabs value={viewScope} onValueChange={handleViewScopeChange}>
+            <Tabs
+              value={
+                activeCategory === 'common' && search.hideSelf === true
+                  ? 'others'
+                  : viewScope
+              }
+              onValueChange={handleViewScopeChange}
+            >
               <TabsList>
                 <TabsTrigger value='all'>{t('All')}</TabsTrigger>
                 <TabsTrigger value='self'>{t('Only Mine')}</TabsTrigger>
+                {activeCategory === 'common' && (
+                  <TabsTrigger value='others'>{t('Not Mine')}</TabsTrigger>
+                )}
               </TabsList>
             </Tabs>
           </SectionPageLayout.Actions>

@@ -18,6 +18,7 @@ func TestRiskRecordGovernance_defaultsToAllForThirtyDays(t *testing.T) {
 	// Then
 	require.NoError(t, err)
 	assert.Equal(t, RiskRecordSaveAll, governance.SaveScope)
+	assert.Equal(t, RiskContentSaveAll, governance.ContentSaveScope)
 	assert.Equal(t, 30, governance.RetentionDays)
 }
 
@@ -25,9 +26,10 @@ func TestSaveRiskRecordGovernance_rejectsInvalidScopeAndRetention(t *testing.T) 
 	// Given
 	setupRiskRecordModelTest(t)
 	tests := []RiskRecordGovernanceInput{
-		{SaveScope: "sometimes", RetentionDays: 30},
-		{SaveScope: RiskRecordSaveAll, RetentionDays: 0},
-		{SaveScope: RiskRecordSaveAll, RetentionDays: 181},
+		{SaveScope: "sometimes", ContentSaveScope: RiskContentSaveAll, RetentionDays: 30},
+		{SaveScope: RiskRecordSaveAll, ContentSaveScope: "sometimes", RetentionDays: 30},
+		{SaveScope: RiskRecordSaveAll, ContentSaveScope: RiskContentSaveAll, RetentionDays: 0},
+		{SaveScope: RiskRecordSaveAll, ContentSaveScope: RiskContentSaveAll, RetentionDays: 181},
 	}
 
 	for _, input := range tests {
@@ -84,7 +86,7 @@ func TestRecordRiskObservation_appliesConfiguredSaveScopeAtPersistenceBoundary(t
 			// Given
 			setupRiskRecordModelTest(t)
 			_, err := SaveRiskRecordGovernance(context.Background(), RiskRecordGovernanceInput{
-				SaveScope: test.scope, RetentionDays: 30,
+				SaveScope: test.scope, ContentSaveScope: RiskContentSaveAll, RetentionDays: 30,
 			})
 			require.NoError(t, err)
 
@@ -102,4 +104,66 @@ func TestRecordRiskObservation_appliesConfiguredSaveScopeAtPersistenceBoundary(t
 			}
 		})
 	}
+}
+
+func TestRecordRiskObservation_appliesConfiguredContentSaveScope(t *testing.T) {
+	tests := []struct {
+		name        string
+		scope       RiskContentSaveScope
+		result      RiskRecordResult
+		wantContent bool
+	}{
+		{name: "all keeps safe content", scope: RiskContentSaveAll, result: RiskRecordResultSafe, wantContent: true},
+		{name: "unsafe omits safe content", scope: RiskContentSaveUnsafe, result: RiskRecordResultSafe, wantContent: false},
+		{name: "unsafe keeps unsafe content", scope: RiskContentSaveUnsafe, result: RiskRecordResultUnsafe, wantContent: true},
+		{name: "none omits unsafe content", scope: RiskContentSaveNone, result: RiskRecordResultUnsafe, wantContent: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Given
+			setupRiskRecordModelTest(t)
+			_, err := SaveRiskRecordGovernance(context.Background(), RiskRecordGovernanceInput{
+				SaveScope: RiskRecordSaveAll, ContentSaveScope: test.scope, RetentionDays: 30,
+			})
+			require.NoError(t, err)
+			input := validRiskRecordInput(test.result)
+			input.Preview = "masked preview"
+			input.ContentHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+			// When
+			require.NoError(t, RecordRiskObservation(context.Background(), input))
+
+			// Then
+			var record RiskRecord
+			require.NoError(t, DB.Take(&record).Error)
+			if test.wantContent {
+				assert.Equal(t, input.Preview, record.Preview)
+				assert.Equal(t, input.ContentHash, record.ContentHash)
+			} else {
+				assert.Empty(t, record.Preview)
+				assert.Empty(t, record.ContentHash)
+			}
+		})
+	}
+}
+
+func TestRecordRiskProviderValidation_appliesConfiguredContentSaveScope(t *testing.T) {
+	// Given
+	setupRiskRecordModelTest(t)
+	_, err := SaveRiskRecordGovernance(context.Background(), RiskRecordGovernanceInput{
+		SaveScope: RiskRecordSaveAll, ContentSaveScope: RiskContentSaveNone, RetentionDays: 30,
+	})
+	require.NoError(t, err)
+	input := validRiskRecordInput(RiskRecordResultSafe)
+	input.Preview = "masked preview"
+	input.ContentHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+	// When
+	require.NoError(t, RecordRiskProviderValidation(context.Background(), input))
+
+	// Then
+	var record RiskRecord
+	require.NoError(t, DB.Take(&record).Error)
+	assert.Empty(t, record.Preview)
+	assert.Empty(t, record.ContentHash)
 }

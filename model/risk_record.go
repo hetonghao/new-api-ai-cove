@@ -22,6 +22,8 @@ const (
 	RiskRecordSourceProvider RiskRecordSource = "provider"
 	RiskRecordSourceCache    RiskRecordSource = "cache"
 	RiskRecordSourceInflight RiskRecordSource = "inflight"
+
+	riskProviderValidationPath = "/api/risk/providers/validate"
 )
 
 var (
@@ -101,6 +103,7 @@ func RecordRiskObservation(ctx context.Context, input RiskRecordInput) error {
 	if err != nil {
 		return fmt.Errorf("load risk record governance: %w", err)
 	}
+	applyRiskRecordContentGovernance(&record, governance.ContentSaveScope)
 	if record.Result != RiskRecordResultError {
 		switch governance.SaveScope {
 		case RiskRecordSaveSuspicious:
@@ -119,6 +122,32 @@ func RecordRiskObservation(ctx context.Context, input RiskRecordInput) error {
 	return nil
 }
 
+func RecordRiskProviderValidation(ctx context.Context, input RiskRecordInput) error {
+	input.ChannelID = 0
+	input.Path = riskProviderValidationPath
+	record, err := newRiskRecord(input)
+	if err != nil {
+		return fmt.Errorf("normalize risk provider validation: %w", err)
+	}
+	governance, err := GetRiskRecordGovernance(ctx)
+	if err != nil {
+		return fmt.Errorf("load risk record governance: %w", err)
+	}
+	applyRiskRecordContentGovernance(&record, governance.ContentSaveScope)
+	if err := DB.WithContext(ctx).Create(&record).Error; err != nil {
+		return fmt.Errorf("record risk provider validation %q: %w", record.RequestID, err)
+	}
+	return nil
+}
+
+func applyRiskRecordContentGovernance(record *RiskRecord, scope RiskContentSaveScope) {
+	if scope == RiskContentSaveAll || (scope == RiskContentSaveUnsafe && record.Result == RiskRecordResultUnsafe) {
+		return
+	}
+	record.Preview = ""
+	record.ContentHash = ""
+}
+
 func ListRiskRecords(ctx context.Context, offset int, limit int) ([]*RiskRecord, int64, error) {
 	return QueryRiskRecords(ctx, RiskRecordQuery{Offset: offset, Limit: limit})
 }
@@ -131,7 +160,10 @@ func newRiskRecord(input RiskRecordInput) (RiskRecord, error) {
 	input.ContentHash = strings.TrimSpace(input.ContentHash)
 	input.ProviderName = strings.TrimSpace(input.ProviderName)
 	input.ErrorCode = strings.TrimSpace(input.ErrorCode)
-	if input.RequestID == "" || len(input.RequestID) > 256 || input.ChannelID < 1 || input.UserID < 1 {
+	if input.RequestID == "" || len(input.RequestID) > 256 || input.ChannelID < 0 || input.UserID < 1 {
+		return RiskRecord{}, ErrInvalidRiskRecord
+	}
+	if input.ChannelID == 0 && input.Path != riskProviderValidationPath {
 		return RiskRecord{}, ErrInvalidRiskRecord
 	}
 	if len(input.ProviderName) > 128 || input.ObservedAt.IsZero() {

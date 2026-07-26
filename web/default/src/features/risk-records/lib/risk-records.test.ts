@@ -19,13 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { riskRecordPageSchema } from '../types.ts'
+import { riskRecordGovernanceSchema, riskRecordPageSchema } from '../types.ts'
 import {
   buildRiskRecordQueryParams,
   commitRiskRecordFilters,
   getRiskRecordResultFilterLabel,
   getRiskRecordResultLabel,
   getRiskRecordResultVariant,
+  getRiskRecordCategoryLabel,
   getRiskRecordSourceFilterLabel,
   getRiskRecordSourceVariant,
   getRiskRecordTotalPages,
@@ -36,12 +37,19 @@ const VALID_RECORD = {
   request_id: 'req-123',
   channel_id: 12,
   user_id: 34,
+  token_id: 56,
+  model: 'gpt-5.6',
+  path: '/v1/responses',
+  preview: 'redacted moderation content',
+  content_hash: 'a'.repeat(64),
   rule_ids: [5],
   provider_id: 7,
   provider_name: 'Cloud review',
   result: 'unsafe',
   source: 'provider',
   provider_called: true,
+  cache_hit: false,
+  blocked: true,
   categories: ['violence'],
   latency_ms: 93,
   prompt_tokens: 11,
@@ -129,6 +137,64 @@ describe('risk record behavior', () => {
     assert.equal(result.success, true)
     if (result.success) {
       assert.deepEqual(result.data.items[0]?.chunks, VALID_CHUNKS)
+    }
+  })
+
+  it('keeps saved content and request metadata for the details dialog', () => {
+    // Given
+    const payload = {
+      items: [VALID_RECORD],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    }
+
+    // When
+    const result = riskRecordPageSchema.safeParse(payload)
+
+    // Then
+    assert.equal(result.success, true)
+    if (result.success) {
+      const record = result.data.items[0]
+      assert.equal(record?.preview, 'redacted moderation content')
+      assert.equal(record?.content_hash, 'a'.repeat(64))
+      assert.equal(record?.model, 'gpt-5.6')
+      assert.equal(record?.path, '/v1/responses')
+      assert.equal(record?.blocked, true)
+    }
+  })
+
+  it('accepts an empty saved-content preview when storage is disabled', () => {
+    // Given
+    const payload = {
+      items: [{ ...VALID_RECORD, preview: '', content_hash: '' }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    }
+
+    // When
+    const result = riskRecordPageSchema.safeParse(payload)
+
+    // Then
+    assert.equal(result.success, true)
+  })
+
+  it('parses the global risk content storage setting', () => {
+    // Given
+    const payload = {
+      save_scope: 'all',
+      content_save_scope: 'unsafe',
+      retention_days: 30,
+    }
+
+    // When
+    const result = riskRecordGovernanceSchema.safeParse(payload)
+
+    // Then
+    assert.equal(result.success, true)
+    if (result.success) {
+      assert.equal(result.data.content_save_scope, 'unsafe')
     }
   })
 
@@ -239,11 +305,17 @@ describe('risk record behavior', () => {
     ])
     assert.deepEqual(sourceLabels, [
       'All sources',
-      'Provider source',
+      'Cloud review source',
       'Cache source',
       'In-flight source',
       'Local source',
     ])
+  })
+
+  it('maps Llama Guard category codes to readable labels', () => {
+    assert.equal(getRiskRecordCategoryLabel('S1'), 'Violent crimes')
+    assert.equal(getRiskRecordCategoryLabel('s14'), 'Code interpreter abuse')
+    assert.equal(getRiskRecordCategoryLabel('future-category'), undefined)
   })
 
   it('calculates the final partial page when total is not divisible', () => {

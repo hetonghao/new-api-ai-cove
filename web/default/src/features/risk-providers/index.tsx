@@ -16,18 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQuery } from '@tanstack/react-query'
-import { Plus, RefreshCw } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { SectionPageLayout } from '@/components/layout'
-import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { LocalRuleManager } from '@/features/risk-policy/components/local-rule-manager'
 import { RiskPolicySettings } from '@/features/risk-policy/components/risk-policy-settings'
+import { RiskRecordGovernanceSettings } from '@/features/risk-records/components/risk-record-governance-settings'
 import { RiskRecordList } from '@/features/risk-records/components/risk-record-list'
 
 import {
@@ -41,11 +40,16 @@ import {
   RiskProviderList,
   type RiskProviderPendingAction,
 } from './components/risk-provider-list'
+import { RiskProviderValidationDialog } from './components/risk-provider-validation-dialog'
 import type { RiskProvider } from './types'
 
 const QUERY_KEY = ['risk', 'providers'] as const
 
 type RiskCenterTab = 'records' | 'configuration'
+type RiskProviderAction =
+  | { readonly kind: 'validate'; readonly text: string }
+  | { readonly kind: 'activate' }
+  | { readonly kind: 'delete' }
 
 function assertNever(action: never): never {
   throw new Error(`Unsupported provider action: ${action}`)
@@ -53,6 +57,7 @@ function assertNever(action: never): never {
 
 export function RiskProviders() {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<RiskCenterTab>('records')
   const [formOpen, setFormOpen] = useState(false)
   const [editingProvider, setEditingProvider] = useState<RiskProvider | null>(
@@ -61,6 +66,8 @@ export function RiskProviders() {
   const [deletingProvider, setDeletingProvider] = useState<RiskProvider | null>(
     null
   )
+  const [validatingProvider, setValidatingProvider] =
+    useState<RiskProvider | null>(null)
   const [pendingProviderId, setPendingProviderId] = useState<number | null>(
     null
   )
@@ -81,14 +88,16 @@ export function RiskProviders() {
 
   async function runProviderAction(
     provider: RiskProvider,
-    action: RiskProviderPendingAction
-  ) {
+    action: RiskProviderAction
+  ): Promise<boolean> {
     setPendingProviderId(provider.id)
-    setPendingAction(action)
+    setPendingAction(action.kind)
     try {
-      switch (action) {
+      switch (action.kind) {
         case 'validate': {
-          const response = await validateRiskProvider(provider.id)
+          const response = await validateRiskProvider(provider.id, {
+            text: action.text,
+          })
           if (!response.success || !response.data) {
             throw new Error(response.message)
           }
@@ -116,14 +125,18 @@ export function RiskProviders() {
           assertNever(action)
       }
       await providersQuery.refetch()
+      return true
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('Request failed'))
+      return false
     } finally {
+      if (action.kind === 'validate') {
+        await queryClient.invalidateQueries({ queryKey: ['risk', 'records'] })
+      }
       setPendingProviderId(null)
       setPendingAction(null)
     }
   }
-
   function openCreateDialog() {
     setEditingProvider(null)
     setFormOpen(true)
@@ -136,31 +149,11 @@ export function RiskProviders() {
 
   return (
     <>
-      <SectionPageLayout>
+      <SectionPageLayout fixedContent>
         <SectionPageLayout.Title>{t('Risk Center')}</SectionPageLayout.Title>
-        {activeTab === 'configuration' && (
-          <SectionPageLayout.Actions>
-            <Button
-              size='sm'
-              variant='outline'
-              onClick={() => providersQuery.refetch()}
-              disabled={providersQuery.isFetching}
-            >
-              <RefreshCw
-                className={
-                  providersQuery.isFetching ? 'size-4 animate-spin' : 'size-4'
-                }
-              />
-              {t('Refresh providers')}
-            </Button>
-            <Button size='sm' onClick={openCreateDialog}>
-              <Plus className='size-4' />
-              {t('Add provider')}
-            </Button>
-          </SectionPageLayout.Actions>
-        )}
         <SectionPageLayout.Content>
           <Tabs
+            className='h-full min-h-0'
             value={activeTab}
             onValueChange={(value) => {
               if (value === 'configuration' || value === 'records') {
@@ -174,12 +167,16 @@ export function RiskProviders() {
                 {t('Risk Configuration')}
               </TabsTrigger>
             </TabsList>
-            <TabsContent value='configuration' className='mt-2'>
-              <div className='space-y-4'>
+            <TabsContent
+              value='configuration'
+              className='mt-2 min-h-0 overflow-y-auto'
+            >
+              <div className='space-y-4 pb-1'>
                 <RiskPolicySettings
                   providers={providersQuery.data ?? []}
                   onSaved={() => void providersQuery.refetch()}
                 />
+                <RiskRecordGovernanceSettings />
                 <LocalRuleManager />
                 <RiskProviderList
                   providers={providersQuery.data ?? []}
@@ -188,19 +185,19 @@ export function RiskProviders() {
                   pendingProviderId={pendingProviderId}
                   pendingAction={pendingAction}
                   onRetry={() => void providersQuery.refetch()}
+                  onRefresh={() => void providersQuery.refetch()}
+                  isRefreshing={providersQuery.isFetching}
                   onCreate={openCreateDialog}
                   onEdit={openEditDialog}
-                  onValidate={(provider) =>
-                    void runProviderAction(provider, 'validate')
-                  }
+                  onValidate={setValidatingProvider}
                   onActivate={(provider) =>
-                    void runProviderAction(provider, 'activate')
+                    void runProviderAction(provider, { kind: 'activate' })
                   }
                   onDelete={setDeletingProvider}
                 />
               </div>
             </TabsContent>
-            <TabsContent value='records' className='mt-2'>
+            <TabsContent value='records' className='mt-2 min-h-0'>
               <RiskRecordList providers={providersQuery.data ?? []} />
             </TabsContent>
           </Tabs>
@@ -211,6 +208,17 @@ export function RiskProviders() {
         provider={editingProvider}
         onOpenChange={setFormOpen}
         onSaved={() => void providersQuery.refetch()}
+      />
+      <RiskProviderValidationDialog
+        open={validatingProvider !== null}
+        provider={validatingProvider}
+        pending={pendingAction === 'validate'}
+        onOpenChange={(open) => !open && setValidatingProvider(null)}
+        onSubmit={(text) =>
+          validatingProvider
+            ? runProviderAction(validatingProvider, { kind: 'validate', text })
+            : Promise.resolve(false)
+        }
       />
       <ConfirmDialog
         open={deletingProvider !== null}
@@ -223,7 +231,7 @@ export function RiskProviders() {
         isLoading={pendingAction === 'delete'}
         handleConfirm={() => {
           if (deletingProvider) {
-            void runProviderAction(deletingProvider, 'delete')
+            void runProviderAction(deletingProvider, { kind: 'delete' })
           }
         }}
       />

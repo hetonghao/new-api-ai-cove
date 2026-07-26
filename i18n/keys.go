@@ -28,6 +28,10 @@ const (
 	MsgBatchTooMany      = "common.batch_too_many"
 )
 
+const (
+	MsgRiskProviderConnectionTimeout = "risk_provider.connection_timeout"
+)
+
 // Auth middleware messages
 const (
 	MsgAuthNotLoggedIn           = "auth.not_logged_in"

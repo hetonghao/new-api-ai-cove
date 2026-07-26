@@ -59,6 +59,10 @@ export type RiskProviderValidation = {
   }
 }
 
+export type RiskProviderValidationPayload = {
+  readonly text: string
+}
+
 export type ApiResponse<T> = {
   readonly success: boolean
   readonly message: string

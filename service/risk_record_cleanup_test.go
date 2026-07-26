@@ -40,7 +40,7 @@ func TestRiskRecordCleanupHandler_deletesAtMostConfiguredBatchesAndRecordsHistor
 	setupRiskRecordCleanupTest(t)
 	now := time.Date(2026, time.July, 25, 12, 0, 0, 0, time.UTC)
 	_, err := model.SaveRiskRecordGovernance(context.Background(), model.RiskRecordGovernanceInput{
-		SaveScope: model.RiskRecordSaveAll, RetentionDays: 30,
+		SaveScope: model.RiskRecordSaveAll, ContentSaveScope: model.RiskContentSaveAll, RetentionDays: 30,
 	})
 	require.NoError(t, err)
 	for index := range 5 {
@@ -86,7 +86,7 @@ func TestRiskRecordCleanupHandler_finishesEmptyRunAtOneHundredPercent(t *testing
 	setupRiskRecordCleanupTest(t)
 	now := time.Date(2026, time.July, 25, 12, 0, 0, 0, time.UTC)
 	_, err := model.SaveRiskRecordGovernance(context.Background(), model.RiskRecordGovernanceInput{
-		SaveScope: model.RiskRecordSaveAll, RetentionDays: 30,
+		SaveScope: model.RiskRecordSaveAll, ContentSaveScope: model.RiskContentSaveAll, RetentionDays: 30,
 	})
 	require.NoError(t, err)
 	task, err := model.CreateSystemTask(model.SystemTaskTypeRiskRecordCleanup, nil, nil)
