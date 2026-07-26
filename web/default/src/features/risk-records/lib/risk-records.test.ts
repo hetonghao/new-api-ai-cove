@@ -261,10 +261,10 @@ describe('risk record behavior', () => {
   it('serializes committed filters into the risk record API params', () => {
     // Given
     const draft = {
-      start_time: '2026-07-25T12:34:00Z',
-      end_time: '2026-07-26T01:02:00Z',
+      start_time: new Date('2026-07-25T12:34:00Z'),
+      end_time: new Date('2026-07-26T01:02:00Z'),
       channel_id: '12',
-      user_id: '34',
+      username: 'alice',
       provider_id: '7',
       result: 'unsafe',
       source: 'provider',
@@ -281,7 +281,7 @@ describe('risk record behavior', () => {
       start_timestamp: 1_784_982_840,
       end_timestamp: 1_785_027_720,
       channel_id: 12,
-      user_id: 34,
+      username: 'alice',
       provider_id: 7,
       result: 'unsafe',
       source: 'provider',
@@ -291,10 +291,10 @@ describe('risk record behavior', () => {
   it('preserves provider ID zero in the risk record API params', () => {
     // Given
     const draft = {
-      start_time: '',
-      end_time: '',
+      start_time: undefined,
+      end_time: undefined,
       channel_id: '',
-      user_id: '',
+      username: '',
       provider_id: '0',
       result: '',
       source: '',
@@ -311,10 +311,10 @@ describe('risk record behavior', () => {
   it('omits cleared filters from the risk record API params', () => {
     // Given
     const draft = {
-      start_time: '',
-      end_time: '',
+      start_time: undefined,
+      end_time: undefined,
       channel_id: '',
-      user_id: '',
+      username: '',
       provider_id: '',
       result: '',
       source: '',

@@ -166,6 +166,9 @@ func TestRiskRecordAPI_rejectsNonRootAdmin(t *testing.T) {
 func TestRiskRecordAPI_filtersGovernedRecords(t *testing.T) {
 	// Given
 	server, client := setupRiskRecordRouterTest(t, common.RoleRootUser)
+	require.NoError(t, model.DB.AutoMigrate(&model.User{}))
+	require.NoError(t, model.DB.Create(&model.User{Id: 34, Username: "alice", Password: "password", AffCode: "alice"}).Error)
+	require.NoError(t, model.DB.Create(&model.User{Id: 35, Username: "bob", Password: "password", AffCode: "bob"}).Error)
 	observedAt := time.Date(2026, time.July, 25, 10, 0, 0, 0, time.UTC)
 	for _, input := range []model.RiskRecordInput{
 		{
@@ -174,15 +177,15 @@ func TestRiskRecordAPI_filtersGovernedRecords(t *testing.T) {
 			ObservedAt: observedAt,
 		},
 		{
-			RequestID: "req-other", ChannelID: 99, UserID: 88, ProviderID: 77, ProviderName: "Other",
-			Result: model.RiskRecordResultSafe, Source: model.RiskRecordSourceProvider,
-			ObservedAt: observedAt.Add(time.Minute),
+			RequestID: "req-other-user", ChannelID: 12, UserID: 35, ProviderID: 21, ProviderName: "Cloudflare",
+			Result: model.RiskRecordResultUnsafe, Source: model.RiskRecordSourceInflight,
+			ObservedAt: observedAt,
 		},
 	} {
 		require.NoError(t, model.RecordRiskObservation(context.Background(), input))
 	}
 	url := fmt.Sprintf(
-		"%s/api/risk/records?p=1&page_size=20&start_timestamp=%d&end_timestamp=%d&channel_id=12&user_id=34&result=unsafe&source=inflight&provider_id=21",
+		"%s/api/risk/records?p=1&page_size=20&start_timestamp=%d&end_timestamp=%d&channel_id=12&username=alice&result=unsafe&source=inflight&provider_id=21",
 		server.URL, observedAt.Unix(), observedAt.Unix(),
 	)
 	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)

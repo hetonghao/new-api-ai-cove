@@ -33,10 +33,10 @@ describe('risk record filter form behavior', () => {
 
     // When
     const invalid = schema.safeParse({
-      start_time: 'not-a-time',
-      end_time: '2026-07-25T12:33',
+      start_time: new Date('invalid'),
+      end_time: new Date('2026-07-25T12:33:00Z'),
       channel_id: '1.5',
-      user_id: '0',
+      username: 'a'.repeat(21),
       provider_id: '-1',
       result: 'future-result',
       source: 'future-source',
@@ -48,7 +48,7 @@ describe('risk record filter form behavior', () => {
       assert.deepEqual(invalid.error.flatten().fieldErrors, {
         start_time: ['translated:Invalid configuration'],
         channel_id: ['translated:Please enter a valid number'],
-        user_id: ['translated:Please enter a valid number'],
+        username: ['translated:Invalid configuration'],
         provider_id: ['translated:Please enter a valid number'],
         result: ['translated:Invalid configuration'],
         source: ['translated:Invalid configuration'],
@@ -62,10 +62,10 @@ describe('risk record filter form behavior', () => {
 
     // When
     const invalid = schema.safeParse({
-      start_time: '2026-07-25T12:34',
-      end_time: '2026-07-25T12:33',
+      start_time: new Date('2026-07-25T12:34:00Z'),
+      end_time: new Date('2026-07-25T12:33:00Z'),
       channel_id: '',
-      user_id: '',
+      username: '',
       provider_id: '',
       result: '',
       source: '',
@@ -83,14 +83,14 @@ describe('risk record filter form behavior', () => {
   it('accepts closed values and preserves local datetime semantics', () => {
     // Given
     const schema = createRiskRecordFilterFormSchema(translate)
-    const startTime = '2026-07-25T12:34'
+    const startTime = new Date('2026-07-25T12:34:00Z')
 
     // When
     const parsed = schema.safeParse({
       start_time: startTime,
-      end_time: '',
+      end_time: undefined,
       channel_id: '12',
-      user_id: '34',
+      username: ' alice ',
       provider_id: '0',
       result: 'not_reviewed',
       source: 'local',
@@ -100,9 +100,9 @@ describe('risk record filter form behavior', () => {
     assert.equal(parsed.success, true)
     if (parsed.success) {
       assert.deepEqual(commitRiskRecordFilters(parsed.data), {
-        start_timestamp: Math.floor(new Date(startTime).getTime() / 1000),
+        start_timestamp: Math.floor(startTime.getTime() / 1000),
         channel_id: 12,
-        user_id: 34,
+        username: 'alice',
         provider_id: 0,
         result: 'not_reviewed',
         source: 'local',

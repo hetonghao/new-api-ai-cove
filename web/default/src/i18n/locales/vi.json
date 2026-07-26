@@ -5308,6 +5308,17 @@
     "Provider ID": "ID nhà cung cấp",
     "All results": "Tất cả kết quả",
     "All sources": "Tất cả nguồn",
-    "Run query": "Truy vấn"
+    "Run query": "Truy vấn",
+    "All providers": "Tất cả nhà cung cấp",
+    "No provider": "Không có nhà cung cấp",
+    "Cloud review provider": "Nhà cung cấp kiểm duyệt đám mây",
+    "Account ID": "ID tài khoản",
+    "Please enter a valid Cloudflare account ID": "Vui lòng nhập ID tài khoản Cloudflare hợp lệ",
+    "Risk record cleanup": "Dọn dẹp bản ghi rủi ro",
+    "Enable AI risk control": "Bật kiểm soát rủi ro AI",
+    "Risk channels": "Kênh kiểm soát rủi ro",
+    "Select at least one risk channel": "Chọn ít nhất một kênh kiểm soát rủi ro",
+    "Only selected channels run local risk screening or cloud review.": "Chỉ các kênh đã chọn mới chạy sàng lọc rủi ro cục bộ hoặc kiểm duyệt đám mây.",
+    "Failed to load channels": "Không thể tải kênh"
   }
 }

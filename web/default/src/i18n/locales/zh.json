@@ -5445,6 +5445,17 @@
     "Provider ID": "供应商 ID",
     "All results": "全部结果",
     "All sources": "全部来源",
-    "Run query": "查询"
+    "Run query": "查询",
+    "All providers": "全部供应商",
+    "No provider": "无供应商",
+    "Cloud review provider": "云审核供应商",
+    "Account ID": "账户 ID",
+    "Please enter a valid Cloudflare account ID": "请输入有效的 Cloudflare 账户 ID",
+    "Risk record cleanup": "风控记录清理",
+    "Enable AI risk control": "启用 AI 风控",
+    "Risk channels": "风控渠道",
+    "Select at least one risk channel": "请至少选择一个风控渠道",
+    "Only selected channels run local risk screening or cloud review.": "只有所选渠道会执行本地风险初筛或云审核。",
+    "Failed to load channels": "加载渠道失败"
   }
 }

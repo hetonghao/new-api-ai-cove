@@ -41,12 +41,7 @@ const RISK_RECORD_FILTER_SOURCES = [
 type Translate = (key: string) => string
 
 export function createRiskRecordFilterFormSchema(t: Translate) {
-  const validDateTime = z
-    .string()
-    .refine(
-      (value) => value === '' || !Number.isNaN(new Date(value).getTime()),
-      t('Invalid configuration')
-    )
+  const validDateTime = z.date({ error: t('Invalid configuration') }).optional()
   const positiveInteger = z
     .string()
     .refine(
@@ -65,7 +60,7 @@ export function createRiskRecordFilterFormSchema(t: Translate) {
       start_time: validDateTime,
       end_time: validDateTime,
       channel_id: positiveInteger,
-      user_id: positiveInteger,
+      username: z.string().trim().max(20, t('Invalid configuration')),
       provider_id: nonnegativeInteger,
       result: z.enum(RISK_RECORD_FILTER_RESULTS, {
         error: t('Invalid configuration'),
@@ -76,10 +71,7 @@ export function createRiskRecordFilterFormSchema(t: Translate) {
     })
     .superRefine((values, context) => {
       if (!values.start_time || !values.end_time) return
-      if (
-        new Date(values.end_time).getTime() >=
-        new Date(values.start_time).getTime()
-      ) {
+      if (values.end_time.getTime() >= values.start_time.getTime()) {
         return
       }
       context.addIssue({
@@ -93,16 +85,6 @@ export function createRiskRecordFilterFormSchema(t: Translate) {
 export type RiskRecordFilterFormValues = z.infer<
   ReturnType<typeof createRiskRecordFilterFormSchema>
 >
-
-export const EMPTY_RISK_RECORD_FILTER_DRAFT: RiskRecordFilterFormValues = {
-  start_time: '',
-  end_time: '',
-  channel_id: '',
-  user_id: '',
-  provider_id: '',
-  result: '',
-  source: '',
-}
 
 const RISK_RECORD_RESULT_LABELS: Readonly<Record<string, string>> = {
   safe: 'Safe',
@@ -163,9 +145,9 @@ export function getRiskRecordTotalPages(total: number, pageSize: number) {
   return Math.max(1, Math.ceil(total / pageSize))
 }
 
-function toUnixSeconds(value: string): number | undefined {
+function toUnixSeconds(value?: Date): number | undefined {
   if (!value) return undefined
-  const timestamp = new Date(value).getTime()
+  const timestamp = value.getTime()
   return Number.isNaN(timestamp) ? undefined : Math.floor(timestamp / 1000)
 }
 
@@ -179,7 +161,7 @@ export function commitRiskRecordFilters(
   const startTimestamp = toUnixSeconds(draft.start_time)
   const endTimestamp = toUnixSeconds(draft.end_time)
   const channelId = toPositiveInteger(draft.channel_id)
-  const userId = toPositiveInteger(draft.user_id)
+  const username = draft.username.trim()
   const providerId = toPositiveInteger(draft.provider_id)
 
   return {
@@ -188,7 +170,7 @@ export function commitRiskRecordFilters(
       : { start_timestamp: startTimestamp }),
     ...(endTimestamp === undefined ? {} : { end_timestamp: endTimestamp }),
     ...(channelId === undefined ? {} : { channel_id: channelId }),
-    ...(userId === undefined ? {} : { user_id: userId }),
+    ...(username ? { username } : {}),
     ...(providerId === undefined ? {} : { provider_id: providerId }),
     ...(draft.result ? { result: draft.result } : {}),
     ...(draft.source ? { source: draft.source } : {}),

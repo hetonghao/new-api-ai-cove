@@ -45,7 +45,7 @@ import type { RiskProvider } from './types'
 
 const QUERY_KEY = ['risk', 'providers'] as const
 
-type RiskCenterTab = 'configuration' | 'records'
+type RiskCenterTab = 'records' | 'configuration'
 
 function assertNever(action: never): never {
   throw new Error(`Unsupported provider action: ${action}`)
@@ -53,7 +53,7 @@ function assertNever(action: never): never {
 
 export function RiskProviders() {
   const { t } = useTranslation()
-  const [activeTab, setActiveTab] = useState<RiskCenterTab>('configuration')
+  const [activeTab, setActiveTab] = useState<RiskCenterTab>('records')
   const [formOpen, setFormOpen] = useState(false)
   const [editingProvider, setEditingProvider] = useState<RiskProvider | null>(
     null
@@ -169,10 +169,10 @@ export function RiskProviders() {
             }}
           >
             <TabsList>
+              <TabsTrigger value='records'>{t('Risk records')}</TabsTrigger>
               <TabsTrigger value='configuration'>
                 {t('Risk Configuration')}
               </TabsTrigger>
-              <TabsTrigger value='records'>{t('Risk records')}</TabsTrigger>
             </TabsList>
             <TabsContent value='configuration' className='mt-2'>
               <div className='space-y-4'>
@@ -201,7 +201,7 @@ export function RiskProviders() {
               </div>
             </TabsContent>
             <TabsContent value='records' className='mt-2'>
-              <RiskRecordList />
+              <RiskRecordList providers={providersQuery.data ?? []} />
             </TabsContent>
           </Tabs>
         </SectionPageLayout.Content>

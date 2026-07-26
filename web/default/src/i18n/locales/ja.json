@@ -5308,6 +5308,17 @@
     "Provider ID": "プロバイダー ID",
     "All results": "すべての結果",
     "All sources": "すべてのソース",
-    "Run query": "検索"
+    "Run query": "検索",
+    "All providers": "すべてのプロバイダー",
+    "No provider": "プロバイダーなし",
+    "Cloud review provider": "クラウド審査プロバイダー",
+    "Account ID": "アカウント ID",
+    "Please enter a valid Cloudflare account ID": "有効な Cloudflare アカウント ID を入力してください",
+    "Risk record cleanup": "リスク記録のクリーンアップ",
+    "Enable AI risk control": "AI リスク制御を有効化",
+    "Risk channels": "リスクチャネル",
+    "Select at least one risk channel": "リスクチャネルを1つ以上選択してください",
+    "Only selected channels run local risk screening or cloud review.": "選択したチャネルのみがローカルリスクスクリーニングまたはクラウド審査を実行します。",
+    "Failed to load channels": "チャネルの読み込みに失敗しました"
   }
 }

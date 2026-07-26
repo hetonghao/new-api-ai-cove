@@ -3,7 +3,9 @@ package model
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type RiskRecordQuery struct {
@@ -12,7 +14,7 @@ type RiskRecordQuery struct {
 	StartTimestamp int64
 	EndTimestamp   int64
 	ChannelID      int
-	UserID         int
+	Username       string
 	ProviderID     *int
 	Result         RiskRecordResult
 	Source         RiskRecordSource
@@ -33,8 +35,25 @@ func QueryRiskRecords(ctx context.Context, filter RiskRecordQuery) ([]*RiskRecor
 	if filter.ChannelID > 0 {
 		query = query.Where("channel_id = ?", filter.ChannelID)
 	}
-	if filter.UserID > 0 {
-		query = query.Where("user_id = ?", filter.UserID)
+	if filter.Username != "" {
+		userQuery := DB.WithContext(ctx).Model(&User{})
+		if strings.Contains(filter.Username, "%") {
+			pattern, err := sanitizeLikePattern(filter.Username)
+			if err != nil {
+				return nil, 0, ErrInvalidRiskRecordPage
+			}
+			userQuery = userQuery.Where("username LIKE ? ESCAPE '!'", pattern)
+		} else {
+			userQuery = userQuery.Where("username = ?", filter.Username)
+		}
+		userIDs := make([]int, 0)
+		if err := userQuery.Pluck("id", &userIDs).Error; err != nil {
+			return nil, 0, fmt.Errorf("query risk record users: %w", err)
+		}
+		if len(userIDs) == 0 {
+			return []*RiskRecord{}, 0, nil
+		}
+		query = query.Where("user_id IN ?", userIDs)
 	}
 	if filter.ProviderID != nil {
 		query = query.Where("provider_id = ?", *filter.ProviderID)
@@ -65,7 +84,9 @@ func validateRiskRecordQuery(filter RiskRecordQuery) error {
 		(filter.StartTimestamp > 0 && filter.EndTimestamp > 0 && filter.StartTimestamp > filter.EndTimestamp) {
 		return ErrInvalidRiskRecordPage
 	}
-	if filter.ChannelID < 0 || filter.UserID < 0 || (filter.ProviderID != nil && *filter.ProviderID < 0) {
+	usernameText := strings.ReplaceAll(filter.Username, "%", "")
+	if filter.ChannelID < 0 || utf8.RuneCountInString(usernameText) > UserNameMaxLength ||
+		(filter.ProviderID != nil && *filter.ProviderID < 0) {
 		return ErrInvalidRiskRecordPage
 	}
 	switch filter.Result {

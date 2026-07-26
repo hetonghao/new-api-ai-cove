@@ -5306,6 +5306,17 @@
     "Provider ID": "供應商 ID",
     "All results": "全部結果",
     "All sources": "全部來源",
-    "Run query": "查詢"
+    "Run query": "查詢",
+    "All providers": "全部供應商",
+    "No provider": "無供應商",
+    "Cloud review provider": "雲端審核供應商",
+    "Account ID": "帳戶 ID",
+    "Please enter a valid Cloudflare account ID": "請輸入有效的 Cloudflare 帳戶 ID",
+    "Risk record cleanup": "風控記錄清理",
+    "Enable AI risk control": "啟用 AI 風控",
+    "Risk channels": "風控渠道",
+    "Select at least one risk channel": "請至少選擇一個風控渠道",
+    "Only selected channels run local risk screening or cloud review.": "只有所選渠道會執行本地風險初篩或雲端審核。",
+    "Failed to load channels": "載入渠道失敗"
   }
 }

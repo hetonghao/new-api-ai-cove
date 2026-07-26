@@ -5445,6 +5445,17 @@
     "Provider ID": "Provider ID",
     "All results": "All results",
     "All sources": "All sources",
-    "Run query": "Run query"
+    "Run query": "Run query",
+    "All providers": "All providers",
+    "No provider": "No provider",
+    "Cloud review provider": "Cloud review provider",
+    "Account ID": "Account ID",
+    "Please enter a valid Cloudflare account ID": "Please enter a valid Cloudflare account ID",
+    "Risk record cleanup": "Risk record cleanup",
+    "Enable AI risk control": "Enable AI risk control",
+    "Risk channels": "Risk channels",
+    "Select at least one risk channel": "Select at least one risk channel",
+    "Only selected channels run local risk screening or cloud review.": "Only selected channels run local risk screening or cloud review.",
+    "Failed to load channels": "Failed to load channels"
   }
 }

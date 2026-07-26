@@ -5308,6 +5308,17 @@
     "Provider ID": "ID du fournisseur",
     "All results": "Tous les résultats",
     "All sources": "Toutes les sources",
-    "Run query": "Rechercher"
+    "Run query": "Rechercher",
+    "All providers": "Tous les fournisseurs",
+    "No provider": "Aucun fournisseur",
+    "Cloud review provider": "Fournisseur de vérification cloud",
+    "Account ID": "ID du compte",
+    "Please enter a valid Cloudflare account ID": "Veuillez saisir un ID de compte Cloudflare valide",
+    "Risk record cleanup": "Nettoyage des enregistrements de risque",
+    "Enable AI risk control": "Activer le contrôle des risques par IA",
+    "Risk channels": "Canaux de risque",
+    "Select at least one risk channel": "Sélectionnez au moins un canal de risque",
+    "Only selected channels run local risk screening or cloud review.": "Seuls les canaux sélectionnés exécutent le filtrage local des risques ou la vérification cloud.",
+    "Failed to load channels": "Échec du chargement des canaux"
   }
 }

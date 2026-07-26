@@ -38,9 +38,14 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TitledCard } from '@/components/ui/titled-card'
+import type { RiskProvider } from '@/features/risk-providers/types'
 
 import { listRiskRecords } from '../api'
-import { getRiskRecordTotalPages } from '../lib/risk-records'
+import { createDefaultRiskRecordFilterDraft } from '../lib/default-filter'
+import {
+  commitRiskRecordFilters,
+  getRiskRecordTotalPages,
+} from '../lib/risk-records'
 import type { RiskRecordFilters } from '../types'
 import { RiskRecordFiltersForm } from './risk-record-filters'
 import {
@@ -88,10 +93,17 @@ function EmptyRecords() {
   )
 }
 
-export function RiskRecordList() {
+type RiskRecordListProps = {
+  readonly providers: readonly RiskProvider[]
+}
+
+export function RiskRecordList(props: RiskRecordListProps) {
   const { t } = useTranslation()
   const [page, setPage] = useState(1)
-  const [filters, setFilters] = useState<RiskRecordFilters>({})
+  const [initialDraft] = useState(createDefaultRiskRecordFilterDraft)
+  const [filters, setFilters] = useState<RiskRecordFilters>(() =>
+    commitRiskRecordFilters(initialDraft)
+  )
   const recordsQuery = useQuery({
     queryKey: ['risk', 'records', page, PAGE_SIZE, filters],
     queryFn: async () => {
@@ -162,7 +174,9 @@ export function RiskRecordList() {
     >
       <RiskRecordFiltersForm
         disabled={recordsQuery.isFetching}
+        initialValues={initialDraft}
         onApply={applyFilters}
+        providers={props.providers}
       />
       {content}
       {!recordsQuery.error && !recordsQuery.isLoading && (

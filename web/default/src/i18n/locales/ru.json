@@ -5308,6 +5308,17 @@
     "Provider ID": "ID провайдера",
     "All results": "Все результаты",
     "All sources": "Все источники",
-    "Run query": "Выполнить поиск"
+    "Run query": "Выполнить поиск",
+    "All providers": "Все провайдеры",
+    "No provider": "Без провайдера",
+    "Cloud review provider": "Провайдер облачной проверки",
+    "Account ID": "ID аккаунта",
+    "Please enter a valid Cloudflare account ID": "Введите действительный ID аккаунта Cloudflare",
+    "Risk record cleanup": "Очистка записей риска",
+    "Enable AI risk control": "Включить ИИ-контроль рисков",
+    "Risk channels": "Каналы контроля рисков",
+    "Select at least one risk channel": "Выберите хотя бы один канал контроля рисков",
+    "Only selected channels run local risk screening or cloud review.": "Только выбранные каналы выполняют локальную проверку рисков или облачную проверку.",
+    "Failed to load channels": "Не удалось загрузить каналы"
   }
 }

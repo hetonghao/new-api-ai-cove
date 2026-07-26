@@ -36,16 +36,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import type { RiskProvider } from '@/features/risk-providers/types'
+import { CompactDateTimeRangePicker } from '@/features/usage-logs/components/compact-date-time-range-picker'
 
+import { createDefaultRiskRecordFilterDraft } from '../lib/default-filter'
 import {
   commitRiskRecordFilters,
   createRiskRecordFilterFormSchema,
-  EMPTY_RISK_RECORD_FILTER_DRAFT,
   getRiskRecordResultFilterLabel,
   getRiskRecordSourceFilterLabel,
   type RiskRecordFilterFormValues,
 } from '../lib/risk-records'
 import type { RiskRecordFilters } from '../types'
+import { RiskRecordProviderFilter } from './risk-record-provider-filter'
 
 const ALL_RESULTS = 'all-results'
 const ALL_SOURCES = 'all-sources'
@@ -66,16 +69,19 @@ const SOURCE_OPTIONS = [
 
 type RiskRecordFiltersProps = {
   readonly disabled: boolean
+  readonly initialValues: RiskRecordFilterFormValues
   readonly onApply: (filters: RiskRecordFilters) => void
+  readonly providers: readonly RiskProvider[]
 }
 
 export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
   const { t } = useTranslation()
   const form = useForm<RiskRecordFilterFormValues>({
     resolver: zodResolver(createRiskRecordFilterFormSchema(t)),
-    defaultValues: EMPTY_RISK_RECORD_FILTER_DRAFT,
+    defaultValues: props.initialValues,
   })
   const startTime = form.watch('start_time')
+  const endTime = form.watch('end_time')
   const errors = form.formState.errors
 
   function submitFilters(values: RiskRecordFilterFormValues) {
@@ -83,8 +89,9 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
   }
 
   function clearFilters() {
-    form.reset(EMPTY_RISK_RECORD_FILTER_DRAFT)
-    props.onApply({})
+    const defaultValues = createDefaultRiskRecordFilterDraft()
+    form.reset(defaultValues)
+    props.onApply(commitRiskRecordFilters(defaultValues))
   }
 
   return (
@@ -94,73 +101,28 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
       noValidate
     >
       <FieldGroup className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
-        <Field data-invalid={Boolean(errors.start_time)}>
-          <FieldLabel htmlFor='risk-record-start-time'>
-            {t('Start Time')}
-          </FieldLabel>
-          <Input
-            id='risk-record-start-time'
-            type='datetime-local'
-            aria-invalid={Boolean(errors.start_time)}
-            {...form.register('start_time')}
+        <Field
+          className='md:col-span-2'
+          data-invalid={Boolean(errors.start_time || errors.end_time)}
+        >
+          <FieldLabel>{t('Date Range')}</FieldLabel>
+          <CompactDateTimeRangePicker
+            start={startTime}
+            end={endTime}
+            onChange={(range) => {
+              form.setValue('start_time', range.start, {
+                shouldDirty: true,
+                shouldValidate: true,
+              })
+              form.setValue('end_time', range.end, {
+                shouldDirty: true,
+                shouldValidate: true,
+              })
+            }}
           />
-          <FieldError>{errors.start_time?.message}</FieldError>
-        </Field>
-        <Field data-invalid={Boolean(errors.end_time)}>
-          <FieldLabel htmlFor='risk-record-end-time'>
-            {t('End Time')}
-          </FieldLabel>
-          <Input
-            id='risk-record-end-time'
-            type='datetime-local'
-            min={startTime || undefined}
-            aria-invalid={Boolean(errors.end_time)}
-            {...form.register('end_time')}
-          />
-          <FieldError>{errors.end_time?.message}</FieldError>
-        </Field>
-        <Field data-invalid={Boolean(errors.channel_id)}>
-          <FieldLabel htmlFor='risk-record-channel-id'>
-            {t('Channel ID')}
-          </FieldLabel>
-          <Input
-            id='risk-record-channel-id'
-            type='number'
-            inputMode='numeric'
-            min='1'
-            step='1'
-            aria-invalid={Boolean(errors.channel_id)}
-            {...form.register('channel_id')}
-          />
-          <FieldError>{errors.channel_id?.message}</FieldError>
-        </Field>
-        <Field data-invalid={Boolean(errors.user_id)}>
-          <FieldLabel htmlFor='risk-record-user-id'>{t('User ID')}</FieldLabel>
-          <Input
-            id='risk-record-user-id'
-            type='number'
-            inputMode='numeric'
-            min='1'
-            step='1'
-            aria-invalid={Boolean(errors.user_id)}
-            {...form.register('user_id')}
-          />
-          <FieldError>{errors.user_id?.message}</FieldError>
-        </Field>
-        <Field data-invalid={Boolean(errors.provider_id)}>
-          <FieldLabel htmlFor='risk-record-provider-id'>
-            {t('Provider ID')}
-          </FieldLabel>
-          <Input
-            id='risk-record-provider-id'
-            type='number'
-            inputMode='numeric'
-            min='0'
-            step='1'
-            aria-invalid={Boolean(errors.provider_id)}
-            {...form.register('provider_id')}
-          />
-          <FieldError>{errors.provider_id?.message}</FieldError>
+          <FieldError>
+            {errors.start_time?.message || errors.end_time?.message}
+          </FieldError>
         </Field>
         <Controller
           control={form.control}
@@ -240,6 +202,36 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
             )
           }}
         />
+        <Field data-invalid={Boolean(errors.username)}>
+          <FieldLabel htmlFor='risk-record-username'>
+            {t('Username')}
+          </FieldLabel>
+          <Input
+            id='risk-record-username'
+            aria-invalid={Boolean(errors.username)}
+            {...form.register('username')}
+          />
+          <FieldError>{errors.username?.message}</FieldError>
+        </Field>
+        <RiskRecordProviderFilter
+          control={form.control}
+          providers={props.providers}
+        />
+        <Field data-invalid={Boolean(errors.channel_id)}>
+          <FieldLabel htmlFor='risk-record-channel-id'>
+            {t('Channel ID')}
+          </FieldLabel>
+          <Input
+            id='risk-record-channel-id'
+            type='number'
+            inputMode='numeric'
+            min='1'
+            step='1'
+            aria-invalid={Boolean(errors.channel_id)}
+            {...form.register('channel_id')}
+          />
+          <FieldError>{errors.channel_id?.message}</FieldError>
+        </Field>
         <div className='flex flex-wrap items-end gap-2 md:col-span-2 xl:col-span-1'>
           <Button type='submit' size='sm' disabled={props.disabled}>
             {t('Run query')}
@@ -248,10 +240,10 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
             type='button'
             size='sm'
             variant='outline'
-            disabled={props.disabled}
+            disabled={props.disabled || !form.formState.isDirty}
             onClick={clearFilters}
           >
-            {t('Clear')}
+            {t('Reset')}
           </Button>
         </div>
       </FieldGroup>
