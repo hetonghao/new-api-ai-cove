@@ -18,6 +18,8 @@ import (
 
 type RiskReviewStatus string
 
+const cloudflareWorkersAIBaseURL = "https://api.cloudflare.com/client/v4/accounts"
+
 const (
 	RiskReviewSafe   RiskReviewStatus = "safe"
 	RiskReviewUnsafe RiskReviewStatus = "unsafe"
@@ -73,7 +75,11 @@ func ReviewRiskContent(ctx context.Context, provider *model.RiskProvider, conten
 		return RiskReviewResult{}, fmt.Errorf("encode Cloudflare risk request: %w", err)
 	}
 
-	requestURL, err := url.JoinPath(strings.TrimRight(provider.BaseURL, "/"), provider.Model)
+	accountID, err := provider.CloudflareAccountID()
+	if err != nil {
+		return RiskReviewResult{}, err
+	}
+	requestURL, err := url.JoinPath(cloudflareWorkersAIBaseURL, accountID, "ai", "run", provider.Model)
 	if err != nil {
 		return RiskReviewResult{}, fmt.Errorf("build Cloudflare risk URL: %w", err)
 	}

@@ -75,14 +75,12 @@ export function RiskProviderCard(props: RiskProviderCardProps) {
             </dd>
           </div>
           <div className='min-w-0'>
-            <dt className='text-muted-foreground text-xs'>
-              {t('Connection URL')}
-            </dt>
+            <dt className='text-muted-foreground text-xs'>{t('Account ID')}</dt>
             <dd
               className='truncate font-mono text-xs'
-              title={provider.base_url}
+              title={provider.account_id}
             >
-              {provider.base_url}
+              {provider.account_id}
             </dd>
           </div>
           <div>

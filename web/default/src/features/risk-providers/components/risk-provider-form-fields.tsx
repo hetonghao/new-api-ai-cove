@@ -68,18 +68,21 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
           </NativeSelectOption>
         </NativeSelect>
       </Field>
-      <Field className='sm:col-span-2' data-invalid={Boolean(errors.base_url)}>
-        <FieldLabel htmlFor='risk-provider-base-url'>
-          {t('Connection URL')}
+      <Field
+        className='sm:col-span-2'
+        data-invalid={Boolean(errors.account_id)}
+      >
+        <FieldLabel htmlFor='risk-provider-account-id'>
+          {t('Account ID')}
         </FieldLabel>
         <Input
-          id='risk-provider-base-url'
-          type='url'
-          aria-invalid={Boolean(errors.base_url)}
-          placeholder='https://api.cloudflare.com/client/v4/accounts/.../ai/run'
-          {...form.register('base_url')}
+          id='risk-provider-account-id'
+          autoComplete='off'
+          aria-invalid={Boolean(errors.account_id)}
+          placeholder='0123456789abcdef0123456789abcdef'
+          {...form.register('account_id')}
         />
-        <FieldError errors={[errors.base_url]} />
+        <FieldError errors={[errors.account_id]} />
       </Field>
       <Field className='sm:col-span-2' data-invalid={Boolean(errors.model)}>
         <FieldLabel htmlFor='risk-provider-model'>{t('Model')}</FieldLabel>

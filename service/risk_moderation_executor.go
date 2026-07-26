@@ -83,10 +83,14 @@ func RiskModerationPolicyVersion(input RiskModerationInput) (string, error) {
 		return "", err
 	}
 	provider := input.Provider
+	accountID, err := provider.CloudflareAccountID()
+	if err != nil {
+		return "", fmt.Errorf("resolve risk provider account ID: %w", err)
+	}
 	material, err := common.Marshal(struct {
 		ProviderID              int                    `json:"provider_id"`
 		ProviderType            model.RiskProviderType `json:"provider_type"`
-		BaseURL                 string                 `json:"base_url"`
+		AccountID               string                 `json:"account_id"`
 		Model                   string                 `json:"model"`
 		ReviewMode              model.RiskReviewMode   `json:"review_mode"`
 		ChunkLimit              int                    `json:"chunk_limit"`
@@ -94,7 +98,7 @@ func RiskModerationPolicyVersion(input RiskModerationInput) (string, error) {
 		ClassificationSemantics string                 `json:"classification_semantics"`
 	}{
 		ProviderID: provider.Id, ProviderType: provider.ProviderType,
-		BaseURL: provider.BaseURL, Model: provider.Model,
+		AccountID: accountID, Model: provider.Model,
 		ReviewMode: input.ReviewMode, ChunkLimit: chunkLimit,
 		PromptSemantics:         riskModerationPromptSemantics,
 		ClassificationSemantics: riskModerationClassificationSemantics,

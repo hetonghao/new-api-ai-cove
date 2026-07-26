@@ -15,7 +15,7 @@ import (
 func riskModerationProviderForTest() *model.RiskProvider {
 	return &model.RiskProvider{
 		Id: 7, ProviderType: model.RiskProviderCloudflare,
-		Model: "guard-v1", BaseURL: "https://risk.example/v1",
+		AccountID: "0123456789abcdef0123456789abcdef", Model: "guard-v1",
 		TimeoutMs: 800, FailureThreshold: 2, CooldownSeconds: 30,
 		UpdatedAt: time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
 	}
@@ -36,10 +36,10 @@ func TestRiskModerationPolicyVersion_changesWithVerdictSemanticsOnly(t *testing.
 	changedModel.Provider.Model = "guard-v2"
 	modelVersion, err := RiskModerationPolicyVersion(changedModel)
 	require.NoError(t, err)
-	changedEndpoint := base
-	changedEndpoint.Provider = riskModerationProviderForTest()
-	changedEndpoint.Provider.BaseURL = "https://other-risk.example/v1"
-	endpointVersion, err := RiskModerationPolicyVersion(changedEndpoint)
+	changedAccount := base
+	changedAccount.Provider = riskModerationProviderForTest()
+	changedAccount.Provider.AccountID = "fedcba9876543210fedcba9876543210"
+	accountVersion, err := RiskModerationPolicyVersion(changedAccount)
 	require.NoError(t, err)
 	changedIdentity := base
 	changedIdentity.Provider = riskModerationProviderForTest()
@@ -68,9 +68,9 @@ func TestRiskModerationPolicyVersion_changesWithVerdictSemanticsOnly(t *testing.
 	require.NoError(t, err)
 
 	// Then
-	assert.Equal(t, "b0c834dddc29cf2ab839a5ae1381d12f2d559278b98bfec15945c0503beeda52", version)
+	assert.Equal(t, "b809a77cb70e96f73c4ea9aba517ff32738a794a2c6f1dc6210064ffbe8caead", version)
 	assert.NotEqual(t, version, modelVersion)
-	assert.NotEqual(t, version, endpointVersion)
+	assert.NotEqual(t, version, accountVersion)
 	assert.NotEqual(t, version, identityVersion)
 	assert.NotEqual(t, version, chunkVersion)
 	assert.NotEqual(t, version, modeVersion)

@@ -35,7 +35,7 @@ func TestRiskProviderPersistenceEnforcesValidationBeforeActivation(t *testing.T)
 	})
 	require.NoError(t, db.AutoMigrate(&RiskProvider{}))
 
-	first := &RiskProvider{Name: "primary", ProviderType: RiskProviderCloudflare, Model: "@cf/meta/llama-guard-3-8b", BaseURL: "https://api.cloudflare.com/client/v4/accounts/a/ai/run", CredentialEncrypted: "ciphertext-1"}
+	first := &RiskProvider{Name: "primary", ProviderType: RiskProviderCloudflare, AccountID: "0123456789abcdef0123456789abcdef", Model: "@cf/meta/llama-guard-3-8b", CredentialEncrypted: "ciphertext-1"}
 	require.NoError(t, CreateRiskProvider(first))
 	assert.Equal(t, DefaultRiskProviderTimeoutMs, first.TimeoutMs)
 	assert.Equal(t, DefaultRiskProviderFailureThreshold, first.FailureThreshold)
@@ -48,7 +48,7 @@ func TestRiskProviderPersistenceEnforcesValidationBeforeActivation(t *testing.T)
 	require.NoError(t, MarkRiskProviderValidated(first.Id))
 	require.NoError(t, ActivateRiskProvider(first.Id))
 
-	second := &RiskProvider{Name: "secondary", ProviderType: RiskProviderCloudflare, Model: "@cf/meta/llama-guard-3-8b", BaseURL: "https://api.cloudflare.com/client/v4/accounts/b/ai/run", CredentialEncrypted: "ciphertext-2"}
+	second := &RiskProvider{Name: "secondary", ProviderType: RiskProviderCloudflare, AccountID: "fedcba9876543210fedcba9876543210", Model: "@cf/meta/llama-guard-3-8b", CredentialEncrypted: "ciphertext-2"}
 	require.NoError(t, CreateRiskProvider(second))
 	require.NoError(t, MarkRiskProviderValidated(second.Id))
 	require.NoError(t, ActivateRiskProvider(second.Id))
@@ -58,4 +58,24 @@ func TestRiskProviderPersistenceEnforcesValidationBeforeActivation(t *testing.T)
 	require.Len(t, providers, 2)
 	assert.False(t, providers[0].Active)
 	assert.True(t, providers[1].Active)
+}
+
+func TestRiskProviderAccountIDRejectsInvalidInputAndReadsLegacyBaseURL(t *testing.T) {
+	// Given a legacy row and invalid new account IDs
+	legacy := &RiskProvider{BaseURL: "https://legacy.example/client/v4/accounts/0123456789abcdef0123456789abcdef/ai/run"}
+
+	// When the effective account ID is resolved
+	accountID, err := legacy.CloudflareAccountID()
+
+	// Then the legacy path remains readable without trusting its host
+	require.NoError(t, err)
+	assert.Equal(t, "0123456789abcdef0123456789abcdef", accountID)
+
+	for _, accountID := range []string{"", "not-an-account-id", "0123456789abcdef0123456789abcdeg"} {
+		provider := &RiskProvider{
+			Name: "invalid", ProviderType: RiskProviderCloudflare, AccountID: accountID,
+			Model: "@cf/meta/llama-guard-3-8b", CredentialEncrypted: "ciphertext",
+		}
+		require.Error(t, normalizeRiskProvider(provider))
+	}
 }

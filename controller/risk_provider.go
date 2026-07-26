@@ -16,8 +16,8 @@ type RiskProviderResponse struct {
 	Id               int                    `json:"id"`
 	Name             string                 `json:"name"`
 	ProviderType     model.RiskProviderType `json:"provider_type"`
+	AccountID        string                 `json:"account_id"`
 	Model            string                 `json:"model"`
-	BaseURL          string                 `json:"base_url"`
 	HasCredential    bool                   `json:"has_credential"`
 	TimeoutMs        int                    `json:"timeout_ms"`
 	FailureThreshold int                    `json:"failure_threshold"`
@@ -31,8 +31,8 @@ type RiskProviderResponse struct {
 type riskProviderRequest struct {
 	Name             string                 `json:"name" binding:"required"`
 	ProviderType     model.RiskProviderType `json:"provider_type" binding:"required,oneof=cloudflare"`
+	AccountID        string                 `json:"account_id" binding:"required"`
 	Model            string                 `json:"model" binding:"required"`
-	BaseURL          string                 `json:"base_url" binding:"required,url"`
 	Credential       string                 `json:"credential"`
 	TimeoutMs        int                    `json:"timeout_ms" binding:"omitempty,gte=1,lte=60000"`
 	FailureThreshold int                    `json:"failure_threshold" binding:"omitempty,gte=1,lte=100"`
@@ -64,7 +64,7 @@ func CreateRiskProvider(c *gin.Context) {
 		return
 	}
 	provider := &model.RiskProvider{
-		Name: request.Name, ProviderType: request.ProviderType, Model: request.Model, BaseURL: request.BaseURL,
+		Name: request.Name, ProviderType: request.ProviderType, AccountID: request.AccountID, Model: request.Model,
 		CredentialEncrypted: ciphertext, TimeoutMs: request.TimeoutMs, FailureThreshold: request.FailureThreshold,
 		CooldownSeconds: request.CooldownSeconds,
 	}
@@ -90,14 +90,15 @@ func UpdateRiskProvider(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	currentAccountID, _ := provider.CloudflareAccountID()
 	connectionChanged := provider.ProviderType != request.ProviderType ||
+		currentAccountID != strings.ToLower(strings.TrimSpace(request.AccountID)) ||
 		provider.Model != strings.TrimSpace(request.Model) ||
-		provider.BaseURL != strings.TrimRight(strings.TrimSpace(request.BaseURL), "/") ||
 		request.Credential != ""
 	provider.Name = request.Name
 	provider.ProviderType = request.ProviderType
+	provider.AccountID = request.AccountID
 	provider.Model = request.Model
-	provider.BaseURL = request.BaseURL
 	provider.TimeoutMs = request.TimeoutMs
 	provider.FailureThreshold = request.FailureThreshold
 	provider.CooldownSeconds = request.CooldownSeconds
@@ -184,9 +185,10 @@ func parseRiskProviderID(c *gin.Context) (int, bool) {
 }
 
 func toRiskProviderResponse(provider *model.RiskProvider) RiskProviderResponse {
+	accountID, _ := provider.CloudflareAccountID()
 	return RiskProviderResponse{
 		Id: provider.Id, Name: provider.Name, ProviderType: provider.ProviderType, Model: provider.Model,
-		BaseURL: provider.BaseURL, HasCredential: provider.CredentialEncrypted != "", TimeoutMs: provider.TimeoutMs,
+		AccountID: accountID, HasCredential: provider.CredentialEncrypted != "", TimeoutMs: provider.TimeoutMs,
 		FailureThreshold: provider.FailureThreshold, CooldownSeconds: provider.CooldownSeconds,
 		ValidatedAt: provider.ValidatedAt, Active: provider.Active, CreatedAt: provider.CreatedAt, UpdatedAt: provider.UpdatedAt,
 	}

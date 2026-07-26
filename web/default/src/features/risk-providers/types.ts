@@ -22,8 +22,8 @@ export type RiskProvider = {
   readonly id: number
   readonly name: string
   readonly provider_type: RiskProviderType
+  readonly account_id: string
   readonly model: string
-  readonly base_url: string
   readonly has_credential: boolean
   readonly timeout_ms: number
   readonly failure_threshold: number
@@ -37,8 +37,8 @@ export type RiskProvider = {
 export type RiskProviderFormValues = {
   readonly name: string
   readonly provider_type: RiskProviderType
+  readonly account_id: string
   readonly model: string
-  readonly base_url: string
   readonly credential: string
   readonly timeout_ms: number
   readonly failure_threshold: number

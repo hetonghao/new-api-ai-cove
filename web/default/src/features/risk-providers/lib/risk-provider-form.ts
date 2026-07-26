@@ -36,8 +36,8 @@ type RiskProviderServerFormError = {
 export const RISK_PROVIDER_DEFAULT_VALUES: RiskProviderFormValues = {
   name: '',
   provider_type: 'cloudflare',
+  account_id: '',
   model: '@cf/meta/llama-guard-3-8b',
-  base_url: '',
   credential: '',
   timeout_ms: 800,
   failure_threshold: 5,
@@ -52,8 +52,14 @@ export function getRiskProviderFormSchema(
     .object({
       name: z.string().trim().min(1, t('Please enter a name')),
       provider_type: z.literal('cloudflare'),
+      account_id: z
+        .string()
+        .trim()
+        .regex(
+          /^[0-9a-fA-F]{32}$/,
+          t('Please enter a valid Cloudflare account ID')
+        ),
       model: z.string().trim().min(1, t('Please enter a model')),
-      base_url: z.url(t('Please enter a valid URL')),
       credential: z.string(),
       timeout_ms: z
         .number()
@@ -85,8 +91,8 @@ export function providerToFormValues(
   return {
     name: provider.name,
     provider_type: provider.provider_type,
+    account_id: provider.account_id,
     model: provider.model,
-    base_url: provider.base_url,
     credential: '',
     timeout_ms: provider.timeout_ms,
     failure_threshold: provider.failure_threshold,
@@ -100,8 +106,8 @@ export function formValuesToPayload(
   const payload = {
     name: values.name.trim(),
     provider_type: values.provider_type,
+    account_id: values.account_id.trim().toLowerCase(),
     model: values.model.trim(),
-    base_url: values.base_url.trim(),
     timeout_ms: values.timeout_ms,
     failure_threshold: values.failure_threshold,
     cooldown_seconds: values.cooldown_seconds,

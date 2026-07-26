@@ -33,7 +33,7 @@ const formValues: RiskProviderFormValues = {
   name: 'Cloudflare primary',
   provider_type: 'cloudflare',
   model: '@cf/meta/llama-guard-3-8b',
-  base_url: 'https://api.cloudflare.com/client/v4/accounts/demo/ai/run',
+  account_id: '0123456789abcdef0123456789abcdef',
   credential: '',
   timeout_ms: 800,
   failure_threshold: 5,
@@ -46,7 +46,7 @@ function provider(overrides: Partial<RiskProvider> = {}): RiskProvider {
     name: formValues.name,
     provider_type: 'cloudflare',
     model: formValues.model,
-    base_url: formValues.base_url,
+    account_id: formValues.account_id,
     has_credential: true,
     timeout_ms: 800,
     failure_threshold: 5,
@@ -112,6 +112,20 @@ describe('risk provider form behavior', () => {
 
     // Then the values remain valid and the stored credential can be retained
     assert.equal(result.success, true)
+  })
+
+  test('requires a valid Cloudflare account ID', () => {
+    // Given a provider form with an invalid account ID
+    const values = { ...formValues, account_id: 'not-an-account-id' }
+
+    // When the form schema validates the values
+    const result = getRiskProviderFormSchema(t, false).safeParse(values)
+
+    // Then the account field receives the validation issue
+    assert.equal(result.success, false)
+    if (!result.success) {
+      assert.deepEqual(result.error.issues[0]?.path, ['account_id'])
+    }
   })
 
   test('allows activation only after successful validation', () => {

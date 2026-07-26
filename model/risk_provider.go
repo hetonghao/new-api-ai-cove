@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -22,10 +23,13 @@ const (
 
 var ErrRiskProviderNotValidated = errors.New("risk provider is not validated")
 
+var cloudflareAccountIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
 type RiskProvider struct {
 	Id                  int              `json:"id" gorm:"primaryKey"`
 	Name                string           `json:"name" gorm:"type:varchar(128);not null"`
 	ProviderType        RiskProviderType `json:"provider_type" gorm:"type:varchar(32);not null"`
+	AccountID           string           `json:"account_id" gorm:"type:varchar(64);not null;default:''"`
 	Model               string           `json:"model" gorm:"type:varchar(256);not null"`
 	BaseURL             string           `json:"base_url" gorm:"type:varchar(1024);not null"`
 	CredentialEncrypted string           `json:"-" gorm:"type:text;not null"`
@@ -120,16 +124,16 @@ func normalizeRiskProvider(provider *RiskProvider) error {
 	}
 	provider.Name = strings.TrimSpace(provider.Name)
 	provider.Model = strings.TrimSpace(provider.Model)
-	provider.BaseURL = strings.TrimRight(strings.TrimSpace(provider.BaseURL), "/")
-	if provider.Name == "" || provider.Model == "" || provider.BaseURL == "" || provider.CredentialEncrypted == "" {
-		return errors.New("risk provider name, model, base URL, and credential are required")
-	}
 	if provider.ProviderType != RiskProviderCloudflare {
 		return errors.New("unsupported risk provider type")
 	}
-	parsedURL, err := url.Parse(provider.BaseURL)
-	if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
-		return errors.New("risk provider base URL must use http or https")
+	accountID, err := provider.CloudflareAccountID()
+	if err != nil {
+		return err
+	}
+	provider.AccountID = accountID
+	if provider.Name == "" || provider.Model == "" || provider.CredentialEncrypted == "" {
+		return errors.New("risk provider name, account ID, model, and credential are required")
 	}
 	if provider.TimeoutMs == 0 {
 		provider.TimeoutMs = DefaultRiskProviderTimeoutMs
@@ -144,4 +148,33 @@ func normalizeRiskProvider(provider *RiskProvider) error {
 		return errors.New("risk provider timeout or circuit breaker value is out of range")
 	}
 	return nil
+}
+
+func (provider *RiskProvider) CloudflareAccountID() (string, error) {
+	if provider == nil {
+		return "", errors.New("risk provider is required")
+	}
+	accountID := strings.ToLower(strings.TrimSpace(provider.AccountID))
+	if accountID != "" {
+		if !cloudflareAccountIDPattern.MatchString(accountID) {
+			return "", errors.New("invalid Cloudflare account ID")
+		}
+		return accountID, nil
+	}
+
+	parsedURL, err := url.Parse(strings.TrimSpace(provider.BaseURL))
+	if err != nil || parsedURL.Host == "" {
+		return "", errors.New("Cloudflare account ID is required")
+	}
+	parts := strings.Split(strings.Trim(parsedURL.Path, "/"), "/")
+	for index := 0; index+3 < len(parts); index++ {
+		if parts[index] != "accounts" || parts[index+2] != "ai" || parts[index+3] != "run" {
+			continue
+		}
+		accountID = strings.ToLower(parts[index+1])
+		if cloudflareAccountIDPattern.MatchString(accountID) {
+			return accountID, nil
+		}
+	}
+	return "", errors.New("Cloudflare account ID is required")
 }

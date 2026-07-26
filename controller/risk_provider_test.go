@@ -79,46 +79,37 @@ func callRiskProviderHandler(t *testing.T, call riskProviderTestCall) riskProvid
 	return response
 }
 
-func TestRiskProviderAPIWorkflowKeepsCredentialsMaskedAndActiveEditsDirect(t *testing.T) {
+func TestRiskProviderAPIWorkflowKeepsCredentialsMasked(t *testing.T) {
 	db := setupRiskProviderControllerTest(t)
-	cloudflare := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "Bearer cf-secret-token", r.Header.Get("Authorization"))
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"success":true,"result":{"response":{"safe":true,"categories":[]},"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4}}}`))
-	}))
-	defer cloudflare.Close()
 
 	create := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodPost, Target: "/api/risk/providers", Body: map[string]any{
 		"name": "Cloudflare primary", "provider_type": "cloudflare", "model": "@cf/meta/llama-guard-3-8b",
-		"base_url": cloudflare.URL, "credential": "cf-secret-token",
+		"account_id": "0123456789abcdef0123456789abcdef", "credential": "cf-secret-token",
 	}, Handler: CreateRiskProvider})
 	require.True(t, create.Success, create.Message)
 	var created RiskProviderResponse
 	require.NoError(t, common.Unmarshal(create.Data, &created))
 	assert.True(t, created.HasCredential)
 	assert.Nil(t, created.ValidatedAt)
+	assert.Equal(t, "0123456789abcdef0123456789abcdef", created.AccountID)
 	assert.NotContains(t, string(create.Data), "cf-secret-token")
+	assert.NotContains(t, string(create.Data), "base_url")
 
 	var stored model.RiskProvider
 	require.NoError(t, db.First(&stored, created.Id).Error)
 	assert.NotEqual(t, "cf-secret-token", stored.CredentialEncrypted)
 	assert.NotContains(t, stored.CredentialEncrypted, "cf-secret-token")
 
-	validation := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodPost, Target: "/api/risk/providers/1/validate", Id: created.Id, Handler: ValidateRiskProvider})
-	require.True(t, validation.Success, validation.Message)
-	activation := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodPut, Target: "/api/risk/providers/1/active", Id: created.Id, Handler: ActivateRiskProvider})
-	require.True(t, activation.Success, activation.Message)
-
 	update := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodPut, Target: "/api/risk/providers/1", Body: map[string]any{
 		"name": "Cloudflare edited", "provider_type": "cloudflare", "model": "@cf/meta/llama-guard-3-8b",
-		"base_url": cloudflare.URL, "credential": "", "timeout_ms": 900, "failure_threshold": 6, "cooldown_seconds": 31,
+		"account_id": "0123456789abcdef0123456789abcdef", "credential": "", "timeout_ms": 900, "failure_threshold": 6, "cooldown_seconds": 31,
 	}, Id: created.Id, Handler: UpdateRiskProvider})
 	require.True(t, update.Success, update.Message)
 	var updated RiskProviderResponse
 	require.NoError(t, common.Unmarshal(update.Data, &updated))
 	assert.Equal(t, "Cloudflare edited", updated.Name)
-	assert.True(t, updated.Active)
-	assert.NotNil(t, updated.ValidatedAt)
+	assert.False(t, updated.Active)
+	assert.Nil(t, updated.ValidatedAt)
 	assert.True(t, updated.HasCredential)
 	assert.NotContains(t, string(update.Data), "cf-secret-token")
 
@@ -146,9 +137,9 @@ func TestUpdateRiskProviderRevokesValidationWhenConnectionChanges(t *testing.T) 
 			},
 		},
 		{
-			name: "base URL changes",
+			name: "account ID changes",
 			change: func(body map[string]any) {
-				body["base_url"] = "https://example.net/account/ai/run"
+				body["account_id"] = "fedcba9876543210fedcba9876543210"
 			},
 		},
 		{
@@ -166,7 +157,7 @@ func TestUpdateRiskProviderRevokesValidationWhenConnectionChanges(t *testing.T) 
 			require.NoError(t, err)
 			provider := &model.RiskProvider{
 				Name: "Cloudflare primary", ProviderType: model.RiskProviderCloudflare,
-				Model: "@cf/meta/llama-guard-3-8b", BaseURL: "https://example.com/account/ai/run",
+				AccountID: "0123456789abcdef0123456789abcdef", Model: "@cf/meta/llama-guard-3-8b",
 				CredentialEncrypted: ciphertext,
 			}
 			require.NoError(t, model.CreateRiskProvider(provider))
@@ -175,7 +166,7 @@ func TestUpdateRiskProviderRevokesValidationWhenConnectionChanges(t *testing.T) 
 
 			body := map[string]any{
 				"name": "Cloudflare primary", "provider_type": "cloudflare",
-				"model": "@cf/meta/llama-guard-3-8b", "base_url": "https://example.com/account/ai/run",
+				"model": "@cf/meta/llama-guard-3-8b", "account_id": "0123456789abcdef0123456789abcdef",
 				"credential": "", "timeout_ms": 800, "failure_threshold": 5, "cooldown_seconds": 30,
 			}
 			test.change(body)
@@ -200,5 +191,16 @@ func TestUpdateRiskProviderRevokesValidationWhenConnectionChanges(t *testing.T) 
 			assert.Nil(t, providers[0].ValidatedAt)
 			assert.False(t, providers[0].Active)
 		})
+	}
+}
+
+func TestCreateRiskProviderRejectsMissingOrInvalidAccountID(t *testing.T) {
+	setupRiskProviderControllerTest(t)
+	for _, accountID := range []string{"", "not-an-account-id"} {
+		response := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodPost, Target: "/api/risk/providers", Body: map[string]any{
+			"name": "Cloudflare", "provider_type": "cloudflare", "model": "@cf/meta/llama-guard-3-8b",
+			"account_id": accountID, "credential": "cf-secret-token",
+		}, Handler: CreateRiskProvider})
+		assert.False(t, response.Success)
 	}
 }
