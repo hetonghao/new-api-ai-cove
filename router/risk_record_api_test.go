@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -12,8 +11,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -32,59 +29,48 @@ type riskRecordAPIResponse struct {
 	} `json:"data"`
 }
 
-func setupRiskRecordRouterTest(t *testing.T, role int) (*httptest.Server, *http.Client) {
+func setupRiskRecordRouterTest(t *testing.T, role int) (*httptest.Server, *http.Client, string) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	originalDB := model.DB
 	originalMainType := common.MainDatabaseType()
 	originalLogType := common.LogDatabaseType()
+	originalRedisEnabled := common.RedisEnabled
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	common.RedisEnabled = false
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB = db
-	require.NoError(t, db.AutoMigrate(&model.RiskRecord{}, &model.RiskRecordGovernance{}))
+	require.NoError(t, db.AutoMigrate(&model.RiskRecord{}, &model.RiskRecordGovernance{}, &model.User{}))
+	accessToken := "risk-record-route-test-" + strings.ReplaceAll(t.Name(), "/", "-")
+	user := &model.User{
+		Username: "root", Password: "password", Role: role, Status: common.UserStatusEnabled,
+		Group: "default", AuthVersion: 1, AffCode: "risk-record-route-test",
+	}
+	user.SetAccessToken(accessToken)
+	require.NoError(t, db.Create(user).Error)
 
 	engine := gin.New()
-	engine.Use(sessions.Sessions("session", cookie.NewStore([]byte("risk-record-route-test"))))
-	engine.GET("/test/session", func(c *gin.Context) {
-		session := sessions.Default(c)
-		session.Set("username", "root")
-		session.Set("role", role)
-		session.Set("id", 1)
-		session.Set("status", common.UserStatusEnabled)
-		session.Set("group", "default")
-		if err := session.Save(); err != nil {
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-		c.Status(http.StatusNoContent)
-	})
 	registerRiskPolicyRoutes(engine.Group("/api"))
 	server := httptest.NewServer(engine)
-	jar, err := cookiejar.New(nil)
-	require.NoError(t, err)
 	client := server.Client()
-	client.Jar = jar
-	response, err := client.Get(server.URL + "/test/session")
-	require.NoError(t, err)
-	require.NoError(t, response.Body.Close())
-	require.Equal(t, http.StatusNoContent, response.StatusCode)
 	t.Cleanup(func() {
 		server.Close()
 		model.DB = originalDB
 		common.SetDatabaseTypes(originalMainType, originalLogType)
+		common.RedisEnabled = originalRedisEnabled
 		sqlDB, dbErr := db.DB()
 		if dbErr == nil {
 			_ = sqlDB.Close()
 		}
 	})
-	return server, client
+	return server, client, accessToken
 }
 
 func TestRiskRecordAPI_returnsRootOnlyPaginatedMetadata(t *testing.T) {
 	// Given
-	server, client := setupRiskRecordRouterTest(t, common.RoleRootUser)
+	server, client, accessToken := setupRiskRecordRouterTest(t, common.RoleRootUser)
 	baseTime := time.Date(2026, time.July, 25, 10, 0, 0, 0, time.UTC)
 	for index, requestID := range []string{"req-old", "req-new"} {
 		chunks := []model.RiskRecordChunk{}
@@ -105,7 +91,7 @@ func TestRiskRecordAPI_returnsRootOnlyPaginatedMetadata(t *testing.T) {
 	}
 	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/api/risk/records?p=1&page_size=1", nil)
 	require.NoError(t, err)
-	request.Header.Set("New-Api-User", "1")
+	request.Header.Set("Authorization", "Bearer "+accessToken)
 
 	// When
 	response, err := client.Do(request)
@@ -146,10 +132,10 @@ func TestRiskRecordAPI_returnsRootOnlyPaginatedMetadata(t *testing.T) {
 
 func TestRiskRecordAPI_rejectsNonRootAdmin(t *testing.T) {
 	// Given
-	server, client := setupRiskRecordRouterTest(t, common.RoleAdminUser)
+	server, client, accessToken := setupRiskRecordRouterTest(t, common.RoleAdminUser)
 	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/api/risk/records", nil)
 	require.NoError(t, err)
-	request.Header.Set("New-Api-User", "1")
+	request.Header.Set("Authorization", "Bearer "+accessToken)
 
 	// When
 	response, err := client.Do(request)
@@ -157,16 +143,12 @@ func TestRiskRecordAPI_rejectsNonRootAdmin(t *testing.T) {
 	// Then
 	require.NoError(t, err)
 	defer response.Body.Close()
-	require.Equal(t, http.StatusOK, response.StatusCode)
-	var payload riskRecordAPIResponse
-	require.NoError(t, common.DecodeJson(response.Body, &payload))
-	assert.False(t, payload.Success)
+	require.Equal(t, http.StatusForbidden, response.StatusCode)
 }
 
 func TestRiskRecordAPI_filtersGovernedRecords(t *testing.T) {
 	// Given
-	server, client := setupRiskRecordRouterTest(t, common.RoleRootUser)
-	require.NoError(t, model.DB.AutoMigrate(&model.User{}))
+	server, client, accessToken := setupRiskRecordRouterTest(t, common.RoleRootUser)
 	require.NoError(t, model.DB.Create(&model.User{Id: 34, Username: "alice", Password: "password", AffCode: "alice"}).Error)
 	require.NoError(t, model.DB.Create(&model.User{Id: 35, Username: "bob", Password: "password", AffCode: "bob"}).Error)
 	observedAt := time.Date(2026, time.July, 25, 10, 0, 0, 0, time.UTC)
@@ -190,7 +172,7 @@ func TestRiskRecordAPI_filtersGovernedRecords(t *testing.T) {
 	)
 	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	require.NoError(t, err)
-	request.Header.Set("New-Api-User", "1")
+	request.Header.Set("Authorization", "Bearer "+accessToken)
 
 	// When
 	response, err := client.Do(request)
@@ -209,12 +191,12 @@ func TestRiskRecordAPI_filtersGovernedRecords(t *testing.T) {
 
 func TestRiskRecordGovernanceAPI_getsDefaultsAndUpdatesValidatedSettings(t *testing.T) {
 	// Given
-	server, client := setupRiskRecordRouterTest(t, common.RoleRootUser)
+	server, client, accessToken := setupRiskRecordRouterTest(t, common.RoleRootUser)
 
 	// When
 	getRequest, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/api/risk/records/settings", nil)
 	require.NoError(t, err)
-	getRequest.Header.Set("New-Api-User", "1")
+	getRequest.Header.Set("Authorization", "Bearer "+accessToken)
 	getResponse, err := client.Do(getRequest)
 	require.NoError(t, err)
 	defer getResponse.Body.Close()
@@ -237,7 +219,7 @@ func TestRiskRecordGovernanceAPI_getsDefaultsAndUpdatesValidatedSettings(t *test
 	)
 	require.NoError(t, err)
 	updateRequest.Header.Set("Content-Type", "application/json")
-	updateRequest.Header.Set("New-Api-User", "1")
+	updateRequest.Header.Set("Authorization", "Bearer "+accessToken)
 	updateResponse, err := client.Do(updateRequest)
 	require.NoError(t, err)
 	defer updateResponse.Body.Close()

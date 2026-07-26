@@ -11,28 +11,22 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/QuantumNous/new-api/common"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
-//go:embed web/default/dist web/default/dist/index.html web/classic/dist web/classic/dist/index.html
+//go:embed web/dist web/dist/index.html
 var webRouterTestAssets embed.FS
 
-func newWebRouterTestThemeAssets(t *testing.T) ThemeAssets {
+func newWebRouterTestAssets(t *testing.T) WebAssets {
 	t.Helper()
 
-	defaultIndex, err := webRouterTestAssets.ReadFile("web/default/dist/index.html")
+	defaultIndex, err := webRouterTestAssets.ReadFile("web/dist/index.html")
 	require.NoError(t, err)
 
-	classicIndex, err := webRouterTestAssets.ReadFile("web/classic/dist/index.html")
-	require.NoError(t, err)
-
-	return ThemeAssets{
-		DefaultBuildFS:   webRouterTestAssets,
-		DefaultIndexPage: defaultIndex,
-		ClassicBuildFS:   webRouterTestAssets,
-		ClassicIndexPage: classicIndex,
+	return WebAssets{
+		BuildFS:   webRouterTestAssets,
+		IndexPage: defaultIndex,
 	}
 }
 
@@ -40,20 +34,16 @@ func newWebRouterTestEngine(t *testing.T) *gin.Engine {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
-	common.SetTheme("default")
-	t.Cleanup(func() {
-		common.SetTheme("classic")
-	})
 
 	engine := gin.New()
-	SetWebRouter(engine, newWebRouterTestThemeAssets(t))
+	SetWebRouter(engine, newWebRouterTestAssets(t))
 	return engine
 }
 
 func firstDefaultStaticAsset(t *testing.T, dir string, suffix string) string {
 	t.Helper()
 
-	entries, err := webRouterTestAssets.ReadDir(path.Join("web/default/dist", dir))
+	entries, err := webRouterTestAssets.ReadDir(path.Join("web/dist", dir))
 	require.NoError(t, err)
 
 	for _, entry := range entries {
@@ -90,7 +80,7 @@ func TestWebRouterServesDesktopInstallerWithoutGzipAndWithContentLength(t *testi
 
 	engine.ServeHTTP(recorder, request)
 
-	expectedBody, err := webRouterTestAssets.ReadFile("web/default/dist/downloads/ai-cove-design-desktop-windows.exe")
+	expectedBody, err := webRouterTestAssets.ReadFile("web/dist/downloads/ai-cove-design-desktop-windows.exe")
 	require.NoError(t, err)
 
 	actualBody, err := io.ReadAll(recorder.Body)

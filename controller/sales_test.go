@@ -39,7 +39,7 @@ func setupSalesControllerTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	model.DB = db
 	model.LOG_DB = db
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.QuotaData{}, &model.TopUp{}, &model.Log{}, &model.SalesCommissionSettlement{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.QuotaData{}, &model.TopUp{}, &model.Log{}, &model.SalesCommissionSettlement{}))
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
