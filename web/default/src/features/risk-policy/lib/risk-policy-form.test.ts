@@ -51,6 +51,7 @@ describe('risk policy form behavior', () => {
     // Then risk control stays disabled with the documented safe modes
     assert.deepEqual(values, {
       enabled: false,
+      enabled_channels: [],
       provider_id: '',
       review_mode: 'selective',
       action_mode: 'observe',
@@ -64,6 +65,7 @@ describe('risk policy form behavior', () => {
     // When an operator enables risk control with another provider
     const invalid = schema.safeParse({
       enabled: true,
+      enabled_channels: [24],
       provider_id: '9',
       review_mode: 'selective',
       action_mode: 'observe',
@@ -80,6 +82,7 @@ describe('risk policy form behavior', () => {
     // When React Hook Form resolves the public form schema
     const parsed = schema.safeParse({
       enabled: true,
+      enabled_channels: [24],
       provider_id: '9',
       review_mode: 'selective',
       action_mode: 'observe',
@@ -96,6 +99,7 @@ describe('risk policy form behavior', () => {
     // Given a disabled form that still contains a previous selection
     const values = {
       enabled: false,
+      enabled_channels: [24],
       provider_id: '7',
       review_mode: 'full' as const,
       action_mode: 'block' as const,
@@ -113,10 +117,11 @@ describe('risk policy form behavior', () => {
     })
   })
 
-  test('enables only CPA Pro with the selected validated provider', () => {
-    // Given an enabled form with a validated provider
+  test('persists the selected actual channel ids with the validated provider', () => {
+    // Given an enabled form with actual channel selections
     const values = {
       enabled: true,
+      enabled_channels: [24, 31],
       provider_id: '7',
       review_mode: 'selective' as const,
       action_mode: 'observe' as const,
@@ -125,13 +130,32 @@ describe('risk policy form behavior', () => {
     // When the form is converted to the API payload
     const payload = riskPolicyFormValuesToPayload(values)
 
-    // Then the contract uses the sole supported channel
+    // Then the contract preserves the selected channel IDs
     assert.deepEqual(payload, {
       provider_id: 7,
-      enabled_channels: ['cpa-pro'],
+      enabled_channels: [24, 31],
       review_mode: 'selective',
       action_mode: 'observe',
     })
+  })
+
+  test('requires at least one actual channel when risk control is enabled', () => {
+    // Given a validated provider but no selected channel
+    const schema = createRiskPolicyFormSchema([7], translate)
+
+    // When the enabled form crosses the public boundary
+    const parsed = schema.safeParse({
+      enabled: true,
+      enabled_channels: [],
+      provider_id: '7',
+      review_mode: 'selective',
+      action_mode: 'observe',
+    })
+
+    // Then the channel selector owns the validation error
+    assert.equal(parsed.success, false)
+    if (parsed.success) return
+    assert.deepEqual(parsed.error.issues[0]?.path, ['enabled_channels'])
   })
 })
 

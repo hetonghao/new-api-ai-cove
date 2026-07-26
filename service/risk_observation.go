@@ -2,11 +2,8 @@ package service
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"time"
-
-	"github.com/QuantumNous/new-api/model"
 )
 
 const (
@@ -102,10 +99,9 @@ func processRiskObservation(ctx context.Context, job RiskObservationJob) {
 	}
 }
 
-func riskChannelEnabled(channels []model.RiskChannel, selectedChannel string) bool {
-	selectedChannel = strings.TrimSpace(selectedChannel)
+func riskChannelEnabled(channels []int, selectedChannel int) bool {
 	for _, channel := range channels {
-		if strings.EqualFold(string(channel), selectedChannel) {
+		if channel == selectedChannel {
 			return true
 		}
 	}

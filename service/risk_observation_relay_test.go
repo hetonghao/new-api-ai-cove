@@ -24,9 +24,10 @@ func TestProcessRiskObservationForRelay_does_not_direct_record_retained_observe_
 	setupRiskObservationTest(t)
 	provider := createActiveRiskProvider(t, "https://example.com")
 	providerID := provider.Id
+	channelID := createRiskPolicyChannel(t)
 	_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
 		ProviderID:      &providerID,
-		EnabledChannels: []model.RiskChannel{model.RiskChannelCPAPro},
+		EnabledChannels: []int{channelID},
 		ReviewMode:      model.RiskReviewFull,
 		ActionMode:      model.RiskActionObserve,
 	})
@@ -48,7 +49,7 @@ func TestProcessRiskObservationForRelay_does_not_direct_record_retained_observe_
 			return queuedRiskObservationResult()
 		},
 	}
-	job := RiskObservationJob{RequestID: "observe", ChannelName: " CPA-Pro ", Text: "current"}
+	job := RiskObservationJob{RequestID: "observe", ChannelID: channelID, ChannelName: "renamed", Text: "current"}
 
 	// When
 	decision := processRiskObservationForRelay(context.Background(), job, deps)
@@ -67,13 +68,13 @@ func TestProcessRiskObservationForRelay_does_not_direct_record_retained_observe_
 func TestProcessRiskObservationForRelay_returns_direct_record_for_unretained_observe_job(t *testing.T) {
 	// Given
 	providerID := 17
-	job := RiskObservationJob{RequestID: "overflow", ChannelName: "CPA-Pro", Text: "current"}
+	job := RiskObservationJob{RequestID: "overflow", ChannelID: 24, ChannelName: "anything", Text: "current"}
 	deps := riskObservationRelayDeps{
 		loadPolicy: func() (model.RiskPolicyState, error) {
 			return model.RiskPolicyState{
 				Enabled:         true,
 				ProviderID:      &providerID,
-				EnabledChannels: []model.RiskChannel{model.RiskChannelCPAPro},
+				EnabledChannels: []int{24},
 				ReviewMode:      model.RiskReviewFull,
 				ActionMode:      model.RiskActionObserve,
 			}, nil
@@ -104,9 +105,10 @@ func TestProcessRiskObservationForRelay_blocks_unsafe_result_and_enqueues_comple
 	setupRiskObservationTest(t)
 	provider := createActiveRiskProvider(t, "https://example.com")
 	providerID := provider.Id
+	channelID := createRiskPolicyChannel(t)
 	_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
 		ProviderID:      &providerID,
-		EnabledChannels: []model.RiskChannel{model.RiskChannelCPAPro},
+		EnabledChannels: []int{channelID},
 		ReviewMode:      model.RiskReviewFull,
 		ActionMode:      model.RiskActionBlock,
 	})
@@ -141,7 +143,7 @@ func TestProcessRiskObservationForRelay_blocks_unsafe_result_and_enqueues_comple
 
 	// When
 	decision := processRiskObservationForRelay(context.Background(), RiskObservationJob{
-		RequestID: "block", ChannelName: "cpa-pro", Text: "current",
+		RequestID: "block", ChannelID: channelID, ChannelName: "renamed", Text: "current",
 	}, deps)
 
 	// Then
@@ -157,12 +159,16 @@ func TestProcessRiskObservationForRelay_blocks_unsafe_result_and_enqueues_comple
 	}}, completed.Chunks)
 }
 
-func TestProcessRiskObservationForRelay_skips_non_cpa_pro_channel(t *testing.T) {
+func TestProcessRiskObservationForRelay_skips_unselected_channel_id(t *testing.T) {
 	// Given
 	setupRiskObservationTest(t)
 	executorCalls := 0
 	queueCalls := 0
 	deps := riskObservationRelayDeps{
+		loadPolicy: func() (model.RiskPolicyState, error) {
+			providerID := 17
+			return model.RiskPolicyState{Enabled: true, ProviderID: &providerID, EnabledChannels: []int{24}}, nil
+		},
 		executor: riskModerationExecutorFunc(func(context.Context, RiskModerationInput) (RiskModerationOutcome, error) {
 			executorCalls++
 			return RiskModerationOutcome{}, nil
@@ -179,7 +185,7 @@ func TestProcessRiskObservationForRelay_skips_non_cpa_pro_channel(t *testing.T) 
 
 	// When
 	decision := processRiskObservationForRelay(context.Background(), RiskObservationJob{
-		RequestID: "core", ChannelName: "CPA-core", Text: "current",
+		RequestID: "other", ChannelID: 25, ChannelName: "CPA Pro", Text: "current",
 	}, deps)
 
 	// Then
@@ -223,9 +229,10 @@ func TestProcessRiskObservationForRelay_fails_open_for_safe_provider_error_and_o
 			setupRiskObservationTest(t)
 			provider := createActiveRiskProvider(t, "https://example.com")
 			providerID := provider.Id
+			channelID := createRiskPolicyChannel(t)
 			_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
 				ProviderID:      &providerID,
-				EnabledChannels: []model.RiskChannel{model.RiskChannelCPAPro},
+				EnabledChannels: []int{channelID},
 				ReviewMode:      model.RiskReviewFull,
 				ActionMode:      model.RiskActionBlock,
 			})
@@ -243,7 +250,7 @@ func TestProcessRiskObservationForRelay_fails_open_for_safe_provider_error_and_o
 
 			// When
 			decision := processRiskObservationForRelay(context.Background(), RiskObservationJob{
-				RequestID: "fail-open", ChannelName: "CPA-pro", Text: "current",
+				RequestID: "fail-open", ChannelID: channelID, ChannelName: "renamed", Text: "current",
 			}, deps)
 
 			// Then
@@ -260,9 +267,10 @@ func TestProcessRiskObservationForRelay_keeps_unsafe_block_when_completed_event_
 	setupRiskObservationTest(t)
 	provider := createActiveRiskProvider(t, "https://example.com")
 	providerID := provider.Id
+	channelID := createRiskPolicyChannel(t)
 	_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
 		ProviderID:      &providerID,
-		EnabledChannels: []model.RiskChannel{model.RiskChannelCPAPro},
+		EnabledChannels: []int{channelID},
 		ReviewMode:      model.RiskReviewFull,
 		ActionMode:      model.RiskActionBlock,
 	})
@@ -278,7 +286,7 @@ func TestProcessRiskObservationForRelay_keeps_unsafe_block_when_completed_event_
 
 	// When
 	decision := processRiskObservationForRelay(context.Background(), RiskObservationJob{
-		RequestID: "overflow", ChannelName: "CPA-pro", Text: "current",
+		RequestID: "overflow", ChannelID: channelID, ChannelName: "renamed", Text: "current",
 	}, deps)
 
 	// Then

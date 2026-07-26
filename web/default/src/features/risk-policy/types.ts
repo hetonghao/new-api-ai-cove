@@ -16,12 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-export const RISK_CHANNELS = ['cpa-pro'] as const
 export const RISK_REVIEW_MODES = ['selective', 'full'] as const
 export const RISK_ACTION_MODES = ['observe', 'block'] as const
 export const LOCAL_RISK_RULE_TYPES = ['keyword', 'phrase', 'regex'] as const
 
-export type RiskChannel = (typeof RISK_CHANNELS)[number]
 export type RiskReviewMode = (typeof RISK_REVIEW_MODES)[number]
 export type RiskActionMode = (typeof RISK_ACTION_MODES)[number]
 export type LocalRiskRuleType = (typeof LOCAL_RISK_RULE_TYPES)[number]
@@ -30,14 +28,14 @@ export type RiskPolicy = {
   readonly configured: boolean
   readonly enabled: boolean
   readonly provider_id: number | null
-  readonly enabled_channels: readonly RiskChannel[]
+  readonly enabled_channels: readonly number[]
   readonly review_mode: RiskReviewMode
   readonly action_mode: RiskActionMode
 }
 
 export type RiskPolicyPayload = {
   readonly provider_id: number | null
-  readonly enabled_channels: readonly RiskChannel[]
+  readonly enabled_channels: readonly number[]
   readonly review_mode: RiskReviewMode
   readonly action_mode: RiskActionMode
 }

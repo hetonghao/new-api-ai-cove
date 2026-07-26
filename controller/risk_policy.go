@@ -10,7 +10,7 @@ import (
 
 type riskPolicyRequest struct {
 	ProviderID      *int                 `json:"provider_id"`
-	EnabledChannels []model.RiskChannel  `json:"enabled_channels"`
+	EnabledChannels []int                `json:"enabled_channels"`
 	ReviewMode      model.RiskReviewMode `json:"review_mode"`
 	ActionMode      model.RiskActionMode `json:"action_mode"`
 }

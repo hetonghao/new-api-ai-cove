@@ -45,9 +45,6 @@ func ProcessRiskObservationForRelay(ctx context.Context, job RiskObservationJob)
 }
 
 func processRiskObservationForRelay(ctx context.Context, job RiskObservationJob, deps riskObservationRelayDeps) RiskObservationRelayDecision {
-	if !riskChannelEnabled([]model.RiskChannel{model.RiskChannelCPAPro}, job.ChannelName) {
-		return RiskObservationRelayDecision{}
-	}
 	loadPolicy := deps.loadPolicy
 	if loadPolicy == nil {
 		loadPolicy = model.GetRiskPolicyState
@@ -62,7 +59,7 @@ func processRiskObservationForRelay(ctx context.Context, job RiskObservationJob,
 		}
 		return decision
 	}
-	if !state.Enabled || !riskChannelEnabled(state.EnabledChannels, job.ChannelName) {
+	if !state.Enabled || !riskChannelEnabled(state.EnabledChannels, job.ChannelID) {
 		return RiskObservationRelayDecision{}
 	}
 	if state.ProviderID == nil {

@@ -1,3 +1,5 @@
+import { getChannels } from '@/features/channels/api'
+import type { Channel } from '@/features/channels/types'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -30,6 +32,20 @@ import type {
 
 const POLICY_PATH = '/api/risk/policy'
 const RULES_PATH = '/api/risk/rules'
+
+export async function getRiskPolicyChannels(): Promise<readonly Channel[]> {
+  const channels: Channel[] = []
+  let page = 1
+  while (true) {
+    const response = await getChannels({ p: page, page_size: 100 })
+    if (!response.success || !response.data) {
+      throw new Error(response.message || 'Failed to load channels')
+    }
+    channels.push(...response.data.items)
+    if (channels.length >= response.data.total) return channels
+    page += 1
+  }
+}
 
 export async function getRiskPolicy(): Promise<ApiResponse<RiskPolicy>> {
   const response = await api.get<ApiResponse<RiskPolicy>>(POLICY_PATH)

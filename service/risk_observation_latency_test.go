@@ -25,9 +25,10 @@ func TestProcessRiskObservationForRelay_does_not_wait_for_slow_sink_in_block_mod
 			setupRiskObservationTest(t)
 			provider := createActiveRiskProvider(t, "https://example.com")
 			providerID := provider.Id
+			channelID := createRiskPolicyChannel(t)
 			_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
 				ProviderID:      &providerID,
-				EnabledChannels: []model.RiskChannel{model.RiskChannelCPAPro},
+				EnabledChannels: []int{channelID},
 				ReviewMode:      model.RiskReviewFull,
 				ActionMode:      model.RiskActionBlock,
 			})
@@ -59,7 +60,7 @@ func TestProcessRiskObservationForRelay_does_not_wait_for_slow_sink_in_block_mod
 			// When
 			go func() {
 				decisions <- processRiskObservationForRelay(context.Background(), RiskObservationJob{
-					RequestID: "slow-sink", ChannelName: "cpa-pro", Text: "current",
+					RequestID: "slow-sink", ChannelID: channelID, ChannelName: "renamed", Text: "current",
 				}, deps)
 			}()
 

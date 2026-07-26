@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { Controller, useFormContext } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
+import { MultiSelect } from '@/components/multi-select'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
   Field,
@@ -31,12 +32,14 @@ import {
 } from '@/components/ui/field'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Switch } from '@/components/ui/switch'
+import type { Channel } from '@/features/channels/types'
 import type { RiskProvider } from '@/features/risk-providers/types'
 
 import type { RiskPolicyFormValues } from '../lib/risk-policy-form'
 
 type RiskPolicyFormFieldsProps = {
   readonly validatedProviders: readonly RiskProvider[]
+  readonly channels: readonly Channel[]
 }
 
 export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
@@ -46,6 +49,10 @@ export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
   const reviewMode = form.watch('review_mode')
   const actionMode = form.watch('action_mode')
   const errors = form.formState.errors
+  const channelOptions = props.channels.map((channel) => ({
+    label: `#${channel.id} · ${channel.name}`,
+    value: String(channel.id),
+  }))
 
   return (
     <>
@@ -65,10 +72,10 @@ export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
           className='rounded-lg border p-3 lg:col-span-2'
         >
           <FieldContent>
-            <FieldTitle>{t('Enable CPA Pro risk control')}</FieldTitle>
+            <FieldTitle>{t('Enable AI risk control')}</FieldTitle>
             <FieldDescription>
               {t(
-                'CPA Pro is the only risk channel in the initial release. Local matches trigger cloud review and never reject by themselves.'
+                'Only selected channels run local risk screening or cloud review.'
               )}
             </FieldDescription>
           </FieldContent>
@@ -79,10 +86,36 @@ export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
               <Switch
                 checked={field.value}
                 onCheckedChange={field.onChange}
-                aria-label={t('Enable CPA Pro risk control')}
+                aria-label={t('Enable AI risk control')}
               />
             )}
           />
+        </Field>
+        <Field data-invalid={Boolean(errors.enabled_channels)}>
+          <FieldLabel htmlFor='risk-policy-channels'>
+            {t('Risk channels')}
+          </FieldLabel>
+          <Controller
+            control={form.control}
+            name='enabled_channels'
+            render={({ field }) => (
+              <MultiSelect
+                id='risk-policy-channels'
+                options={channelOptions}
+                selected={field.value.map(String)}
+                onChange={(values) => field.onChange(values.map(Number))}
+                placeholder={t('Select items...')}
+                emptyText={t('No channels found')}
+                disabled={!enabled || props.channels.length === 0}
+              />
+            )}
+          />
+          <FieldDescription>
+            {t(
+              'Only selected channels run local risk screening or cloud review.'
+            )}
+          </FieldDescription>
+          <FieldError errors={[errors.enabled_channels]} />
         </Field>
         <Field data-invalid={Boolean(errors.provider_id)}>
           <FieldLabel htmlFor='risk-policy-provider'>

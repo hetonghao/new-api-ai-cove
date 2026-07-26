@@ -22,7 +22,7 @@ func setupRiskPolicyModelTest(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	DB = db
-	require.NoError(t, db.AutoMigrate(&RiskProvider{}, &RiskPolicy{}, &RiskRule{}))
+	require.NoError(t, db.AutoMigrate(&RiskProvider{}, &RiskPolicy{}, &RiskRule{}, &Channel{}))
 	t.Cleanup(func() {
 		DB = originalDB
 		common.SetDatabaseTypes(originalMainType, originalLogType)

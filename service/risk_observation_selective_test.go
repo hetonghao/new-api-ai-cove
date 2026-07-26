@@ -14,9 +14,10 @@ func TestProcessRiskObservationForRelay_records_not_reviewed_when_selective_rule
 	setupRiskObservationTest(t)
 	provider := createActiveRiskProvider(t, "https://example.com")
 	providerID := provider.Id
+	channelID := createRiskPolicyChannel(t)
 	_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
 		ProviderID:      &providerID,
-		EnabledChannels: []model.RiskChannel{model.RiskChannelCPAPro},
+		EnabledChannels: []int{channelID},
 		ReviewMode:      model.RiskReviewSelective,
 		ActionMode:      model.RiskActionBlock,
 	})
@@ -34,7 +35,7 @@ func TestProcessRiskObservationForRelay_records_not_reviewed_when_selective_rule
 		},
 	}
 	job := RiskObservationJob{
-		RequestID: "no-hit", ChannelID: 24, ChannelName: "cpa-pro", UserID: 42, TokenID: 9,
+		RequestID: "no-hit", ChannelID: channelID, ChannelName: "renamed", UserID: 42, TokenID: 9,
 		Model: "gpt-test", Path: "/v1/responses", Text: "ordinary current-turn text",
 	}
 	wantMetadata := BuildRiskRecordContentMetadata(job.Text)
@@ -63,9 +64,10 @@ func TestProcessRiskObservationForRelay_sends_bounded_excerpt_when_selective_rul
 	setupRiskObservationTest(t)
 	provider := createActiveRiskProvider(t, "https://example.com")
 	providerID := provider.Id
+	channelID := createRiskPolicyChannel(t)
 	_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
 		ProviderID:      &providerID,
-		EnabledChannels: []model.RiskChannel{model.RiskChannelCPAPro},
+		EnabledChannels: []int{channelID},
 		ReviewMode:      model.RiskReviewSelective,
 		ActionMode:      model.RiskActionBlock,
 	})
@@ -94,7 +96,7 @@ func TestProcessRiskObservationForRelay_sends_bounded_excerpt_when_selective_rul
 
 	// When
 	decision := processRiskObservationForRelay(context.Background(), RiskObservationJob{
-		RequestID: "hit", ChannelID: 24, ChannelName: "cpa-pro", UserID: 42, Text: text,
+		RequestID: "hit", ChannelID: channelID, ChannelName: "renamed", UserID: 42, Text: text,
 	}, deps)
 
 	// Then

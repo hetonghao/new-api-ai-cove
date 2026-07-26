@@ -38,12 +38,21 @@ export function createRiskPolicyFormSchema(
   return z
     .object({
       enabled: z.boolean(),
+      enabled_channels: z.array(z.number().int().positive()),
       provider_id: z.string(),
       review_mode: z.enum(RISK_REVIEW_MODES),
       action_mode: z.enum(RISK_ACTION_MODES),
     })
     .superRefine((values, context) => {
       if (!values.enabled) return
+
+      if (values.enabled_channels.length === 0) {
+        context.addIssue({
+          code: 'custom',
+          path: ['enabled_channels'],
+          message: t('Select at least one risk channel'),
+        })
+      }
 
       const providerId = Number(values.provider_id)
       if (
@@ -68,6 +77,7 @@ export function riskPolicyToFormValues(
 ): RiskPolicyFormValues {
   return {
     enabled: policy.enabled,
+    enabled_channels: [...policy.enabled_channels],
     provider_id: policy.provider_id === null ? '' : String(policy.provider_id),
     review_mode: policy.review_mode,
     action_mode: policy.action_mode,
@@ -79,7 +89,7 @@ export function riskPolicyFormValuesToPayload(
 ): RiskPolicyPayload {
   return {
     provider_id: values.enabled ? Number(values.provider_id) : null,
-    enabled_channels: values.enabled ? ['cpa-pro'] : [],
+    enabled_channels: values.enabled ? values.enabled_channels : [],
     review_mode: values.review_mode,
     action_mode: values.action_mode,
   }

@@ -18,7 +18,7 @@ func TestProcessRiskObservationForRelay_fails_open_when_enabled_policy_has_no_pr
 			return model.RiskPolicyState{
 				Enabled:         true,
 				ProviderID:      nil,
-				EnabledChannels: []model.RiskChannel{model.RiskChannelCPAPro},
+				EnabledChannels: []int{24},
 				ReviewMode:      model.RiskReviewFull,
 				ActionMode:      model.RiskActionBlock,
 			}, nil
@@ -41,7 +41,7 @@ func TestProcessRiskObservationForRelay_fails_open_when_enabled_policy_has_no_pr
 	// When
 	require.NotPanics(t, func() {
 		decision = processRiskObservationForRelay(context.Background(), RiskObservationJob{
-			RequestID: "missing-provider", ChannelName: "cpa-pro", Text: "current",
+			RequestID: "missing-provider", ChannelID: 24, ChannelName: "renamed", Text: "current",
 		}, deps)
 	})
 
@@ -68,7 +68,7 @@ func TestProcessRiskObservationForRelay_records_empty_text_as_local_not_reviewed
 			return model.RiskPolicyState{
 				Enabled:         true,
 				ProviderID:      &providerID,
-				EnabledChannels: []model.RiskChannel{model.RiskChannelCPAPro},
+				EnabledChannels: []int{24},
 				ReviewMode:      model.RiskReviewFull,
 				ActionMode:      model.RiskActionBlock,
 			}, nil
@@ -85,7 +85,7 @@ func TestProcessRiskObservationForRelay_records_empty_text_as_local_not_reviewed
 
 	// When
 	decision := processRiskObservationForRelay(context.Background(), RiskObservationJob{
-		RequestID: "attachment-only", ChannelName: "cpa-pro",
+		RequestID: "attachment-only", ChannelID: 24, ChannelName: "renamed",
 	}, deps)
 
 	// Then

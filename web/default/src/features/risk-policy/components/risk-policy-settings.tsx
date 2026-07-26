@@ -32,7 +32,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { TitledCard } from '@/components/ui/titled-card'
 import type { RiskProvider } from '@/features/risk-providers/types'
 
-import { getRiskPolicy, updateRiskPolicy } from '../api'
+import { getRiskPolicy, getRiskPolicyChannels, updateRiskPolicy } from '../api'
 import {
   createRiskPolicyFormSchema,
   riskPolicyFormValuesToPayload,
@@ -42,8 +42,10 @@ import {
 import { RiskPolicyFormFields } from './risk-policy-form-fields'
 
 const QUERY_KEY = ['risk', 'policy'] as const
+const CHANNELS_QUERY_KEY = ['risk', 'policy', 'channels'] as const
 const DEFAULT_VALUES: RiskPolicyFormValues = {
   enabled: false,
+  enabled_channels: [],
   provider_id: '',
   review_mode: 'selective',
   action_mode: 'observe',
@@ -80,6 +82,11 @@ export function RiskPolicySettings(props: RiskPolicySettingsProps) {
     },
     retry: false,
   })
+  const channelsQuery = useQuery({
+    queryKey: CHANNELS_QUERY_KEY,
+    queryFn: getRiskPolicyChannels,
+    retry: false,
+  })
 
   useEffect(() => {
     if (policyQuery.data) {
@@ -112,24 +119,33 @@ export function RiskPolicySettings(props: RiskPolicySettingsProps) {
     }
   }
 
+  const queryError = policyQuery.error ?? channelsQuery.error
   let content = <Skeleton className='h-72 rounded-xl' />
-  if (policyQuery.isError) {
+  if (policyQuery.isError || channelsQuery.isError) {
     content = (
       <ErrorState
-        title={t('Failed to load risk policy')}
-        description={
-          policyQuery.error instanceof Error
-            ? policyQuery.error.message
-            : t('Request failed')
+        title={
+          policyQuery.isError
+            ? t('Failed to load risk policy')
+            : t('Failed to load channels')
         }
-        onRetry={() => policyQuery.refetch()}
+        description={
+          queryError instanceof Error ? queryError.message : t('Request failed')
+        }
+        onRetry={() => {
+          void policyQuery.refetch()
+          void channelsQuery.refetch()
+        }}
       />
     )
-  } else if (!policyQuery.isLoading) {
+  } else if (!policyQuery.isLoading && !channelsQuery.isLoading) {
     content = (
       <FormProvider {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)} className='space-y-5'>
-          <RiskPolicyFormFields validatedProviders={validatedProviders} />
+          <RiskPolicyFormFields
+            validatedProviders={validatedProviders}
+            channels={channelsQuery.data ?? []}
+          />
           {form.formState.errors.root?.server?.message ? (
             <Alert variant='destructive'>
               <AlertTitle>{t('Failed to save')}</AlertTitle>

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -44,7 +45,7 @@ func TestProcessRiskObservation_reviews_selective_hit_and_records_usage(t *testi
 	providerID := provider.Id
 	_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
 		ProviderID:      &providerID,
-		EnabledChannels: []model.RiskChannel{model.RiskChannelCPAPro},
+		EnabledChannels: []int{createRiskPolicyChannel(t)},
 		ReviewMode:      model.RiskReviewSelective,
 		ActionMode:      model.RiskActionObserve,
 	})
@@ -92,7 +93,7 @@ func TestProcessRiskObservation_skips_selected_channel_not_enabled(t *testing.T)
 	providerID := provider.Id
 	_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
 		ProviderID:      &providerID,
-		EnabledChannels: []model.RiskChannel{model.RiskChannelCPAPro},
+		EnabledChannels: []int{createRiskPolicyChannel(t)},
 		ReviewMode:      model.RiskReviewFull,
 		ActionMode:      model.RiskActionObserve,
 	})
@@ -164,7 +165,7 @@ func TestProcessRiskObservation_records_safe_and_provider_error(t *testing.T) {
 			providerID := provider.Id
 			_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
 				ProviderID:      &providerID,
-				EnabledChannels: []model.RiskChannel{model.RiskChannelCPAPro},
+				EnabledChannels: []int{createRiskPolicyChannel(t)},
 				ReviewMode:      model.RiskReviewFull,
 				ActionMode:      model.RiskActionObserve,
 			})
@@ -205,7 +206,7 @@ func setupRiskObservationTest(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB = db
-	require.NoError(t, db.AutoMigrate(&model.RiskProvider{}, &model.RiskPolicy{}, &model.RiskRule{}))
+	require.NoError(t, db.AutoMigrate(&model.RiskProvider{}, &model.RiskPolicy{}, &model.RiskRule{}, &model.Channel{}))
 	InitHttpClient()
 	t.Cleanup(func() {
 		SetRiskObservationSink(nil)
@@ -217,13 +218,34 @@ func setupRiskObservationTest(t *testing.T) {
 
 func createActiveRiskProvider(t *testing.T, baseURL string) *model.RiskProvider {
 	t.Helper()
+	serverURL, err := url.Parse(baseURL)
+	require.NoError(t, err)
+	if serverURL.Hostname() == "127.0.0.1" || serverURL.Hostname() == "localhost" {
+		originalHTTPClient := httpClient
+		httpClient = &http.Client{Transport: riskProviderRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			proxiedRequest := request.Clone(request.Context())
+			proxiedURL := *request.URL
+			proxiedURL.Scheme = serverURL.Scheme
+			proxiedURL.Host = serverURL.Host
+			proxiedRequest.URL = &proxiedURL
+			return http.DefaultTransport.RoundTrip(proxiedRequest)
+		})}
+		t.Cleanup(func() { httpClient = originalHTTPClient })
+	}
 	credential, err := common.EncryptCredential("token")
 	require.NoError(t, err)
 	provider := &model.RiskProvider{
-		Name: "provider", ProviderType: model.RiskProviderCloudflare, Model: "guard",
-		BaseURL: baseURL, CredentialEncrypted: credential, TimeoutMs: 800,
+		Name: "provider", ProviderType: model.RiskProviderCloudflare, Model: "guard-" + strings.ReplaceAll(t.Name(), "/", "-"),
+		AccountID: "0123456789abcdef0123456789abcdef", BaseURL: baseURL, CredentialEncrypted: credential, TimeoutMs: 800,
 	}
 	require.NoError(t, model.CreateRiskProvider(provider))
 	require.NoError(t, model.MarkRiskProviderValidated(provider.Id))
 	return provider
+}
+
+func createRiskPolicyChannel(t *testing.T) int {
+	t.Helper()
+	channel := &model.Channel{Name: "Risk channel", Key: "secret", Models: "gpt-test"}
+	require.NoError(t, model.DB.Create(channel).Error)
+	return channel.Id
 }
