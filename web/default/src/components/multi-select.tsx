@@ -248,6 +248,7 @@ export function MultiSelect(props: MultiSelectProps) {
   return (
     <Combobox
       multiple
+      itemToStringLabel={(item) => labelMap.get(item) ?? item}
       items={items}
       value={props.selected}
       onValueChange={handleValueChange}

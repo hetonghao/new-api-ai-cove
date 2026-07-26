@@ -69,10 +69,12 @@ export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
       <FieldGroup className='grid gap-5 lg:grid-cols-2'>
         <Field
           orientation='horizontal'
-          className='rounded-lg border p-3 lg:col-span-2'
+          className='relative rounded-lg border p-3 lg:col-span-2'
         >
           <FieldContent>
-            <FieldTitle>{t('Enable AI risk control')}</FieldTitle>
+            <FieldTitle className='pr-10'>
+              {t('Enable AI risk control')}
+            </FieldTitle>
             <FieldDescription>
               {t(
                 'Only selected channels run local risk screening or cloud review.'
@@ -84,6 +86,7 @@ export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
             name='enabled'
             render={({ field }) => (
               <Switch
+                className='absolute top-3 right-3'
                 checked={field.value}
                 onCheckedChange={field.onChange}
                 aria-label={t('Enable AI risk control')}
