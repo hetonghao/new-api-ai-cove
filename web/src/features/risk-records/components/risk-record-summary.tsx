@@ -127,7 +127,9 @@ export function RiskRecordChunkList(props: {
             <dl className='mt-2 grid min-w-0 grid-cols-2 gap-2 text-xs sm:grid-cols-3 xl:grid-cols-5'>
               <div>
                 <dt className='text-muted-foreground'>{t('Latency')}</dt>
-                <dd className='tabular-nums'>{chunk.latency_ms} ms</dd>
+                <dd>
+                  <RiskRecordLatency latencyMs={chunk.latency_ms} />
+                </dd>
               </div>
               <div>
                 <dt className='text-muted-foreground'>{t('Prompt')}</dt>

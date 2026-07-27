@@ -71,7 +71,7 @@ func QueryRiskRecords(ctx context.Context, filter RiskRecordQuery) ([]*RiskRecor
 	}
 	records := make([]*RiskRecord, 0)
 	query = query.Select(
-		"risk_records.*, channels.name AS channel_name, users.username AS username, tokens.name AS token_name",
+		"risk_records.*, COALESCE(channels.name, '') AS channel_name, COALESCE(users.username, '') AS username, COALESCE(tokens.name, '') AS token_name",
 	).Joins(
 		"LEFT JOIN channels ON channels.id = risk_records.channel_id",
 	).Joins(

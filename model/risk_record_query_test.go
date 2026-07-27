@@ -104,6 +104,28 @@ func TestQueryRiskRecords_enrichesChannelUserAndTokenNames(t *testing.T) {
 	assert.Equal(t, "Codex", records[0].TokenName)
 }
 
+func TestQueryRiskRecords_keepsRecordsWhenRelatedEntitiesAreMissing(t *testing.T) {
+	// Given
+	db := setupRiskRecordModelTest(t)
+	require.NoError(t, db.AutoMigrate(&Channel{}, &User{}, &Token{}))
+	input := validRiskRecordInput(RiskRecordResultSafe)
+	input.RequestID = "req-orphaned-relations"
+	input.TokenID = 56
+	require.NoError(t, RecordRiskObservation(context.Background(), input))
+
+	// When
+	records, total, err := QueryRiskRecords(context.Background(), RiskRecordQuery{Offset: 0, Limit: 20})
+
+	// Then
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, records, 1)
+	assert.Equal(t, "req-orphaned-relations", records[0].RequestID)
+	assert.Empty(t, records[0].ChannelName)
+	assert.Empty(t, records[0].Username)
+	assert.Empty(t, records[0].TokenName)
+}
+
 func TestQueryRiskRecords_filtersByUsernameWildcard(t *testing.T) {
 	// Given
 	db := setupRiskRecordModelTest(t)
