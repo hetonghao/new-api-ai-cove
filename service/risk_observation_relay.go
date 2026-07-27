@@ -45,6 +45,10 @@ func ProcessRiskObservationForRelay(ctx context.Context, job RiskObservationJob)
 }
 
 func processRiskObservationForRelay(ctx context.Context, job RiskObservationJob, deps riskObservationRelayDeps) RiskObservationRelayDecision {
+	if job.Text == "" {
+		return RiskObservationRelayDecision{}
+	}
+
 	loadPolicy := deps.loadPolicy
 	if loadPolicy == nil {
 		loadPolicy = model.GetRiskPolicyState
@@ -96,12 +100,6 @@ func processRiskObservationForRelay(ctx context.Context, job RiskObservationJob,
 }
 
 func evaluateRiskObservation(ctx context.Context, job RiskObservationJob, executor riskModerationRunner) (RiskObservationEvent, bool) {
-	if job.Text == "" {
-		event := newRiskObservationEvent(job)
-		event.Result = RiskObservationNotReviewed
-		event.Source = RiskObservationSourceLocal
-		return event, true
-	}
 	if job.ProviderID < 1 || executor == nil {
 		return RiskObservationEvent{}, false
 	}

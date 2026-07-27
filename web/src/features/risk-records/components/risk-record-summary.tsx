@@ -183,6 +183,11 @@ export function RiskRecordChannelSummary(props: {
 
   return (
     <span className='inline-flex max-w-full min-w-0 items-center gap-1.5'>
+      {record.channel_name && (
+        <span className='min-w-0 truncate' title={record.channel_name}>
+          {record.channel_name}
+        </span>
+      )}
       <StatusBadge
         label={`#${record.channel_id}`}
         autoColor={String(record.channel_id)}
@@ -191,11 +196,6 @@ export function RiskRecordChannelSummary(props: {
         showDot={false}
         className='shrink-0 font-mono'
       />
-      {record.channel_name && (
-        <span className='min-w-0 truncate' title={record.channel_name}>
-          {record.channel_name}
-        </span>
-      )}
     </span>
   )
 }

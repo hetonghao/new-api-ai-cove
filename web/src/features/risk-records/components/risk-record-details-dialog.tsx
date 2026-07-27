@@ -50,7 +50,7 @@ function DetailRow(props: {
   readonly value: ReactNode
 }) {
   return (
-    <div className='grid min-w-0 grid-cols-[7rem_minmax(0,1fr)] gap-3 text-xs max-sm:grid-cols-1 max-sm:gap-1'>
+    <div className='grid min-w-0 grid-cols-[7rem_minmax(0,1fr)] gap-3 text-sm max-sm:grid-cols-1 max-sm:gap-1'>
       <dt className='text-muted-foreground'>{props.label}</dt>
       <dd className='min-w-0 break-words'>{props.value}</dd>
     </div>
@@ -97,7 +97,9 @@ function RiskRecordRequestDetailsButton(props: { readonly requestId: string }) {
       }
       setUsageLog(parsed.data)
       setOpen(true)
-    } catch {
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to load request details:', error)
       toast.error(t('Failed to load request details'))
     } finally {
       setLoading(false)
@@ -110,11 +112,13 @@ function RiskRecordRequestDetailsButton(props: { readonly requestId: string }) {
         type='button'
         variant='link'
         size='sm'
-        className='h-auto max-w-full justify-start gap-1 px-0 font-mono text-xs'
+        className='h-auto max-w-full min-w-0 justify-start gap-1 px-0 font-mono text-sm'
         disabled={loading}
         onClick={() => void openUsageLog()}
       >
-        <span className='min-w-0 break-all'>{props.requestId}</span>
+        <span className='min-w-0 truncate' title={props.requestId}>
+          {props.requestId}
+        </span>
         {loading ? (
           <Loader2 className='size-3.5 shrink-0 animate-spin' />
         ) : (
@@ -154,7 +158,7 @@ function RiskRecordDetailsDialog(props: {
     >
       {record.preview && (
         <DetailSection title={t('Redacted detection content')}>
-          <pre className='font-sans text-xs leading-relaxed break-words whitespace-pre-wrap'>
+          <pre className='font-sans text-sm leading-relaxed break-words whitespace-pre-wrap'>
             {record.preview}
           </pre>
         </DetailSection>
@@ -233,7 +237,14 @@ function RiskRecordDetailsDialog(props: {
         {record.content_hash && (
           <DetailRow
             label={t('Content hash')}
-            value={<span className='font-mono'>{record.content_hash}</span>}
+            value={
+              <span
+                className='block truncate font-mono'
+                title={record.content_hash}
+              >
+                {record.content_hash}
+              </span>
+            }
           />
         )}
       </DetailSection>
