@@ -198,6 +198,23 @@ export function commitRiskRecordFilters(
   }
 }
 
+export function shouldRefetchRiskRecords(
+  pageIndex: number,
+  left: RiskRecordFilters,
+  right: RiskRecordFilters
+) {
+  return (
+    pageIndex === 0 &&
+    left.start_timestamp === right.start_timestamp &&
+    left.end_timestamp === right.end_timestamp &&
+    left.channel_id === right.channel_id &&
+    left.username === right.username &&
+    left.provider_id === right.provider_id &&
+    left.result === right.result &&
+    left.source === right.source
+  )
+}
+
 export function buildRiskRecordQueryParams(
   page: number,
   pageSize: number,

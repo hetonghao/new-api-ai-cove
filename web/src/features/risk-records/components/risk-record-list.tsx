@@ -37,7 +37,10 @@ import type { RiskProvider } from '@/features/risk-providers/types'
 
 import { listRiskRecords } from '../api'
 import { createDefaultRiskRecordFilterDraft } from '../lib/default-filter'
-import { commitRiskRecordFilters } from '../lib/risk-records'
+import {
+  commitRiskRecordFilters,
+  shouldRefetchRiskRecords,
+} from '../lib/risk-records'
 import type { RiskRecord, RiskRecordFilters } from '../types'
 import { RiskRecordFiltersForm } from './risk-record-filters'
 import {
@@ -133,8 +136,14 @@ export function RiskRecordList(props: RiskRecordListProps) {
   })
 
   function applyFilters(nextFilters: RiskRecordFilters) {
+    const shouldRefetch = shouldRefetchRiskRecords(
+      pagination.pageIndex,
+      filters,
+      nextFilters
+    )
     setPagination((current) => ({ ...current, pageIndex: 0 }))
     setFilters(nextFilters)
+    if (shouldRefetch) void recordsQuery.refetch()
   }
 
   let content = <RecordSkeleton />
