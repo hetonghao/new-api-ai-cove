@@ -81,6 +81,29 @@ func TestQueryRiskRecords_filtersByUsername(t *testing.T) {
 	assert.Equal(t, "req-alice", records[0].RequestID)
 }
 
+func TestQueryRiskRecords_enrichesChannelUserAndTokenNames(t *testing.T) {
+	// Given
+	db := setupRiskRecordModelTest(t)
+	require.NoError(t, db.AutoMigrate(&Channel{}, &User{}, &Token{}))
+	require.NoError(t, db.Create(&Channel{Id: 12, Name: "CPA Pro", Key: "secret"}).Error)
+	require.NoError(t, db.Create(&User{Id: 34, Username: "alice", Password: "password", AffCode: "alice"}).Error)
+	require.NoError(t, db.Create(&Token{Id: 56, UserId: 34, Name: "Codex", Key: "token-key"}).Error)
+	input := validRiskRecordInput(RiskRecordResultSafe)
+	input.TokenID = 56
+	require.NoError(t, RecordRiskObservation(context.Background(), input))
+
+	// When
+	records, total, err := QueryRiskRecords(context.Background(), RiskRecordQuery{Offset: 0, Limit: 20})
+
+	// Then
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, records, 1)
+	assert.Equal(t, "CPA Pro", records[0].ChannelName)
+	assert.Equal(t, "alice", records[0].Username)
+	assert.Equal(t, "Codex", records[0].TokenName)
+}
+
 func TestQueryRiskRecords_filtersByUsernameWildcard(t *testing.T) {
 	// Given
 	db := setupRiskRecordModelTest(t)

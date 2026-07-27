@@ -42,7 +42,13 @@ func setupRiskRecordRouterTest(t *testing.T, role int) (*httptest.Server, *http.
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB = db
-	require.NoError(t, db.AutoMigrate(&model.RiskRecord{}, &model.RiskRecordGovernance{}, &model.User{}))
+	require.NoError(t, db.AutoMigrate(
+		&model.RiskRecord{},
+		&model.RiskRecordGovernance{},
+		&model.Channel{},
+		&model.User{},
+		&model.Token{},
+	))
 	accessToken := "risk-record-route-test-" + strings.ReplaceAll(t.Name(), "/", "-")
 	user := &model.User{
 		Username: "root", Password: "password", Role: role, Status: common.UserStatusEnabled,

@@ -33,14 +33,18 @@ import { RiskRecordDetailsButton } from './risk-record-details-dialog'
 import {
   RiskRecordBadges,
   RiskRecordCategoryList,
+  RiskRecordChannelSummary,
   RiskRecordIdList,
+  RiskRecordLatency,
   RiskRecordProviderSummary,
   RiskRecordResultBadge,
   RiskRecordSourceBadge,
+  RiskRecordUserSummary,
 } from './risk-record-summary'
 
 export function RiskRecordDesktopTable(props: {
   readonly records: readonly RiskRecord[]
+  readonly onUserClick: (record: RiskRecord) => void
 }) {
   const { t } = useTranslation()
 
@@ -49,16 +53,15 @@ export function RiskRecordDesktopTable(props: {
       <Table className='table-fixed'>
         <TableHeader>
           <TableRow>
-            <TableHead className='w-[13%]'>{t('Time')}</TableHead>
-            <TableHead className='w-[14%]'>
-              {t('Channel')} / {t('User')}
-            </TableHead>
-            <TableHead className='w-[13%]'>{t('Provider')}</TableHead>
-            <TableHead className='w-[11%]'>{t('Source')}</TableHead>
-            <TableHead className='w-[10%]'>{t('Result')}</TableHead>
-            <TableHead className='w-[16%]'>{t('Categories')}</TableHead>
-            <TableHead className='w-[10%]'>{t('Latency')}</TableHead>
-            <TableHead className='w-[13%]'>{t('Details')}</TableHead>
+            <TableHead className='w-[12%]'>{t('Time')}</TableHead>
+            <TableHead className='w-[12%]'>{t('Channel')}</TableHead>
+            <TableHead className='w-[13%]'>{t('User')}</TableHead>
+            <TableHead className='w-[12%]'>{t('Provider')}</TableHead>
+            <TableHead className='w-[10%]'>{t('Source')}</TableHead>
+            <TableHead className='w-[9%]'>{t('Result')}</TableHead>
+            <TableHead className='w-[14%]'>{t('Categories')}</TableHead>
+            <TableHead className='w-[8%]'>{t('Latency')}</TableHead>
+            <TableHead className='w-[10%]'>{t('Details')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -70,22 +73,13 @@ export function RiskRecordDesktopTable(props: {
                 </span>
               </TableCell>
               <TableCell className='whitespace-normal'>
-                <div className='flex min-w-0 items-center gap-1.5 text-xs whitespace-nowrap'>
-                  <span className='text-muted-foreground'>{t('Channel')}</span>
-                  <span>
-                    {record.channel_id > 0 ? `#${record.channel_id}` : '—'}
-                  </span>
-                  <span className='text-muted-foreground'>· {t('User')}</span>
-                  <span>#{record.user_id}</span>
-                </div>
-                {record.rule_ids.length > 0 && (
-                  <dl className='mt-1 grid grid-cols-[auto_1fr] gap-x-2 text-xs'>
-                    <dt className='text-muted-foreground'>{t('Rules')}</dt>
-                    <dd className='min-w-0'>
-                      <RiskRecordIdList values={record.rule_ids} />
-                    </dd>
-                  </dl>
-                )}
+                <RiskRecordChannelSummary record={record} />
+              </TableCell>
+              <TableCell className='whitespace-normal'>
+                <RiskRecordUserSummary
+                  record={record}
+                  onClick={props.onUserClick}
+                />
               </TableCell>
               <TableCell className='whitespace-normal'>
                 <RiskRecordProviderSummary record={record} />
@@ -98,12 +92,23 @@ export function RiskRecordDesktopTable(props: {
               </TableCell>
               <TableCell className='whitespace-normal'>
                 <RiskRecordCategoryList values={record.categories} />
+                {record.rule_ids.length > 0 && (
+                  <dl className='mt-1 grid grid-cols-[auto_1fr] gap-x-2 text-xs'>
+                    <dt className='text-muted-foreground'>{t('Rules')}</dt>
+                    <dd className='min-w-0'>
+                      <RiskRecordIdList values={record.rule_ids} />
+                    </dd>
+                  </dl>
+                )}
               </TableCell>
-              <TableCell className='text-xs whitespace-normal tabular-nums'>
-                {record.latency_ms} ms
+              <TableCell className='text-xs whitespace-normal'>
+                <RiskRecordLatency latencyMs={record.latency_ms} />
               </TableCell>
               <TableCell className='whitespace-normal'>
-                <RiskRecordDetailsButton record={record} />
+                <RiskRecordDetailsButton
+                  record={record}
+                  onUserClick={props.onUserClick}
+                />
               </TableCell>
             </TableRow>
           ))}
@@ -115,6 +120,7 @@ export function RiskRecordDesktopTable(props: {
 
 export function RiskRecordMobileList(props: {
   readonly records: readonly RiskRecord[]
+  readonly onUserClick: (record: RiskRecord) => void
 }) {
   const { t } = useTranslation()
 
@@ -134,12 +140,17 @@ export function RiskRecordMobileList(props: {
             <div className='min-w-0'>
               <dt className='text-muted-foreground text-xs'>{t('Channel')}</dt>
               <dd className='text-sm'>
-                {record.channel_id > 0 ? `#${record.channel_id}` : '—'}
+                <RiskRecordChannelSummary record={record} />
               </dd>
             </div>
             <div className='min-w-0'>
               <dt className='text-muted-foreground text-xs'>{t('User')}</dt>
-              <dd className='text-sm'>#{record.user_id}</dd>
+              <dd className='text-sm'>
+                <RiskRecordUserSummary
+                  record={record}
+                  onClick={props.onUserClick}
+                />
+              </dd>
             </div>
             {record.rule_ids.length > 0 && (
               <div className='min-w-0'>
@@ -173,12 +184,17 @@ export function RiskRecordMobileList(props: {
             </div>
             <div className='min-w-0'>
               <dt className='text-muted-foreground text-xs'>{t('Latency')}</dt>
-              <dd className='text-sm tabular-nums'>{record.latency_ms} ms</dd>
+              <dd className='text-sm'>
+                <RiskRecordLatency latencyMs={record.latency_ms} />
+              </dd>
             </div>
             <div className='min-w-0'>
               <dt className='text-muted-foreground text-xs'>{t('Details')}</dt>
               <dd>
-                <RiskRecordDetailsButton record={record} />
+                <RiskRecordDetailsButton
+                  record={record}
+                  onUserClick={props.onUserClick}
+                />
               </dd>
             </div>
           </dl>

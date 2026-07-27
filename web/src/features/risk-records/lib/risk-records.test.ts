@@ -27,6 +27,7 @@ import {
   getRiskRecordResultLabel,
   getRiskRecordResultVariant,
   getRiskRecordCategoryLabel,
+  getRiskRecordLatencyTone,
   getRiskRecordSourceFilterLabel,
   getRiskRecordSourceVariant,
   getRiskRecordTotalPages,
@@ -36,8 +37,11 @@ const VALID_RECORD = {
   id: 1,
   request_id: 'req-123',
   channel_id: 12,
+  channel_name: 'CPA Pro',
   user_id: 34,
+  username: 'alice',
   token_id: 56,
+  token_name: 'Codex',
   model: 'gpt-5.6',
   path: '/v1/responses',
   preview: 'redacted moderation content',
@@ -161,6 +165,9 @@ describe('risk record behavior', () => {
       assert.equal(record?.model, 'gpt-5.6')
       assert.equal(record?.path, '/v1/responses')
       assert.equal(record?.blocked, true)
+      assert.equal(record?.channel_name, 'CPA Pro')
+      assert.equal(record?.username, 'alice')
+      assert.equal(record?.token_name, 'Codex')
     }
   })
 
@@ -272,6 +279,18 @@ describe('risk record behavior', () => {
 
     // Then
     assert.equal(variant, 'neutral')
+  })
+
+  it('maps latency quartiles to green blue yellow and red', () => {
+    assert.equal(getRiskRecordLatencyTone(0), 'green')
+    assert.equal(getRiskRecordLatencyTone(375), 'green')
+    assert.equal(getRiskRecordLatencyTone(376), 'blue')
+    assert.equal(getRiskRecordLatencyTone(750), 'blue')
+    assert.equal(getRiskRecordLatencyTone(751), 'yellow')
+    assert.equal(getRiskRecordLatencyTone(1125), 'yellow')
+    assert.equal(getRiskRecordLatencyTone(1126), 'red')
+    assert.equal(getRiskRecordLatencyTone(1500), 'red')
+    assert.equal(getRiskRecordLatencyTone(5000), 'red')
   })
 
   it('maps every risk record filter value to a visible label', () => {

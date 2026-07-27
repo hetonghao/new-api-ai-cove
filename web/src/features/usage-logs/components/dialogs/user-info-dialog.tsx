@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Loader2 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -40,7 +40,17 @@ interface UserInfoDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onFilterByUsername?: (username: string) => void
+  filterButtonLabel?: string
   fetchUserInfo?: FetchUserInfo
+}
+
+function InfoItem(props: { label: string; value: string | number }) {
+  return (
+    <div className='space-y-1.5'>
+      <Label className='text-muted-foreground text-xs'>{props.label}</Label>
+      <div className='text-sm font-semibold'>{props.value}</div>
+    </div>
+  )
 }
 
 export function UserInfoDialog({
@@ -48,6 +58,7 @@ export function UserInfoDialog({
   open,
   onOpenChange,
   onFilterByUsername,
+  filterButtonLabel = 'Filter logs by this user',
   fetchUserInfo: fetchUserInfoProp = getUserInfo,
 }: UserInfoDialogProps) {
   const { t } = useTranslation()
@@ -82,18 +93,54 @@ export function UserInfoDialog({
     }
   }, [open, userId, fetchUserInfo])
 
-  const InfoItem = ({
-    label,
-    value,
-  }: {
-    label: string
-    value: string | number
-  }) => (
-    <div className='space-y-1.5'>
-      <Label className='text-muted-foreground text-xs'>{label}</Label>
-      <div className='text-sm font-semibold'>{value}</div>
-    </div>
-  )
+  let content: ReactNode
+  if (isLoading) {
+    content = (
+      <div className='flex items-center justify-center py-8'>
+        <Loader2 className='h-6 w-6 animate-spin' />
+      </div>
+    )
+  } else if (userInfo) {
+    content = (
+      <div className='space-y-4'>
+        <div className='grid grid-cols-2 gap-4'>
+          <InfoItem label={t('Username')} value={userInfo.username} />
+          <InfoItem label={t('Group')} value={userInfo.group ?? '-'} />
+          <InfoItem
+            label={t('Remaining Quota')}
+            value={formatQuota(userInfo.quota)}
+          />
+          <InfoItem
+            label={t('Used Quota')}
+            value={formatQuota(userInfo.used_quota)}
+          />
+          <InfoItem
+            label={t('Request Count')}
+            value={formatCompactNumber(userInfo.request_count)}
+          />
+        </div>
+        {onFilterByUsername && (
+          <Button
+            type='button'
+            variant='outline'
+            className='w-full'
+            onClick={() => {
+              onFilterByUsername(userInfo.username)
+              onOpenChange(false)
+            }}
+          >
+            {t(filterButtonLabel)}
+          </Button>
+        )}
+      </div>
+    )
+  } else {
+    content = (
+      <div className='text-muted-foreground py-8 text-center'>
+        {t('No user information available')}
+      </div>
+    )
+  }
 
   return (
     <Dialog
@@ -102,47 +149,7 @@ export function UserInfoDialog({
       title={t('User Information')}
       contentClassName='max-w-md'
     >
-      {isLoading ? (
-        <div className='flex items-center justify-center py-8'>
-          <Loader2 className='h-6 w-6 animate-spin' />
-        </div>
-      ) : userInfo ? (
-        <div className='space-y-4'>
-          <div className='grid grid-cols-2 gap-4'>
-            <InfoItem label={t('Username')} value={userInfo.username} />
-            <InfoItem label={t('Group')} value={userInfo.group ?? '-'} />
-            <InfoItem
-              label={t('Remaining Quota')}
-              value={formatQuota(userInfo.quota)}
-            />
-            <InfoItem
-              label={t('Used Quota')}
-              value={formatQuota(userInfo.used_quota)}
-            />
-            <InfoItem
-              label={t('Request Count')}
-              value={formatCompactNumber(userInfo.request_count)}
-            />
-          </div>
-          {onFilterByUsername && (
-            <Button
-              type='button'
-              variant='outline'
-              className='w-full'
-              onClick={() => {
-                onFilterByUsername(userInfo.username)
-                onOpenChange(false)
-              }}
-            >
-              {t('Filter logs by this user')}
-            </Button>
-          )}
-        </div>
-      ) : (
-        <div className='text-muted-foreground py-8 text-center'>
-          {t('No user information available')}
-        </div>
-      )}
+      {content}
     </Dialog>
   )
 }

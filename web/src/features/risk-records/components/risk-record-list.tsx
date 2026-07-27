@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { RiskProvider } from '@/features/risk-providers/types'
+import { UserInfoDialog } from '@/features/usage-logs/components/dialogs/user-info-dialog'
 
 import { listRiskRecords } from '../api'
 import { createDefaultRiskRecordFilterDraft } from '../lib/default-filter'
@@ -102,6 +103,12 @@ export function RiskRecordList(props: RiskRecordListProps) {
   const [filters, setFilters] = useState<RiskRecordFilters>(() =>
     commitRiskRecordFilters(initialDraft)
   )
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
+  const [userInfoOpen, setUserInfoOpen] = useState(false)
+  const [usernameOverride, setUsernameOverride] = useState<{
+    value: string
+    requestId: number
+  }>()
   const recordsQuery = useQuery({
     queryKey: [
       'risk',
@@ -146,6 +153,19 @@ export function RiskRecordList(props: RiskRecordListProps) {
     if (shouldRefetch) void recordsQuery.refetch()
   }
 
+  function openUser(record: RiskRecord) {
+    setSelectedUserId(record.user_id)
+    setUserInfoOpen(true)
+  }
+
+  function filterByUsername(username: string) {
+    setUsernameOverride((current) => ({
+      value: username,
+      requestId: (current?.requestId ?? 0) + 1,
+    }))
+    applyFilters({ ...filters, username })
+  }
+
   let content = <RecordSkeleton />
   if (recordsQuery.error) {
     content = (
@@ -159,8 +179,8 @@ export function RiskRecordList(props: RiskRecordListProps) {
   } else if (!recordsQuery.isLoading) {
     content = records.length ? (
       <>
-        <RiskRecordDesktopTable records={records} />
-        <RiskRecordMobileList records={records} />
+        <RiskRecordDesktopTable records={records} onUserClick={openUser} />
+        <RiskRecordMobileList records={records} onUserClick={openUser} />
       </>
     ) : (
       <EmptyRecords />
@@ -175,12 +195,20 @@ export function RiskRecordList(props: RiskRecordListProps) {
           initialValues={initialDraft}
           onApply={applyFilters}
           providers={props.providers}
+          usernameOverride={usernameOverride}
         />
         <div className='min-h-0 flex-1 overflow-y-auto'>{content}</div>
       </div>
       <PageFooterPortal>
         <DataTablePagination table={table} />
       </PageFooterPortal>
+      <UserInfoDialog
+        userId={selectedUserId}
+        open={userInfoOpen}
+        onOpenChange={setUserInfoOpen}
+        onFilterByUsername={filterByUsername}
+        filterButtonLabel='Filter risk records by this user'
+      />
     </>
   )
 }

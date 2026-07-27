@@ -16,21 +16,33 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { ExternalLink, Loader2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
+import { getAllLogs } from '@/features/usage-logs/api'
+import { DetailsDialog as UsageLogDetailsDialog } from '@/features/usage-logs/components/dialogs/details-dialog'
+import {
+  usageLogSchema,
+  type UsageLog,
+} from '@/features/usage-logs/data/schema'
 import { formatDateTimeStr } from '@/lib/format'
 
 import type { RiskRecord } from '../types'
 import {
   RiskRecordCategoryList,
+  RiskRecordChannelSummary,
   RiskRecordChunkList,
   RiskRecordIdList,
+  RiskRecordLatency,
   RiskRecordProviderSummary,
   RiskRecordResultBadge,
   RiskRecordSourceBadge,
+  RiskRecordTokenSummary,
+  RiskRecordUserSummary,
 } from './risk-record-summary'
 
 function DetailRow(props: {
@@ -59,10 +71,73 @@ function DetailSection(props: {
   )
 }
 
+function RiskRecordRequestDetailsButton(props: { readonly requestId: string }) {
+  const { t } = useTranslation()
+  const [loading, setLoading] = useState(false)
+  const [usageLog, setUsageLog] = useState<UsageLog | null>(null)
+  const [open, setOpen] = useState(false)
+
+  async function openUsageLog() {
+    if (usageLog) {
+      setOpen(true)
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await getAllLogs({
+        p: 1,
+        page_size: 1,
+        request_id: props.requestId,
+      })
+      const parsed = usageLogSchema.safeParse(response.data?.items[0])
+      if (!response.success || !parsed.success) {
+        toast.error(t('No matching usage record'))
+        return
+      }
+      setUsageLog(parsed.data)
+      setOpen(true)
+    } catch {
+      toast.error(t('Failed to load request details'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <>
+      <Button
+        type='button'
+        variant='link'
+        size='sm'
+        className='h-auto max-w-full justify-start gap-1 px-0 font-mono text-xs'
+        disabled={loading}
+        onClick={() => void openUsageLog()}
+      >
+        <span className='min-w-0 break-all'>{props.requestId}</span>
+        {loading ? (
+          <Loader2 className='size-3.5 shrink-0 animate-spin' />
+        ) : (
+          <ExternalLink className='size-3.5 shrink-0' />
+        )}
+      </Button>
+      {usageLog && (
+        <UsageLogDetailsDialog
+          log={usageLog}
+          isAdmin
+          open={open}
+          onOpenChange={setOpen}
+        />
+      )}
+    </>
+  )
+}
+
 function RiskRecordDetailsDialog(props: {
   readonly record: RiskRecord
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
+  readonly onUserClick: (record: RiskRecord) => void
 }) {
   const { t } = useTranslation()
   const { record } = props
@@ -125,23 +200,30 @@ function RiskRecordDetailsDialog(props: {
       <DetailSection title={t('Request information')}>
         <DetailRow
           label={t('Request ID')}
-          value={<span className='font-mono'>{record.request_id}</span>}
+          value={
+            <RiskRecordRequestDetailsButton requestId={record.request_id} />
+          }
         />
         <DetailRow
-          label={t('Channel ID')}
-          value={record.channel_id > 0 ? `#${record.channel_id}` : '—'}
+          label={t('Channel')}
+          value={<RiskRecordChannelSummary record={record} />}
         />
-        <DetailRow label={t('User ID')} value={`#${record.user_id}`} />
+        <DetailRow
+          label={t('User')}
+          value={
+            <RiskRecordUserSummary
+              record={record}
+              onClick={props.onUserClick}
+            />
+          }
+        />
         {record.token_id > 0 && (
-          <DetailRow label={t('Token ID')} value={`#${record.token_id}`} />
-        )}
-        {record.model && <DetailRow label={t('Model')} value={record.model} />}
-        {record.path && (
           <DetailRow
-            label={t('Request Path')}
-            value={<span className='font-mono'>{record.path}</span>}
+            label={t('API token')}
+            value={<RiskRecordTokenSummary record={record} />}
           />
         )}
+        {record.model && <DetailRow label={t('Model')} value={record.model} />}
         {record.rule_ids.length > 0 && (
           <DetailRow
             label={t('Rules')}
@@ -156,7 +238,10 @@ function RiskRecordDetailsDialog(props: {
         )}
       </DetailSection>
       <DetailSection title={t('Token usage')}>
-        <DetailRow label={t('Latency')} value={`${record.latency_ms} ms`} />
+        <DetailRow
+          label={t('Latency')}
+          value={<RiskRecordLatency latencyMs={record.latency_ms} />}
+        />
         <DetailRow
           label={t('Prompt')}
           value={record.prompt_tokens.toLocaleString()}
@@ -186,6 +271,7 @@ function RiskRecordDetailsDialog(props: {
 
 export function RiskRecordDetailsButton(props: {
   readonly record: RiskRecord
+  readonly onUserClick: (record: RiskRecord) => void
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -205,6 +291,7 @@ export function RiskRecordDetailsButton(props: {
         record={props.record}
         open={open}
         onOpenChange={setOpen}
+        onUserClick={props.onUserClick}
       />
     </>
   )

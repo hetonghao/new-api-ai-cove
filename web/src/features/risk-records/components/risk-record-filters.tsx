@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ChevronDown } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
@@ -49,6 +49,10 @@ type RiskRecordFiltersProps = {
   readonly initialValues: RiskRecordFilterFormValues
   readonly onApply: (filters: RiskRecordFilters) => void
   readonly providers: readonly RiskProvider[]
+  readonly usernameOverride?: {
+    readonly value: string
+    readonly requestId: number
+  }
 }
 
 export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
@@ -64,6 +68,14 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
   const channelId = form.watch('channel_id')
   const errors = form.formState.errors
   const advancedFilterCount = [providerId, channelId].filter(Boolean).length
+
+  useEffect(() => {
+    if (!props.usernameOverride) return
+    form.setValue('username', props.usernameOverride.value, {
+      shouldDirty: true,
+      shouldValidate: true,
+    })
+  }, [form, props.usernameOverride])
 
   function submitFilters(values: RiskRecordFilterFormValues) {
     props.onApply(commitRiskRecordFilters(values))

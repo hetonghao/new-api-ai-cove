@@ -24,7 +24,13 @@ func setupRiskRecordModelTest(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	DB = db
-	require.NoError(t, db.AutoMigrate(&RiskRecord{}, &RiskRecordGovernance{}))
+	require.NoError(t, db.AutoMigrate(
+		&RiskRecord{},
+		&RiskRecordGovernance{},
+		&Channel{},
+		&User{},
+		&Token{},
+	))
 	t.Cleanup(func() {
 		DB = originalDB
 		common.SetDatabaseTypes(originalMainType, originalLogType)

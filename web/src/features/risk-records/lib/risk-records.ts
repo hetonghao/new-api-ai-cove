@@ -39,6 +39,7 @@ const RISK_RECORD_FILTER_SOURCES = [
 ] as const
 
 type Translate = (key: string) => string
+export type RiskRecordLatencyTone = 'green' | 'blue' | 'yellow' | 'red'
 
 export function createRiskRecordFilterFormSchema(t: Translate) {
   const validDateTime = z.date({ error: t('Invalid configuration') }).optional()
@@ -160,6 +161,15 @@ export function getRiskRecordSourceFilterLabel(source: string) {
 
 export function getRiskRecordSourceVariant(source: string): StatusVariant {
   return RISK_RECORD_SOURCE_LABELS[source] ? 'info' : 'neutral'
+}
+
+export function getRiskRecordLatencyTone(
+  latencyMs: number
+): RiskRecordLatencyTone {
+  if (latencyMs <= 375) return 'green'
+  if (latencyMs <= 750) return 'blue'
+  if (latencyMs <= 1125) return 'yellow'
+  return 'red'
 }
 
 export function getRiskRecordTotalPages(total: number, pageSize: number) {

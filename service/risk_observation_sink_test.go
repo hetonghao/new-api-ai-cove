@@ -63,7 +63,13 @@ func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
 			setupRiskObservationTest(t)
-			require.NoError(t, model.DB.AutoMigrate(&model.RiskRecord{}, &model.RiskRecordGovernance{}))
+			require.NoError(t, model.DB.AutoMigrate(
+				&model.RiskRecord{},
+				&model.RiskRecordGovernance{},
+				&model.Channel{},
+				&model.User{},
+				&model.Token{},
+			))
 
 			// When
 			err := (riskObservationModelSink{}).RecordRiskObservation(context.Background(), test.event)

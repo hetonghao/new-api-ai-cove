@@ -37,8 +37,11 @@ type RiskRecord struct {
 	Id               int               `json:"id" gorm:"primaryKey"`
 	RequestID        string            `json:"request_id" gorm:"type:varchar(256);not null;index"`
 	ChannelID        int               `json:"channel_id" gorm:"not null;index"`
+	ChannelName      string            `json:"channel_name" gorm:"->;-:migration"`
 	UserID           int               `json:"user_id" gorm:"not null;index"`
+	Username         string            `json:"username" gorm:"->;-:migration"`
 	TokenID          int               `json:"token_id" gorm:"not null"`
+	TokenName        string            `json:"token_name" gorm:"->;-:migration"`
 	Model            string            `json:"model" gorm:"type:varchar(256);not null"`
 	Path             string            `json:"path" gorm:"type:varchar(512);not null"`
 	Preview          string            `json:"preview" gorm:"type:varchar(800);not null"`

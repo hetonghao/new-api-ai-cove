@@ -61,45 +61,6 @@ export function RiskRecordSelectFilters(props: {
     <>
       <Controller
         control={props.control}
-        name='result'
-        render={({ field, fieldState }) => {
-          const value = field.value || ALL_RESULTS
-          const label = getRiskRecordResultFilterLabel(value)
-          return (
-            <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor='risk-record-result'>
-                {t('Result')}
-              </FieldLabel>
-              <Select
-                value={value}
-                onValueChange={(nextValue) => {
-                  if (nextValue === null) return
-                  field.onChange(nextValue === ALL_RESULTS ? '' : nextValue)
-                }}
-              >
-                <SelectTrigger id='risk-record-result' className='w-full'>
-                  <SelectValue>{t(label)}</SelectValue>
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false}>
-                  <SelectGroup>
-                    <SelectItem value={ALL_RESULTS}>
-                      {t('All results')}
-                    </SelectItem>
-                    {RESULT_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {t(option.label)}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              <FieldError>{fieldState.error?.message}</FieldError>
-            </Field>
-          )
-        }}
-      />
-      <Controller
-        control={props.control}
         name='source'
         render={({ field, fieldState }) => {
           const value = field.value || ALL_SOURCES
@@ -125,6 +86,45 @@ export function RiskRecordSelectFilters(props: {
                       {t('All sources')}
                     </SelectItem>
                     {SOURCE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {t(option.label)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <FieldError>{fieldState.error?.message}</FieldError>
+            </Field>
+          )
+        }}
+      />
+      <Controller
+        control={props.control}
+        name='result'
+        render={({ field, fieldState }) => {
+          const value = field.value || ALL_RESULTS
+          const label = getRiskRecordResultFilterLabel(value)
+          return (
+            <Field data-invalid={fieldState.invalid}>
+              <FieldLabel htmlFor='risk-record-result'>
+                {t('Result')}
+              </FieldLabel>
+              <Select
+                value={value}
+                onValueChange={(nextValue) => {
+                  if (nextValue === null) return
+                  field.onChange(nextValue === ALL_RESULTS ? '' : nextValue)
+                }}
+              >
+                <SelectTrigger id='risk-record-result' className='w-full'>
+                  <SelectValue>{t(label)}</SelectValue>
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    <SelectItem value={ALL_RESULTS}>
+                      {t('All results')}
+                    </SelectItem>
+                    {RESULT_OPTIONS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {t(option.label)}
                       </SelectItem>

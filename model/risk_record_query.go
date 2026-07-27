@@ -27,13 +27,13 @@ func QueryRiskRecords(ctx context.Context, filter RiskRecordQuery) ([]*RiskRecor
 
 	query := DB.WithContext(ctx).Model(&RiskRecord{})
 	if filter.StartTimestamp > 0 {
-		query = query.Where("observed_at >= ?", time.Unix(filter.StartTimestamp, 0).UTC())
+		query = query.Where("risk_records.observed_at >= ?", time.Unix(filter.StartTimestamp, 0).UTC())
 	}
 	if filter.EndTimestamp > 0 {
-		query = query.Where("observed_at <= ?", time.Unix(filter.EndTimestamp, 0).UTC())
+		query = query.Where("risk_records.observed_at <= ?", time.Unix(filter.EndTimestamp, 0).UTC())
 	}
 	if filter.ChannelID > 0 {
-		query = query.Where("channel_id = ?", filter.ChannelID)
+		query = query.Where("risk_records.channel_id = ?", filter.ChannelID)
 	}
 	if filter.Username != "" {
 		userQuery := DB.WithContext(ctx).Model(&User{})
@@ -53,16 +53,16 @@ func QueryRiskRecords(ctx context.Context, filter RiskRecordQuery) ([]*RiskRecor
 		if len(userIDs) == 0 {
 			return []*RiskRecord{}, 0, nil
 		}
-		query = query.Where("user_id IN ?", userIDs)
+		query = query.Where("risk_records.user_id IN ?", userIDs)
 	}
 	if filter.ProviderID != nil {
-		query = query.Where("provider_id = ?", *filter.ProviderID)
+		query = query.Where("risk_records.provider_id = ?", *filter.ProviderID)
 	}
 	if filter.Result != "" {
-		query = query.Where("result = ?", filter.Result)
+		query = query.Where("risk_records.result = ?", filter.Result)
 	}
 	if filter.Source != "" {
-		query = query.Where("source = ?", filter.Source)
+		query = query.Where("risk_records.source = ?", filter.Source)
 	}
 
 	var total int64
@@ -70,7 +70,16 @@ func QueryRiskRecords(ctx context.Context, filter RiskRecordQuery) ([]*RiskRecor
 		return nil, 0, fmt.Errorf("count risk records: %w", err)
 	}
 	records := make([]*RiskRecord, 0)
-	if err := query.Order("observed_at desc, id desc").Offset(filter.Offset).Limit(filter.Limit).Find(&records).Error; err != nil {
+	query = query.Select(
+		"risk_records.*, channels.name AS channel_name, users.username AS username, tokens.name AS token_name",
+	).Joins(
+		"LEFT JOIN channels ON channels.id = risk_records.channel_id",
+	).Joins(
+		"LEFT JOIN users ON users.id = risk_records.user_id",
+	).Joins(
+		"LEFT JOIN tokens ON tokens.id = risk_records.token_id",
+	)
+	if err := query.Order("risk_records.observed_at desc, risk_records.id desc").Offset(filter.Offset).Limit(filter.Limit).Find(&records).Error; err != nil {
 		return nil, 0, fmt.Errorf("query risk records: %w", err)
 	}
 	return records, total, nil
