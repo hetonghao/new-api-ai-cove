@@ -35,18 +35,14 @@ func ExtractRiskObservationText(request dto.Request) string {
 	case *dto.OpenAIResponsesRequest:
 		return extractResponsesRiskText(typed)
 	case *dto.ClaudeRequest:
-		for index := len(typed.Messages) - 1; index >= 0; index-- {
-			if typed.Messages[index].Role == "user" {
-				return strings.TrimSpace(typed.Messages[index].GetStringContent())
-			}
+		if len(typed.Messages) > 0 && typed.Messages[len(typed.Messages)-1].Role == "user" {
+			return strings.TrimSpace(typed.Messages[len(typed.Messages)-1].GetStringContent())
 		}
 	case *dto.GeminiChatRequest:
-		for index := len(typed.Contents) - 1; index >= 0; index-- {
-			if typed.Contents[index].Role != "user" {
-				continue
-			}
-			texts := make([]string, 0, len(typed.Contents[index].Parts))
-			for _, part := range typed.Contents[index].Parts {
+		if len(typed.Contents) > 0 && typed.Contents[len(typed.Contents)-1].Role == "user" {
+			content := typed.Contents[len(typed.Contents)-1]
+			texts := make([]string, 0, len(content.Parts))
+			for _, part := range content.Parts {
 				if text := strings.TrimSpace(part.Text); text != "" {
 					texts = append(texts, text)
 				}
@@ -58,11 +54,12 @@ func ExtractRiskObservationText(request dto.Request) string {
 }
 
 func extractOpenAIRiskText(request *dto.GeneralOpenAIRequest) string {
-	for index := len(request.Messages) - 1; index >= 0; index-- {
-		if request.Messages[index].Role != "user" {
-			continue
+	if len(request.Messages) > 0 {
+		message := request.Messages[len(request.Messages)-1]
+		if message.Role != "user" {
+			return ""
 		}
-		parts := request.Messages[index].ParseContent()
+		parts := message.ParseContent()
 		texts := make([]string, 0, len(parts))
 		for _, part := range parts {
 			if part.Type == dto.ContentTypeText && strings.TrimSpace(part.Text) != "" {
@@ -91,30 +88,31 @@ func extractResponsesRiskText(request *dto.OpenAIResponsesRequest) string {
 	if common.Unmarshal(request.Input, &inputs) != nil {
 		return ""
 	}
-	for index := len(inputs) - 1; index >= 0; index-- {
-		if (inputs[index].Type != "" && inputs[index].Type != "message") || inputs[index].Role != "user" {
-			continue
-		}
-		if common.GetJsonType(inputs[index].Content) == "string" {
-			var text string
-			if common.Unmarshal(inputs[index].Content, &text) == nil {
-				return strings.TrimSpace(text)
-			}
-			return ""
-		}
-		var parts []dto.MediaInput
-		if common.Unmarshal(inputs[index].Content, &parts) != nil {
-			return ""
-		}
-		texts := make([]string, 0, len(parts))
-		for _, part := range parts {
-			if part.Type == "input_text" && strings.TrimSpace(part.Text) != "" {
-				texts = append(texts, strings.TrimSpace(part.Text))
-			}
-		}
-		return strings.Join(texts, "\n")
+	if len(inputs) == 0 {
+		return ""
 	}
-	return ""
+	input := inputs[len(inputs)-1]
+	if (input.Type != "" && input.Type != "message") || input.Role != "user" {
+		return ""
+	}
+	if common.GetJsonType(input.Content) == "string" {
+		var text string
+		if common.Unmarshal(input.Content, &text) == nil {
+			return strings.TrimSpace(text)
+		}
+		return ""
+	}
+	var parts []dto.MediaInput
+	if common.Unmarshal(input.Content, &parts) != nil {
+		return ""
+	}
+	texts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part.Type == "input_text" && strings.TrimSpace(part.Text) != "" {
+			texts = append(texts, strings.TrimSpace(part.Text))
+		}
+	}
+	return strings.Join(texts, "\n")
 }
 
 func stringValues(value any) []string {

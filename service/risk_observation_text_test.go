@@ -104,6 +104,52 @@ func TestExtractRiskObservationText_accepts_responses_message_string(t *testing.
 	require.Equal(t, "current string", got)
 }
 
+func TestExtractRiskObservationText_ignores_history_when_request_only_continues_the_conversation(t *testing.T) {
+	responsesInput, err := common.Marshal([]map[string]any{
+		{"type": "message", "role": "user", "content": "old responses turn"},
+		{"type": "function_call_output", "output": "tool result"},
+	})
+	require.NoError(t, err)
+
+	tests := []struct {
+		name    string
+		request dto.Request
+	}{
+		{
+			name: "openai tool continuation",
+			request: &dto.GeneralOpenAIRequest{Messages: []dto.Message{
+				{Role: "user", Content: "old openai turn"},
+				{Role: "assistant", Content: "tool call"},
+				{Role: "tool", Content: "tool result"},
+			}},
+		},
+		{
+			name:    "responses function output continuation",
+			request: &dto.OpenAIResponsesRequest{Input: responsesInput},
+		},
+		{
+			name: "claude assistant continuation",
+			request: &dto.ClaudeRequest{Messages: []dto.ClaudeMessage{
+				{Role: "user", Content: "old claude turn"},
+				{Role: "assistant", Content: "tool call"},
+			}},
+		},
+		{
+			name: "gemini model continuation",
+			request: &dto.GeminiChatRequest{Contents: []dto.GeminiChatContent{
+				{Role: "user", Parts: []dto.GeminiPart{{Text: "old gemini turn"}}},
+				{Role: "model", Parts: []dto.GeminiPart{{Text: "tool call"}}},
+			}},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.Empty(t, ExtractRiskObservationText(test.request))
+		})
+	}
+}
+
 func TestBuildSelectiveRiskExcerpt_merges_windows_and_caps_runes(t *testing.T) {
 	// Given
 	text := "prefix " + string(make([]rune, 490)) + "alpha" + string(make([]rune, 300)) + "beta" + string(make([]rune, 5000))
