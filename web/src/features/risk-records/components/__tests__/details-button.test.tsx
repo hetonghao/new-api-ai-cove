@@ -48,7 +48,8 @@ for (const key of domGlobals) {
   })
 }
 
-const { cleanup, render, screen } = await import('@testing-library/react')
+const { cleanup, fireEvent, render, screen } =
+  await import('@testing-library/react')
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
 const { RiskRecordDetailsButton } =
@@ -61,6 +62,7 @@ await i18n.use(initReactI18next).init({
     en: {
       translation: {
         Error: 'Error',
+        'Risk record details': 'Risk record details',
         '{{count}} tokens': '{{count}} tokens',
       },
     },
@@ -155,5 +157,19 @@ describe('risk record details button presentation', () => {
 
     assert.equal(label.classList.contains('text-destructive'), false)
     assert.equal(label.getAttribute('title'), '12 tokens')
+  })
+
+  test('opens the risk record dialog when the error detail is clicked', () => {
+    renderDetailsButton({
+      ...BASE_RECORD,
+      result: 'error',
+      error_code: 'timeout',
+      total_tokens: 0,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'timeout' }))
+
+    assert.ok(screen.getByRole('dialog'))
+    assert.ok(screen.getByText('Risk record details'))
   })
 })
