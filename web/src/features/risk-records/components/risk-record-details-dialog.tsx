@@ -30,6 +30,7 @@ import {
   type UsageLog,
 } from '@/features/usage-logs/data/schema'
 import { formatDateTimeStr } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 import type { RiskRecord } from '../types'
 import {
@@ -301,7 +302,7 @@ export function RiskRecordDetailsButton(props: {
         onClick={() => setOpen(true)}
       >
         <span
-          className={`min-w-0 truncate ${isError ? 'text-destructive' : ''}`}
+          className={cn('min-w-0 truncate', isError && 'text-destructive')}
           title={label}
         >
           {label}
