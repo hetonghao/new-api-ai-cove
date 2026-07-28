@@ -286,8 +286,9 @@ export function RiskRecordDetailsButton(props: {
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+  const isError = props.record.result === 'error'
   const label =
-    props.record.result === 'error'
+    isError
       ? props.record.error_code || t('Error')
       : t('{{count}} tokens', { count: props.record.total_tokens })
 
@@ -300,7 +301,10 @@ export function RiskRecordDetailsButton(props: {
         className='h-auto max-w-full justify-start px-0 text-xs tabular-nums'
         onClick={() => setOpen(true)}
       >
-        <span className='min-w-0 truncate' title={label}>
+        <span
+          className={`min-w-0 truncate ${isError ? 'text-destructive' : ''}`}
+          title={label}
+        >
           {label}
         </span>
       </Button>
