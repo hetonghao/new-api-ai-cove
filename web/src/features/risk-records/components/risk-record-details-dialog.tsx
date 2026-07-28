@@ -287,10 +287,9 @@ export function RiskRecordDetailsButton(props: {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const isError = props.record.result === 'error'
-  const label =
-    isError
-      ? props.record.error_code || t('Error')
-      : t('{{count}} tokens', { count: props.record.total_tokens })
+  const label = isError
+    ? props.record.error_code || t('Error')
+    : t('{{count}} tokens', { count: props.record.total_tokens })
 
   return (
     <>
