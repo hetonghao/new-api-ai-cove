@@ -259,6 +259,17 @@ describe('risk record behavior', () => {
     assert.equal(variant, 'danger')
   })
 
+  it('maps error records to the danger status when rendered', () => {
+    // Given
+    const result = 'error'
+
+    // When
+    const variant = getRiskRecordResultVariant(result)
+
+    // Then
+    assert.equal(variant, 'danger')
+  })
+
   it('maps an unknown result to a neutral status when rendered', () => {
     // Given
     const result = 'future-result'
