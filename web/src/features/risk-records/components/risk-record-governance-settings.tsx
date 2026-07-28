@@ -24,13 +24,23 @@ import { toast } from 'sonner'
 
 import { ErrorState } from '@/components/error-state'
 import { Button } from '@/components/ui/button'
-import { Field, FieldDescription, FieldLabel } from '@/components/ui/field'
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TitledCard } from '@/components/ui/titled-card'
 
 import { getRiskRecordGovernance, updateRiskRecordGovernance } from '../api'
-import { riskContentSaveScopeSchema, type RiskContentSaveScope } from '../types'
+import {
+  riskContentSaveScopeSchema,
+  riskRecordRetentionDaysSchema,
+  type RiskContentSaveScope,
+} from '../types'
 
 const QUERY_KEY = ['risk', 'records', 'settings'] as const
 
@@ -38,6 +48,7 @@ export function RiskRecordGovernanceSettings() {
   const { t } = useTranslation()
   const [contentSaveScope, setContentSaveScope] =
     useState<RiskContentSaveScope>('all')
+  const [retentionDaysDraft, setRetentionDaysDraft] = useState('30')
   const [saving, setSaving] = useState(false)
   const settingsQuery = useQuery({
     queryKey: QUERY_KEY,
@@ -56,21 +67,31 @@ export function RiskRecordGovernanceSettings() {
   useEffect(() => {
     if (settingsQuery.data) {
       setContentSaveScope(settingsQuery.data.content_save_scope)
+      setRetentionDaysDraft(String(settingsQuery.data.retention_days))
     }
   }, [settingsQuery.data])
 
+  const retentionDaysResult = riskRecordRetentionDaysSchema.safeParse(
+    Number(retentionDaysDraft)
+  )
+  const retentionDays = retentionDaysResult.success
+    ? retentionDaysResult.data
+    : null
+
   async function saveSettings() {
-    if (!settingsQuery.data) return
+    if (!settingsQuery.data || retentionDays === null) return
     setSaving(true)
     try {
       const response = await updateRiskRecordGovernance({
         ...settingsQuery.data,
         content_save_scope: contentSaveScope,
+        retention_days: retentionDays,
       })
       if (!response.success || !response.data) {
         throw new Error(response.message || t('Request failed'))
       }
       setContentSaveScope(response.data.content_save_scope)
+      setRetentionDaysDraft(String(response.data.retention_days))
       toast.success(t('Risk record settings saved'))
       await settingsQuery.refetch()
     } catch (error) {
@@ -127,12 +148,43 @@ export function RiskRecordGovernanceSettings() {
             )}
           </FieldDescription>
         </Field>
+        <Field data-invalid={!retentionDaysResult.success}>
+          <FieldLabel htmlFor='risk-record-retention-days'>
+            {t('Retain last N days')}
+          </FieldLabel>
+          <Input
+            id='risk-record-retention-days'
+            className='sm:max-w-32'
+            type='number'
+            min={1}
+            max={180}
+            step={1}
+            value={retentionDaysDraft}
+            aria-invalid={!retentionDaysResult.success}
+            onChange={(event) => setRetentionDaysDraft(event.target.value)}
+          />
+          <FieldDescription>
+            {t(
+              'Risk records older than this are deleted by the daily cleanup task.'
+            )}
+          </FieldDescription>
+          {!retentionDaysResult.success && (
+            <FieldError>
+              {t('Retention days must be between {{min}} and {{max}}', {
+                min: 1,
+                max: 180,
+              })}
+            </FieldError>
+          )}
+        </Field>
         <div className='flex justify-end'>
           <Button
             type='button'
             disabled={
               saving ||
-              contentSaveScope === settingsQuery.data?.content_save_scope
+              retentionDays === null ||
+              (contentSaveScope === settingsQuery.data?.content_save_scope &&
+                retentionDays === settingsQuery.data?.retention_days)
             }
             onClick={() => void saveSettings()}
           >
@@ -146,7 +198,7 @@ export function RiskRecordGovernanceSettings() {
   return (
     <TitledCard
       title={t('Risk record settings')}
-      description={t('Manage redacted detection content storage.')}
+      description={t('Manage risk record storage and automatic cleanup.')}
       icon={<Database className='size-5' />}
       disableHoverEffect
     >

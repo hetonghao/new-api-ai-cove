@@ -20,6 +20,7 @@ import { z } from 'zod'
 
 export const riskRecordResultSchema = z.string().min(1)
 export const riskContentSaveScopeSchema = z.enum(['all', 'unsafe', 'none'])
+export const riskRecordRetentionDaysSchema = z.number().int().min(1).max(180)
 
 export const riskRecordChunkSchema = z
   .object({
@@ -92,7 +93,7 @@ export const riskRecordGovernanceSchema = z
   .object({
     save_scope: z.enum(['all', 'suspicious', 'unsafe']),
     content_save_scope: riskContentSaveScopeSchema,
-    retention_days: z.number().int().min(1).max(180),
+    retention_days: riskRecordRetentionDaysSchema,
   })
   .readonly()
 
