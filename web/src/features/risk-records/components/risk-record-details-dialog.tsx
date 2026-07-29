@@ -16,23 +16,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ExternalLink, Loader2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 
 import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
-import { getAllLogs } from '@/features/usage-logs/api'
-import { DetailsDialog as UsageLogDetailsDialog } from '@/features/usage-logs/components/dialogs/details-dialog'
-import {
-  usageLogSchema,
-  type UsageLog,
-} from '@/features/usage-logs/data/schema'
 import { formatDateTimeStr } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import type { RiskRecord } from '../types'
+import {
+  RiskRecordErrorDetailsButton,
+  RiskRecordRequestDetailsButton,
+} from './risk-record-linked-details'
 import {
   RiskRecordCategoryList,
   RiskRecordChannelSummary,
@@ -69,72 +65,6 @@ function DetailSection(props: {
         {props.children}
       </dl>
     </section>
-  )
-}
-
-function RiskRecordRequestDetailsButton(props: { readonly requestId: string }) {
-  const { t } = useTranslation()
-  const [loading, setLoading] = useState(false)
-  const [usageLog, setUsageLog] = useState<UsageLog | null>(null)
-  const [open, setOpen] = useState(false)
-
-  async function openUsageLog() {
-    if (usageLog) {
-      setOpen(true)
-      return
-    }
-
-    setLoading(true)
-    try {
-      const response = await getAllLogs({
-        p: 1,
-        page_size: 1,
-        request_id: props.requestId,
-      })
-      const parsed = usageLogSchema.safeParse(response.data?.items[0])
-      if (!response.success || !parsed.success) {
-        toast.error(t('No matching usage record'))
-        return
-      }
-      setUsageLog(parsed.data)
-      setOpen(true)
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to load request details:', error)
-      toast.error(t('Failed to load request details'))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <>
-      <Button
-        type='button'
-        variant='link'
-        size='sm'
-        className='h-auto max-w-full min-w-0 justify-start gap-1 px-0 font-mono text-sm'
-        disabled={loading}
-        onClick={() => void openUsageLog()}
-      >
-        <span className='min-w-0 truncate' title={props.requestId}>
-          {props.requestId}
-        </span>
-        {loading ? (
-          <Loader2 className='size-3.5 shrink-0 animate-spin' />
-        ) : (
-          <ExternalLink className='size-3.5 shrink-0' />
-        )}
-      </Button>
-      {usageLog && (
-        <UsageLogDetailsDialog
-          log={usageLog}
-          isAdmin
-          open={open}
-          onOpenChange={setOpen}
-        />
-      )}
-    </>
   )
 }
 
@@ -197,7 +127,10 @@ function RiskRecordDetailsDialog(props: {
           <DetailRow
             label={t('Error')}
             value={
-              <span className='text-destructive'>{record.error_code}</span>
+              <RiskRecordErrorDetailsButton
+                errorCode={record.error_code}
+                errorDetail={record.error_detail}
+              />
             }
           />
         )}

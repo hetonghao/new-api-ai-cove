@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import * as z from 'zod'
 
 import {
+  LOCAL_RISK_RULE_ACTIONS,
   LOCAL_RISK_RULE_TYPES,
   RISK_ACTION_MODES,
   RISK_REVIEW_MODES,
@@ -39,6 +40,8 @@ export function createRiskPolicyFormSchema(
     .object({
       enabled: z.boolean(),
       enabled_channels: z.array(z.number().int().positive()),
+      excluded_user_ids: z.array(z.number().int().positive()),
+      excluded_models: z.array(z.string().trim().min(1)),
       provider_id: z.string(),
       review_mode: z.enum(RISK_REVIEW_MODES),
       action_mode: z.enum(RISK_ACTION_MODES),
@@ -78,6 +81,8 @@ export function riskPolicyToFormValues(
   return {
     enabled: policy.enabled,
     enabled_channels: [...policy.enabled_channels],
+    excluded_user_ids: [...policy.excluded_user_ids],
+    excluded_models: [...(policy.excluded_models ?? [])],
     provider_id: policy.provider_id === null ? '' : String(policy.provider_id),
     review_mode: policy.review_mode,
     action_mode: policy.action_mode,
@@ -90,6 +95,8 @@ export function riskPolicyFormValuesToPayload(
   return {
     provider_id: values.enabled ? Number(values.provider_id) : null,
     enabled_channels: values.enabled ? values.enabled_channels : [],
+    excluded_user_ids: values.excluded_user_ids,
+    excluded_models: values.excluded_models,
     review_mode: values.review_mode,
     action_mode: values.action_mode,
   }
@@ -99,6 +106,7 @@ export function createLocalRuleFormSchema(t: Translate) {
   return z.object({
     rule_type: z.enum(LOCAL_RISK_RULE_TYPES),
     pattern: z.string().trim().min(1, t('Rule pattern is required')),
+    action: z.enum(LOCAL_RISK_RULE_ACTIONS),
     enabled: z.boolean(),
   })
 }
@@ -113,6 +121,7 @@ export function localRuleToFormValues(
   return {
     rule_type: rule?.rule_type ?? 'keyword',
     pattern: rule?.pattern ?? '',
+    action: rule?.action ?? 'review',
     enabled: rule?.enabled ?? true,
   }
 }
@@ -123,6 +132,7 @@ export function localRuleFormValuesToPayload(
   return {
     rule_type: values.rule_type,
     pattern: values.pattern.trim(),
+    action: values.action,
     enabled: values.enabled,
   }
 }
@@ -131,6 +141,7 @@ export function createLocalRuleTestFormSchema(t: Translate) {
   return z.object({
     rule_type: z.enum(LOCAL_RISK_RULE_TYPES),
     pattern: z.string().trim().min(1, t('Rule pattern is required')),
+    action: z.enum(LOCAL_RISK_RULE_ACTIONS),
     text: z
       .string()
       .refine((value) => value.trim().length > 0, t('Test text is required')),
@@ -147,6 +158,7 @@ export function localRuleTestToFormValues(
   return {
     rule_type: rule?.rule_type ?? 'keyword',
     pattern: rule?.pattern ?? '',
+    action: rule?.action ?? 'review',
     text: '',
   }
 }
@@ -157,6 +169,14 @@ export function localRuleTestFormValuesToPayload(
   return {
     rule_type: values.rule_type,
     pattern: values.pattern.trim(),
+    action: values.action,
     text: values.text,
   }
+}
+
+export function mergeRiskPolicyModelOptions(
+  catalog: readonly string[],
+  saved: readonly string[]
+): readonly string[] {
+  return [...new Set([...catalog, ...saved])]
 }

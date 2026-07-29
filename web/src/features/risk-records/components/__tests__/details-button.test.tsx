@@ -48,7 +48,7 @@ for (const key of domGlobals) {
   })
 }
 
-const { cleanup, fireEvent, render, screen } =
+const { cleanup, fireEvent, render, screen, within } =
   await import('@testing-library/react')
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
@@ -62,6 +62,8 @@ await i18n.use(initReactI18next).init({
     en: {
       translation: {
         Error: 'Error',
+        'Error details': 'Error details',
+        'No error details available': 'No error details available',
         'Risk record details': 'Risk record details',
         '{{count}} tokens': '{{count}} tokens',
       },
@@ -98,6 +100,7 @@ const BASE_RECORD: RiskRecord = {
   neurons: 0,
   chunks: [],
   error_code: '',
+  error_detail: '',
   observed_at: '2026-07-28T02:15:11Z',
 }
 
@@ -171,5 +174,53 @@ describe('risk record details button presentation', () => {
 
     assert.ok(screen.getByRole('dialog'))
     assert.ok(screen.getByText('Risk record details'))
+  })
+
+  test('opens a separate dialog with the saved provider error detail', () => {
+    // Given a failed risk record with a sanitized provider diagnostic
+    renderDetailsButton({
+      ...BASE_RECORD,
+      result: 'error',
+      error_code: 'provider_error',
+      error_detail: 'HTTP 429: rate limit exceeded',
+      total_tokens: 0,
+    })
+
+    // When the operator opens the record and then its error name
+    fireEvent.click(screen.getByRole('button', { name: 'provider_error' }))
+    const recordDialog = screen.getByRole('dialog', {
+      name: 'Risk record details',
+    })
+    fireEvent.click(
+      within(recordDialog).getByRole('button', { name: 'provider_error' })
+    )
+
+    // Then diagnostics open in their own dialog without expanding the record
+    const errorDialog = screen.getByRole('dialog', { name: 'Error details' })
+    assert.ok(within(errorDialog).getByText('HTTP 429: rate limit exceeded'))
+  })
+
+  test('shows the historical fallback when an error has no saved detail', () => {
+    // Given a historical failed record created before error details existed
+    renderDetailsButton({
+      ...BASE_RECORD,
+      result: 'error',
+      error_code: 'provider_error',
+      error_detail: null,
+      total_tokens: 0,
+    })
+
+    // When the operator opens the error detail dialog
+    fireEvent.click(screen.getByRole('button', { name: 'provider_error' }))
+    const recordDialog = screen.getByRole('dialog', {
+      name: 'Risk record details',
+    })
+    fireEvent.click(
+      within(recordDialog).getByRole('button', { name: 'provider_error' })
+    )
+
+    // Then the absence of recoverable detail is explicit
+    const errorDialog = screen.getByRole('dialog', { name: 'Error details' })
+    assert.ok(within(errorDialog).getByText('No error details available'))
   })
 })

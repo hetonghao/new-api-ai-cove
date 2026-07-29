@@ -44,6 +44,17 @@ func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 			},
 		},
 		{
+			name:       "provider error detail",
+			wantSource: model.RiskRecordSourceProvider,
+			event: RiskObservationEvent{
+				RequestID: "req-error", ChannelID: 12, UserID: 34,
+				ProviderID: 21, ProviderName: "Cloudflare", Result: RiskObservationError,
+				Source: RiskObservationSourceProvider, ProviderCalled: true,
+				ErrorCode: riskObservationProviderError, ErrorDetail: "Cloudflare returned HTTP 429",
+				ObservedAt: time.Date(2026, time.July, 25, 12, 31, 30, 0, time.UTC),
+			},
+		},
+		{
 			name:             "actual provider call",
 			wantSource:       model.RiskRecordSourceProvider,
 			wantChunkNeurons: 6,
@@ -123,6 +134,7 @@ func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 				assert.Equal(t, test.wantChunkNeurons, record.Chunks[0].Neurons)
 			}
 			assert.Equal(t, test.event.ErrorCode, record.ErrorCode)
+			assert.Equal(t, test.event.ErrorDetail, record.ErrorDetail)
 			assert.Equal(t, test.event.ObservedAt, record.ObservedAt)
 		})
 	}

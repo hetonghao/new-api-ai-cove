@@ -18,8 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { t } from 'i18next'
 
-import { getChannels } from '@/features/channels/api'
+import { getChannels, getEnabledModels } from '@/features/channels/api'
 import type { Channel } from '@/features/channels/types'
+import { getUsers } from '@/features/users/api'
+import type { User } from '@/features/users/types'
 import { api } from '@/lib/api'
 
 import type {
@@ -47,6 +49,28 @@ export async function getRiskPolicyChannels(): Promise<readonly Channel[]> {
     if (channels.length >= response.data.total) return channels
     page += 1
   }
+}
+
+export async function getRiskPolicyUsers(): Promise<readonly User[]> {
+  const users: User[] = []
+  let page = 1
+  while (true) {
+    const response = await getUsers({ p: page, page_size: 100 })
+    if (!response.success || !response.data) {
+      throw new Error(response.message || t('Failed to load users'))
+    }
+    users.push(...response.data.items)
+    if (users.length >= response.data.total) return users
+    page += 1
+  }
+}
+
+export async function getRiskPolicyModels(): Promise<readonly string[]> {
+  const response = await getEnabledModels()
+  if (!response.success || !response.data) {
+    throw new Error(response.message || t('Failed to load enabled models'))
+  }
+  return response.data
 }
 
 export async function getRiskPolicy(): Promise<ApiResponse<RiskPolicy>> {

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -17,6 +18,19 @@ type riskProviderRoundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn riskProviderRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return fn(request)
+}
+
+func riskProviderTestProvider(t *testing.T) *model.RiskProvider {
+	t.Helper()
+	ciphertext, err := common.EncryptCredential("cf-token")
+	require.NoError(t, err)
+	return &model.RiskProvider{
+		ProviderType:        model.RiskProviderCloudflare,
+		AccountID:           "0123456789abcdef0123456789abcdef",
+		Model:               "@cf/meta/llama-guard-3-8b",
+		CredentialEncrypted: ciphertext,
+		TimeoutMs:           800,
+	}
 }
 
 func TestReviewRiskContentMapsCloudflareResponses(t *testing.T) {
@@ -52,15 +66,7 @@ func TestReviewRiskContentMapsCloudflareResponses(t *testing.T) {
 			})}
 			t.Cleanup(func() { httpClient = originalHTTPClient })
 
-			ciphertext, err := common.EncryptCredential("cf-token")
-			require.NoError(t, err)
-			provider := &model.RiskProvider{
-				ProviderType:        model.RiskProviderCloudflare,
-				AccountID:           "0123456789abcdef0123456789abcdef",
-				Model:               "@cf/meta/llama-guard-3-8b",
-				CredentialEncrypted: ciphertext,
-				TimeoutMs:           800,
-			}
+			provider := riskProviderTestProvider(t)
 			if tt.legacy {
 				provider.AccountID = ""
 				provider.BaseURL = "https://legacy.example/client/v4/accounts/0123456789abcdef0123456789abcdef/ai/run"
@@ -72,6 +78,77 @@ func TestReviewRiskContentMapsCloudflareResponses(t *testing.T) {
 			assert.Equal(t, tt.categories, result.Categories)
 			if tt.wantNeurons != 0 {
 				assert.InDelta(t, tt.wantNeurons, result.Usage.Neurons, 1e-12)
+			}
+		})
+	}
+}
+
+func TestReviewRiskContent_returnsSafeProviderErrorDetails(t *testing.T) {
+	// Given
+	originalSecret := common.CryptoSecret
+	common.CryptoSecret = "risk-provider-error-test-key"
+	t.Cleanup(func() { common.CryptoSecret = originalSecret })
+	provider := riskProviderTestProvider(t)
+	privateText := strings.Repeat("private user text ", 80)
+	unsafeValues := []string{provider.AccountID, "cf-token", privateText, "https://api.cloudflare.com/client/v4/accounts/" + provider.AccountID}
+	transportCause := errors.New("dial " + unsafeValues[3] + " Authorization Bearer cf-token body=" + privateText)
+	tests := []struct {
+		name       string
+		transport  riskProviderRoundTripFunc
+		wantCode   string
+		wantDetail string
+		wantCause  error
+	}{
+		{
+			name: "network failure",
+			transport: func(*http.Request) (*http.Response, error) {
+				return nil, transportCause
+			},
+			wantCode: riskObservationProviderError, wantDetail: "Cloudflare network request failed", wantCause: transportCause,
+		},
+		{
+			name: "HTTP failure",
+			transport: func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: http.StatusTooManyRequests, Body: io.NopCloser(strings.NewReader(strings.Join(unsafeValues, " ")))}, nil
+			},
+			wantCode: riskObservationProviderError, wantDetail: "Cloudflare returned HTTP 429",
+		},
+		{
+			name: "response parse failure",
+			transport: func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"success":true,"result":` + privateText))}, nil
+			},
+			wantCode: riskObservationProviderError, wantDetail: "Cloudflare response could not be decoded",
+		},
+		{
+			name: "deadline",
+			transport: func(*http.Request) (*http.Response, error) {
+				return nil, context.DeadlineExceeded
+			},
+			wantCode: riskObservationTimeout, wantDetail: "Cloudflare request timed out", wantCause: context.DeadlineExceeded,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			originalHTTPClient := httpClient
+			httpClient = &http.Client{Transport: test.transport}
+			t.Cleanup(func() { httpClient = originalHTTPClient })
+
+			// When
+			_, err := ReviewRiskContent(context.Background(), provider, privateText)
+			code, detail := RiskObservationErrorInfo(err)
+
+			// Then
+			require.Error(t, err)
+			if test.wantCause != nil {
+				require.ErrorIs(t, err, test.wantCause)
+			}
+			assert.Equal(t, test.wantCode, code)
+			assert.Equal(t, test.wantDetail, detail)
+			assert.LessOrEqual(t, len([]rune(detail)), riskProviderErrorDetailMaxRunes)
+			for _, unsafeValue := range unsafeValues {
+				assert.NotContains(t, detail, unsafeValue)
 			}
 		})
 	}

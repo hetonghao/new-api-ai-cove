@@ -19,16 +19,20 @@ For commercial licensing, please contact support@quantumnous.com
 export const RISK_REVIEW_MODES = ['selective', 'full'] as const
 export const RISK_ACTION_MODES = ['observe', 'block'] as const
 export const LOCAL_RISK_RULE_TYPES = ['keyword', 'phrase', 'regex'] as const
+export const LOCAL_RISK_RULE_ACTIONS = ['review', 'skip'] as const
 
 export type RiskReviewMode = (typeof RISK_REVIEW_MODES)[number]
 export type RiskActionMode = (typeof RISK_ACTION_MODES)[number]
 export type LocalRiskRuleType = (typeof LOCAL_RISK_RULE_TYPES)[number]
+export type LocalRiskRuleAction = (typeof LOCAL_RISK_RULE_ACTIONS)[number]
 
 export type RiskPolicy = {
   readonly configured: boolean
   readonly enabled: boolean
   readonly provider_id: number | null
   readonly enabled_channels: readonly number[]
+  readonly excluded_user_ids: readonly number[]
+  readonly excluded_models?: readonly string[]
   readonly review_mode: RiskReviewMode
   readonly action_mode: RiskActionMode
 }
@@ -36,6 +40,8 @@ export type RiskPolicy = {
 export type RiskPolicyPayload = {
   readonly provider_id: number | null
   readonly enabled_channels: readonly number[]
+  readonly excluded_user_ids: readonly number[]
+  readonly excluded_models: readonly string[]
   readonly review_mode: RiskReviewMode
   readonly action_mode: RiskActionMode
 }
@@ -44,6 +50,7 @@ export type LocalRiskRule = {
   readonly id: number
   readonly rule_type: LocalRiskRuleType
   readonly pattern: string
+  readonly action: LocalRiskRuleAction
   readonly enabled: boolean
   readonly created_at: string
   readonly updated_at: string
@@ -52,18 +59,21 @@ export type LocalRiskRule = {
 export type LocalRiskRulePayload = {
   readonly rule_type: LocalRiskRuleType
   readonly pattern: string
+  readonly action: LocalRiskRuleAction
   readonly enabled?: boolean
 }
 
 export type LocalRiskRuleTestPayload = {
   readonly rule_type: LocalRiskRuleType
   readonly pattern: string
+  readonly action: LocalRiskRuleAction
   readonly text: string
 }
 
 export type LocalRiskRuleTestResult = {
   readonly normalized_text: string
   readonly matched: boolean
+  readonly action: LocalRiskRuleAction
 }
 
 export type ApiResponse<T> = {

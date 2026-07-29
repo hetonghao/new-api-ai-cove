@@ -23,23 +23,27 @@ import { MultiSelect } from '@/components/multi-select'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
   Field,
-  FieldContent,
   FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
-  FieldTitle,
 } from '@/components/ui/field'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
-import { Switch } from '@/components/ui/switch'
 import type { Channel } from '@/features/channels/types'
 import type { RiskProvider } from '@/features/risk-providers/types'
+import type { User } from '@/features/users/types'
 
-import type { RiskPolicyFormValues } from '../lib/risk-policy-form'
+import {
+  mergeRiskPolicyModelOptions,
+  type RiskPolicyFormValues,
+} from '../lib/risk-policy-form'
+import { RiskPolicyActivationField } from './risk-policy-activation-field'
 
 type RiskPolicyFormFieldsProps = {
   readonly validatedProviders: readonly RiskProvider[]
   readonly channels: readonly Channel[]
+  readonly users: readonly User[]
+  readonly models: readonly string[]
 }
 
 export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
@@ -48,11 +52,20 @@ export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
   const enabled = form.watch('enabled')
   const reviewMode = form.watch('review_mode')
   const actionMode = form.watch('action_mode')
+  const excludedModels = form.watch('excluded_models')
   const errors = form.formState.errors
   const channelOptions = props.channels.map((channel) => ({
     label: `#${channel.id} · ${channel.name}`,
     value: String(channel.id),
   }))
+  const userOptions = props.users.map((user) => ({
+    label: `#${user.id} · ${user.username}`,
+    value: String(user.id),
+  }))
+  const modelOptions = mergeRiskPolicyModelOptions(
+    props.models,
+    excludedModels
+  ).map((model) => ({ label: model, value: model }))
 
   return (
     <>
@@ -67,33 +80,7 @@ export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
         </Alert>
       ) : null}
       <FieldGroup className='grid gap-5 lg:grid-cols-2'>
-        <Field
-          orientation='horizontal'
-          className='relative rounded-lg border p-3 lg:col-span-2'
-        >
-          <FieldContent>
-            <FieldTitle className='pr-10'>
-              {t('Enable AI risk control')}
-            </FieldTitle>
-            <FieldDescription>
-              {t(
-                'Only selected channels run local risk screening or cloud review.'
-              )}
-            </FieldDescription>
-          </FieldContent>
-          <Controller
-            control={form.control}
-            name='enabled'
-            render={({ field }) => (
-              <Switch
-                className='absolute top-3 right-3'
-                checked={field.value}
-                onCheckedChange={field.onChange}
-                aria-label={t('Enable AI risk control')}
-              />
-            )}
-          />
-        </Field>
+        <RiskPolicyActivationField />
         <Field data-invalid={Boolean(errors.enabled_channels)}>
           <FieldLabel htmlFor='risk-policy-channels'>
             {t('Risk channels')}
@@ -144,6 +131,60 @@ export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
             {t('Saving the policy makes this validated provider active.')}
           </FieldDescription>
           <FieldError errors={[errors.provider_id]} />
+        </Field>
+        <Field data-invalid={Boolean(errors.excluded_user_ids)}>
+          <FieldLabel htmlFor='risk-policy-excluded-users'>
+            {t('Users excluded from AI risk control')}
+          </FieldLabel>
+          <Controller
+            control={form.control}
+            name='excluded_user_ids'
+            render={({ field }) => (
+              <MultiSelect
+                id='risk-policy-excluded-users'
+                options={userOptions}
+                selected={field.value.map(String)}
+                onChange={(values) => field.onChange(values.map(Number))}
+                placeholder={t('Select users...')}
+                emptyText={t('No users found')}
+                disabled={!enabled || props.users.length === 0}
+                maxVisibleChips={3}
+              />
+            )}
+          />
+          <FieldDescription className='text-pretty'>
+            {t(
+              'Selected users skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged.'
+            )}
+          </FieldDescription>
+          <FieldError errors={[errors.excluded_user_ids]} />
+        </Field>
+        <Field data-invalid={Boolean(errors.excluded_models)}>
+          <FieldLabel htmlFor='risk-policy-excluded-models'>
+            {t('Models excluded from AI risk control')}
+          </FieldLabel>
+          <Controller
+            control={form.control}
+            name='excluded_models'
+            render={({ field }) => (
+              <MultiSelect
+                id='risk-policy-excluded-models'
+                options={modelOptions}
+                selected={field.value}
+                onChange={field.onChange}
+                placeholder={t('Select models...')}
+                emptyText={t('No models found')}
+                disabled={!enabled || modelOptions.length === 0}
+                maxVisibleChips={3}
+              />
+            )}
+          />
+          <FieldDescription>
+            {t(
+              'Selected original model names skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged.'
+            )}
+          </FieldDescription>
+          <FieldError errors={[errors.excluded_models]} />
         </Field>
         <Field data-invalid={Boolean(errors.review_mode)}>
           <FieldLabel htmlFor='risk-policy-review-mode'>

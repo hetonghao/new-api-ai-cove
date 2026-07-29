@@ -206,12 +206,10 @@ func riskProviderValidationRecordInput(
 	}
 	recordResult := model.RiskRecordResult(result.Status)
 	errorCode := ""
+	errorDetail := ""
 	if reviewErr != nil {
 		recordResult = model.RiskRecordResultError
-		errorCode = "provider_error"
-		if errors.Is(reviewErr, context.DeadlineExceeded) {
-			errorCode = "timeout"
-		}
+		errorCode, errorDetail = service.RiskObservationErrorInfo(reviewErr)
 	}
 	neurons := result.Usage.Neurons
 	if math.IsNaN(neurons) || math.IsInf(neurons, 0) || neurons < 0 {
@@ -224,7 +222,7 @@ func riskProviderValidationRecordInput(
 		LatencyMS:    time.Since(startedAt).Milliseconds(),
 		PromptTokens: result.Usage.PromptTokens, CompletionTokens: result.Usage.CompletionTokens,
 		TotalTokens: result.Usage.TotalTokens, Neurons: int64(math.Round(neurons)),
-		ErrorCode: errorCode, Source: model.RiskRecordSourceProvider,
+		ErrorCode: errorCode, ErrorDetail: errorDetail, Source: model.RiskRecordSourceProvider,
 		ProviderCalled: true, ObservedAt: time.Now(),
 	}
 }

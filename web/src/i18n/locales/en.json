@@ -5541,6 +5541,24 @@
     "Risk channels": "Risk channels",
     "Select at least one risk channel": "Select at least one risk channel",
     "Only selected channels run local risk screening or cloud review.": "Only selected channels run local risk screening or cloud review.",
-    "Failed to load channels": "Failed to load channels"
+    "Failed to load channels": "Failed to load channels",
+    "Users excluded from AI risk control": "Users excluded from AI risk control",
+    "Select users...": "Select users...",
+    "No users found": "No users found",
+    "Selected users skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged.": "Selected users skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged.",
+    "Match action": "Match action",
+    "Send to cloud review": "Send to cloud review",
+    "Skip cloud review": "Skip cloud review",
+    "Models excluded from AI risk control": "Models excluded from AI risk control",
+    "Select models...": "Select models...",
+    "No error details available": "No error details available",
+    "Error details": "Error details",
+    "Use ^fixed-prefix for start-of-text matching, for example ^heartbeat:. Regex syntax is validated by Go RE2 when saved.": "Use ^fixed-prefix for start-of-text matching, for example ^heartbeat:. Regex syntax is validated by Go RE2 when saved.",
+    "Local rules decide whether matching content is sent to or skipped from cloud review. They never reject requests by themselves.": "Local rules decide whether matching content is sent to or skipped from cloud review. They never reject requests by themselves.",
+    "Skip takes priority over review and only bypasses AI cloud review. Sensitive-word checks are unchanged.": "Skip takes priority over review and only bypasses AI cloud review. Sensitive-word checks are unchanged.",
+    "Disabled rules are kept but do not affect cloud review.": "Disabled rules are kept but do not affect cloud review.",
+    "Add keywords, phrases, or Go regular expressions that send matching content to or skip it from cloud review.": "Add keywords, phrases, or Go regular expressions that send matching content to or skip it from cloud review.",
+    "Rules run on normalized new user text and decide whether cloud review is sent or skipped.": "Rules run on normalized new user text and decide whether cloud review is sent or skipped.",
+    "Selected original model names skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged.": "Selected original model names skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged."
   }
 }

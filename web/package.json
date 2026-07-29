@@ -7,7 +7,7 @@
     "dev": "rsbuild dev",
     "build": "rsbuild build",
     "build:check": "tsgo -b && rsbuild build",
-    "test:risk-records": "node node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.app.json --test src/features/risk-records/lib/*.test.ts src/features/risk-records/components/__tests__/*.test.tsx",
+    "test:risk-records": "node node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.app.json --test src/features/risk-records/__tests__/*.test.ts src/features/risk-records/lib/*.test.ts src/features/risk-records/components/__tests__/*.test.tsx",
     "typecheck": "tsgo -b",
     "lint": "oxlint -c .oxlintrc.json .",
     "lint:fix": "oxlint -c .oxlintrc.json . --fix",

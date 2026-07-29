@@ -33,6 +33,8 @@ var (
 	riskRecordContentHash    = regexp.MustCompile(`^[a-f0-9]{64}$`)
 )
 
+const riskRecordErrorDetailMaxRunes = 512
+
 type RiskRecord struct {
 	Id               int               `json:"id" gorm:"primaryKey"`
 	RequestID        string            `json:"request_id" gorm:"type:varchar(256);not null;index"`
@@ -58,6 +60,7 @@ type RiskRecord struct {
 	Neurons          int64             `json:"neurons" gorm:"not null"`
 	Chunks           []RiskRecordChunk `json:"chunks" gorm:"serializer:json;type:text"`
 	ErrorCode        string            `json:"error_code" gorm:"type:varchar(128);not null"`
+	ErrorDetail      string            `json:"error_detail,omitempty" gorm:"type:varchar(512)"`
 	Source           RiskRecordSource  `json:"source" gorm:"type:varchar(16);not null;index"`
 	CacheHit         bool              `json:"cache_hit" gorm:"not null"`
 	ProviderCalled   bool              `json:"provider_called" gorm:"not null"`
@@ -86,6 +89,7 @@ type RiskRecordInput struct {
 	Neurons          int64
 	Chunks           []RiskRecordChunk
 	ErrorCode        string
+	ErrorDetail      string
 	Source           RiskRecordSource
 	CacheHit         bool
 	ProviderCalled   bool
@@ -163,6 +167,11 @@ func newRiskRecord(input RiskRecordInput) (RiskRecord, error) {
 	input.ContentHash = strings.TrimSpace(input.ContentHash)
 	input.ProviderName = strings.TrimSpace(input.ProviderName)
 	input.ErrorCode = strings.TrimSpace(input.ErrorCode)
+	input.ErrorDetail = strings.TrimSpace(input.ErrorDetail)
+	errorDetailRunes := []rune(input.ErrorDetail)
+	if len(errorDetailRunes) > riskRecordErrorDetailMaxRunes {
+		input.ErrorDetail = string(errorDetailRunes[:riskRecordErrorDetailMaxRunes])
+	}
 	if input.RequestID == "" || len(input.RequestID) > 256 || input.ChannelID < 0 || input.UserID < 1 {
 		return RiskRecord{}, ErrInvalidRiskRecord
 	}
@@ -192,11 +201,11 @@ func newRiskRecord(input RiskRecordInput) (RiskRecord, error) {
 	switch input.Result {
 	case RiskRecordResultNotReviewed:
 		providerOptional = true
-		if input.ErrorCode != "" {
+		if input.ErrorCode != "" || input.ErrorDetail != "" {
 			return RiskRecord{}, ErrInvalidRiskRecord
 		}
 	case RiskRecordResultSafe, RiskRecordResultUnsafe:
-		if input.ErrorCode != "" {
+		if input.ErrorCode != "" || input.ErrorDetail != "" {
 			return RiskRecord{}, ErrInvalidRiskRecord
 		}
 	case RiskRecordResultError:
@@ -279,7 +288,7 @@ func newRiskRecord(input RiskRecordInput) (RiskRecord, error) {
 		Model: input.Model, Path: input.Path, Preview: input.Preview, ContentHash: input.ContentHash, RuleIDs: ruleIDs,
 		ProviderID: input.ProviderID, ProviderName: input.ProviderName, Result: input.Result, Categories: categories,
 		LatencyMS: input.LatencyMS, PromptTokens: input.PromptTokens, CompletionTokens: input.CompletionTokens,
-		TotalTokens: input.TotalTokens, Neurons: input.Neurons, Chunks: chunks, ErrorCode: input.ErrorCode, Source: input.Source,
+		TotalTokens: input.TotalTokens, Neurons: input.Neurons, Chunks: chunks, ErrorCode: input.ErrorCode, ErrorDetail: input.ErrorDetail, Source: input.Source,
 		CacheHit: input.CacheHit, ProviderCalled: input.ProviderCalled, Blocked: input.Blocked, ObservedAt: input.ObservedAt.UTC(),
 	}, nil
 }

@@ -164,7 +164,7 @@ export function MultiSelect(props: MultiSelectProps) {
     if (canCreate) {
       set.add(trimmedInput)
     }
-    return Array.from(set)
+    return [...set]
   }, [props.options, props.selected, canCreate, trimmedInput])
 
   const addValues = React.useCallback(
@@ -298,7 +298,9 @@ export function MultiSelect(props: MultiSelectProps) {
                           {label}
                         </button>
                       ) : (
-                        <span className='max-w-[16rem] truncate'>{label}</span>
+                        <span className='max-w-[16rem] truncate' title={label}>
+                          {label}
+                        </span>
                       )}
                     </ComboboxChip>
                   )
@@ -351,7 +353,10 @@ export function MultiSelect(props: MultiSelectProps) {
         />
       </ComboboxChips>
 
-      <ComboboxContent anchor={chipsAnchorRef}>
+      <ComboboxContent
+        anchor={chipsAnchorRef}
+        className='data-[side=top]:rounded-md data-[side=top]:shadow-none'
+      >
         <ComboboxList>
           <ComboboxCollection>
             {(item: string) => {

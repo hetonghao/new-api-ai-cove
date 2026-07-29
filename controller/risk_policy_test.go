@@ -12,7 +12,7 @@ import (
 func setupRiskPolicyControllerTest(t *testing.T) {
 	t.Helper()
 	db := setupRiskProviderControllerTest(t)
-	require.NoError(t, db.AutoMigrate(&model.RiskPolicy{}, &model.RiskRule{}, &model.Channel{}))
+	require.NoError(t, db.AutoMigrate(&model.RiskPolicy{}, &model.RiskRule{}, &model.Channel{}, &model.User{}))
 }
 
 func TestRiskPolicyAPI_returns_disabled_defaults_when_missing(t *testing.T) {
@@ -40,10 +40,13 @@ func TestRiskPolicyAPI_saves_first_enable_defaults(t *testing.T) {
 	require.NoError(t, model.MarkRiskProviderValidated(provider.Id))
 	channel := &model.Channel{Name: "CPA Pro", Key: "secret", Models: "gpt-test"}
 	require.NoError(t, model.DB.Create(channel).Error)
+	excludedUser := &model.User{Username: "excluded"}
+	require.NoError(t, model.DB.Create(excludedUser).Error)
 
 	// When
 	response := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodPut, Target: "/api/risk/policy", Body: map[string]any{
-		"provider_id": provider.Id, "enabled_channels": []int{channel.Id},
+		"provider_id": provider.Id, "enabled_channels": []int{channel.Id}, "excluded_user_ids": []int{excludedUser.Id},
+		"excluded_models": []string{" codex-auto-review ", "", "gpt-test", "codex-auto-review"},
 	}, Handler: UpdateRiskPolicy})
 
 	// Then
@@ -53,6 +56,8 @@ func TestRiskPolicyAPI_saves_first_enable_defaults(t *testing.T) {
 	require.True(t, state.Enabled)
 	require.Equal(t, &provider.Id, state.ProviderID)
 	require.Equal(t, []int{channel.Id}, state.EnabledChannels)
+	require.Equal(t, []int{excludedUser.Id}, state.ExcludedUserIDs)
+	require.Equal(t, []string{"codex-auto-review", "gpt-test"}, state.ExcludedModels)
 	require.Equal(t, model.RiskReviewSelective, state.ReviewMode)
 	require.Equal(t, model.RiskActionObserve, state.ActionMode)
 }

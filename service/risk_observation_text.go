@@ -141,7 +141,7 @@ func BuildSelectiveRiskExcerpt(text string, rules []*model.RiskRule) (string, []
 	var ranges []riskTextRange
 	var ruleIDs []int
 	for _, rule := range rules {
-		if rule == nil || !rule.Enabled {
+		if rule == nil || !rule.Enabled || rule.Action == model.RiskRuleActionSkip {
 			continue
 		}
 		matches := riskRuleMatches(normalized, rule)

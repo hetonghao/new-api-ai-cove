@@ -68,6 +68,7 @@ export const riskRecordSchema = z
       z.array(riskRecordChunkSchema).readonly()
     ),
     error_code: z.string(),
+    error_detail: z.string().nullish(),
     observed_at: z.string().min(1),
   })
   .readonly()

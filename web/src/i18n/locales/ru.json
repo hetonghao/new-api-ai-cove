@@ -5399,6 +5399,24 @@
     "Risk channels": "Каналы контроля рисков",
     "Select at least one risk channel": "Выберите хотя бы один канал контроля рисков",
     "Only selected channels run local risk screening or cloud review.": "Только выбранные каналы выполняют локальную проверку рисков или облачную проверку.",
-    "Failed to load channels": "Не удалось загрузить каналы"
+    "Failed to load channels": "Не удалось загрузить каналы",
+    "Users excluded from AI risk control": "Пользователи, исключённые из ИИ-контроля рисков",
+    "Select users...": "Выберите пользователей...",
+    "No users found": "Пользователи не найдены",
+    "Selected users skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged.": "Выбранные пользователи пропускают локальную проверку, облачную модерацию и записи рисков. Существующая проверка запрещённых слов не изменяется.",
+    "Match action": "Действие при совпадении",
+    "Send to cloud review": "Отправить на облачную проверку",
+    "Skip cloud review": "Пропустить облачную проверку",
+    "Models excluded from AI risk control": "Модели, исключённые из ИИ-контроля рисков",
+    "Select models...": "Выберите модели...",
+    "No error details available": "Подробности ошибки недоступны",
+    "Error details": "Подробности ошибки",
+    "Use ^fixed-prefix for start-of-text matching, for example ^heartbeat:. Regex syntax is validated by Go RE2 when saved.": "Используйте ^фиксированный-префикс для совпадения с началом текста, например ^heartbeat:. При сохранении синтаксис проверяется Go RE2.",
+    "Local rules decide whether matching content is sent to or skipped from cloud review. They never reject requests by themselves.": "Локальные правила решают, отправлять ли совпавший контент на облачную проверку или пропускать её. Сами правила не отклоняют запросы.",
+    "Skip takes priority over review and only bypasses AI cloud review. Sensitive-word checks are unchanged.": "Пропуск имеет приоритет над проверкой и отключает только облачную ИИ-проверку. Проверка запрещённых слов не изменяется.",
+    "Disabled rules are kept but do not affect cloud review.": "Отключённые правила сохраняются, но не влияют на облачную проверку.",
+    "Add keywords, phrases, or Go regular expressions that send matching content to or skip it from cloud review.": "Добавьте ключевые слова, фразы или регулярные выражения Go, чтобы отправлять совпавший контент на облачную проверку или пропускать её.",
+    "Rules run on normalized new user text and decide whether cloud review is sent or skipped.": "Правила применяются к нормализованному новому тексту пользователя и решают, запускать или пропускать облачную проверку.",
+    "Selected original model names skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged.": "Выбранные исходные названия моделей пропускают локальную проверку, облачную модерацию и записи рисков. Существующая проверка запрещённых слов не изменяется."
   }
 }

@@ -52,6 +52,7 @@ func (riskObservationModelSink) RecordRiskObservation(ctx context.Context, event
 		Neurons:          neurons,
 		Chunks:           chunks,
 		ErrorCode:        event.ErrorCode,
+		ErrorDetail:      event.ErrorDetail,
 		Source:           model.RiskRecordSource(event.Source),
 		CacheHit:         event.CacheHit,
 		ProviderCalled:   event.ProviderCalled,

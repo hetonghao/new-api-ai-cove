@@ -19,6 +19,7 @@ import (
 type RiskReviewStatus string
 
 const cloudflareWorkersAIBaseURL = "https://api.cloudflare.com/client/v4/accounts"
+const riskProviderErrorDetailMaxRunes = 512
 
 const (
 	RiskReviewSafe   RiskReviewStatus = "safe"
@@ -57,14 +58,57 @@ type cloudflareRiskMessage struct {
 	Content string `json:"content"`
 }
 
+type riskProviderError struct {
+	cause  error
+	detail string
+}
+
+func (e *riskProviderError) Error() string {
+	return e.detail
+}
+
+func (e *riskProviderError) Unwrap() error {
+	return e.cause
+}
+
+func newRiskProviderError(cause error, detail string) error {
+	detail = strings.Join(strings.Fields(detail), " ")
+	runes := []rune(detail)
+	if len(runes) > riskProviderErrorDetailMaxRunes {
+		detail = string(runes[:riskProviderErrorDetailMaxRunes])
+	}
+	return &riskProviderError{cause: cause, detail: detail}
+}
+
+func RiskObservationErrorInfo(err error) (string, string) {
+	if err == nil {
+		return "", ""
+	}
+	code := riskObservationProviderError
+	detail := "Risk provider request failed"
+	if errors.Is(err, context.DeadlineExceeded) {
+		code = riskObservationTimeout
+		detail = "Cloudflare request timed out"
+	} else if errors.Is(err, ErrRiskModerationCircuitOpen) {
+		code = riskObservationCircuitOpen
+		detail = "Risk moderation circuit is open; provider was not called"
+	}
+	var providerErr *riskProviderError
+	if errors.As(err, &providerErr) && providerErr.detail != "" {
+		detail = providerErr.detail
+	}
+	return code, detail
+}
+
 func ReviewRiskContent(ctx context.Context, provider *model.RiskProvider, content string) (RiskReviewResult, error) {
 	if provider == nil || provider.ProviderType != model.RiskProviderCloudflare {
-		return RiskReviewResult{}, errors.New("unsupported risk provider")
+		cause := errors.New("unsupported risk provider")
+		return RiskReviewResult{}, newRiskProviderError(cause, "Risk provider configuration is unsupported")
 	}
 
 	credential, err := common.DecryptCredential(provider.CredentialEncrypted)
 	if err != nil {
-		return RiskReviewResult{}, fmt.Errorf("decrypt risk provider credential: %w", err)
+		return RiskReviewResult{}, newRiskProviderError(err, "Risk provider credential could not be decrypted")
 	}
 	body, err := common.Marshal(cloudflareRiskRequest{
 		Messages:    []cloudflareRiskMessage{{Role: "user", Content: content}},
@@ -72,23 +116,23 @@ func ReviewRiskContent(ctx context.Context, provider *model.RiskProvider, conten
 		Temperature: 0,
 	})
 	if err != nil {
-		return RiskReviewResult{}, fmt.Errorf("encode Cloudflare risk request: %w", err)
+		return RiskReviewResult{}, newRiskProviderError(err, "Cloudflare request could not be encoded")
 	}
 
 	accountID, err := provider.CloudflareAccountID()
 	if err != nil {
-		return RiskReviewResult{}, err
+		return RiskReviewResult{}, newRiskProviderError(err, "Cloudflare account configuration is invalid")
 	}
 	requestURL, err := url.JoinPath(cloudflareWorkersAIBaseURL, accountID, "ai", "run", provider.Model)
 	if err != nil {
-		return RiskReviewResult{}, fmt.Errorf("build Cloudflare risk URL: %w", err)
+		return RiskReviewResult{}, newRiskProviderError(err, "Cloudflare request URL could not be built")
 	}
 	timeout := time.Duration(provider.TimeoutMs) * time.Millisecond
 	requestCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, requestURL, bytes.NewReader(body))
 	if err != nil {
-		return RiskReviewResult{}, fmt.Errorf("create Cloudflare risk request: %w", err)
+		return RiskReviewResult{}, newRiskProviderError(err, "Cloudflare request could not be created")
 	}
 	request.Header.Set("Authorization", "Bearer "+credential)
 	request.Header.Set("Content-Type", "application/json")
@@ -99,25 +143,31 @@ func ReviewRiskContent(ctx context.Context, provider *model.RiskProvider, conten
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return RiskReviewResult{}, fmt.Errorf("call Cloudflare risk provider: %w", err)
+		detail := "Cloudflare network request failed"
+		if errors.Is(err, context.DeadlineExceeded) {
+			detail = "Cloudflare request timed out"
+		}
+		return RiskReviewResult{}, newRiskProviderError(err, detail)
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
-		return RiskReviewResult{}, fmt.Errorf("Cloudflare risk provider returned HTTP %d", response.StatusCode)
+		cause := fmt.Errorf("Cloudflare risk provider returned HTTP %d", response.StatusCode)
+		return RiskReviewResult{}, newRiskProviderError(cause, fmt.Sprintf("Cloudflare returned HTTP %d", response.StatusCode))
 	}
 
 	var decoded cloudflareRiskResponse
 	if err := common.DecodeJson(io.LimitReader(response.Body, 1<<20), &decoded); err != nil {
-		return RiskReviewResult{}, fmt.Errorf("decode Cloudflare risk response: %w", err)
+		return RiskReviewResult{}, newRiskProviderError(err, "Cloudflare response could not be decoded")
 	}
 	if !decoded.Success {
-		return RiskReviewResult{}, errors.New("Cloudflare risk provider rejected the request")
+		cause := errors.New("Cloudflare risk provider rejected the request")
+		return RiskReviewResult{}, newRiskProviderError(cause, "Cloudflare rejected the moderation request")
 	}
 
 	result, err := parseCloudflareRiskResult(decoded.Result.Response)
 	if err != nil {
-		return RiskReviewResult{}, err
+		return RiskReviewResult{}, newRiskProviderError(err, "Cloudflare returned an invalid moderation verdict")
 	}
 	result.Usage = decoded.Result.Usage
 	return result, nil

@@ -25,6 +25,7 @@ func TestRiskRuleAPI_creates_enabled_rule_by_default(t *testing.T) {
 	require.NoError(t, common.Unmarshal(response.Data, &rule))
 	require.Equal(t, "Example", rule.Pattern)
 	require.True(t, rule.Enabled)
+	require.Equal(t, model.RiskRuleActionReview, rule.Action)
 }
 
 func TestRiskRuleAPI_updates_enabled_state(t *testing.T) {
@@ -35,7 +36,7 @@ func TestRiskRuleAPI_updates_enabled_state(t *testing.T) {
 
 	// When
 	response := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodPut, Target: "/api/risk/rules/1", Id: created.Id, Body: map[string]any{
-		"rule_type": "phrase", "pattern": "example phrase", "enabled": false,
+		"rule_type": "phrase", "pattern": "example phrase", "enabled": false, "action": "skip",
 	}, Handler: UpdateRiskRule})
 
 	// Then
@@ -44,6 +45,7 @@ func TestRiskRuleAPI_updates_enabled_state(t *testing.T) {
 	require.NoError(t, common.Unmarshal(response.Data, &rule))
 	require.Equal(t, model.RiskRulePhrase, rule.RuleType)
 	require.False(t, rule.Enabled)
+	require.Equal(t, model.RiskRuleActionSkip, rule.Action)
 }
 
 func TestRiskRuleAPI_tests_normalized_text(t *testing.T) {
@@ -52,7 +54,7 @@ func TestRiskRuleAPI_tests_normalized_text(t *testing.T) {
 
 	// When
 	response := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodPost, Target: "/api/risk/rules/test", Body: map[string]any{
-		"rule_type": "phrase", "pattern": "ignore previous", "text": "  ＩＧＮＯＲＥ   previous instructions  ",
+		"rule_type": "phrase", "pattern": "ignore previous", "text": "  ＩＧＮＯＲＥ   previous instructions  ", "action": "skip",
 	}, Handler: TestRiskRule})
 
 	// Then
@@ -61,6 +63,7 @@ func TestRiskRuleAPI_tests_normalized_text(t *testing.T) {
 	require.NoError(t, common.Unmarshal(response.Data, &result))
 	require.True(t, result.Matched)
 	require.Equal(t, "ignore previous instructions", result.NormalizedText)
+	require.Equal(t, model.RiskRuleActionSkip, result.Action)
 }
 
 func TestRiskRuleAPI_rejects_invalid_regex(t *testing.T) {
@@ -76,12 +79,27 @@ func TestRiskRuleAPI_rejects_invalid_regex(t *testing.T) {
 	require.False(t, response.Success)
 }
 
+func TestRiskRuleAPI_rejects_invalid_action(t *testing.T) {
+	// Given
+	setupRiskPolicyControllerTest(t)
+
+	// When
+	response := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodPost, Target: "/api/risk/rules", Body: map[string]any{
+		"rule_type": "keyword", "pattern": "example", "action": "block",
+	}, Handler: CreateRiskRule})
+
+	// Then
+	require.False(t, response.Success)
+}
+
 func TestRiskRuleAPI_lists_rules_by_id(t *testing.T) {
 	// Given
 	setupRiskPolicyControllerTest(t)
 	_, err := model.CreateRiskRule(model.RiskRuleInput{RuleType: model.RiskRuleKeyword, Pattern: "first", Enabled: true})
 	require.NoError(t, err)
-	_, err = model.CreateRiskRule(model.RiskRuleInput{RuleType: model.RiskRulePhrase, Pattern: "second rule", Enabled: false})
+	_, err = model.CreateRiskRule(model.RiskRuleInput{
+		RuleType: model.RiskRulePhrase, Pattern: "second rule", Enabled: false, Action: model.RiskRuleActionSkip,
+	})
 	require.NoError(t, err)
 
 	// When
@@ -93,6 +111,7 @@ func TestRiskRuleAPI_lists_rules_by_id(t *testing.T) {
 	require.NoError(t, common.Unmarshal(response.Data, &rules))
 	require.Len(t, rules, 2)
 	require.Less(t, rules[0].Id, rules[1].Id)
+	require.Equal(t, model.RiskRuleActionSkip, rules[1].Action)
 }
 
 func TestRiskRuleAPI_excludes_deleted_rule_from_list(t *testing.T) {

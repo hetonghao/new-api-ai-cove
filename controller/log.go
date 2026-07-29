@@ -56,6 +56,15 @@ func GetUserLogs(c *gin.Context) {
 	return
 }
 
+func GetLogByRequestID(c *gin.Context) {
+	log, err := model.GetLogByRequestID(c.Param("request_id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, log)
+}
+
 // Deprecated: SearchAllLogs 已废弃，前端未使用该接口。
 func SearchAllLogs(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{

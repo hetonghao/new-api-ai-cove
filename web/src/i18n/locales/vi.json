@@ -5399,6 +5399,24 @@
     "Risk channels": "Kênh kiểm soát rủi ro",
     "Select at least one risk channel": "Chọn ít nhất một kênh kiểm soát rủi ro",
     "Only selected channels run local risk screening or cloud review.": "Chỉ các kênh đã chọn mới chạy sàng lọc rủi ro cục bộ hoặc kiểm duyệt đám mây.",
-    "Failed to load channels": "Không thể tải kênh"
+    "Failed to load channels": "Không thể tải kênh",
+    "Users excluded from AI risk control": "Người dùng được loại trừ khỏi kiểm soát rủi ro AI",
+    "Select users...": "Chọn người dùng...",
+    "No users found": "Không tìm thấy người dùng",
+    "Selected users skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged.": "Người dùng đã chọn sẽ bỏ qua sàng lọc cục bộ, đánh giá đám mây và bản ghi rủi ro. Cơ chế kiểm tra từ nhạy cảm hiện có không thay đổi.",
+    "Match action": "Hành động khi khớp",
+    "Send to cloud review": "Gửi đi đánh giá đám mây",
+    "Skip cloud review": "Bỏ qua đánh giá đám mây",
+    "Models excluded from AI risk control": "Mô hình được loại trừ khỏi kiểm soát rủi ro AI",
+    "Select models...": "Chọn mô hình...",
+    "No error details available": "Không có chi tiết lỗi",
+    "Error details": "Chi tiết lỗi",
+    "Use ^fixed-prefix for start-of-text matching, for example ^heartbeat:. Regex syntax is validated by Go RE2 when saved.": "Dùng ^tiền-tố-cố-định để khớp từ đầu văn bản, ví dụ ^heartbeat:. Cú pháp biểu thức chính quy được Go RE2 kiểm tra khi lưu.",
+    "Local rules decide whether matching content is sent to or skipped from cloud review. They never reject requests by themselves.": "Quy tắc cục bộ quyết định nội dung khớp sẽ được gửi đi hay bỏ qua đánh giá đám mây. Bản thân quy tắc không từ chối yêu cầu.",
+    "Skip takes priority over review and only bypasses AI cloud review. Sensitive-word checks are unchanged.": "Bỏ qua được ưu tiên hơn đánh giá và chỉ bỏ qua đánh giá AI trên đám mây. Kiểm tra từ nhạy cảm không thay đổi.",
+    "Disabled rules are kept but do not affect cloud review.": "Quy tắc bị tắt vẫn được lưu nhưng không ảnh hưởng đến đánh giá đám mây.",
+    "Add keywords, phrases, or Go regular expressions that send matching content to or skip it from cloud review.": "Thêm từ khóa, cụm từ hoặc biểu thức chính quy Go để gửi nội dung khớp đi đánh giá đám mây hoặc bỏ qua đánh giá.",
+    "Rules run on normalized new user text and decide whether cloud review is sent or skipped.": "Quy tắc chạy trên văn bản người dùng mới đã chuẩn hóa và quyết định gửi hay bỏ qua đánh giá đám mây.",
+    "Selected original model names skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged.": "Tên mô hình gốc đã chọn sẽ bỏ qua sàng lọc cục bộ, đánh giá đám mây và bản ghi rủi ro. Cơ chế kiểm tra từ nhạy cảm hiện có không thay đổi."
   }
 }

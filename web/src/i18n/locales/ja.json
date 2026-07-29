@@ -5399,6 +5399,24 @@
     "Risk channels": "リスクチャネル",
     "Select at least one risk channel": "リスクチャネルを1つ以上選択してください",
     "Only selected channels run local risk screening or cloud review.": "選択したチャネルのみがローカルリスクスクリーニングまたはクラウド審査を実行します。",
-    "Failed to load channels": "チャネルの読み込みに失敗しました"
+    "Failed to load channels": "チャネルの読み込みに失敗しました",
+    "Users excluded from AI risk control": "AI リスク管理から除外するユーザー",
+    "Select users...": "ユーザーを選択...",
+    "No users found": "ユーザーが見つかりません",
+    "Selected users skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged.": "選択したユーザーはローカルスクリーニング、クラウド審査、リスク記録をスキップします。既存の禁止語チェックは変更されません。",
+    "Match action": "一致時の操作",
+    "Send to cloud review": "クラウド審査に送信",
+    "Skip cloud review": "クラウド審査をスキップ",
+    "Models excluded from AI risk control": "AI リスク管理から除外する元モデル",
+    "Select models...": "モデルを選択...",
+    "No error details available": "利用できるエラー詳細はありません",
+    "Error details": "エラー詳細",
+    "Use ^fixed-prefix for start-of-text matching, for example ^heartbeat:. Regex syntax is validated by Go RE2 when saved.": "テキスト先頭との一致には ^固定プレフィックス を使用します（例: ^heartbeat:）。保存時に Go RE2 で正規表現構文を検証します。",
+    "Local rules decide whether matching content is sent to or skipped from cloud review. They never reject requests by themselves.": "ローカルルールは、一致した内容をクラウド審査に送るかスキップするかを決定します。ルール自体がリクエストを拒否することはありません。",
+    "Skip takes priority over review and only bypasses AI cloud review. Sensitive-word checks are unchanged.": "スキップは審査より優先され、AI クラウド審査のみを迂回します。既存の禁止語チェックは変更されません。",
+    "Disabled rules are kept but do not affect cloud review.": "無効なルールは保持されますが、クラウド審査には影響しません。",
+    "Add keywords, phrases, or Go regular expressions that send matching content to or skip it from cloud review.": "一致した内容をクラウド審査に送るかスキップするキーワード、フレーズ、Go 正規表現を追加します。",
+    "Rules run on normalized new user text and decide whether cloud review is sent or skipped.": "ルールは正規化された新しいユーザーテキストに適用され、クラウド審査を送信するかスキップするかを決定します。",
+    "Selected original model names skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged.": "選択した元モデル名は、ローカルスクリーニング、クラウド審査、リスク記録をスキップします。既存の禁止語チェックは変更されません。"
   }
 }

@@ -9,35 +9,44 @@ import (
 )
 
 type RiskRuleType string
+type RiskRuleAction string
 
 const (
-	RiskRuleKeyword      RiskRuleType = "keyword"
-	RiskRulePhrase       RiskRuleType = "phrase"
-	RiskRuleRegex        RiskRuleType = "regex"
-	maxRiskPatternLength              = 4096
+	RiskRuleKeyword      RiskRuleType   = "keyword"
+	RiskRulePhrase       RiskRuleType   = "phrase"
+	RiskRuleRegex        RiskRuleType   = "regex"
+	RiskRuleActionReview RiskRuleAction = "review"
+	RiskRuleActionSkip   RiskRuleAction = "skip"
+	maxRiskPatternLength                = 4096
 )
 
-var ErrInvalidRiskRulePattern = errors.New("invalid risk rule pattern")
+var (
+	ErrInvalidRiskRulePattern = errors.New("invalid risk rule pattern")
+	ErrInvalidRiskRuleAction  = errors.New("invalid risk rule action")
+)
 
 type RiskRule struct {
-	Id        int          `json:"id" gorm:"primaryKey"`
-	RuleType  RiskRuleType `json:"rule_type" gorm:"type:varchar(16);not null"`
-	Pattern   string       `json:"pattern" gorm:"type:text;not null"`
-	Enabled   bool         `json:"enabled" gorm:"not null"`
-	CreatedAt time.Time    `json:"created_at"`
-	UpdatedAt time.Time    `json:"updated_at"`
+	Id        int            `json:"id" gorm:"primaryKey"`
+	RuleType  RiskRuleType   `json:"rule_type" gorm:"type:varchar(16);not null"`
+	Pattern   string         `json:"pattern" gorm:"type:text;not null"`
+	Enabled   bool           `json:"enabled" gorm:"not null"`
+	Action    RiskRuleAction `json:"action" gorm:"type:varchar(16);not null;default:review"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 }
 
 type RiskRuleInput struct {
 	RuleType RiskRuleType
 	Pattern  string
 	Enabled  bool
+	Action   RiskRuleAction
 }
 
 type RiskRuleUpdateInput struct {
 	RuleType RiskRuleType
 	Pattern  string
 	Enabled  *bool
+	Action   *RiskRuleAction
 }
 
 func (RiskRule) TableName() string {
@@ -49,6 +58,11 @@ func GetRiskRules() ([]*RiskRule, error) {
 	if err := DB.Order("id asc").Find(&rules).Error; err != nil {
 		return nil, fmt.Errorf("list risk rules: %w", err)
 	}
+	for _, rule := range rules {
+		if rule.Action == "" {
+			rule.Action = RiskRuleActionReview
+		}
+	}
 	return rules, nil
 }
 
@@ -57,6 +71,9 @@ func GetRiskRuleByID(id int) (*RiskRule, error) {
 	if err := DB.First(&rule, id).Error; err != nil {
 		return nil, fmt.Errorf("get risk rule %d: %w", id, err)
 	}
+	if rule.Action == "" {
+		rule.Action = RiskRuleActionReview
+	}
 	return &rule, nil
 }
 
@@ -64,7 +81,13 @@ func CreateRiskRule(input RiskRuleInput) (*RiskRule, error) {
 	if err := ValidateRiskRule(input.RuleType, input.Pattern); err != nil {
 		return nil, err
 	}
-	rule := &RiskRule{RuleType: input.RuleType, Pattern: strings.TrimSpace(input.Pattern), Enabled: input.Enabled}
+	if input.Action == "" {
+		input.Action = RiskRuleActionReview
+	}
+	if err := ValidateRiskRuleAction(input.Action); err != nil {
+		return nil, err
+	}
+	rule := &RiskRule{RuleType: input.RuleType, Pattern: strings.TrimSpace(input.Pattern), Enabled: input.Enabled, Action: input.Action}
 	if err := DB.Create(rule).Error; err != nil {
 		return nil, fmt.Errorf("create risk rule: %w", err)
 	}
@@ -84,10 +107,25 @@ func UpdateRiskRule(id int, input RiskRuleUpdateInput) (*RiskRule, error) {
 	if input.Enabled != nil {
 		rule.Enabled = *input.Enabled
 	}
+	if input.Action != nil {
+		if err := ValidateRiskRuleAction(*input.Action); err != nil {
+			return nil, err
+		}
+		rule.Action = *input.Action
+	}
 	if err := DB.Save(rule).Error; err != nil {
 		return nil, fmt.Errorf("update risk rule %d: %w", id, err)
 	}
 	return rule, nil
+}
+
+func ValidateRiskRuleAction(action RiskRuleAction) error {
+	switch action {
+	case RiskRuleActionReview, RiskRuleActionSkip:
+		return nil
+	default:
+		return ErrInvalidRiskRuleAction
+	}
 }
 
 func DeleteRiskRule(id int) error {

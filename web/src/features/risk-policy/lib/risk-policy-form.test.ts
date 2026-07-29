@@ -27,6 +27,7 @@ import {
   localRuleFormValuesToPayload,
   localRuleTestFormValuesToPayload,
   localRuleTestToFormValues,
+  mergeRiskPolicyModelOptions,
   riskPolicyFormValuesToPayload,
   riskPolicyToFormValues,
 } from './risk-policy-form.ts'
@@ -41,6 +42,8 @@ describe('risk policy form behavior', () => {
       enabled: false,
       provider_id: null,
       enabled_channels: [],
+      excluded_user_ids: [],
+      excluded_models: [],
       review_mode: 'selective',
       action_mode: 'observe',
     }
@@ -52,10 +55,31 @@ describe('risk policy form behavior', () => {
     assert.deepEqual(values, {
       enabled: false,
       enabled_channels: [],
+      excluded_user_ids: [],
+      excluded_models: [],
       provider_id: '',
       review_mode: 'selective',
       action_mode: 'observe',
     })
+  })
+
+  test('defaults excluded models for policies saved before model exclusions existed', () => {
+    // Given a policy returned by an older runtime without the new field
+    const policy: RiskPolicy = {
+      configured: true,
+      enabled: false,
+      provider_id: null,
+      enabled_channels: [],
+      excluded_user_ids: [],
+      review_mode: 'selective',
+      action_mode: 'observe',
+    }
+
+    // When the legacy response is loaded into the current form
+    const values = riskPolicyToFormValues(policy)
+
+    // Then the configuration page remains usable with an empty exclusion list
+    assert.deepEqual(values.excluded_models, [])
   })
 
   test('requires a validated provider before enabling CPA Pro risk control', () => {
@@ -66,6 +90,8 @@ describe('risk policy form behavior', () => {
     const invalid = schema.safeParse({
       enabled: true,
       enabled_channels: [24],
+      excluded_user_ids: [42],
+      excluded_models: ['codex-auto-review'],
       provider_id: '9',
       review_mode: 'selective',
       action_mode: 'observe',
@@ -83,6 +109,8 @@ describe('risk policy form behavior', () => {
     const parsed = schema.safeParse({
       enabled: true,
       enabled_channels: [24],
+      excluded_user_ids: [42],
+      excluded_models: ['codex-auto-review'],
       provider_id: '9',
       review_mode: 'selective',
       action_mode: 'observe',
@@ -100,6 +128,8 @@ describe('risk policy form behavior', () => {
     const values = {
       enabled: false,
       enabled_channels: [24],
+      excluded_user_ids: [42],
+      excluded_models: ['codex-auto-review'],
       provider_id: '7',
       review_mode: 'full' as const,
       action_mode: 'block' as const,
@@ -112,6 +142,8 @@ describe('risk policy form behavior', () => {
     assert.deepEqual(payload, {
       provider_id: null,
       enabled_channels: [],
+      excluded_user_ids: [42],
+      excluded_models: ['codex-auto-review'],
       review_mode: 'full',
       action_mode: 'block',
     })
@@ -122,6 +154,8 @@ describe('risk policy form behavior', () => {
     const values = {
       enabled: true,
       enabled_channels: [24, 31],
+      excluded_user_ids: [42, 84],
+      excluded_models: ['codex-auto-review', 'gpt-5.6'],
       provider_id: '7',
       review_mode: 'selective' as const,
       action_mode: 'observe' as const,
@@ -134,6 +168,8 @@ describe('risk policy form behavior', () => {
     assert.deepEqual(payload, {
       provider_id: 7,
       enabled_channels: [24, 31],
+      excluded_user_ids: [42, 84],
+      excluded_models: ['codex-auto-review', 'gpt-5.6'],
       review_mode: 'selective',
       action_mode: 'observe',
     })
@@ -147,6 +183,8 @@ describe('risk policy form behavior', () => {
     const parsed = schema.safeParse({
       enabled: true,
       enabled_channels: [],
+      excluded_user_ids: [],
+      excluded_models: [],
       provider_id: '7',
       review_mode: 'selective',
       action_mode: 'observe',
@@ -156,6 +194,22 @@ describe('risk policy form behavior', () => {
     assert.equal(parsed.success, false)
     if (parsed.success) return
     assert.deepEqual(parsed.error.issues[0]?.path, ['enabled_channels'])
+  })
+
+  test('keeps saved excluded models visible when the current catalog no longer lists them', () => {
+    // Given one saved model is missing from the current enabled-model catalog
+    const catalog = ['gpt-5.6', 'claude-sonnet-4.5']
+    const saved = ['codex-auto-review', 'gpt-5.6']
+
+    // When candidates are prepared for the multi-select
+    const options = mergeRiskPolicyModelOptions(catalog, saved)
+
+    // Then every saved value remains visible and removable without duplicates
+    assert.deepEqual(options, [
+      'gpt-5.6',
+      'claude-sonnet-4.5',
+      'codex-auto-review',
+    ])
   })
 })
 
@@ -168,6 +222,7 @@ describe('local risk rule form behavior', () => {
     const parsed = schema.safeParse({
       rule_type: 'regex',
       pattern: '(?P<verb>ignore)\\s+previous',
+      action: 'skip',
       enabled: true,
     })
 
@@ -180,6 +235,7 @@ describe('local risk rule form behavior', () => {
     const values = {
       rule_type: 'phrase' as const,
       pattern: '  ignore previous  ',
+      action: 'skip' as const,
       enabled: true,
     }
 
@@ -190,6 +246,7 @@ describe('local risk rule form behavior', () => {
     assert.deepEqual(payload, {
       rule_type: 'phrase',
       pattern: 'ignore previous',
+      action: 'skip',
       enabled: true,
     })
   })
@@ -202,6 +259,7 @@ describe('local risk rule form behavior', () => {
     const parsed = schema.safeParse({
       rule_type: 'keyword',
       pattern: '   ',
+      action: 'review',
       enabled: true,
     })
 
@@ -218,6 +276,7 @@ describe('local risk rule form behavior', () => {
       id: 3,
       rule_type: 'regex',
       pattern: '(?P<verb>ignore)\\s+previous',
+      action: 'skip',
       enabled: true,
       created_at: '2026-07-25T00:00:00Z',
       updated_at: '2026-07-25T00:00:00Z',
@@ -230,6 +289,7 @@ describe('local risk rule form behavior', () => {
     assert.deepEqual(values, {
       rule_type: 'regex',
       pattern: '(?P<verb>ignore)\\s+previous',
+      action: 'skip',
       text: '',
     })
   })
@@ -242,6 +302,7 @@ describe('local risk rule form behavior', () => {
     const parsed = schema.safeParse({
       rule_type: 'keyword',
       pattern: 'ignore',
+      action: 'review',
       text: '   ',
     })
 
@@ -257,6 +318,7 @@ describe('local risk rule form behavior', () => {
     const values = {
       rule_type: 'phrase' as const,
       pattern: '  ignore previous  ',
+      action: 'skip' as const,
       text: '  Ignore   previous  ',
     }
 
@@ -267,6 +329,7 @@ describe('local risk rule form behavior', () => {
     assert.deepEqual(payload, {
       rule_type: 'phrase',
       pattern: 'ignore previous',
+      action: 'skip',
       text: '  Ignore   previous  ',
     })
   })

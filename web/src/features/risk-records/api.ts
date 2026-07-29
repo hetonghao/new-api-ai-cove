@@ -16,6 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { z } from 'zod'
+
+import {
+  usageLogSchema,
+  type UsageLog,
+} from '@/features/usage-logs/data/schema'
 import { api } from '@/lib/api'
 
 import { buildRiskRecordQueryParams } from './lib/risk-records'
@@ -30,6 +36,13 @@ import {
 
 const BASE_PATH = '/api/risk/records'
 const SETTINGS_PATH = `${BASE_PATH}/settings`
+const requestLogResponseSchema = z
+  .object({
+    success: z.boolean(),
+    message: z.string(),
+    data: usageLogSchema.nullable(),
+  })
+  .readonly()
 
 export class RiskRecordResponseError extends Error {
   readonly name = 'RiskRecordResponseError'
@@ -47,6 +60,22 @@ export async function listRiskRecords(
   const parsed = riskRecordResponseSchema.safeParse(response.data)
   if (!parsed.success) {
     throw new RiskRecordResponseError('Invalid risk record response')
+  }
+  return parsed.data
+}
+
+export async function getRiskRequestLog(requestId: string): Promise<{
+  readonly success: boolean
+  readonly message: string
+  readonly data: UsageLog | null
+}> {
+  const response = await api.get<unknown>(
+    `/api/log/request/${encodeURIComponent(requestId)}`,
+    { skipErrorHandler: true }
+  )
+  const parsed = requestLogResponseSchema.safeParse(response.data)
+  if (!parsed.success) {
+    throw new RiskRecordResponseError('Invalid request log response')
   }
   return parsed.data
 }

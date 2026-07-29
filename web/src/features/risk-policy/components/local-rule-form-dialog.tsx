@@ -103,18 +103,19 @@ export function LocalRuleFormDialog(props: LocalRuleFormDialogProps) {
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className='max-h-[calc(100dvh-1.5rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-xl'>
+      <DialogContent className='max-h-[calc(100dvh-1.5rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-xl'>
         <DialogHeader>
           <DialogTitle>
             {props.rule ? t('Edit local rule') : t('Add local rule')}
           </DialogTitle>
           <DialogDescription>
             {t(
-              'Local rules only select content for cloud review. They never reject requests by themselves.'
+              'Local rules decide whether matching content is sent to or skipped from cloud review. They never reject requests by themselves.'
             )}
           </DialogDescription>
         </DialogHeader>
         <form
+          id='local-risk-rule-form'
           onSubmit={form.handleSubmit(handleSubmit)}
           className='space-y-5 overflow-y-auto pr-1'
         >
@@ -154,18 +155,42 @@ export function LocalRuleFormDialog(props: LocalRuleFormDialogProps) {
               />
               <FieldDescription>
                 {ruleType === 'regex'
-                  ? t('Regex syntax is validated by Go RE2 when saved.')
+                  ? t(
+                      'Use ^fixed-prefix for start-of-text matching, for example ^heartbeat:. Regex syntax is validated by Go RE2 when saved.'
+                    )
                   : t('Matching is case-insensitive after text normalization.')}
               </FieldDescription>
               <FieldError errors={[errors.pattern]} />
+            </Field>
+            <Field data-invalid={Boolean(errors.action)}>
+              <FieldLabel htmlFor='local-risk-rule-action'>
+                {t('Match action')}
+              </FieldLabel>
+              <NativeSelect
+                id='local-risk-rule-action'
+                className='w-full'
+                aria-invalid={Boolean(errors.action)}
+                {...form.register('action')}
+              >
+                <NativeSelectOption value='review'>
+                  {t('Send to cloud review')}
+                </NativeSelectOption>
+                <NativeSelectOption value='skip'>
+                  {t('Skip cloud review')}
+                </NativeSelectOption>
+              </NativeSelect>
+              <FieldDescription>
+                {t(
+                  'Skip takes priority over review and only bypasses AI cloud review. Sensitive-word checks are unchanged.'
+                )}
+              </FieldDescription>
+              <FieldError errors={[errors.action]} />
             </Field>
             <Field orientation='horizontal' className='rounded-lg border p-3'>
               <FieldContent>
                 <FieldTitle>{t('Rule enabled')}</FieldTitle>
                 <FieldDescription>
-                  {t(
-                    'Disabled rules are kept but do not trigger cloud review.'
-                  )}
+                  {t('Disabled rules are kept but do not affect cloud review.')}
                 </FieldDescription>
               </FieldContent>
               <Controller
@@ -187,20 +212,24 @@ export function LocalRuleFormDialog(props: LocalRuleFormDialogProps) {
               <AlertDescription>{errors.root.server.message}</AlertDescription>
             </Alert>
           ) : null}
-          <DialogFooter>
-            <Button
-              type='button'
-              variant='outline'
-              disabled={form.formState.isSubmitting}
-              onClick={() => props.onOpenChange(false)}
-            >
-              {t('Cancel')}
-            </Button>
-            <Button type='submit' disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? t('Saving...') : t('Save')}
-            </Button>
-          </DialogFooter>
         </form>
+        <DialogFooter>
+          <Button
+            type='button'
+            variant='outline'
+            disabled={form.formState.isSubmitting}
+            onClick={() => props.onOpenChange(false)}
+          >
+            {t('Cancel')}
+          </Button>
+          <Button
+            type='submit'
+            form='local-risk-rule-form'
+            disabled={form.formState.isSubmitting}
+          >
+            {form.formState.isSubmitting ? t('Saving...') : t('Save')}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

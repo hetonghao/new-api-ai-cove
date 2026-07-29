@@ -103,6 +103,7 @@ func TestValidateRiskProvider_mapsDeadlineExceededToActionableMessage(t *testing
 	assert.Equal(t, model.RiskRecordSourceProvider, record.Source)
 	assert.True(t, record.ProviderCalled)
 	assert.Equal(t, "timeout", record.ErrorCode)
+	assert.Equal(t, "Cloudflare request timed out", record.ErrorDetail)
 	assert.Equal(t, 0, record.ChannelID)
 	assert.Equal(t, 1, record.UserID)
 }

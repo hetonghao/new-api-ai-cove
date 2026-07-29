@@ -36,7 +36,7 @@ func TestRiskRecordMigration_supportsConfiguredDatabases(t *testing.T) {
 	expectedColumns := []string{
 		"id", "request_id", "channel_id", "user_id", "token_id", "model", "path", "preview", "content_hash",
 		"rule_ids", "provider_id", "provider_name", "result", "categories", "latency_ms", "prompt_tokens",
-		"completion_tokens", "total_tokens", "neurons", "chunks", "error_code", "source", "cache_hit", "provider_called", "blocked", "observed_at",
+		"completion_tokens", "total_tokens", "neurons", "chunks", "error_code", "error_detail", "source", "cache_hit", "provider_called", "blocked", "observed_at",
 	}
 	expectedIndexes := []string{
 		"idx_risk_records_channel_id",

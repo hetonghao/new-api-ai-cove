@@ -50,7 +50,8 @@ func validRiskRecordInput(result RiskRecordResult) RiskRecordInput {
 		ObservedAt: time.Date(2026, time.July, 25, 10, 0, 0, 0, time.UTC),
 	}
 	if result == RiskRecordResultError {
-		input.ErrorCode = "provider_timeout"
+		input.ErrorCode = "timeout"
+		input.ErrorDetail = "云审核超过配置的总时间预算"
 	}
 	return input
 }
@@ -78,6 +79,7 @@ func TestRecordRiskObservation_persistsSafeUnsafeAndErrorMetadata(t *testing.T) 
 			assert.Equal(t, input.Categories, records[0].Categories)
 			assert.Equal(t, input.Neurons, records[0].Neurons)
 			assert.Equal(t, input.ErrorCode, records[0].ErrorCode)
+			assert.Equal(t, input.ErrorDetail, records[0].ErrorDetail)
 			assert.Equal(t, input.ObservedAt, records[0].ObservedAt)
 		})
 	}
@@ -110,6 +112,23 @@ func TestRecordRiskObservation_persistsPreProviderErrorsWithoutProvider(t *testi
 	}
 }
 
+func TestRecordRiskObservation_truncatesErrorDetail(t *testing.T) {
+	// Given
+	setupRiskRecordModelTest(t)
+	input := validRiskRecordInput(RiskRecordResultError)
+	input.ErrorDetail = strings.Repeat("诊", riskRecordErrorDetailMaxRunes+50)
+
+	// When
+	err := RecordRiskObservation(context.Background(), input)
+
+	// Then
+	require.NoError(t, err)
+	records, _, err := ListRiskRecords(context.Background(), 0, 1)
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	assert.Len(t, []rune(records[0].ErrorDetail), riskRecordErrorDetailMaxRunes)
+}
+
 func TestRecordRiskObservation_rejectsMissingProviderOutsidePreProviderErrors(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -118,7 +137,7 @@ func TestRecordRiskObservation_rejectsMissingProviderOutsidePreProviderErrors(t 
 	}{
 		{name: "safe", result: RiskRecordResultSafe},
 		{name: "unsafe", result: RiskRecordResultUnsafe},
-		{name: "provider error", result: RiskRecordResultError, errorCode: "provider_timeout"},
+		{name: "provider error", result: RiskRecordResultError, errorCode: "provider_error"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -150,6 +169,7 @@ func TestRecordRiskObservation_rejectsInvalidMetadata(t *testing.T) {
 		{name: "negative latency", mutate: func(input *RiskRecordInput) { input.LatencyMS = -1 }},
 		{name: "error without code", mutate: func(input *RiskRecordInput) { input.Result = RiskRecordResultError }},
 		{name: "safe with error code", mutate: func(input *RiskRecordInput) { input.ErrorCode = "unexpected" }},
+		{name: "safe with error detail", mutate: func(input *RiskRecordInput) { input.ErrorDetail = "unexpected" }},
 		{name: "zero observation time", mutate: func(input *RiskRecordInput) { input.ObservedAt = time.Time{} }},
 		{name: "chunk audit on cache hit", mutate: func(input *RiskRecordInput) {
 			input.Source = RiskRecordSourceCache

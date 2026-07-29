@@ -41,6 +41,10 @@ export function LocalRuleCard(props: LocalRuleCardProps) {
     phrase: t('Phrase'),
     regex: t('Go regular expression'),
   }[props.rule.rule_type]
+  const actionLabel =
+    props.rule.action === 'skip'
+      ? t('Skip cloud review')
+      : t('Send to cloud review')
 
   return (
     <article className='flex min-w-0 flex-col gap-3 rounded-lg border p-3 sm:p-4'>
@@ -51,6 +55,7 @@ export function LocalRuleCard(props: LocalRuleCardProps) {
             <Badge variant={props.rule.enabled ? 'default' : 'outline'}>
               {props.rule.enabled ? t('Enabled') : t('Disabled')}
             </Badge>
+            <Badge variant='outline'>{actionLabel}</Badge>
           </div>
           <code className='bg-muted block max-w-full rounded-md px-2.5 py-2 text-sm [overflow-wrap:anywhere] whitespace-pre-wrap'>
             {props.rule.pattern}

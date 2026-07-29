@@ -20,6 +20,8 @@ func TestRiskPolicy_returns_disabled_defaults_when_missing(t *testing.T) {
 	require.False(t, state.Enabled)
 	require.Nil(t, state.ProviderID)
 	require.Empty(t, state.EnabledChannels)
+	require.Empty(t, state.ExcludedUserIDs)
+	require.Empty(t, state.ExcludedModels)
 	require.Equal(t, RiskReviewSelective, state.ReviewMode)
 	require.Equal(t, RiskActionObserve, state.ActionMode)
 }
@@ -53,7 +55,16 @@ func TestRiskPolicy_persists_first_enable_defaults(t *testing.T) {
 	secondChannel := &Channel{Name: "Backup", Key: "secret", Models: "gpt-test"}
 	require.NoError(t, DB.Create(firstChannel).Error)
 	require.NoError(t, DB.Create(secondChannel).Error)
-	_, err := SaveRiskPolicy(RiskPolicyInput{ProviderID: &providerID, EnabledChannels: []int{secondChannel.Id, firstChannel.Id, secondChannel.Id}})
+	firstUser := &User{Username: "alice", AffCode: "risk-alice"}
+	secondUser := &User{Username: "bob", AffCode: "risk-bob"}
+	require.NoError(t, DB.Create(firstUser).Error)
+	require.NoError(t, DB.Create(secondUser).Error)
+	_, err := SaveRiskPolicy(RiskPolicyInput{
+		ProviderID:      &providerID,
+		EnabledChannels: []int{secondChannel.Id, firstChannel.Id, secondChannel.Id},
+		ExcludedUserIDs: []int{secondUser.Id, firstUser.Id, secondUser.Id},
+		ExcludedModels:  []string{" codex-auto-review ", "", "gpt-test", "codex-auto-review"},
+	})
 	require.NoError(t, err)
 
 	// When
@@ -65,8 +76,61 @@ func TestRiskPolicy_persists_first_enable_defaults(t *testing.T) {
 	require.True(t, state.Enabled)
 	require.Equal(t, &providerID, state.ProviderID)
 	require.Equal(t, []int{secondChannel.Id, firstChannel.Id}, state.EnabledChannels)
+	require.Equal(t, []int{secondUser.Id, firstUser.Id}, state.ExcludedUserIDs)
+	require.Equal(t, []string{"codex-auto-review", "gpt-test"}, state.ExcludedModels)
 	require.Equal(t, RiskReviewSelective, state.ReviewMode)
 	require.Equal(t, RiskActionObserve, state.ActionMode)
+}
+
+func TestRiskPolicyForRelay_skips_broken_provider_lookup_for_excluded_user_or_model(t *testing.T) {
+	// Given
+	setupRiskPolicyModelTest(t)
+	require.NoError(t, DB.Create(&RiskPolicy{
+		Id:              riskPolicySingletonID,
+		EnabledChannels: `[24]`,
+		ExcludedUserIDs: `[42]`,
+		ExcludedModels:  `["codex-auto-review"]`,
+		ReviewMode:      RiskReviewFull,
+		ActionMode:      RiskActionBlock,
+	}).Error)
+	require.NoError(t, DB.Migrator().DropTable(&RiskProvider{}))
+
+	for _, test := range []struct {
+		name   string
+		userID int
+		model  string
+	}{
+		{name: "excluded user", userID: 42, model: "gpt-test"},
+		{name: "excluded model", userID: 7, model: "codex-auto-review"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			// When
+			state, err := GetRiskPolicyStateForRelay(test.userID, test.model)
+
+			// Then
+			require.NoError(t, err)
+			require.True(t, state.Configured)
+			require.Equal(t, []int{42}, state.ExcludedUserIDs)
+			require.Equal(t, []string{"codex-auto-review"}, state.ExcludedModels)
+			require.Nil(t, state.ProviderID)
+			require.False(t, state.Enabled)
+		})
+	}
+
+	_, err := GetRiskPolicyStateForRelay(7, "codex-auto-review-upstream")
+	require.ErrorContains(t, err, "get active risk provider")
+}
+
+func TestRiskPolicy_rejects_unknown_excluded_user_id(t *testing.T) {
+	// Given
+	setupRiskPolicyModelTest(t)
+
+	// When
+	_, err := SaveRiskPolicy(RiskPolicyInput{ExcludedUserIDs: []int{999}})
+
+	// Then
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ErrInvalidRiskPolicy))
 }
 
 func TestRiskPolicy_rejects_unvalidated_provider(t *testing.T) {

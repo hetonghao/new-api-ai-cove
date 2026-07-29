@@ -11,15 +11,17 @@ import (
 )
 
 type riskRuleRequest struct {
-	RuleType model.RiskRuleType `json:"rule_type" binding:"required,oneof=keyword phrase regex"`
-	Pattern  string             `json:"pattern" binding:"required"`
-	Enabled  *bool              `json:"enabled"`
+	RuleType model.RiskRuleType    `json:"rule_type" binding:"required,oneof=keyword phrase regex"`
+	Pattern  string                `json:"pattern" binding:"required"`
+	Enabled  *bool                 `json:"enabled"`
+	Action   *model.RiskRuleAction `json:"action" binding:"omitempty,oneof=review skip"`
 }
 
 type riskRuleTestRequest struct {
-	RuleType model.RiskRuleType `json:"rule_type" binding:"required,oneof=keyword phrase regex"`
-	Pattern  string             `json:"pattern" binding:"required"`
-	Text     string             `json:"text" binding:"required"`
+	RuleType model.RiskRuleType    `json:"rule_type" binding:"required,oneof=keyword phrase regex"`
+	Pattern  string                `json:"pattern" binding:"required"`
+	Text     string                `json:"text" binding:"required"`
+	Action   *model.RiskRuleAction `json:"action" binding:"omitempty,oneof=review skip"`
 }
 
 func ListRiskRules(c *gin.Context) {
@@ -41,7 +43,13 @@ func CreateRiskRule(c *gin.Context) {
 	if request.Enabled != nil {
 		enabled = *request.Enabled
 	}
-	rule, err := model.CreateRiskRule(model.RiskRuleInput{RuleType: request.RuleType, Pattern: request.Pattern, Enabled: enabled})
+	action := model.RiskRuleActionReview
+	if request.Action != nil {
+		action = *request.Action
+	}
+	rule, err := model.CreateRiskRule(model.RiskRuleInput{
+		RuleType: request.RuleType, Pattern: request.Pattern, Enabled: enabled, Action: action,
+	})
 	if err != nil {
 		writeRiskRuleError(c, err)
 		return
@@ -59,7 +67,9 @@ func UpdateRiskRule(c *gin.Context) {
 		common.ApiErrorMsg(c, "无效的本地风控规则")
 		return
 	}
-	rule, err := model.UpdateRiskRule(id, model.RiskRuleUpdateInput{RuleType: request.RuleType, Pattern: request.Pattern, Enabled: request.Enabled})
+	rule, err := model.UpdateRiskRule(id, model.RiskRuleUpdateInput{
+		RuleType: request.RuleType, Pattern: request.Pattern, Enabled: request.Enabled, Action: request.Action,
+	})
 	if err != nil {
 		writeRiskRuleError(c, err)
 		return
@@ -85,7 +95,13 @@ func TestRiskRule(c *gin.Context) {
 		common.ApiErrorMsg(c, "无效的本地风控规则测试")
 		return
 	}
-	result, err := service.TestRiskRule(service.RiskRuleTestInput{RuleType: request.RuleType, Pattern: request.Pattern, Text: request.Text})
+	action := model.RiskRuleActionReview
+	if request.Action != nil {
+		action = *request.Action
+	}
+	result, err := service.TestRiskRule(service.RiskRuleTestInput{
+		RuleType: request.RuleType, Pattern: request.Pattern, Text: request.Text, Action: action,
+	})
 	if err != nil {
 		writeRiskRuleError(c, err)
 		return
@@ -103,7 +119,7 @@ func parseRiskRuleID(c *gin.Context) (int, bool) {
 }
 
 func writeRiskRuleError(c *gin.Context, err error) {
-	if errors.Is(err, model.ErrInvalidRiskRulePattern) {
+	if errors.Is(err, model.ErrInvalidRiskRulePattern) || errors.Is(err, model.ErrInvalidRiskRuleAction) {
 		common.ApiErrorMsg(c, "无效的本地风控规则")
 		return
 	}

@@ -85,6 +85,7 @@ export function LocalRuleManager() {
       const response = await updateLocalRiskRule(rule.id, {
         rule_type: rule.rule_type,
         pattern: rule.pattern,
+        action: rule.action,
         enabled,
       })
       if (!response.success) throw new Error(response.message)
@@ -159,7 +160,7 @@ export function LocalRuleManager() {
           <EmptyTitle>{t('No local risk rules')}</EmptyTitle>
           <EmptyDescription>
             {t(
-              'Add keywords, phrases, or Go regular expressions that should trigger cloud review.'
+              'Add keywords, phrases, or Go regular expressions that send matching content to or skip it from cloud review.'
             )}
           </EmptyDescription>
         </EmptyHeader>
@@ -178,7 +179,7 @@ export function LocalRuleManager() {
       <TitledCard
         title={t('Local risk trigger rules')}
         description={t(
-          'Rules run on normalized new user text and only decide whether cloud review is needed.'
+          'Rules run on normalized new user text and decide whether cloud review is sent or skipped.'
         )}
         icon={<ListFilter className='size-5' />}
         action={

@@ -21,6 +21,7 @@ const (
 	riskObservationDirectRecordTimeout = 3 * time.Second
 	riskObservationPolicyError         = "policy_error"
 	riskObservationRulesError          = "rules_error"
+	riskObservationTimeout             = "timeout"
 	riskObservationProviderError       = "provider_error"
 	riskObservationProviderConfigError = "provider_config_error"
 	riskObservationCircuitOpen         = "circuit_open"
@@ -52,6 +53,7 @@ type RiskObservationEvent struct {
 	Neurons          float64
 	Chunks           []RiskReviewChunkAudit
 	ErrorCode        string
+	ErrorDetail      string
 	Source           RiskObservationSource
 	CacheHit         bool
 	ProviderCalled   bool

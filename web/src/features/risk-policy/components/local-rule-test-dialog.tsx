@@ -96,7 +96,7 @@ export function LocalRuleTestDialog(props: LocalRuleTestDialogProps) {
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className='max-h-[calc(100dvh-1.5rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-xl'>
+      <DialogContent className='max-h-[calc(100dvh-1.5rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-xl'>
         <DialogHeader>
           <DialogTitle>{t('Test local rule')}</DialogTitle>
           <DialogDescription className='break-all'>
@@ -104,6 +104,7 @@ export function LocalRuleTestDialog(props: LocalRuleTestDialogProps) {
           </DialogDescription>
         </DialogHeader>
         <form
+          id='local-risk-rule-test-form'
           onSubmit={form.handleSubmit(handleSubmit)}
           className='space-y-4 overflow-y-auto pr-1'
         >
@@ -138,6 +139,11 @@ export function LocalRuleTestDialog(props: LocalRuleTestDialogProps) {
                 <Badge variant={result.matched ? 'default' : 'outline'}>
                   {result.matched ? t('Matched') : t('Not matched')}
                 </Badge>
+                <Badge variant='outline'>
+                  {result.action === 'skip'
+                    ? t('Skip cloud review')
+                    : t('Send to cloud review')}
+                </Badge>
               </AlertTitle>
               <AlertDescription>
                 <span className='block font-medium'>
@@ -149,19 +155,23 @@ export function LocalRuleTestDialog(props: LocalRuleTestDialogProps) {
               </AlertDescription>
             </Alert>
           ) : null}
-          <DialogFooter>
-            <Button
-              type='button'
-              variant='outline'
-              onClick={() => props.onOpenChange(false)}
-            >
-              {t('Close')}
-            </Button>
-            <Button type='submit' disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? t('Testing...') : t('Run test')}
-            </Button>
-          </DialogFooter>
         </form>
+        <DialogFooter>
+          <Button
+            type='button'
+            variant='outline'
+            onClick={() => props.onOpenChange(false)}
+          >
+            {t('Close')}
+          </Button>
+          <Button
+            type='submit'
+            form='local-risk-rule-test-form'
+            disabled={form.formState.isSubmitting}
+          >
+            {form.formState.isSubmitting ? t('Testing...') : t('Run test')}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

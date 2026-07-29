@@ -32,7 +32,13 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { TitledCard } from '@/components/ui/titled-card'
 import type { RiskProvider } from '@/features/risk-providers/types'
 
-import { getRiskPolicy, getRiskPolicyChannels, updateRiskPolicy } from '../api'
+import {
+  getRiskPolicy,
+  getRiskPolicyChannels,
+  getRiskPolicyModels,
+  getRiskPolicyUsers,
+  updateRiskPolicy,
+} from '../api'
 import {
   createRiskPolicyFormSchema,
   riskPolicyFormValuesToPayload,
@@ -43,9 +49,13 @@ import { RiskPolicyFormFields } from './risk-policy-form-fields'
 
 const QUERY_KEY = ['risk', 'policy'] as const
 const CHANNELS_QUERY_KEY = ['risk', 'policy', 'channels'] as const
+const USERS_QUERY_KEY = ['risk', 'policy', 'users'] as const
+const MODELS_QUERY_KEY = ['risk', 'policy', 'models'] as const
 const DEFAULT_VALUES: RiskPolicyFormValues = {
   enabled: false,
   enabled_channels: [],
+  excluded_user_ids: [],
+  excluded_models: [],
   provider_id: '',
   review_mode: 'selective',
   action_mode: 'observe',
@@ -87,6 +97,16 @@ export function RiskPolicySettings(props: RiskPolicySettingsProps) {
     queryFn: getRiskPolicyChannels,
     retry: false,
   })
+  const usersQuery = useQuery({
+    queryKey: USERS_QUERY_KEY,
+    queryFn: getRiskPolicyUsers,
+    retry: false,
+  })
+  const modelsQuery = useQuery({
+    queryKey: MODELS_QUERY_KEY,
+    queryFn: getRiskPolicyModels,
+    retry: false,
+  })
 
   useEffect(() => {
     if (policyQuery.data) {
@@ -119,32 +139,56 @@ export function RiskPolicySettings(props: RiskPolicySettingsProps) {
     }
   }
 
-  const queryError = policyQuery.error ?? channelsQuery.error
+  const queryError =
+    policyQuery.error ??
+    channelsQuery.error ??
+    usersQuery.error ??
+    modelsQuery.error
+  let queryErrorTitle = t('Failed to load enabled models')
+  if (usersQuery.isError) {
+    queryErrorTitle = t('Failed to load users')
+  }
+  if (channelsQuery.isError) {
+    queryErrorTitle = t('Failed to load channels')
+  }
+  if (policyQuery.isError) {
+    queryErrorTitle = t('Failed to load risk policy')
+  }
   let content = <Skeleton className='h-72 rounded-xl' />
-  if (policyQuery.isError || channelsQuery.isError) {
+  if (
+    policyQuery.isError ||
+    channelsQuery.isError ||
+    usersQuery.isError ||
+    modelsQuery.isError
+  ) {
     content = (
       <ErrorState
-        title={
-          policyQuery.isError
-            ? t('Failed to load risk policy')
-            : t('Failed to load channels')
-        }
+        title={queryErrorTitle}
         description={
           queryError instanceof Error ? queryError.message : t('Request failed')
         }
         onRetry={() => {
           void policyQuery.refetch()
           void channelsQuery.refetch()
+          void usersQuery.refetch()
+          void modelsQuery.refetch()
         }}
       />
     )
-  } else if (!policyQuery.isLoading && !channelsQuery.isLoading) {
+  } else if (
+    !policyQuery.isLoading &&
+    !channelsQuery.isLoading &&
+    !usersQuery.isLoading &&
+    !modelsQuery.isLoading
+  ) {
     content = (
       <FormProvider {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)} className='space-y-5'>
           <RiskPolicyFormFields
             validatedProviders={validatedProviders}
             channels={channelsQuery.data ?? []}
+            users={usersQuery.data ?? []}
+            models={modelsQuery.data ?? []}
           />
           {form.formState.errors.root?.server?.message ? (
             <Alert variant='destructive'>
@@ -170,6 +214,7 @@ export function RiskPolicySettings(props: RiskPolicySettingsProps) {
       description={t(
         'All enabled risk channels share one provider, review scope, and decision action.'
       )}
+      descriptionClassName='text-balance'
       icon={<ShieldCheck className='size-5' />}
       action={
         <Badge variant={policyQuery.data?.enabled ? 'default' : 'outline'}>

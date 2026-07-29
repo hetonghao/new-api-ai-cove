@@ -5541,6 +5541,24 @@
     "Risk channels": "风控渠道",
     "Select at least one risk channel": "请至少选择一个风控渠道",
     "Only selected channels run local risk screening or cloud review.": "只有所选渠道会执行本地风险初筛或云审核。",
-    "Failed to load channels": "加载渠道失败"
+    "Failed to load channels": "加载渠道失败",
+    "Users excluded from AI risk control": "排除风控检查的用户",
+    "Select users...": "选择用户...",
+    "No users found": "未找到用户",
+    "Selected users skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged.": "所选用户将跳过本地风险初筛、云审核和风控记录，原有敏感词检查不受影响。",
+    "Match action": "匹配后操作",
+    "Send to cloud review": "发送云审核",
+    "Skip cloud review": "跳过云审核",
+    "Models excluded from AI risk control": "排除风控检查的原始模型",
+    "Select models...": "选择模型...",
+    "No error details available": "无可用错误详情",
+    "Error details": "错误详情",
+    "Use ^fixed-prefix for start-of-text matching, for example ^heartbeat:. Regex syntax is validated by Go RE2 when saved.": "使用 ^固定前缀 匹配文本开头，例如 ^heartbeat:。保存时将使用 Go RE2 验证正则语法。",
+    "Local rules decide whether matching content is sent to or skipped from cloud review. They never reject requests by themselves.": "本地规则用于决定匹配内容发送云审核还是跳过云审核，不会自行拒绝请求。",
+    "Skip takes priority over review and only bypasses AI cloud review. Sensitive-word checks are unchanged.": "跳过优先于审核，且仅绕过 AI 云审核；敏感词检查不受影响。",
+    "Disabled rules are kept but do not affect cloud review.": "已禁用的规则会保留，但不影响云审核。",
+    "Add keywords, phrases, or Go regular expressions that send matching content to or skip it from cloud review.": "添加关键词、短语或 Go 正则表达式，将匹配内容发送云审核或跳过云审核。",
+    "Rules run on normalized new user text and decide whether cloud review is sent or skipped.": "规则在标准化的新用户文本上运行，并决定发送还是跳过云审核。",
+    "Selected original model names skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged.": "所选原始模型名称将跳过本地风险初筛、云审核和风控记录，原有敏感词检查不受影响。"
   }
 }

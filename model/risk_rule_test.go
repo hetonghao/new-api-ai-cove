@@ -22,7 +22,7 @@ func setupRiskPolicyModelTest(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	DB = db
-	require.NoError(t, db.AutoMigrate(&RiskProvider{}, &RiskPolicy{}, &RiskRule{}, &Channel{}))
+	require.NoError(t, db.AutoMigrate(&RiskProvider{}, &RiskPolicy{}, &RiskRule{}, &Channel{}, &User{}))
 	t.Cleanup(func() {
 		DB = originalDB
 		common.SetDatabaseTypes(originalMainType, originalLogType)
@@ -48,6 +48,27 @@ func TestRiskRulePersistence_lists_created_rule(t *testing.T) {
 	require.Equal(t, created.Id, rules[0].Id)
 	require.Equal(t, "Example", rules[0].Pattern)
 	require.True(t, rules[0].Enabled)
+	require.Equal(t, RiskRuleActionReview, rules[0].Action)
+}
+
+func TestRiskRulePersistence_reads_legacy_blank_action_as_review(t *testing.T) {
+	// Given
+	setupRiskPolicyModelTest(t)
+	require.NoError(t, DB.Exec(
+		"INSERT INTO risk_rules (rule_type, pattern, enabled, action) VALUES (?, ?, ?, ?)",
+		RiskRuleKeyword, "legacy", true, "",
+	).Error)
+
+	// When
+	rules, err := GetRiskRules()
+
+	// Then
+	require.NoError(t, err)
+	require.Len(t, rules, 1)
+	require.Equal(t, RiskRuleActionReview, rules[0].Action)
+	rule, err := GetRiskRuleByID(rules[0].Id)
+	require.NoError(t, err)
+	require.Equal(t, RiskRuleActionReview, rule.Action)
 }
 
 func TestRiskRulePersistence_updates_existing_rule(t *testing.T) {
@@ -56,15 +77,32 @@ func TestRiskRulePersistence_updates_existing_rule(t *testing.T) {
 	created, err := CreateRiskRule(RiskRuleInput{RuleType: RiskRuleKeyword, Pattern: "example", Enabled: true})
 	require.NoError(t, err)
 	enabled := false
+	action := RiskRuleActionSkip
 
 	// When
-	updated, err := UpdateRiskRule(created.Id, RiskRuleUpdateInput{RuleType: RiskRulePhrase, Pattern: "example phrase", Enabled: &enabled})
+	updated, err := UpdateRiskRule(created.Id, RiskRuleUpdateInput{
+		RuleType: RiskRulePhrase, Pattern: "example phrase", Enabled: &enabled, Action: &action,
+	})
 
 	// Then
 	require.NoError(t, err)
 	require.Equal(t, RiskRulePhrase, updated.RuleType)
 	require.Equal(t, "example phrase", updated.Pattern)
 	require.False(t, updated.Enabled)
+	require.Equal(t, RiskRuleActionSkip, updated.Action)
+}
+
+func TestRiskRulePersistence_rejects_invalid_action(t *testing.T) {
+	// Given
+	setupRiskPolicyModelTest(t)
+
+	// When
+	_, err := CreateRiskRule(RiskRuleInput{
+		RuleType: RiskRuleKeyword, Pattern: "example", Enabled: true, Action: "block",
+	})
+
+	// Then
+	require.ErrorIs(t, err, ErrInvalidRiskRuleAction)
 }
 
 func TestRiskRulePersistence_rejects_invalid_regex(t *testing.T) {

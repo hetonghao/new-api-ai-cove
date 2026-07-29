@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -25,6 +26,8 @@ var ErrInvalidRiskPolicy = errors.New("invalid risk policy")
 type RiskPolicy struct {
 	Id              int            `json:"-" gorm:"primaryKey"`
 	EnabledChannels string         `json:"-" gorm:"type:text;not null"`
+	ExcludedUserIDs string         `json:"-" gorm:"type:text;not null;default:'[]'"`
+	ExcludedModels  string         `json:"-" gorm:"type:text;not null;default:'[]'"`
 	ReviewMode      RiskReviewMode `json:"review_mode" gorm:"type:varchar(16);not null"`
 	ActionMode      RiskActionMode `json:"action_mode" gorm:"type:varchar(16);not null"`
 	CreatedAt       time.Time      `json:"-"`
@@ -34,6 +37,8 @@ type RiskPolicy struct {
 type RiskPolicyInput struct {
 	ProviderID      *int
 	EnabledChannels []int
+	ExcludedUserIDs []int
+	ExcludedModels  []string
 	ReviewMode      RiskReviewMode
 	ActionMode      RiskActionMode
 }
@@ -43,6 +48,8 @@ type RiskPolicyState struct {
 	Enabled         bool           `json:"enabled"`
 	ProviderID      *int           `json:"provider_id"`
 	EnabledChannels []int          `json:"enabled_channels"`
+	ExcludedUserIDs []int          `json:"excluded_user_ids"`
+	ExcludedModels  []string       `json:"excluded_models"`
 	ReviewMode      RiskReviewMode `json:"review_mode"`
 	ActionMode      RiskActionMode `json:"action_mode"`
 }
@@ -52,8 +59,18 @@ func (RiskPolicy) TableName() string {
 }
 
 func GetRiskPolicyState() (RiskPolicyState, error) {
+	return getRiskPolicyState(0, "")
+}
+
+func GetRiskPolicyStateForRelay(userID int, modelName string) (RiskPolicyState, error) {
+	return getRiskPolicyState(userID, modelName)
+}
+
+func getRiskPolicyState(relayUserID int, relayModel string) (RiskPolicyState, error) {
 	state := RiskPolicyState{
 		EnabledChannels: []int{},
+		ExcludedUserIDs: []int{},
+		ExcludedModels:  []string{},
 		ReviewMode:      RiskReviewSelective,
 		ActionMode:      RiskActionObserve,
 	}
@@ -67,10 +84,26 @@ func GetRiskPolicyState() (RiskPolicyState, error) {
 		if err != nil {
 			return RiskPolicyState{}, fmt.Errorf("decode risk policy channels: %w", err)
 		}
+		excludedUserIDs, err := decodeRiskPolicyList[int](policy.ExcludedUserIDs)
+		if err != nil {
+			return RiskPolicyState{}, fmt.Errorf("decode risk policy excluded users: %w", err)
+		}
+		excludedModels, err := decodeRiskPolicyList[string](policy.ExcludedModels)
+		if err != nil {
+			return RiskPolicyState{}, fmt.Errorf("decode risk policy excluded models: %w", err)
+		}
 		state.Configured = true
 		state.EnabledChannels = enabledChannels
+		state.ExcludedUserIDs = excludedUserIDs
+		state.ExcludedModels = excludedModels
 		state.ReviewMode = policy.ReviewMode
 		state.ActionMode = policy.ActionMode
+	}
+	if relayUserID > 0 && slices.Contains(state.ExcludedUserIDs, relayUserID) {
+		return state, nil
+	}
+	if relayModel != "" && slices.Contains(state.ExcludedModels, relayModel) {
+		return state, nil
 	}
 
 	var provider RiskProvider
@@ -94,6 +127,14 @@ func SaveRiskPolicy(input RiskPolicyInput) (RiskPolicyState, error) {
 	if err != nil {
 		return RiskPolicyState{}, fmt.Errorf("encode risk policy channels: %w", err)
 	}
+	excludedUserIDs, err := common.Marshal(input.ExcludedUserIDs)
+	if err != nil {
+		return RiskPolicyState{}, fmt.Errorf("encode risk policy excluded users: %w", err)
+	}
+	excludedModels, err := common.Marshal(input.ExcludedModels)
+	if err != nil {
+		return RiskPolicyState{}, fmt.Errorf("encode risk policy excluded models: %w", err)
+	}
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		if len(input.EnabledChannels) > 0 {
 			var channelCount int64
@@ -102,6 +143,15 @@ func SaveRiskPolicy(input RiskPolicyInput) (RiskPolicyState, error) {
 			}
 			if channelCount != int64(len(input.EnabledChannels)) {
 				return fmt.Errorf("%w: channel does not exist", ErrInvalidRiskPolicy)
+			}
+		}
+		if len(input.ExcludedUserIDs) > 0 {
+			var userCount int64
+			if err := tx.Model(&User{}).Where("id IN ?", input.ExcludedUserIDs).Count(&userCount).Error; err != nil {
+				return fmt.Errorf("validate risk policy excluded users: %w", err)
+			}
+			if userCount != int64(len(input.ExcludedUserIDs)) {
+				return fmt.Errorf("%w: user does not exist", ErrInvalidRiskPolicy)
 			}
 		}
 		if input.ProviderID == nil {
@@ -125,7 +175,7 @@ func SaveRiskPolicy(input RiskPolicyInput) (RiskPolicyState, error) {
 		}
 
 		policy := RiskPolicy{Id: riskPolicySingletonID}
-		values := RiskPolicy{EnabledChannels: string(enabledChannels), ReviewMode: input.ReviewMode, ActionMode: input.ActionMode}
+		values := RiskPolicy{EnabledChannels: string(enabledChannels), ExcludedUserIDs: string(excludedUserIDs), ExcludedModels: string(excludedModels), ReviewMode: input.ReviewMode, ActionMode: input.ActionMode}
 		if err := tx.Where("id = ?", riskPolicySingletonID).Assign(values).FirstOrCreate(&policy).Error; err != nil {
 			return fmt.Errorf("save risk policy: %w", err)
 		}
@@ -139,9 +189,22 @@ func SaveRiskPolicy(input RiskPolicyInput) (RiskPolicyState, error) {
 		Enabled:         input.ProviderID != nil && len(input.EnabledChannels) > 0,
 		ProviderID:      input.ProviderID,
 		EnabledChannels: input.EnabledChannels,
+		ExcludedUserIDs: input.ExcludedUserIDs,
+		ExcludedModels:  input.ExcludedModels,
 		ReviewMode:      input.ReviewMode,
 		ActionMode:      input.ActionMode,
 	}, nil
+}
+
+func decodeRiskPolicyList[T any](value string) ([]T, error) {
+	if value == "" {
+		return []T{}, nil
+	}
+	var values []T
+	if err := common.UnmarshalJsonStr(value, &values); err != nil {
+		return nil, ErrInvalidRiskPolicy
+	}
+	return values, nil
 }
 
 func decodeRiskChannelIDs(value string) ([]int, error) {
@@ -154,43 +217,4 @@ func decodeRiskChannelIDs(value string) ([]int, error) {
 		return []int{}, nil
 	}
 	return nil, ErrInvalidRiskPolicy
-}
-
-func normalizeRiskPolicyInput(input RiskPolicyInput) (RiskPolicyInput, error) {
-	if input.ReviewMode == "" {
-		input.ReviewMode = RiskReviewSelective
-	}
-	if input.ActionMode == "" {
-		input.ActionMode = RiskActionObserve
-	}
-	switch input.ReviewMode {
-	case RiskReviewSelective, RiskReviewFull:
-	default:
-		return RiskPolicyInput{}, fmt.Errorf("%w: unsupported review mode", ErrInvalidRiskPolicy)
-	}
-	switch input.ActionMode {
-	case RiskActionObserve, RiskActionBlock:
-	default:
-		return RiskPolicyInput{}, fmt.Errorf("%w: unsupported action mode", ErrInvalidRiskPolicy)
-	}
-	if input.ProviderID == nil && len(input.EnabledChannels) > 0 {
-		return RiskPolicyInput{}, fmt.Errorf("%w: provider is required for enabled channels", ErrInvalidRiskPolicy)
-	}
-	seen := make(map[int]struct{}, len(input.EnabledChannels))
-	channels := make([]int, 0, len(input.EnabledChannels))
-	for _, channel := range input.EnabledChannels {
-		if channel < 1 {
-			return RiskPolicyInput{}, fmt.Errorf("%w: channel id must be positive", ErrInvalidRiskPolicy)
-		}
-		if _, exists := seen[channel]; exists {
-			continue
-		}
-		seen[channel] = struct{}{}
-		channels = append(channels, channel)
-	}
-	input.EnabledChannels = channels
-	if input.ProviderID != nil && *input.ProviderID < 1 {
-		return RiskPolicyInput{}, fmt.Errorf("%w: provider id must be positive", ErrInvalidRiskPolicy)
-	}
-	return input, nil
 }

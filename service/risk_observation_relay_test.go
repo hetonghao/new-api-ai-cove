@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/QuantumNous/new-api/model"
@@ -79,6 +78,7 @@ func TestProcessRiskObservationForRelay_returns_direct_record_for_unretained_obs
 				ActionMode:      model.RiskActionObserve,
 			}, nil
 		},
+		loadRules: func() ([]*model.RiskRule, error) { return nil, nil },
 		enqueueJob: func(RiskObservationJob) RiskObservationEnqueueResult {
 			return RiskObservationEnqueueResult{
 				Outcome:   RiskObservationEnqueueDirectRecordRequired,
@@ -195,71 +195,46 @@ func TestProcessRiskObservationForRelay_skips_unselected_channel_id(t *testing.T
 	require.Zero(t, queueCalls)
 }
 
-func TestProcessRiskObservationForRelay_fails_open_for_safe_provider_error_and_open_circuit(t *testing.T) {
-	tests := []struct {
-		name          string
-		outcome       RiskModerationOutcome
-		executeErr    error
-		wantResult    RiskObservationResult
-		wantErrorCode string
-	}{
-		{
-			name:       "safe",
-			outcome:    RiskModerationOutcome{Result: RiskReviewResult{Status: RiskReviewSafe}, Source: RiskReviewSourceProvider, ProviderCalled: true},
-			wantResult: RiskObservationSafe,
-		},
-		{
-			name:          "provider error",
-			outcome:       RiskModerationOutcome{Source: RiskReviewSourceProvider, ProviderCalled: true},
-			executeErr:    ErrRiskModerationProvider,
-			wantResult:    RiskObservationError,
-			wantErrorCode: riskObservationProviderError,
-		},
-		{
-			name:          "open circuit",
-			outcome:       RiskModerationOutcome{Source: RiskReviewSourceProvider},
-			executeErr:    ErrRiskModerationCircuitOpen,
-			wantResult:    RiskObservationError,
-			wantErrorCode: riskObservationCircuitOpen,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			// Given
-			setupRiskObservationTest(t)
-			provider := createActiveRiskProvider(t, "https://example.com")
-			providerID := provider.Id
-			channelID := createRiskPolicyChannel(t)
-			_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
+func TestProcessRiskObservationForRelay_skips_excluded_user(t *testing.T) {
+	// Given
+	providerID := 17
+	executorCalls := 0
+	queueCalls := 0
+	deps := riskObservationRelayDeps{
+		loadPolicy: func() (model.RiskPolicyState, error) {
+			return model.RiskPolicyState{
+				Enabled:         true,
 				ProviderID:      &providerID,
-				EnabledChannels: []int{channelID},
+				EnabledChannels: []int{24},
+				ExcludedUserIDs: []int{42},
 				ReviewMode:      model.RiskReviewFull,
 				ActionMode:      model.RiskActionBlock,
-			})
-			require.NoError(t, err)
-			var completed RiskObservationEvent
-			deps := riskObservationRelayDeps{
-				executor: riskModerationExecutorFunc(func(context.Context, RiskModerationInput) (RiskModerationOutcome, error) {
-					return test.outcome, test.executeErr
-				}),
-				enqueueEvent: func(event RiskObservationEvent) RiskObservationEnqueueResult {
-					completed = event
-					return queuedRiskObservationResult()
-				},
-			}
-
-			// When
-			decision := processRiskObservationForRelay(context.Background(), RiskObservationJob{
-				RequestID: "fail-open", ChannelID: channelID, ChannelName: "renamed", Text: "current",
-			}, deps)
-
-			// Then
-			require.False(t, decision.Blocked)
-			require.Nil(t, decision.DirectRecord)
-			require.Equal(t, test.wantResult, completed.Result)
-			require.Equal(t, test.wantErrorCode, completed.ErrorCode)
-		})
+			}, nil
+		},
+		executor: riskModerationExecutorFunc(func(context.Context, RiskModerationInput) (RiskModerationOutcome, error) {
+			executorCalls++
+			return RiskModerationOutcome{}, nil
+		}),
+		enqueueJob: func(RiskObservationJob) RiskObservationEnqueueResult {
+			queueCalls++
+			return queuedRiskObservationResult()
+		},
+		enqueueEvent: func(RiskObservationEvent) RiskObservationEnqueueResult {
+			queueCalls++
+			return queuedRiskObservationResult()
+		},
 	}
+
+	// When
+	decision := processRiskObservationForRelay(context.Background(), RiskObservationJob{
+		RequestID: "excluded", ChannelID: 24, UserID: 42, Text: "current",
+	}, deps)
+
+	// Then
+	require.False(t, decision.Blocked)
+	require.Nil(t, decision.DirectRecord)
+	require.Zero(t, executorCalls)
+	require.Zero(t, queueCalls)
 }
 
 func TestProcessRiskObservationForRelay_keeps_unsafe_block_when_completed_event_queue_is_full(t *testing.T) {
@@ -295,23 +270,4 @@ func TestProcessRiskObservationForRelay_keeps_unsafe_block_when_completed_event_
 	require.Nil(t, decision.DirectRecord.Job)
 	require.NotNil(t, decision.DirectRecord.Event)
 	require.True(t, decision.DirectRecord.Event.Blocked)
-}
-
-func TestRiskObservationErrorMapping_matches_typed_executor_errors(t *testing.T) {
-	// Given
-	tests := []struct {
-		err  error
-		want string
-	}{
-		{err: ErrRiskModerationCircuitOpen, want: riskObservationCircuitOpen},
-		{err: errors.Join(errors.New("wrapped"), ErrRiskModerationProvider), want: riskObservationProviderError},
-	}
-
-	for _, test := range tests {
-		// When
-		got := riskObservationErrorCode(test.err)
-
-		// Then
-		require.Equal(t, test.want, got)
-	}
 }

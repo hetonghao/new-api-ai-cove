@@ -5399,6 +5399,24 @@
     "Risk channels": "Canaux de risque",
     "Select at least one risk channel": "Sélectionnez au moins un canal de risque",
     "Only selected channels run local risk screening or cloud review.": "Seuls les canaux sélectionnés exécutent le filtrage local des risques ou la vérification cloud.",
-    "Failed to load channels": "Échec du chargement des canaux"
+    "Failed to load channels": "Échec du chargement des canaux",
+    "Users excluded from AI risk control": "Utilisateurs exclus du contrôle des risques par IA",
+    "Select users...": "Sélectionner des utilisateurs...",
+    "No users found": "Aucun utilisateur trouvé",
+    "Selected users skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged.": "Les utilisateurs sélectionnés ignorent le filtrage local, l’examen cloud et les journaux de risque. Le contrôle existant des mots sensibles reste inchangé.",
+    "Match action": "Action en cas de correspondance",
+    "Send to cloud review": "Envoyer à l’examen cloud",
+    "Skip cloud review": "Ignorer l’examen cloud",
+    "Models excluded from AI risk control": "Modèles exclus du contrôle des risques par IA",
+    "Select models...": "Sélectionner des modèles...",
+    "No error details available": "Aucun détail d’erreur disponible",
+    "Error details": "Détails de l’erreur",
+    "Use ^fixed-prefix for start-of-text matching, for example ^heartbeat:. Regex syntax is validated by Go RE2 when saved.": "Utilisez ^préfixe-fixe pour rechercher au début du texte, par exemple ^heartbeat:. La syntaxe est validée par Go RE2 lors de l’enregistrement.",
+    "Local rules decide whether matching content is sent to or skipped from cloud review. They never reject requests by themselves.": "Les règles locales décident si le contenu correspondant est envoyé à l’examen cloud ou l’ignore. Elles ne rejettent jamais les requêtes elles-mêmes.",
+    "Skip takes priority over review and only bypasses AI cloud review. Sensitive-word checks are unchanged.": "L’exclusion est prioritaire sur l’examen et contourne uniquement l’examen cloud par IA. Le contrôle des mots sensibles reste inchangé.",
+    "Disabled rules are kept but do not affect cloud review.": "Les règles désactivées sont conservées mais n’affectent pas l’examen cloud.",
+    "Add keywords, phrases, or Go regular expressions that send matching content to or skip it from cloud review.": "Ajoutez des mots-clés, des phrases ou des expressions régulières Go pour envoyer le contenu correspondant à l’examen cloud ou l’ignorer.",
+    "Rules run on normalized new user text and decide whether cloud review is sent or skipped.": "Les règles s’exécutent sur le nouveau texte utilisateur normalisé et décident d’envoyer ou d’ignorer l’examen cloud.",
+    "Selected original model names skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged.": "Les noms de modèles d’origine sélectionnés ignorent le filtrage local, l’examen cloud et les journaux de risque. Le contrôle existant des mots sensibles reste inchangé."
   }
 }
