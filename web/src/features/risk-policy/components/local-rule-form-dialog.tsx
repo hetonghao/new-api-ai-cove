@@ -117,7 +117,7 @@ export function LocalRuleFormDialog(props: LocalRuleFormDialogProps) {
         <form
           id='local-risk-rule-form'
           onSubmit={form.handleSubmit(handleSubmit)}
-          className='space-y-5 overflow-y-auto pr-1'
+          className='min-h-0 space-y-5 overflow-x-hidden overflow-y-auto'
         >
           <FieldGroup>
             <Field data-invalid={Boolean(errors.rule_type)}>

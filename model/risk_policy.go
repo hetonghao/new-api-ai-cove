@@ -25,6 +25,7 @@ var ErrInvalidRiskPolicy = errors.New("invalid risk policy")
 
 type RiskPolicy struct {
 	Id              int            `json:"-" gorm:"primaryKey"`
+	Enabled         bool           `json:"-" gorm:"not null;default:true"`
 	EnabledChannels string         `json:"-" gorm:"type:text;not null"`
 	ExcludedUserIDs string         `json:"-" gorm:"type:text;not null;default:'[]'"`
 	ExcludedModels  string         `json:"-" gorm:"type:text;not null;default:'[]'"`
@@ -35,6 +36,7 @@ type RiskPolicy struct {
 }
 
 type RiskPolicyInput struct {
+	Enabled         *bool
 	ProviderID      *int
 	EnabledChannels []int
 	ExcludedUserIDs []int
@@ -75,6 +77,7 @@ func getRiskPolicyState(relayUserID int, relayModel string) (RiskPolicyState, er
 		ActionMode:      RiskActionObserve,
 	}
 	var policy RiskPolicy
+	policyEnabled := false
 	policyQuery := DB.Where("id = ?", riskPolicySingletonID).Limit(1).Find(&policy)
 	if policyQuery.Error != nil {
 		return RiskPolicyState{}, fmt.Errorf("get risk policy: %w", policyQuery.Error)
@@ -93,6 +96,7 @@ func getRiskPolicyState(relayUserID int, relayModel string) (RiskPolicyState, er
 			return RiskPolicyState{}, fmt.Errorf("decode risk policy excluded models: %w", err)
 		}
 		state.Configured = true
+		policyEnabled = policy.Enabled
 		state.EnabledChannels = enabledChannels
 		state.ExcludedUserIDs = excludedUserIDs
 		state.ExcludedModels = excludedModels
@@ -114,7 +118,7 @@ func getRiskPolicyState(relayUserID int, relayModel string) (RiskPolicyState, er
 	if providerQuery.RowsAffected > 0 {
 		state.ProviderID = &provider.Id
 	}
-	state.Enabled = state.Configured && state.ProviderID != nil && len(state.EnabledChannels) > 0
+	state.Enabled = policyEnabled && state.ProviderID != nil && len(state.EnabledChannels) > 0
 	return state, nil
 }
 
@@ -175,7 +179,14 @@ func SaveRiskPolicy(input RiskPolicyInput) (RiskPolicyState, error) {
 		}
 
 		policy := RiskPolicy{Id: riskPolicySingletonID}
-		values := RiskPolicy{EnabledChannels: string(enabledChannels), ExcludedUserIDs: string(excludedUserIDs), ExcludedModels: string(excludedModels), ReviewMode: input.ReviewMode, ActionMode: input.ActionMode}
+		values := map[string]any{
+			"enabled":           *input.Enabled,
+			"enabled_channels":  string(enabledChannels),
+			"excluded_user_ids": string(excludedUserIDs),
+			"excluded_models":   string(excludedModels),
+			"review_mode":       input.ReviewMode,
+			"action_mode":       input.ActionMode,
+		}
 		if err := tx.Where("id = ?", riskPolicySingletonID).Assign(values).FirstOrCreate(&policy).Error; err != nil {
 			return fmt.Errorf("save risk policy: %w", err)
 		}
@@ -186,7 +197,7 @@ func SaveRiskPolicy(input RiskPolicyInput) (RiskPolicyState, error) {
 	}
 	return RiskPolicyState{
 		Configured:      true,
-		Enabled:         input.ProviderID != nil && len(input.EnabledChannels) > 0,
+		Enabled:         *input.Enabled && input.ProviderID != nil && len(input.EnabledChannels) > 0,
 		ProviderID:      input.ProviderID,
 		EnabledChannels: input.EnabledChannels,
 		ExcludedUserIDs: input.ExcludedUserIDs,

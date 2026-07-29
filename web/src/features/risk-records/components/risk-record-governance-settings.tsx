@@ -116,7 +116,7 @@ export function RiskRecordGovernanceSettings() {
     )
   } else if (!settingsQuery.isLoading) {
     content = (
-      <div className='space-y-4'>
+      <div className='grid gap-4 md:grid-cols-2'>
         <Field>
           <FieldLabel htmlFor='risk-content-save-scope'>
             {t('Risk content storage')}
@@ -177,7 +177,7 @@ export function RiskRecordGovernanceSettings() {
             </FieldError>
           )}
         </Field>
-        <div className='flex justify-end'>
+        <div className='flex justify-end md:col-span-2'>
           <Button
             type='button'
             disabled={

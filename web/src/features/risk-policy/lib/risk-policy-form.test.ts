@@ -123,7 +123,7 @@ describe('risk policy form behavior', () => {
     assert.equal(parsed.error.issues[0]?.message, 'Select a validated provider')
   })
 
-  test('clears provider and channels when the policy is disabled', () => {
+  test('keeps provider and channels when the policy is disabled', () => {
     // Given a disabled form that still contains a previous selection
     const values = {
       enabled: false,
@@ -138,10 +138,11 @@ describe('risk policy form behavior', () => {
     // When the form is converted to the API payload
     const payload = riskPolicyFormValuesToPayload(values)
 
-    // Then the server receives the only valid disabled representation
+    // Then only the enabled state changes and the saved selections remain
     assert.deepEqual(payload, {
-      provider_id: null,
-      enabled_channels: [],
+      enabled: false,
+      provider_id: 7,
+      enabled_channels: [24],
       excluded_user_ids: [42],
       excluded_models: ['codex-auto-review'],
       review_mode: 'full',
@@ -166,6 +167,7 @@ describe('risk policy form behavior', () => {
 
     // Then the contract preserves the selected channel IDs
     assert.deepEqual(payload, {
+      enabled: true,
       provider_id: 7,
       enabled_channels: [24, 31],
       excluded_user_ids: [42, 84],

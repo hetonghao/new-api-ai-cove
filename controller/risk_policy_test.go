@@ -62,13 +62,18 @@ func TestRiskPolicyAPI_saves_first_enable_defaults(t *testing.T) {
 	require.Equal(t, model.RiskActionObserve, state.ActionMode)
 }
 
-func TestRiskPolicyAPI_accepts_disabled_payload(t *testing.T) {
+func TestRiskPolicyAPI_disables_without_clearing_provider_or_channels(t *testing.T) {
 	// Given
 	setupRiskPolicyControllerTest(t)
+	provider := &model.RiskProvider{Name: "validated", ProviderType: model.RiskProviderCloudflare, AccountID: "0123456789abcdef0123456789abcdef", Model: "guard", BaseURL: "https://example.com", CredentialEncrypted: "ciphertext"}
+	require.NoError(t, model.CreateRiskProvider(provider))
+	require.NoError(t, model.MarkRiskProviderValidated(provider.Id))
+	channel := &model.Channel{Name: "CPA Pro", Key: "secret", Models: "gpt-test"}
+	require.NoError(t, model.DB.Create(channel).Error)
 
 	// When
 	response := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodPut, Target: "/api/risk/policy", Body: map[string]any{
-		"provider_id": nil, "enabled_channels": []string{},
+		"enabled": false, "provider_id": provider.Id, "enabled_channels": []int{channel.Id},
 	}, Handler: UpdateRiskPolicy})
 
 	// Then
@@ -77,5 +82,6 @@ func TestRiskPolicyAPI_accepts_disabled_payload(t *testing.T) {
 	require.NoError(t, common.Unmarshal(response.Data, &state))
 	require.True(t, state.Configured)
 	require.False(t, state.Enabled)
-	require.Nil(t, state.ProviderID)
+	require.Equal(t, &provider.Id, state.ProviderID)
+	require.Equal(t, []int{channel.Id}, state.EnabledChannels)
 }

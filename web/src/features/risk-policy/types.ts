@@ -38,6 +38,7 @@ export type RiskPolicy = {
 }
 
 export type RiskPolicyPayload = {
+  readonly enabled: boolean
   readonly provider_id: number | null
   readonly enabled_channels: readonly number[]
   readonly excluded_user_ids: readonly number[]

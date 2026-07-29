@@ -92,9 +92,12 @@ export function riskPolicyToFormValues(
 export function riskPolicyFormValuesToPayload(
   values: RiskPolicyFormValues
 ): RiskPolicyPayload {
+  const providerId = Number(values.provider_id)
   return {
-    provider_id: values.enabled ? Number(values.provider_id) : null,
-    enabled_channels: values.enabled ? values.enabled_channels : [],
+    enabled: values.enabled,
+    provider_id:
+      Number.isInteger(providerId) && providerId > 0 ? providerId : null,
+    enabled_channels: values.enabled_channels,
     excluded_user_ids: values.excluded_user_ids,
     excluded_models: values.excluded_models,
     review_mode: values.review_mode,

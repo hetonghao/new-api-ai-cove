@@ -6,6 +6,10 @@ import (
 )
 
 func normalizeRiskPolicyInput(input RiskPolicyInput) (RiskPolicyInput, error) {
+	if input.Enabled == nil {
+		enabled := input.ProviderID != nil && len(input.EnabledChannels) > 0
+		input.Enabled = &enabled
+	}
 	if input.ReviewMode == "" {
 		input.ReviewMode = RiskReviewSelective
 	}
@@ -24,6 +28,9 @@ func normalizeRiskPolicyInput(input RiskPolicyInput) (RiskPolicyInput, error) {
 	}
 	if input.ProviderID == nil && len(input.EnabledChannels) > 0 {
 		return RiskPolicyInput{}, fmt.Errorf("%w: provider is required for enabled channels", ErrInvalidRiskPolicy)
+	}
+	if *input.Enabled && (input.ProviderID == nil || len(input.EnabledChannels) == 0) {
+		return RiskPolicyInput{}, fmt.Errorf("%w: enabled policy requires provider and channels", ErrInvalidRiskPolicy)
 	}
 
 	seenChannels := make(map[int]struct{}, len(input.EnabledChannels))

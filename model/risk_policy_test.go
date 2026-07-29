@@ -189,7 +189,7 @@ func TestRiskPolicy_rejects_unknown_modes(t *testing.T) {
 	}
 }
 
-func TestRiskPolicy_clears_provider_and_channels_when_disabled(t *testing.T) {
+func TestRiskPolicy_keeps_provider_and_channels_when_disabled(t *testing.T) {
 	// Given
 	setupRiskPolicyModelTest(t)
 	provider := &RiskProvider{Name: "validated", ProviderType: RiskProviderCloudflare, AccountID: "0123456789abcdef0123456789abcdef", Model: "guard", BaseURL: "https://example.com", CredentialEncrypted: "ciphertext"}
@@ -200,7 +200,8 @@ func TestRiskPolicy_clears_provider_and_channels_when_disabled(t *testing.T) {
 	require.NoError(t, DB.Create(channel).Error)
 	_, err := SaveRiskPolicy(RiskPolicyInput{ProviderID: &providerID, EnabledChannels: []int{channel.Id}})
 	require.NoError(t, err)
-	_, err = SaveRiskPolicy(RiskPolicyInput{})
+	disabled := false
+	_, err = SaveRiskPolicy(RiskPolicyInput{Enabled: &disabled, ProviderID: &providerID, EnabledChannels: []int{channel.Id}})
 	require.NoError(t, err)
 
 	// When
@@ -209,6 +210,6 @@ func TestRiskPolicy_clears_provider_and_channels_when_disabled(t *testing.T) {
 	// Then
 	require.NoError(t, err)
 	require.False(t, state.Enabled)
-	require.Nil(t, state.ProviderID)
-	require.Empty(t, state.EnabledChannels)
+	require.Equal(t, &providerID, state.ProviderID)
+	require.Equal(t, []int{channel.Id}, state.EnabledChannels)
 }

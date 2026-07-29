@@ -153,7 +153,7 @@ export function RiskProviders() {
         <SectionPageLayout.Title>{t('Risk Center')}</SectionPageLayout.Title>
         <SectionPageLayout.Content>
           <Tabs
-            className='h-full min-h-0'
+            className='h-full min-h-0 min-w-0 overflow-hidden'
             value={activeTab}
             onValueChange={(value) => {
               if (value === 'configuration' || value === 'records') {
@@ -169,9 +169,9 @@ export function RiskProviders() {
             </TabsList>
             <TabsContent
               value='configuration'
-              className='mt-2 min-h-0 overflow-y-auto'
+              className='mt-2 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto'
             >
-              <div className='space-y-4 pb-1'>
+              <div className='max-w-full min-w-0 space-y-4 pb-1'>
                 <RiskPolicySettings
                   providers={providersQuery.data ?? []}
                   onSaved={() => void providersQuery.refetch()}
