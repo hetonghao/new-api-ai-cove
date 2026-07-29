@@ -37,6 +37,7 @@ export const RISK_PROVIDER_DEFAULT_VALUES: RiskProviderFormValues = {
   name: '',
   provider_type: 'cloudflare',
   account_id: '',
+  channel_id: null,
   model: '@cf/meta/llama-guard-3-8b',
   credential: '',
   timeout_ms: 800,
@@ -51,14 +52,9 @@ export function getRiskProviderFormSchema(
   return z
     .object({
       name: z.string().trim().min(1, t('Please enter a name')),
-      provider_type: z.literal('cloudflare'),
-      account_id: z
-        .string()
-        .trim()
-        .regex(
-          /^[0-9a-fA-F]{32}$/,
-          t('Please enter a valid Cloudflare account ID')
-        ),
+      provider_type: z.enum(['cloudflare', 'platform_internal']),
+      account_id: z.string(),
+      channel_id: z.number().int().positive().nullable(),
       model: z.string().trim().min(1, t('Please enter a model')),
       credential: z.string(),
       timeout_ms: z
@@ -75,11 +71,35 @@ export function getRiskProviderFormSchema(
         .min(1, t('Cooldown must be greater than zero')),
     })
     .superRefine((values, context) => {
-      if (credentialRequired && values.credential.trim().length === 0) {
+      if (
+        values.provider_type === 'cloudflare' &&
+        !/^[0-9a-fA-F]{32}$/.test(values.account_id.trim())
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['account_id'],
+          message: t('Please enter a valid Cloudflare account ID'),
+        })
+      }
+      if (
+        values.provider_type === 'cloudflare' &&
+        credentialRequired &&
+        values.credential.trim().length === 0
+      ) {
         context.addIssue({
           code: 'custom',
           path: ['credential'],
           message: t('Please enter a credential'),
+        })
+      }
+      if (
+        values.provider_type === 'platform_internal' &&
+        values.channel_id === null
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['channel_id'],
+          message: t('Please select a channel'),
         })
       }
     })
@@ -92,6 +112,7 @@ export function providerToFormValues(
     name: provider.name,
     provider_type: provider.provider_type,
     account_id: provider.account_id,
+    channel_id: provider.channel_id || null,
     model: provider.model,
     credential: '',
     timeout_ms: provider.timeout_ms,
@@ -103,17 +124,25 @@ export function providerToFormValues(
 export function formValuesToPayload(
   values: RiskProviderFormValues
 ): RiskProviderPayload {
-  const payload = {
+  const commonPayload = {
     name: values.name.trim(),
     provider_type: values.provider_type,
-    account_id: values.account_id.trim().toLowerCase(),
     model: values.model.trim(),
     timeout_ms: values.timeout_ms,
     failure_threshold: values.failure_threshold,
     cooldown_seconds: values.cooldown_seconds,
   }
+  if (values.provider_type === 'platform_internal') {
+    return {
+      ...commonPayload,
+      channel_id: values.channel_id ?? undefined,
+    }
+  }
   const credential = values.credential.trim()
-
+  const payload = {
+    ...commonPayload,
+    account_id: values.account_id.trim().toLowerCase(),
+  }
   return credential ? { ...payload, credential } : payload
 }
 

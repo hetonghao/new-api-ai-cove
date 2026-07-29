@@ -50,6 +50,9 @@ func applyRelayRiskGate(c *gin.Context, risk relayRiskContext, process relayRisk
 	if err := applyRelaySensitiveWordGate(c, risk.meta); err != nil {
 		return err, nil
 	}
+	if common.GetContextKeyBool(c, constant.ContextKeyRiskInternalReview) {
+		return nil, nil
+	}
 	text := service.ExtractRiskObservationText(risk.request)
 	if risk.info == nil || process == nil {
 		return nil, nil

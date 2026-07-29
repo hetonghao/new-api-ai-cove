@@ -16,15 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-export type RiskProviderType = 'cloudflare'
+export type RiskProviderType = 'cloudflare' | 'platform_internal'
 
 export type RiskProvider = {
   readonly id: number
   readonly name: string
   readonly provider_type: RiskProviderType
   readonly account_id: string
+  readonly channel_id: number
   readonly model: string
   readonly has_credential: boolean
+  readonly system_managed: boolean
   readonly timeout_ms: number
   readonly failure_threshold: number
   readonly cooldown_seconds: number
@@ -38,6 +40,7 @@ export type RiskProviderFormValues = {
   readonly name: string
   readonly provider_type: RiskProviderType
   readonly account_id: string
+  readonly channel_id: number | null
   readonly model: string
   readonly credential: string
   readonly timeout_ms: number
@@ -45,8 +48,16 @@ export type RiskProviderFormValues = {
   readonly cooldown_seconds: number
 }
 
-export type RiskProviderPayload = Omit<RiskProviderFormValues, 'credential'> & {
+export type RiskProviderPayload = {
+  readonly name: string
+  readonly provider_type: RiskProviderType
+  readonly account_id?: string
+  readonly channel_id?: number
+  readonly model: string
   readonly credential?: string
+  readonly timeout_ms: number
+  readonly failure_threshold: number
+  readonly cooldown_seconds: number
 }
 
 export type RiskProviderValidation = {

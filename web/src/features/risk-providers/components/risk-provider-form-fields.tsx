@@ -28,17 +28,22 @@ import {
 } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import type { Channel } from '@/features/channels/types'
 
 import type { RiskProviderFormValues } from '../types'
 
 type RiskProviderFormFieldsProps = {
   readonly hasCredential: boolean
+  readonly channels: readonly Channel[]
+  readonly channelsLoading: boolean
+  readonly channelsError: boolean
 }
 
 export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
   const { t } = useTranslation()
   const form = useFormContext<RiskProviderFormValues>()
   const errors = form.formState.errors
+  const providerType = form.watch('provider_type')
 
   return (
     <FieldGroup className='grid gap-4 sm:grid-cols-2'>
@@ -52,38 +57,78 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
         />
         <FieldError errors={[errors.name]} />
       </Field>
-      <Field>
+      <Field data-invalid={Boolean(errors.provider_type)}>
         <FieldLabel htmlFor='risk-provider-type'>
           {t('Provider type')}
         </FieldLabel>
-        <input type='hidden' {...form.register('provider_type')} />
         <NativeSelect
           id='risk-provider-type'
           className='w-full'
-          value='cloudflare'
-          disabled
+          aria-invalid={Boolean(errors.provider_type)}
+          {...form.register('provider_type')}
         >
           <NativeSelectOption value='cloudflare'>
             Cloudflare Workers AI
           </NativeSelectOption>
+          <NativeSelectOption value='platform_internal'>
+            {t('Platform internal model')}
+          </NativeSelectOption>
         </NativeSelect>
+        <FieldError errors={[errors.provider_type]} />
       </Field>
-      <Field
-        className='sm:col-span-2'
-        data-invalid={Boolean(errors.account_id)}
-      >
-        <FieldLabel htmlFor='risk-provider-account-id'>
-          {t('Account ID')}
-        </FieldLabel>
-        <Input
-          id='risk-provider-account-id'
-          autoComplete='off'
-          aria-invalid={Boolean(errors.account_id)}
-          placeholder='0123456789abcdef0123456789abcdef'
-          {...form.register('account_id')}
-        />
-        <FieldError errors={[errors.account_id]} />
-      </Field>
+      {providerType === 'cloudflare' ? (
+        <Field
+          className='sm:col-span-2'
+          data-invalid={Boolean(errors.account_id)}
+        >
+          <FieldLabel htmlFor='risk-provider-account-id'>
+            {t('Account ID')}
+          </FieldLabel>
+          <Input
+            id='risk-provider-account-id'
+            autoComplete='off'
+            aria-invalid={Boolean(errors.account_id)}
+            placeholder='0123456789abcdef0123456789abcdef'
+            {...form.register('account_id')}
+          />
+          <FieldError errors={[errors.account_id]} />
+        </Field>
+      ) : (
+        <Field
+          className='sm:col-span-2'
+          data-invalid={Boolean(errors.channel_id)}
+        >
+          <FieldLabel htmlFor='risk-provider-channel'>
+            {t('Platform channel')}
+          </FieldLabel>
+          <NativeSelect
+            id='risk-provider-channel'
+            className='w-full'
+            disabled={props.channelsLoading || props.channels.length === 0}
+            aria-invalid={Boolean(errors.channel_id)}
+            {...form.register('channel_id', {
+              setValueAs: (value) => (value === '' ? null : Number(value)),
+            })}
+          >
+            <NativeSelectOption value=''>
+              {props.channelsLoading
+                ? t('Loading channels...')
+                : t('Select a channel')}
+            </NativeSelectOption>
+            {props.channels.map((channel) => (
+              <NativeSelectOption key={channel.id} value={channel.id}>
+                #{channel.id} · {channel.name}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+          <FieldDescription>
+            {props.channelsError
+              ? t('Failed to load channels')
+              : t('The review request is fixed to this enabled channel.')}
+          </FieldDescription>
+          <FieldError errors={[errors.channel_id]} />
+        </Field>
+      )}
       <Field className='sm:col-span-2' data-invalid={Boolean(errors.model)}>
         <FieldLabel htmlFor='risk-provider-model'>{t('Model')}</FieldLabel>
         <Input
@@ -93,32 +138,42 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
         />
         <FieldError errors={[errors.model]} />
       </Field>
-      <Field
-        className='sm:col-span-2'
-        data-invalid={Boolean(errors.credential)}
-      >
-        <FieldLabel htmlFor='risk-provider-credential'>
-          {t('Credential')}
-        </FieldLabel>
-        <Input
-          id='risk-provider-credential'
-          type='password'
-          autoComplete='new-password'
-          aria-invalid={Boolean(errors.credential)}
-          placeholder={
-            props.hasCredential
-              ? t('Credential configured; leave blank to keep it')
-              : t('Enter a provider credential')
-          }
-          {...form.register('credential')}
-        />
-        <FieldDescription>
-          {props.hasCredential
-            ? t('Enter a new credential only when you want to replace it.')
-            : t('The credential is write-only after saving.')}
-        </FieldDescription>
-        <FieldError errors={[errors.credential]} />
-      </Field>
+      {providerType === 'cloudflare' ? (
+        <Field
+          className='sm:col-span-2'
+          data-invalid={Boolean(errors.credential)}
+        >
+          <FieldLabel htmlFor='risk-provider-credential'>
+            {t('Credential')}
+          </FieldLabel>
+          <Input
+            id='risk-provider-credential'
+            type='password'
+            autoComplete='new-password'
+            aria-invalid={Boolean(errors.credential)}
+            placeholder={
+              props.hasCredential
+                ? t('Credential configured; leave blank to keep it')
+                : t('Enter a provider credential')
+            }
+            {...form.register('credential')}
+          />
+          <FieldDescription>
+            {props.hasCredential
+              ? t('Enter a new credential only when you want to replace it.')
+              : t('The credential is write-only after saving.')}
+          </FieldDescription>
+          <FieldError errors={[errors.credential]} />
+        </Field>
+      ) : (
+        <Field className='sm:col-span-2'>
+          <FieldDescription>
+            {t(
+              'The system creates a hidden root token limited to loopback access and this model.'
+            )}
+          </FieldDescription>
+        </Field>
+      )}
       <Field data-invalid={Boolean(errors.timeout_ms)}>
         <FieldLabel htmlFor='risk-provider-timeout'>
           {t('Review timeout (ms)')}

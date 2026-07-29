@@ -23,6 +23,9 @@ import (
 
 const authIdentityContextKey = "auth_identity"
 
+var errTokenIPUnparseable = errors.New("token request IP is unparseable")
+var errTokenIPNotAllowed = errors.New("token request IP is not allowed")
+
 type dashboardCredentialKind int
 
 const (
@@ -40,6 +43,36 @@ func validUserInfo(username string, role int) bool {
 		return false
 	}
 	return true
+}
+
+func validateTokenRequestIP(c *gin.Context, token *model.Token) (string, error) {
+	allowIPs := token.GetIpLimits()
+	if len(allowIPs) == 0 {
+		return "", nil
+	}
+	clientIP := c.ClientIP()
+	if token.SystemManaged {
+		host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+		if err != nil {
+			return "", errTokenIPUnparseable
+		}
+		clientIP = host
+	}
+	ip := net.ParseIP(clientIP)
+	if ip == nil {
+		return clientIP, errTokenIPUnparseable
+	}
+	if !common.IsIpInCIDRList(ip, allowIPs) {
+		return clientIP, errTokenIPNotAllowed
+	}
+	return clientIP, nil
+}
+
+func tokenIPErrorMessage(err error) string {
+	if errors.Is(err, errTokenIPUnparseable) {
+		return "无法解析客户端 IP 地址"
+	}
+	return "您的 IP 不在令牌允许访问的列表中"
 }
 
 func authHelper(c *gin.Context, minRole int) {
@@ -322,6 +355,13 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 			c.Abort()
 			return
 		}
+		if token.SystemManaged {
+			if _, err := validateTokenRequestIP(c, token); err != nil {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": tokenIPErrorMessage(err)})
+				c.Abort()
+				return
+			}
+		}
 
 		userCache, err := model.GetUserCache(token.UserId)
 		if err != nil {
@@ -395,26 +435,10 @@ func BillingTokenAuth() func(c *gin.Context) {
 			c.Abort()
 			return
 		}
-		allowIps := token.GetIpLimits()
-		if len(allowIps) > 0 {
-			clientIp := c.ClientIP()
-			ip := net.ParseIP(clientIp)
-			if ip == nil {
-				c.JSON(http.StatusForbidden, gin.H{
-					"success": false,
-					"message": "无法解析客户端 IP 地址",
-				})
-				c.Abort()
-				return
-			}
-			if common.IsIpInCIDRList(ip, allowIps) == false {
-				c.JSON(http.StatusForbidden, gin.H{
-					"success": false,
-					"message": "您的 IP 不在令牌允许访问的列表中",
-				})
-				c.Abort()
-				return
-			}
+		if _, err := validateTokenRequestIP(c, &token); err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": tokenIPErrorMessage(err)})
+			c.Abort()
+			return
 		}
 
 		userCache, err := model.GetUserCache(token.UserId)
@@ -518,20 +542,13 @@ func TokenAuth() func(c *gin.Context) {
 			return
 		}
 
-		allowIps := token.GetIpLimits()
-		if len(allowIps) > 0 {
-			clientIp := c.ClientIP()
-			logger.LogDebug(c, "Token has IP restrictions, checking client IP %s", clientIp)
-			ip := net.ParseIP(clientIp)
-			if ip == nil {
-				abortWithOpenAiMessage(c, http.StatusForbidden, "无法解析客户端 IP 地址")
-				return
-			}
-			if common.IsIpInCIDRList(ip, allowIps) == false {
-				abortWithOpenAiMessage(c, http.StatusForbidden, "您的 IP 不在令牌允许访问的列表中", types.ErrorCodeAccessDenied)
-				return
-			}
-			logger.LogDebug(c, "Client IP %s passed the token IP restrictions check", clientIp)
+		clientIP, err := validateTokenRequestIP(c, token)
+		if err != nil {
+			abortWithOpenAiMessage(c, http.StatusForbidden, tokenIPErrorMessage(err), types.ErrorCodeAccessDenied)
+			return
+		}
+		if clientIP != "" {
+			logger.LogDebug(c, "Token has IP restrictions, client IP %s passed", clientIP)
 		}
 
 		userCache, err := model.GetUserCache(token.UserId)
@@ -568,6 +585,20 @@ func TokenAuth() func(c *gin.Context) {
 		}
 		common.SetContextKey(c, constant.ContextKeyUsingGroup, userGroup)
 
+		if token.SystemManaged {
+			channelID, internalReview, err := model.GetPlatformInternalRiskTokenChannelID(token.Id)
+			if err != nil {
+				common.SysLog("TokenAuth internal risk token check failed: " + err.Error())
+				abortWithOpenAiMessage(c, http.StatusInternalServerError,
+					common.TranslateMessage(c, i18n.MsgDatabaseError))
+				return
+			}
+			if !internalReview || len(parts) != 2 || parts[1] != fmt.Sprintf("%d", channelID) {
+				abortWithOpenAiMessage(c, http.StatusForbidden, "系统管理令牌指定渠道无效", types.ErrorCodeAccessDenied)
+				return
+			}
+			common.SetContextKey(c, constant.ContextKeyRiskInternalReview, true)
+		}
 		err = SetupContextForToken(c, token, parts...)
 		if err != nil {
 			return
@@ -584,6 +615,7 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	c.Set("token_id", token.Id)
 	c.Set("token_key", token.Key)
 	c.Set("token_name", token.Name)
+	c.Set("token_system_managed", token.SystemManaged)
 	c.Set("token_unlimited_quota", token.UnlimitedQuota)
 	if !token.UnlimitedQuota {
 		c.Set("token_quota", token.RemainQuota)

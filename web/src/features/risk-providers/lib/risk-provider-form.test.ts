@@ -34,6 +34,7 @@ const formValues: RiskProviderFormValues = {
   provider_type: 'cloudflare',
   model: '@cf/meta/llama-guard-3-8b',
   account_id: '0123456789abcdef0123456789abcdef',
+  channel_id: null,
   credential: '',
   timeout_ms: 800,
   failure_threshold: 5,
@@ -47,7 +48,9 @@ function provider(overrides: Partial<RiskProvider> = {}): RiskProvider {
     provider_type: 'cloudflare',
     model: formValues.model,
     account_id: formValues.account_id,
+    channel_id: 0,
     has_credential: true,
+    system_managed: false,
     timeout_ms: 800,
     failure_threshold: 5,
     cooldown_seconds: 30,
@@ -125,6 +128,44 @@ describe('risk provider form behavior', () => {
     assert.equal(result.success, false)
     if (!result.success) {
       assert.deepEqual(result.error.issues[0]?.path, ['account_id'])
+    }
+  })
+
+  test('platform internal provider requires a channel but no credential or account ID', () => {
+    const internalValues: RiskProviderFormValues = {
+      ...formValues,
+      provider_type: 'platform_internal',
+      account_id: '',
+      channel_id: 24,
+      credential: '',
+      model: 'guard-model',
+    }
+
+    const result = getRiskProviderFormSchema(t, true).safeParse(internalValues)
+    assert.equal(result.success, true)
+    assert.deepEqual(formValuesToPayload(internalValues), {
+      name: 'Cloudflare primary',
+      provider_type: 'platform_internal',
+      channel_id: 24,
+      model: 'guard-model',
+      timeout_ms: 800,
+      failure_threshold: 5,
+      cooldown_seconds: 30,
+    })
+  })
+
+  test('platform internal provider rejects a missing channel', () => {
+    const result = getRiskProviderFormSchema(t, false).safeParse({
+      ...formValues,
+      provider_type: 'platform_internal',
+      account_id: '',
+      channel_id: null,
+      model: 'guard-model',
+    })
+
+    assert.equal(result.success, false)
+    if (!result.success) {
+      assert.deepEqual(result.error.issues[0]?.path, ['channel_id'])
     }
   })
 

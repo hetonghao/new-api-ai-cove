@@ -8,12 +8,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
 )
 
 type RiskProviderType string
 
-const RiskProviderCloudflare RiskProviderType = "cloudflare"
+const (
+	RiskProviderCloudflare       RiskProviderType = "cloudflare"
+	RiskProviderPlatformInternal RiskProviderType = "platform_internal"
+)
 
 const (
 	DefaultRiskProviderTimeoutMs        = 800
@@ -30,9 +34,11 @@ type RiskProvider struct {
 	Name                string           `json:"name" gorm:"type:varchar(128);not null"`
 	ProviderType        RiskProviderType `json:"provider_type" gorm:"type:varchar(32);not null"`
 	AccountID           string           `json:"account_id" gorm:"type:varchar(64);not null;default:''"`
+	ChannelID           int              `json:"channel_id" gorm:"index"`
 	Model               string           `json:"model" gorm:"type:varchar(256);not null"`
 	BaseURL             string           `json:"base_url" gorm:"type:varchar(1024);not null"`
 	CredentialEncrypted string           `json:"-" gorm:"type:text;not null"`
+	InternalTokenID     int              `json:"-" gorm:"index"`
 	TimeoutMs           int              `json:"timeout_ms" gorm:"not null"`
 	FailureThreshold    int              `json:"failure_threshold" gorm:"not null"`
 	CooldownSeconds     int              `json:"cooldown_seconds" gorm:"not null"`
@@ -68,25 +74,123 @@ func CreateRiskProvider(provider *RiskProvider) error {
 	}
 	provider.Active = false
 	provider.ValidatedAt = nil
-	if err := DB.Create(provider).Error; err != nil {
-		return fmt.Errorf("create risk provider: %w", err)
+	if provider.ProviderType != RiskProviderPlatformInternal {
+		if err := DB.Create(provider).Error; err != nil {
+			return fmt.Errorf("create risk provider: %w", err)
+		}
+		return nil
 	}
-	return nil
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := validatePlatformInternalRiskChannel(tx, provider); err != nil {
+			return err
+		}
+		if err := tx.Create(provider).Error; err != nil {
+			return fmt.Errorf("create risk provider: %w", err)
+		}
+		token, err := createPlatformInternalRiskToken(tx, provider)
+		if err != nil {
+			return err
+		}
+		provider.InternalTokenID = token.Id
+		if err := tx.Model(provider).Update("internal_token_id", token.Id).Error; err != nil {
+			return fmt.Errorf("attach internal risk token: %w", err)
+		}
+		return nil
+	})
 }
 
 func UpdateRiskProvider(provider *RiskProvider) error {
 	if err := normalizeRiskProvider(provider); err != nil {
 		return err
 	}
-	if err := DB.Save(provider).Error; err != nil {
-		return fmt.Errorf("update risk provider %d: %w", provider.Id, err)
+	var invalidatedTokens []Token
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var existing RiskProvider
+		if err := lockForUpdate(tx).First(&existing, provider.Id).Error; err != nil {
+			return fmt.Errorf("get risk provider %d for update: %w", provider.Id, err)
+		}
+		if provider.ProviderType == RiskProviderPlatformInternal {
+			if err := validatePlatformInternalRiskChannel(tx, provider); err != nil {
+				return err
+			}
+			if existing.ProviderType == RiskProviderPlatformInternal && existing.InternalTokenID > 0 {
+				var token Token
+				if err := lockForUpdate(tx).First(&token, existing.InternalTokenID).Error; err != nil {
+					return fmt.Errorf("get internal risk token: %w", err)
+				}
+				if !token.SystemManaged {
+					return errors.New("internal risk token is not system managed")
+				}
+				token.Status = common.TokenStatusEnabled
+				token.ModelLimitsEnabled = true
+				token.ModelLimits = provider.Model
+				if err := tx.Model(&token).Select("status", "model_limits_enabled", "model_limits").Updates(&token).Error; err != nil {
+					return fmt.Errorf("update internal risk token: %w", err)
+				}
+				provider.InternalTokenID = token.Id
+				invalidatedTokens = append(invalidatedTokens, token)
+			} else {
+				token, err := createPlatformInternalRiskToken(tx, provider)
+				if err != nil {
+					return err
+				}
+				provider.InternalTokenID = token.Id
+				invalidatedTokens = append(invalidatedTokens, *token)
+			}
+		} else {
+			provider.InternalTokenID = 0
+			if existing.ProviderType == RiskProviderPlatformInternal && existing.InternalTokenID > 0 {
+				var token Token
+				if err := lockForUpdate(tx).First(&token, existing.InternalTokenID).Error; err != nil {
+					return fmt.Errorf("get internal risk token: %w", err)
+				}
+				if err := tx.Model(&token).Update("status", common.TokenStatusDisabled).Error; err != nil {
+					return fmt.Errorf("disable internal risk token: %w", err)
+				}
+				invalidatedTokens = append(invalidatedTokens, token)
+			}
+		}
+		if err := tx.Save(provider).Error; err != nil {
+			return fmt.Errorf("update risk provider %d: %w", provider.Id, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if err := invalidateTokensCache(invalidatedTokens); err != nil {
+		common.SysLog("failed to invalidate internal risk token cache: " + err.Error())
 	}
 	return nil
 }
 
 func DeleteRiskProvider(id int) error {
-	if err := DB.Delete(&RiskProvider{}, id).Error; err != nil {
-		return fmt.Errorf("delete risk provider %d: %w", id, err)
+	var invalidatedTokens []Token
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var provider RiskProvider
+		if err := lockForUpdate(tx).First(&provider, id).Error; err != nil {
+			return fmt.Errorf("get risk provider %d for deletion: %w", id, err)
+		}
+		if provider.ProviderType == RiskProviderPlatformInternal && provider.InternalTokenID > 0 {
+			var token Token
+			if err := lockForUpdate(tx).First(&token, provider.InternalTokenID).Error; err != nil {
+				return fmt.Errorf("get internal risk token: %w", err)
+			}
+			if err := tx.Model(&token).Update("status", common.TokenStatusDisabled).Error; err != nil {
+				return fmt.Errorf("disable internal risk token: %w", err)
+			}
+			invalidatedTokens = append(invalidatedTokens, token)
+		}
+		if err := tx.Delete(&RiskProvider{}, id).Error; err != nil {
+			return fmt.Errorf("delete risk provider %d: %w", id, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if err := invalidateTokensCache(invalidatedTokens); err != nil {
+		common.SysLog("failed to invalidate internal risk token cache: " + err.Error())
 	}
 	return nil
 }
@@ -124,16 +228,26 @@ func normalizeRiskProvider(provider *RiskProvider) error {
 	}
 	provider.Name = strings.TrimSpace(provider.Name)
 	provider.Model = strings.TrimSpace(provider.Model)
-	if provider.ProviderType != RiskProviderCloudflare {
+	switch provider.ProviderType {
+	case RiskProviderCloudflare:
+		accountID, err := provider.CloudflareAccountID()
+		if err != nil {
+			return err
+		}
+		provider.AccountID = accountID
+		provider.ChannelID = 0
+		if provider.Name == "" || provider.Model == "" || provider.CredentialEncrypted == "" {
+			return errors.New("risk provider name, account ID, model, and credential are required")
+		}
+	case RiskProviderPlatformInternal:
+		provider.AccountID = ""
+		provider.BaseURL = ""
+		provider.CredentialEncrypted = ""
+		if provider.Name == "" || provider.Model == "" || provider.ChannelID < 1 {
+			return errors.New("risk provider name, channel, and model are required")
+		}
+	default:
 		return errors.New("unsupported risk provider type")
-	}
-	accountID, err := provider.CloudflareAccountID()
-	if err != nil {
-		return err
-	}
-	provider.AccountID = accountID
-	if provider.Name == "" || provider.Model == "" || provider.CredentialEncrypted == "" {
-		return errors.New("risk provider name, account ID, model, and credential are required")
 	}
 	if provider.TimeoutMs == 0 {
 		provider.TimeoutMs = DefaultRiskProviderTimeoutMs
@@ -148,6 +262,69 @@ func normalizeRiskProvider(provider *RiskProvider) error {
 		return errors.New("risk provider timeout or circuit breaker value is out of range")
 	}
 	return nil
+}
+
+func validatePlatformInternalRiskChannel(tx *gorm.DB, provider *RiskProvider) error {
+	var channel Channel
+	if err := tx.First(&channel, provider.ChannelID).Error; err != nil {
+		return fmt.Errorf("get internal risk channel %d: %w", provider.ChannelID, err)
+	}
+	if channel.Status != common.ChannelStatusEnabled {
+		return errors.New("internal risk channel is disabled")
+	}
+	for _, modelName := range channel.GetModels() {
+		if strings.TrimSpace(modelName) == provider.Model {
+			return nil
+		}
+	}
+	return fmt.Errorf("internal risk channel does not support model %s", provider.Model)
+}
+
+func createPlatformInternalRiskToken(tx *gorm.DB, provider *RiskProvider) (*Token, error) {
+	var root User
+	if err := tx.Select("id").Where("role = ?", common.RoleRootUser).Order("id asc").First(&root).Error; err != nil {
+		return nil, fmt.Errorf("resolve root user: %w", err)
+	}
+	if root.Id < 1 {
+		return nil, errors.New("root user is required for internal risk provider")
+	}
+	key, err := common.GenerateKey()
+	if err != nil {
+		return nil, fmt.Errorf("generate internal risk token: %w", err)
+	}
+	allowIPs := "127.0.0.1/32\n::1/128"
+	now := common.GetTimestamp()
+	token := &Token{
+		UserId: root.Id, Key: key, Name: fmt.Sprintf("AI 风控内部审核 #%d", provider.Id),
+		Status: common.TokenStatusEnabled, CreatedTime: now, AccessedTime: now, ExpiredTime: -1,
+		UnlimitedQuota: true, ModelLimitsEnabled: true, ModelLimits: provider.Model,
+		AllowIps: &allowIPs, SystemManaged: true,
+	}
+	if err := tx.Create(token).Error; err != nil {
+		return nil, fmt.Errorf("create internal risk token: %w", err)
+	}
+	return token, nil
+}
+
+func IsPlatformInternalRiskTokenID(tokenID int) (bool, error) {
+	_, linked, err := GetPlatformInternalRiskTokenChannelID(tokenID)
+	return linked, err
+}
+
+func GetPlatformInternalRiskTokenChannelID(tokenID int) (int, bool, error) {
+	if tokenID < 1 {
+		return 0, false, nil
+	}
+	var provider RiskProvider
+	if err := DB.Model(&RiskProvider{}).Select("channel_id").
+		Where("provider_type = ? AND internal_token_id = ?", RiskProviderPlatformInternal, tokenID).
+		First(&provider).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, false, nil
+		}
+		return 0, false, fmt.Errorf("check internal risk token: %w", err)
+	}
+	return provider.ChannelID, true, nil
 }
 
 func (provider *RiskProvider) CloudflareAccountID() (string, error) {

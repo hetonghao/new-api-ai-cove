@@ -125,6 +125,28 @@ func TestApplyRelayRiskGate_routes_empty_current_turn_to_processor(t *testing.T)
 	require.Equal(t, 1, processorCalls)
 }
 
+func TestApplyRelayRiskGate_skips_ai_risk_for_authenticated_internal_review_token(t *testing.T) {
+	originalCheckEnabled := setting.CheckSensitiveEnabled
+	setting.CheckSensitiveEnabled = false
+	t.Cleanup(func() { setting.CheckSensitiveEnabled = originalCheckEnabled })
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	common.SetContextKey(ctx, constant.ContextKeyRiskInternalReview, true)
+	processorCalls := 0
+
+	err, directRecord := applyRelayRiskGate(ctx, relayRiskContext{
+		request: &dto.GeneralOpenAIRequest{Messages: []dto.Message{{Role: "user", Content: "review me"}}},
+		info:    &relaycommon.RelayInfo{OriginModelName: "guard-model"},
+	}, func(_ *gin.Context, _ service.RiskObservationJob) service.RiskObservationRelayDecision {
+		processorCalls++
+		return service.RiskObservationRelayDecision{}
+	})
+
+	require.Nil(t, err)
+	require.Nil(t, directRecord)
+	require.Zero(t, processorCalls)
+}
+
 func TestExecuteRelayAttempt_blocks_retry_to_cpa_pro_before_upstream(t *testing.T) {
 	// Given
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())

@@ -28,8 +28,11 @@ type Token struct {
 	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group              string         `json:"group" gorm:"default:''"`
 	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
+	SystemManaged      bool           `json:"-" gorm:"index"`
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
+
+const userManagedTokenCondition = "(system_managed = ? OR system_managed IS NULL)"
 
 func (token *Token) Clean() {
 	token.Key = ""
@@ -81,7 +84,7 @@ func (token *Token) GetIpLimits() []string {
 func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	var tokens []*Token
 	var err error
-	err = DB.Where("user_id = ?", userId).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
+	err = DB.Where("user_id = ?", userId).Where(userManagedTokenCondition, false).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
 	return tokens, err
 }
 
@@ -158,7 +161,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		}
 	}
 
-	baseQuery := DB.Model(&Token{}).Where("user_id = ?", userId)
+	baseQuery := DB.Model(&Token{}).Where("user_id = ?", userId).Where(userManagedTokenCondition, false)
 
 	// 非空才加 LIKE 条件，空则跳过（不过滤该字段）
 	if keyword != "" {
@@ -238,7 +241,7 @@ func GetTokenByIds(id int, userId int) (*Token, error) {
 	}
 	token := Token{Id: id, UserId: userId}
 	var err error = nil
-	err = DB.First(&token, "id = ? and user_id = ?", id, userId).Error
+	err = DB.Where("id = ? and user_id = ?", id, userId).Where(userManagedTokenCondition, false).First(&token).Error
 	return &token, err
 }
 
@@ -279,7 +282,7 @@ func GetTokenByKey(key string, fromDB bool) (token *Token, err error) {
 		// Don't return error - fall through to DB
 	}
 	fromDB = true
-	err = DB.Where(commonKeyCol+" = ?", key).First(&token).Error
+	err = DB.Where(&Token{Key: key}).First(&token).Error
 	return token, err
 }
 
@@ -372,7 +375,7 @@ func DeleteTokenById(id int, userId int) (err error) {
 		return errors.New("id 或 userId 为空！")
 	}
 	token := Token{Id: id, UserId: userId}
-	err = DB.Where(token).First(&token).Error
+	err = DB.Where(token).Where(userManagedTokenCondition, false).First(&token).Error
 	if err != nil {
 		return err
 	}
@@ -442,7 +445,7 @@ func decreaseTokenQuota(id int, quota int) (err error) {
 // CountUserTokens returns total number of tokens for the given user, used for pagination
 func CountUserTokens(userId int) (int64, error) {
 	var total int64
-	err := DB.Model(&Token{}).Where("user_id = ?", userId).Count(&total).Error
+	err := DB.Model(&Token{}).Where("user_id = ?", userId).Where(userManagedTokenCondition, false).Count(&total).Error
 	return total, err
 }
 
@@ -455,12 +458,12 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	tx := DB.Begin()
 
 	var tokens []Token
-	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Find(&tokens).Error; err != nil {
+	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Where(userManagedTokenCondition, false).Find(&tokens).Error; err != nil {
 		tx.Rollback()
 		return 0, err
 	}
 
-	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Delete(&Token{}).Error; err != nil {
+	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Where(userManagedTokenCondition, false).Delete(&Token{}).Error; err != nil {
 		tx.Rollback()
 		return 0, err
 	}
@@ -484,6 +487,7 @@ func GetTokenKeysByIds(ids []int, userId int) ([]Token, error) {
 	var tokens []Token
 	err := DB.Select("id", commonKeyCol).
 		Where("user_id = ? AND id IN (?)", userId, ids).
+		Where(userManagedTokenCondition, false).
 		Find(&tokens).Error
 	return tokens, err
 }

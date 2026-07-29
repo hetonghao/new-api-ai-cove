@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -52,20 +53,122 @@ func setupRiskProviderControllerTest(t *testing.T) *gorm.DB {
 	originalSecret := common.CryptoSecret
 	originalMainType := common.MainDatabaseType()
 	originalLogType := common.LogDatabaseType()
+	originalRedisEnabled := common.RedisEnabled
 	common.CryptoSecret = "risk-provider-controller-key"
+	common.RedisEnabled = false
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB = db
-	require.NoError(t, db.AutoMigrate(&model.RiskProvider{}, &model.RiskRecord{}, &model.RiskRecordGovernance{}))
+	require.NoError(t, db.AutoMigrate(
+		&model.User{}, &model.Channel{}, &model.Token{}, &model.RiskProvider{},
+		&model.RiskRecord{}, &model.RiskRecordGovernance{},
+	))
 	service.InitHttpClient()
 	t.Cleanup(func() {
 		model.DB = originalDB
 		common.CryptoSecret = originalSecret
+		common.RedisEnabled = originalRedisEnabled
 		common.SetDatabaseTypes(originalMainType, originalLogType)
 	})
 	return db
+}
+
+func TestRiskProviderAPIWorkflowManagesPlatformInternalToken(t *testing.T) {
+	db := setupRiskProviderControllerTest(t)
+	root := &model.User{
+		Username: "root", Password: "password", Role: common.RoleRootUser,
+		Status: common.UserStatusEnabled, Group: "default", Quota: 1000000,
+	}
+	require.NoError(t, db.Create(root).Error)
+	require.NoError(t, db.Create(&model.User{
+		Username: "other-root-admin", Password: "password", Role: common.RoleRootUser,
+		Status: common.UserStatusEnabled, Group: "default", Quota: 1000000, AffCode: "other-root-admin",
+	}).Error)
+	channel := &model.Channel{
+		Name: "Internal review", Key: "upstream-key", Status: common.ChannelStatusEnabled,
+		Models: "guard-model,guard-model-v2", Group: "default",
+	}
+	require.NoError(t, db.Create(channel).Error)
+
+	create := callRiskProviderHandler(t, riskProviderTestCall{
+		Method: http.MethodPost, Target: "/api/risk/providers",
+		Body: map[string]any{
+			"name": "Platform review", "provider_type": "platform_internal",
+			"channel_id": channel.Id, "model": "guard-model",
+		},
+		Handler: CreateRiskProvider,
+	})
+	require.True(t, create.Success, create.Message)
+	var created RiskProviderResponse
+	require.NoError(t, common.Unmarshal(create.Data, &created))
+	assert.Equal(t, model.RiskProviderPlatformInternal, created.ProviderType)
+	assert.Equal(t, channel.Id, created.ChannelID)
+	assert.True(t, created.SystemManaged)
+	assert.False(t, created.HasCredential)
+	assert.Empty(t, created.AccountID)
+	assert.NotContains(t, string(create.Data), "token")
+
+	var stored model.RiskProvider
+	require.NoError(t, db.First(&stored, created.Id).Error)
+	require.Positive(t, stored.InternalTokenID)
+	var internalToken model.Token
+	require.NoError(t, db.First(&internalToken, stored.InternalTokenID).Error)
+	assert.Equal(t, root.Id, internalToken.UserId)
+	assert.True(t, internalToken.SystemManaged)
+	assert.True(t, internalToken.UnlimitedQuota)
+	assert.True(t, internalToken.ModelLimitsEnabled)
+	assert.Equal(t, "guard-model", internalToken.ModelLimits)
+	assert.Contains(t, internalToken.Name, "AI 风控内部审核")
+	require.NotNil(t, internalToken.AllowIps)
+	assert.Equal(t, "127.0.0.1/32\n::1/128", *internalToken.AllowIps)
+	visibleTokens, err := model.GetAllUserTokens(root.Id, 0, 100)
+	require.NoError(t, err)
+	assert.Empty(t, visibleTokens)
+	loopback := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assert.Equal(t, "/v1/chat/completions", request.URL.Path)
+		assert.True(t, strings.HasSuffix(request.Header.Get("Authorization"), "-"+strconv.Itoa(channel.Id)))
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"choices":[{"message":{"content":"{\"verdict\":\"safe\",\"categories\":[]}"}}],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}`))
+	}))
+	t.Cleanup(loopback.Close)
+	loopbackURL, err := url.Parse(loopback.URL)
+	require.NoError(t, err)
+	t.Setenv("PORT", loopbackURL.Port())
+
+	validated := callRiskProviderHandler(t, riskProviderTestCall{
+		Method: http.MethodPost, Target: "/api/risk/providers/1/validate", Id: created.Id,
+		Body: map[string]string{"text": "platform internal validation"}, Handler: ValidateRiskProvider,
+	})
+	require.True(t, validated.Success, validated.Message)
+	var validationRecord model.RiskRecord
+	require.NoError(t, db.Take(&validationRecord).Error)
+	assert.Equal(t, channel.Id, validationRecord.ChannelID)
+	assert.Equal(t, model.RiskRecordResultSafe, validationRecord.Result)
+	assert.Equal(t, 8, validationRecord.TotalTokens)
+
+	update := callRiskProviderHandler(t, riskProviderTestCall{
+		Method: http.MethodPut, Target: "/api/risk/providers/1", Id: created.Id,
+		Body: map[string]any{
+			"name": "Platform review", "provider_type": "platform_internal",
+			"channel_id": channel.Id, "model": "guard-model-v2",
+			"timeout_ms": 900, "failure_threshold": 6, "cooldown_seconds": 31,
+		},
+		Handler: UpdateRiskProvider,
+	})
+	require.True(t, update.Success, update.Message)
+	require.NoError(t, db.First(&internalToken, stored.InternalTokenID).Error)
+	assert.Equal(t, "guard-model-v2", internalToken.ModelLimits)
+	assert.Equal(t, common.TokenStatusEnabled, internalToken.Status)
+
+	deleted := callRiskProviderHandler(t, riskProviderTestCall{
+		Method: http.MethodDelete, Target: "/api/risk/providers/1", Id: created.Id,
+		Handler: DeleteRiskProvider,
+	})
+	require.True(t, deleted.Success, deleted.Message)
+	require.NoError(t, db.First(&internalToken, stored.InternalTokenID).Error)
+	assert.Equal(t, common.TokenStatusDisabled, internalToken.Status)
 }
 
 func TestValidateRiskProvider_mapsDeadlineExceededToActionableMessage(t *testing.T) {

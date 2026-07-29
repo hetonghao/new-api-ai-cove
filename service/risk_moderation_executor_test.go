@@ -68,7 +68,7 @@ func TestRiskModerationPolicyVersion_changesWithVerdictSemanticsOnly(t *testing.
 	require.NoError(t, err)
 
 	// Then
-	assert.Equal(t, "b809a77cb70e96f73c4ea9aba517ff32738a794a2c6f1dc6210064ffbe8caead", version)
+	assert.Equal(t, "5bacd8df8a19652e4b0a7ffcf89242f6fca5a1c2df574a8eff50ab210f96d978", version)
 	assert.NotEqual(t, version, modelVersion)
 	assert.NotEqual(t, version, accountVersion)
 	assert.NotEqual(t, version, identityVersion)

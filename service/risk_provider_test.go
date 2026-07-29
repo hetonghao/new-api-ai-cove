@@ -3,21 +3,144 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 type riskProviderRoundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn riskProviderRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return fn(request)
+}
+
+func setupPlatformInternalRiskProviderTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	originalRedisEnabled := common.RedisEnabled
+	common.RedisEnabled = false
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Channel{}, &model.Token{}, &model.RiskProvider{}))
+	t.Cleanup(func() {
+		common.RedisEnabled = originalRedisEnabled
+		sqlDB, err := db.DB()
+		if err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	return db
+}
+
+func createPlatformInternalRiskProviderFixture(t *testing.T, db *gorm.DB) (*model.RiskProvider, *model.Token) {
+	t.Helper()
+	root := &model.User{
+		Username: "root", Password: "password", Role: common.RoleRootUser,
+		Status: common.UserStatusEnabled, Group: "default", Quota: 1000000,
+	}
+	require.NoError(t, db.Create(root).Error)
+	channel := &model.Channel{
+		Name: "Internal review", Key: "upstream-key", Status: common.ChannelStatusEnabled,
+		Models: "guard-model", Group: "default",
+	}
+	require.NoError(t, db.Create(channel).Error)
+	provider := &model.RiskProvider{
+		Name: "Platform review", ProviderType: model.RiskProviderPlatformInternal,
+		ChannelID: channel.Id, Model: "guard-model",
+	}
+	require.NoError(t, model.CreateRiskProvider(provider))
+	var token model.Token
+	require.NoError(t, db.First(&token, provider.InternalTokenID).Error)
+	return provider, &token
+}
+
+func TestReviewRiskContentMapsPlatformInternalChatCompletion(t *testing.T) {
+	originalDB := model.DB
+	t.Setenv("PORT", "34567")
+	t.Cleanup(func() { model.DB = originalDB })
+	db := setupPlatformInternalRiskProviderTestDB(t)
+	provider, token := createPlatformInternalRiskProviderFixture(t, db)
+
+	originalClient := platformInternalRiskHTTPClient
+	platformInternalRiskHTTPClient = &http.Client{Transport: riskProviderRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		assert.Equal(t, "http://127.0.0.1:34567/v1/chat/completions", request.URL.String())
+		assert.Equal(t, "Bearer sk-"+token.Key+"-"+strconv.Itoa(provider.ChannelID), request.Header.Get("Authorization"))
+		body, err := io.ReadAll(request.Body)
+		require.NoError(t, err)
+		assert.Contains(t, string(body), `"stream":false`)
+		assert.Contains(t, string(body), `"temperature":0`)
+		assert.Contains(t, string(body), "connection test")
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"choices":[{"message":{"content":"{\"verdict\":\"unsafe\",\"categories\":[\"S1\"]}"}}],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18}}`,
+			)),
+		}, nil
+	})}
+	t.Cleanup(func() { platformInternalRiskHTTPClient = originalClient })
+
+	result, err := ReviewRiskContent(context.Background(), provider, "connection test")
+	require.NoError(t, err)
+	assert.Equal(t, RiskReviewUnsafe, result.Status)
+	assert.Equal(t, []string{"S1"}, result.Categories)
+	assert.Equal(t, RiskReviewUsage{PromptTokens: 11, CompletionTokens: 7, TotalTokens: 18}, result.Usage)
+}
+
+func TestReviewRiskContentRejectsInvalidPlatformInternalVerdict(t *testing.T) {
+	originalDB := model.DB
+	t.Cleanup(func() { model.DB = originalDB })
+	db := setupPlatformInternalRiskProviderTestDB(t)
+	provider, _ := createPlatformInternalRiskProviderFixture(t, db)
+	originalClient := platformInternalRiskHTTPClient
+	platformInternalRiskHTTPClient = &http.Client{Transport: riskProviderRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(
+				`{"choices":[{"message":{"content":"{\"verdict\":\"maybe\",\"categories\":[]}"}}]}`,
+			)),
+		}, nil
+	})}
+	t.Cleanup(func() { platformInternalRiskHTTPClient = originalClient })
+
+	_, err := ReviewRiskContent(context.Background(), provider, "connection test")
+	require.Error(t, err)
+	code, detail := RiskObservationErrorInfo(err)
+	assert.Equal(t, riskObservationProviderError, code)
+	assert.Equal(t, "Platform internal model returned an invalid moderation verdict", detail)
+}
+
+func TestParsePlatformInternalRiskResultRejectsUppercaseVerdict(t *testing.T) {
+	// Given
+	content := `{"verdict":"SAFE","categories":[]}`
+
+	// When
+	_, err := parsePlatformInternalRiskResult(content)
+
+	// Then
+	require.Error(t, err)
+}
+
+func TestParsePlatformInternalRiskResultRejectsPaddedVerdict(t *testing.T) {
+	// Given
+	content := `{"verdict":" safe ","categories":[]}`
+
+	// When
+	_, err := parsePlatformInternalRiskResult(content)
+
+	// Then
+	require.Error(t, err)
 }
 
 func riskProviderTestProvider(t *testing.T) *model.RiskProvider {

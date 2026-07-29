@@ -225,7 +225,7 @@ export function RiskProviders() {
         onOpenChange={(open) => !open && setDeletingProvider(null)}
         title={t('Delete provider')}
         desc={t(
-          'This removes the provider configuration. The encrypted credential cannot be recovered.'
+          'This removes the provider configuration and disables its system-managed token when present.'
         )}
         destructive
         isLoading={pendingAction === 'delete'}

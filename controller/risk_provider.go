@@ -21,8 +21,10 @@ type RiskProviderResponse struct {
 	Name             string                 `json:"name"`
 	ProviderType     model.RiskProviderType `json:"provider_type"`
 	AccountID        string                 `json:"account_id"`
+	ChannelID        int                    `json:"channel_id"`
 	Model            string                 `json:"model"`
 	HasCredential    bool                   `json:"has_credential"`
+	SystemManaged    bool                   `json:"system_managed"`
 	TimeoutMs        int                    `json:"timeout_ms"`
 	FailureThreshold int                    `json:"failure_threshold"`
 	CooldownSeconds  int                    `json:"cooldown_seconds"`
@@ -34,8 +36,9 @@ type RiskProviderResponse struct {
 
 type riskProviderRequest struct {
 	Name             string                 `json:"name" binding:"required"`
-	ProviderType     model.RiskProviderType `json:"provider_type" binding:"required,oneof=cloudflare"`
-	AccountID        string                 `json:"account_id" binding:"required"`
+	ProviderType     model.RiskProviderType `json:"provider_type" binding:"required,oneof=cloudflare platform_internal"`
+	AccountID        string                 `json:"account_id"`
+	ChannelID        int                    `json:"channel_id"`
 	Model            string                 `json:"model" binding:"required"`
 	Credential       string                 `json:"credential"`
 	TimeoutMs        int                    `json:"timeout_ms" binding:"omitempty,gte=1,lte=60000"`
@@ -64,17 +67,23 @@ func ListRiskProviders(c *gin.Context) {
 
 func CreateRiskProvider(c *gin.Context) {
 	var request riskProviderRequest
-	if err := c.ShouldBindJSON(&request); err != nil || request.Credential == "" {
+	if err := c.ShouldBindJSON(&request); err != nil ||
+		(request.ProviderType == model.RiskProviderCloudflare && request.Credential == "") {
 		common.ApiErrorMsg(c, "无效的供应商配置")
 		return
 	}
-	ciphertext, err := common.EncryptCredential(request.Credential)
-	if err != nil {
-		common.ApiError(c, err)
-		return
+	ciphertext := ""
+	if request.ProviderType == model.RiskProviderCloudflare {
+		var err error
+		ciphertext, err = common.EncryptCredential(request.Credential)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	provider := &model.RiskProvider{
-		Name: request.Name, ProviderType: request.ProviderType, AccountID: request.AccountID, Model: request.Model,
+		Name: request.Name, ProviderType: request.ProviderType, AccountID: request.AccountID,
+		ChannelID: request.ChannelID, Model: request.Model,
 		CredentialEncrypted: ciphertext, TimeoutMs: request.TimeoutMs, FailureThreshold: request.FailureThreshold,
 		CooldownSeconds: request.CooldownSeconds,
 	}
@@ -100,19 +109,24 @@ func UpdateRiskProvider(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	currentAccountID, _ := provider.CloudflareAccountID()
-	connectionChanged := provider.ProviderType != request.ProviderType ||
-		currentAccountID != strings.ToLower(strings.TrimSpace(request.AccountID)) ||
-		provider.Model != strings.TrimSpace(request.Model) ||
-		request.Credential != ""
+	connectionChanged := provider.ProviderType != request.ProviderType || provider.Model != strings.TrimSpace(request.Model)
+	if provider.ProviderType == model.RiskProviderCloudflare && request.ProviderType == model.RiskProviderCloudflare {
+		currentAccountID, _ := provider.CloudflareAccountID()
+		connectionChanged = connectionChanged ||
+			currentAccountID != strings.ToLower(strings.TrimSpace(request.AccountID)) || request.Credential != ""
+	}
+	if provider.ProviderType == model.RiskProviderPlatformInternal && request.ProviderType == model.RiskProviderPlatformInternal {
+		connectionChanged = connectionChanged || provider.ChannelID != request.ChannelID
+	}
 	provider.Name = request.Name
 	provider.ProviderType = request.ProviderType
 	provider.AccountID = request.AccountID
+	provider.ChannelID = request.ChannelID
 	provider.Model = request.Model
 	provider.TimeoutMs = request.TimeoutMs
 	provider.FailureThreshold = request.FailureThreshold
 	provider.CooldownSeconds = request.CooldownSeconds
-	if request.Credential != "" {
+	if request.ProviderType == model.RiskProviderCloudflare && request.Credential != "" {
 		provider.CredentialEncrypted, err = common.EncryptCredential(request.Credential)
 		if err != nil {
 			common.ApiError(c, err)
@@ -216,7 +230,7 @@ func riskProviderValidationRecordInput(
 		neurons = 0
 	}
 	return model.RiskRecordInput{
-		RequestID: requestID, UserID: c.GetInt("id"), Model: provider.Model,
+		RequestID: requestID, ChannelID: provider.ChannelID, UserID: c.GetInt("id"), Model: provider.Model,
 		ProviderID: provider.Id, ProviderName: provider.Name,
 		Result: recordResult, Categories: append([]string(nil), result.Categories...),
 		LatencyMS:    time.Since(startedAt).Milliseconds(),
@@ -258,10 +272,15 @@ func parseRiskProviderID(c *gin.Context) (int, bool) {
 }
 
 func toRiskProviderResponse(provider *model.RiskProvider) RiskProviderResponse {
-	accountID, _ := provider.CloudflareAccountID()
+	accountID := ""
+	if provider.ProviderType == model.RiskProviderCloudflare {
+		accountID, _ = provider.CloudflareAccountID()
+	}
 	return RiskProviderResponse{
 		Id: provider.Id, Name: provider.Name, ProviderType: provider.ProviderType, Model: provider.Model,
-		AccountID: accountID, HasCredential: provider.CredentialEncrypted != "", TimeoutMs: provider.TimeoutMs,
+		AccountID: accountID, ChannelID: provider.ChannelID, HasCredential: provider.CredentialEncrypted != "",
+		SystemManaged:    provider.ProviderType == model.RiskProviderPlatformInternal && provider.InternalTokenID > 0,
+		TimeoutMs:        provider.TimeoutMs,
 		FailureThreshold: provider.FailureThreshold, CooldownSeconds: provider.CooldownSeconds,
 		ValidatedAt: provider.ValidatedAt, Active: provider.Active, CreatedAt: provider.CreatedAt, UpdatedAt: provider.UpdatedAt,
 	}

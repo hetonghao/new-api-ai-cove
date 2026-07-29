@@ -83,14 +83,26 @@ func RiskModerationPolicyVersion(input RiskModerationInput) (string, error) {
 		return "", err
 	}
 	provider := input.Provider
-	accountID, err := provider.CloudflareAccountID()
-	if err != nil {
-		return "", fmt.Errorf("resolve risk provider account ID: %w", err)
+	accountID := ""
+	channelID := 0
+	promptSemantics := riskModerationPromptSemantics
+	switch provider.ProviderType {
+	case model.RiskProviderCloudflare:
+		accountID, err = provider.CloudflareAccountID()
+		if err != nil {
+			return "", fmt.Errorf("resolve risk provider account ID: %w", err)
+		}
+	case model.RiskProviderPlatformInternal:
+		channelID = provider.ChannelID
+		promptSemantics = platformInternalRiskPromptSemantics
+	default:
+		return "", fmt.Errorf("%w: provider type", ErrInvalidRiskModerationInput)
 	}
 	material, err := common.Marshal(struct {
 		ProviderID              int                    `json:"provider_id"`
 		ProviderType            model.RiskProviderType `json:"provider_type"`
 		AccountID               string                 `json:"account_id"`
+		ChannelID               int                    `json:"channel_id"`
 		Model                   string                 `json:"model"`
 		ReviewMode              model.RiskReviewMode   `json:"review_mode"`
 		ChunkLimit              int                    `json:"chunk_limit"`
@@ -98,9 +110,9 @@ func RiskModerationPolicyVersion(input RiskModerationInput) (string, error) {
 		ClassificationSemantics string                 `json:"classification_semantics"`
 	}{
 		ProviderID: provider.Id, ProviderType: provider.ProviderType,
-		AccountID: accountID, Model: provider.Model,
+		AccountID: accountID, ChannelID: channelID, Model: provider.Model,
 		ReviewMode: input.ReviewMode, ChunkLimit: chunkLimit,
-		PromptSemantics:         riskModerationPromptSemantics,
+		PromptSemantics:         promptSemantics,
 		ClassificationSemantics: riskModerationClassificationSemantics,
 	})
 	if err != nil {
@@ -117,7 +129,8 @@ func riskModerationChunkLimit(input RiskModerationInput) (int, error) {
 		if input.FullReviewChunkRunes > 0 {
 			return input.FullReviewChunkRunes, nil
 		}
-		if input.FullReviewChunkRunes < 0 || input.Provider == nil || input.Provider.ProviderType != model.RiskProviderCloudflare {
+		if input.FullReviewChunkRunes < 0 || input.Provider == nil ||
+			(input.Provider.ProviderType != model.RiskProviderCloudflare && input.Provider.ProviderType != model.RiskProviderPlatformInternal) {
 			return 0, fmt.Errorf("%w: full review chunk limit", ErrInvalidRiskModerationInput)
 		}
 		return RiskModerationCloudflareFullReviewChunkRunes, nil

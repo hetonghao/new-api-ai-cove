@@ -38,6 +38,9 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		if (!ok || common.GetContextKeyBool(c, constant.ContextKeyRiskInternalReview)) && !validateTokenModelAccess(c, modelRequest.Model) {
+			return
+		}
 		if ok {
 			id, err := strconv.Atoi(channelId.(string))
 			if err != nil {
@@ -55,27 +58,6 @@ func Distribute() func(c *gin.Context) {
 			}
 		} else {
 			// Select a channel for the user
-			// check token model mapping
-			modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
-			if modelLimitEnable {
-				s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
-				if !ok {
-					// token model limit is empty, all models are not allowed
-					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenNoModelAccess))
-					return
-				}
-				var tokenModelLimit map[string]bool
-				tokenModelLimit, ok = s.(map[string]bool)
-				if !ok {
-					tokenModelLimit = map[string]bool{}
-				}
-				matchName := ratio_setting.FormatMatchingModelName(modelRequest.Model) // match gpts & thinking-*
-				if _, ok := tokenModelLimit[matchName]; !ok {
-					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelRequest.Model}))
-					return
-				}
-			}
-
 			if shouldSelectChannel {
 				if modelRequest.Model == "" {
 					abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorModelNameRequired))
@@ -167,6 +149,30 @@ func Distribute() func(c *gin.Context) {
 			service.RecordChannelAffinity(c, channel.Id)
 		}
 	}
+}
+
+func validateTokenModelAccess(c *gin.Context, modelName string) bool {
+	if !common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled) {
+		return true
+	}
+	value, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
+	if !ok {
+		abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenNoModelAccess))
+		return false
+	}
+	tokenModelLimit, ok := value.(map[string]bool)
+	if !ok {
+		tokenModelLimit = map[string]bool{}
+	}
+	if _, ok := tokenModelLimit[modelName]; ok {
+		return true
+	}
+	matchName := ratio_setting.FormatMatchingModelName(modelName)
+	if _, ok := tokenModelLimit[matchName]; ok {
+		return true
+	}
+	abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelName}))
+	return false
 }
 
 // channelSupportsRequestPath reports whether a channel can serve the request path.

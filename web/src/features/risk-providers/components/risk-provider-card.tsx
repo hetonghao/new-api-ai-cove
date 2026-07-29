@@ -48,7 +48,9 @@ export function RiskProviderCard(props: RiskProviderCardProps) {
               {provider.name}
             </CardTitle>
             <p className='text-muted-foreground text-xs'>
-              Cloudflare Workers AI
+              {provider.provider_type === 'platform_internal'
+                ? t('Platform internal model')
+                : 'Cloudflare Workers AI'}
             </p>
           </div>
           <div className='flex flex-wrap gap-1.5'>
@@ -56,13 +58,23 @@ export function RiskProviderCard(props: RiskProviderCardProps) {
             <Badge variant={provider.validated_at ? 'secondary' : 'outline'}>
               {provider.validated_at ? t('Verified') : t('Not verified')}
             </Badge>
-            <Badge
-              variant={provider.has_credential ? 'secondary' : 'destructive'}
-            >
-              {provider.has_credential
-                ? t('Credential configured')
-                : t('Credential missing')}
-            </Badge>
+            {provider.provider_type === 'platform_internal' ? (
+              <Badge
+                variant={provider.system_managed ? 'secondary' : 'destructive'}
+              >
+                {provider.system_managed
+                  ? t('System token managed')
+                  : t('System token unavailable')}
+              </Badge>
+            ) : (
+              <Badge
+                variant={provider.has_credential ? 'secondary' : 'destructive'}
+              >
+                {provider.has_credential
+                  ? t('Credential configured')
+                  : t('Credential missing')}
+              </Badge>
+            )}
           </div>
         </div>
       </CardHeader>
@@ -74,15 +86,28 @@ export function RiskProviderCard(props: RiskProviderCardProps) {
               {provider.model}
             </dd>
           </div>
-          <div className='min-w-0'>
-            <dt className='text-muted-foreground text-xs'>{t('Account ID')}</dt>
-            <dd
-              className='truncate font-mono text-xs'
-              title={provider.account_id}
-            >
-              {provider.account_id}
-            </dd>
-          </div>
+          {provider.provider_type === 'platform_internal' ? (
+            <div className='min-w-0'>
+              <dt className='text-muted-foreground text-xs'>
+                {t('Platform channel')}
+              </dt>
+              <dd className='truncate font-mono text-xs'>
+                #{provider.channel_id}
+              </dd>
+            </div>
+          ) : (
+            <div className='min-w-0'>
+              <dt className='text-muted-foreground text-xs'>
+                {t('Account ID')}
+              </dt>
+              <dd
+                className='truncate font-mono text-xs'
+                title={provider.account_id}
+              >
+                {provider.account_id}
+              </dd>
+            </div>
+          )}
           <div>
             <dt className='text-muted-foreground text-xs'>
               {t('Review timeout')}

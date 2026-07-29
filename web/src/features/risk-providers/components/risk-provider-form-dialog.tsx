@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { FormProvider, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -32,6 +33,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { FieldError } from '@/components/ui/field'
+import { getRiskPolicyChannels } from '@/features/risk-policy/api'
 
 import { createRiskProvider, updateRiskProvider } from '../api'
 import {
@@ -58,6 +60,16 @@ export function RiskProviderFormDialog(props: RiskProviderFormDialogProps) {
     resolver: zodResolver(getRiskProviderFormSchema(t, credentialRequired)),
     defaultValues: RISK_PROVIDER_DEFAULT_VALUES,
   })
+  const channelsQuery = useQuery({
+    queryKey: ['risk', 'provider-form', 'channels'],
+    queryFn: getRiskPolicyChannels,
+    enabled: props.open,
+    retry: false,
+  })
+  const enabledChannels = (channelsQuery.data ?? []).filter(
+    (channel) => channel.status === 1
+  )
+  const providerType = form.watch('provider_type')
 
   useEffect(() => {
     if (!props.open) return
@@ -104,9 +116,13 @@ export function RiskProviderFormDialog(props: RiskProviderFormDialogProps) {
             {props.provider ? t('Edit provider') : t('Add provider')}
           </DialogTitle>
           <DialogDescription>
-            {t(
-              'Credentials are encrypted by the server and are never returned to this page.'
-            )}
+            {providerType === 'cloudflare'
+              ? t(
+                  'Credentials are encrypted by the server and are never returned to this page.'
+                )
+              : t(
+                  'Internal review calls this New API instance through 127.0.0.1.'
+                )}
           </DialogDescription>
         </DialogHeader>
         <FormProvider {...form}>
@@ -117,6 +133,9 @@ export function RiskProviderFormDialog(props: RiskProviderFormDialogProps) {
             <div className='min-h-0 overflow-y-auto pr-1'>
               <RiskProviderFormFields
                 hasCredential={Boolean(props.provider?.has_credential)}
+                channels={enabledChannels}
+                channelsLoading={channelsQuery.isLoading}
+                channelsError={channelsQuery.isError}
               />
               <FieldError errors={[form.formState.errors.root?.server]} />
             </div>

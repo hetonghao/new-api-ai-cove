@@ -130,7 +130,6 @@ func RecordRiskObservation(ctx context.Context, input RiskRecordInput) error {
 }
 
 func RecordRiskProviderValidation(ctx context.Context, input RiskRecordInput) error {
-	input.ChannelID = 0
 	input.Path = riskProviderValidationPath
 	record, err := newRiskRecord(input)
 	if err != nil {
