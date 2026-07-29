@@ -25,6 +25,7 @@ import type { RiskProvider, RiskProviderFormValues } from '../types'
 import {
   canActivateProvider,
   formValuesToPayload,
+  getChannelModelOptions,
   getRiskProviderFormSchema,
   getRiskProviderServerFormError,
 } from './risk-provider-form.ts'
@@ -63,6 +64,20 @@ function provider(overrides: Partial<RiskProvider> = {}): RiskProvider {
 }
 
 describe('risk provider form behavior', () => {
+  test('lists unique models from the selected platform channel', () => {
+    // Given two channels whose model lists include whitespace and duplicates
+    const channels = [
+      { id: 24, models: 'guard-b, guard-a, guard-b, ,' },
+      { id: 25, models: 'other-model' },
+    ]
+
+    // When the internal provider selects channel 24
+    const models = getChannelModelOptions(channels, 24)
+
+    // Then only that channel's normalized models are offered in config order
+    assert.deepEqual(models, ['guard-b', 'guard-a'])
+  })
+
   test('omits a blank credential when editing a configured provider', () => {
     // Given a provider edit form whose masked credential input was untouched
     // When the form is converted to the API payload

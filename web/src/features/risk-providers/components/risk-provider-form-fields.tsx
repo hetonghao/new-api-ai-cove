@@ -31,6 +31,7 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import type { Channel } from '@/features/channels/types'
 
 import type { RiskProviderFormValues } from '../types'
+import { RiskProviderModelField } from './risk-provider-model-field'
 
 type RiskProviderFormFieldsProps = {
   readonly hasCredential: boolean
@@ -129,15 +130,7 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
           <FieldError errors={[errors.channel_id]} />
         </Field>
       )}
-      <Field className='sm:col-span-2' data-invalid={Boolean(errors.model)}>
-        <FieldLabel htmlFor='risk-provider-model'>{t('Model')}</FieldLabel>
-        <Input
-          id='risk-provider-model'
-          aria-invalid={Boolean(errors.model)}
-          {...form.register('model')}
-        />
-        <FieldError errors={[errors.model]} />
-      </Field>
+      <RiskProviderModelField channels={props.channels} />
       {providerType === 'cloudflare' ? (
         <Field
           className='sm:col-span-2'

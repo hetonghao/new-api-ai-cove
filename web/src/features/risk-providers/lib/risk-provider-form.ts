@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import type { TFunction } from 'i18next'
 import { z } from 'zod'
 
+import type { Channel } from '@/features/channels/types'
+
 import type {
   RiskProvider,
   RiskProviderFormValues,
@@ -43,6 +45,17 @@ export const RISK_PROVIDER_DEFAULT_VALUES: RiskProviderFormValues = {
   timeout_ms: 800,
   failure_threshold: 5,
   cooldown_seconds: 30,
+}
+
+export function getChannelModelOptions(
+  channels: readonly Pick<Channel, 'id' | 'models'>[],
+  channelId: number | null
+): readonly string[] {
+  const models = channels.find((channel) => channel.id === channelId)?.models
+  if (!models) return []
+  return [...new Set(models.split(',').map((model) => model.trim()))].filter(
+    Boolean
+  )
 }
 
 export function getRiskProviderFormSchema(
