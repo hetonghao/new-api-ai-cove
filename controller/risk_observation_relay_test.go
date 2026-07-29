@@ -162,6 +162,41 @@ func TestExecuteRelayAttempt_blocks_retry_to_cpa_pro_before_upstream(t *testing.
 	require.Equal(t, []string{"upstream:Standard", "review:CPA Pro"}, events)
 }
 
+func TestExecuteRelayAttempt_keeps_original_gemini_model_across_mutating_retry(t *testing.T) {
+	// Given
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-flash:generateContent", nil)
+	originalModel := "gemini-2.5-flash"
+	adaptedModel := originalModel + "-nothinking"
+	info := &relaycommon.RelayInfo{OriginModelName: originalModel}
+	risk := relayRiskContext{request: &dto.GeminiChatRequest{}, info: info, originalModel: originalModel}
+	originalExclusionMatches := 0
+	adaptedExclusionMatches := 0
+	process := func(_ *gin.Context, job service.RiskObservationJob) service.RiskObservationRelayDecision {
+		if job.Model == originalModel {
+			originalExclusionMatches++
+		}
+		if job.Model == adaptedModel {
+			adaptedExclusionMatches++
+		}
+		return service.RiskObservationRelayDecision{}
+	}
+
+	// When
+	firstErr := executeRelayAttempt(ctx, risk, relayAttemptRiskGate{process: process}, func() *types.NewAPIError {
+		info.OriginModelName = adaptedModel
+		return types.NewError(errors.New("retryable upstream failure"), types.ErrorCodeBadResponse)
+	})
+	secondErr := executeRelayAttempt(ctx, risk, relayAttemptRiskGate{process: process}, func() *types.NewAPIError {
+		return nil
+	})
+
+	// Then
+	require.NotNil(t, firstErr)
+	require.Nil(t, secondErr)
+	require.Equal(t, []int{2, 0}, []int{originalExclusionMatches, adaptedExclusionMatches})
+}
+
 func TestExecuteRelayAttempt_records_direct_fallback_after_upstream(t *testing.T) {
 	// Given
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())

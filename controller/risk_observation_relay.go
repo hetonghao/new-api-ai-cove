@@ -19,9 +19,10 @@ import (
 )
 
 type relayRiskContext struct {
-	request dto.Request
-	info    *relaycommon.RelayInfo
-	meta    *types.TokenCountMeta
+	request       dto.Request
+	info          *relaycommon.RelayInfo
+	meta          *types.TokenCountMeta
+	originalModel string
 }
 
 type relayRiskProcessor func(*gin.Context, service.RiskObservationJob) service.RiskObservationRelayDecision
@@ -53,13 +54,17 @@ func applyRelayRiskGate(c *gin.Context, risk relayRiskContext, process relayRisk
 	if risk.info == nil || process == nil {
 		return nil, nil
 	}
+	modelName := risk.originalModel
+	if modelName == "" {
+		modelName = risk.info.OriginModelName
+	}
 	decision := process(c, service.RiskObservationJob{
 		RequestID:   c.GetString(common.RequestIdKey),
 		ChannelID:   common.GetContextKeyInt(c, constant.ContextKeyChannelId),
 		ChannelName: common.GetContextKeyString(c, constant.ContextKeyChannelName),
 		UserID:      c.GetInt("id"),
 		TokenID:     c.GetInt("token_id"),
-		Model:       risk.info.OriginModelName,
+		Model:       modelName,
 		Path:        c.Request.URL.Path,
 		Text:        text,
 	})

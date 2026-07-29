@@ -225,7 +225,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
-		newAPIError = executeRelayAttempt(c, relayRiskContext{request: request, info: relayInfo}, relayAttemptRiskGate{
+		newAPIError = executeRelayAttempt(c, relayRiskContext{request: request, info: relayInfo, originalModel: retryParam.ModelName}, relayAttemptRiskGate{
 			process: func(c *gin.Context, job service.RiskObservationJob) service.RiskObservationRelayDecision {
 				return service.ProcessRiskObservationForRelay(c.Request.Context(), job)
 			},
