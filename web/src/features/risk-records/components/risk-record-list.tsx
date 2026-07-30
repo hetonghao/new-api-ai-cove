@@ -35,6 +35,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import type { RiskProvider } from '@/features/risk-providers/types'
 import { UserInfoDialog } from '@/features/usage-logs/components/dialogs/user-info-dialog'
+import { cn } from '@/lib/utils'
 
 import { listRiskRecords } from '../api'
 import { createDefaultRiskRecordFilterDraft } from '../lib/default-filter'
@@ -132,6 +133,7 @@ export function RiskRecordList(props: RiskRecordListProps) {
     retry: false,
   })
   const records = [...(recordsQuery.data?.items ?? [])]
+  const isFetchingOnly = recordsQuery.isFetching && !recordsQuery.isLoading
   const { table } = useDataTable<RiskRecord>({
     data: records,
     columns: PAGINATION_COLUMNS,
@@ -197,7 +199,14 @@ export function RiskRecordList(props: RiskRecordListProps) {
           providers={props.providers}
           usernameOverride={usernameOverride}
         />
-        <div className='min-h-0 flex-1 overflow-y-auto'>{content}</div>
+        <div
+          className={cn(
+            'min-h-0 flex-1 overflow-y-auto transition-opacity duration-150',
+            isFetchingOnly && 'pointer-events-none opacity-60'
+          )}
+        >
+          {content}
+        </div>
       </div>
       <PageFooterPortal>
         <DataTablePagination table={table} />

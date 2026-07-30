@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -184,7 +184,8 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
           {t('Reset')}
         </Button>
         <Button type='submit' size='sm' disabled={props.disabled}>
-          {t('Run query')}
+          {props.disabled && <Loader2 className='animate-spin' />}
+          {t('Search')}
         </Button>
       </div>
     </form>
