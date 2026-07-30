@@ -18,7 +18,9 @@ const (
 	RiskContentSaveUnsafe RiskContentSaveScope = "unsafe"
 	RiskContentSaveNone   RiskContentSaveScope = "none"
 
-	riskRecordGovernanceID = 1
+	riskRecordGovernanceID        = 1
+	RiskRecordPreviewCharsDefault = 200
+	RiskRecordPreviewCharsMin     = 50
 )
 
 var ErrInvalidRiskRecordGovernance = errors.New("invalid risk record governance")
@@ -28,12 +30,14 @@ type RiskRecordGovernance struct {
 	SaveScope        RiskRecordSaveScope  `json:"save_scope" gorm:"type:varchar(16);not null"`
 	ContentSaveScope RiskContentSaveScope `json:"content_save_scope" gorm:"type:varchar(16);not null;default:all"`
 	RetentionDays    int                  `json:"retention_days" gorm:"not null"`
+	PreviewChars     int                  `json:"preview_chars" gorm:"not null;default:200"`
 }
 
 type RiskRecordGovernanceInput struct {
 	SaveScope        RiskRecordSaveScope
 	ContentSaveScope RiskContentSaveScope
 	RetentionDays    int
+	PreviewChars     int
 }
 
 func (RiskRecordGovernance) TableName() string {
@@ -43,7 +47,7 @@ func (RiskRecordGovernance) TableName() string {
 func GetRiskRecordGovernance(ctx context.Context) (RiskRecordGovernance, error) {
 	governance := RiskRecordGovernance{
 		Id: riskRecordGovernanceID, SaveScope: RiskRecordSaveAll,
-		ContentSaveScope: RiskContentSaveAll, RetentionDays: 30,
+		ContentSaveScope: RiskContentSaveAll, RetentionDays: 30, PreviewChars: RiskRecordPreviewCharsDefault,
 	}
 	query := DB.WithContext(ctx).Where("id = ?", riskRecordGovernanceID).Limit(1).Find(&governance)
 	if query.Error != nil {
@@ -52,19 +56,23 @@ func GetRiskRecordGovernance(ctx context.Context) (RiskRecordGovernance, error) 
 	if query.RowsAffected == 0 {
 		return governance, nil
 	}
-	if err := validateRiskRecordGovernance(governance.SaveScope, governance.ContentSaveScope, governance.RetentionDays); err != nil {
+	if err := validateRiskRecordGovernance(governance.SaveScope, governance.ContentSaveScope, governance.RetentionDays, governance.PreviewChars); err != nil {
 		return RiskRecordGovernance{}, err
 	}
 	return governance, nil
 }
 
 func SaveRiskRecordGovernance(ctx context.Context, input RiskRecordGovernanceInput) (RiskRecordGovernance, error) {
-	if err := validateRiskRecordGovernance(input.SaveScope, input.ContentSaveScope, input.RetentionDays); err != nil {
+	if input.PreviewChars == 0 {
+		input.PreviewChars = RiskRecordPreviewCharsDefault
+	}
+	if err := validateRiskRecordGovernance(input.SaveScope, input.ContentSaveScope, input.RetentionDays, input.PreviewChars); err != nil {
 		return RiskRecordGovernance{}, err
 	}
 	governance := RiskRecordGovernance{Id: riskRecordGovernanceID}
 	values := RiskRecordGovernance{
-		SaveScope: input.SaveScope, ContentSaveScope: input.ContentSaveScope, RetentionDays: input.RetentionDays,
+		SaveScope: input.SaveScope, ContentSaveScope: input.ContentSaveScope,
+		RetentionDays: input.RetentionDays, PreviewChars: input.PreviewChars,
 	}
 	if err := DB.WithContext(ctx).Where("id = ?", riskRecordGovernanceID).Assign(values).FirstOrCreate(&governance).Error; err != nil {
 		return RiskRecordGovernance{}, fmt.Errorf("save risk record governance: %w", err)
@@ -72,7 +80,7 @@ func SaveRiskRecordGovernance(ctx context.Context, input RiskRecordGovernanceInp
 	return governance, nil
 }
 
-func validateRiskRecordGovernance(scope RiskRecordSaveScope, contentScope RiskContentSaveScope, retentionDays int) error {
+func validateRiskRecordGovernance(scope RiskRecordSaveScope, contentScope RiskContentSaveScope, retentionDays int, previewChars int) error {
 	switch scope {
 	case RiskRecordSaveAll, RiskRecordSaveSuspicious, RiskRecordSaveUnsafe:
 	default:
@@ -84,6 +92,9 @@ func validateRiskRecordGovernance(scope RiskRecordSaveScope, contentScope RiskCo
 		return ErrInvalidRiskRecordGovernance
 	}
 	if retentionDays < 1 || retentionDays > 180 {
+		return ErrInvalidRiskRecordGovernance
+	}
+	if previewChars < RiskRecordPreviewCharsMin {
 		return ErrInvalidRiskRecordGovernance
 	}
 	return nil

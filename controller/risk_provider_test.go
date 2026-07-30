@@ -202,6 +202,7 @@ func TestValidateRiskProvider_mapsDeadlineExceededToActionableMessage(t *testing
 	require.NoError(t, db.Take(&record).Error)
 	assert.Equal(t, provider.Id, record.ProviderID)
 	assert.Equal(t, provider.Name, record.ProviderName)
+	assert.Equal(t, provider.ProviderType, record.ProviderType)
 	assert.Equal(t, model.RiskRecordResultError, record.Result)
 	assert.Equal(t, model.RiskRecordSourceProvider, record.Source)
 	assert.True(t, record.ProviderCalled)

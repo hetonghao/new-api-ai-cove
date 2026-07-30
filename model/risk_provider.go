@@ -204,6 +204,10 @@ func MarkRiskProviderValidated(id int) error {
 }
 
 func ActivateRiskProvider(id int) error {
+	providerIDs, err := common.Marshal([]int{id})
+	if err != nil {
+		return fmt.Errorf("encode active risk provider: %w", err)
+	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var provider RiskProvider
 		if err := lockForUpdate(tx).First(&provider, id).Error; err != nil {
@@ -211,6 +215,23 @@ func ActivateRiskProvider(id int) error {
 		}
 		if provider.ValidatedAt == nil {
 			return ErrRiskProviderNotValidated
+		}
+		var policy RiskPolicy
+		policyQuery := lockForUpdate(tx).Where("id = ?", riskPolicySingletonID).Limit(1).Find(&policy)
+		if policyQuery.Error != nil {
+			return fmt.Errorf("get risk policy for activation: %w", policyQuery.Error)
+		}
+		if policyQuery.RowsAffected == 0 {
+			policy = RiskPolicy{
+				Id: riskPolicySingletonID, ProviderIDs: string(providerIDs), EnabledChannels: "[]",
+				ExcludedUserIDs: "[]", ExcludedModels: "[]",
+				ReviewMode: RiskReviewSelective, ActionMode: RiskActionObserve,
+			}
+			if err := tx.Create(&policy).Error; err != nil {
+				return fmt.Errorf("create risk policy for activation: %w", err)
+			}
+		} else if err := tx.Model(&policy).Update("provider_ids", string(providerIDs)).Error; err != nil {
+			return fmt.Errorf("replace risk provider pool: %w", err)
 		}
 		if err := tx.Model(&RiskProvider{}).Where("active = ?", true).Update("active", false).Error; err != nil {
 			return fmt.Errorf("deactivate risk providers: %w", err)

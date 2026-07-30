@@ -217,11 +217,12 @@ func TestRiskRecordGovernanceAPI_getsDefaultsAndUpdatesValidatedSettings(t *test
 	assert.Equal(t, model.RiskRecordSaveAll, defaults.Data.SaveScope)
 	assert.Equal(t, model.RiskContentSaveAll, defaults.Data.ContentSaveScope)
 	assert.Equal(t, 30, defaults.Data.RetentionDays)
+	assert.Equal(t, 200, defaults.Data.PreviewChars)
 
 	// When
 	updateRequest, err := http.NewRequestWithContext(
 		context.Background(), http.MethodPut, server.URL+"/api/risk/records/settings",
-		strings.NewReader(`{"save_scope":"unsafe","content_save_scope":"unsafe","retention_days":90}`),
+		strings.NewReader(`{"save_scope":"unsafe","content_save_scope":"unsafe","retention_days":90,"preview_chars":1200}`),
 	)
 	require.NoError(t, err)
 	updateRequest.Header.Set("Content-Type", "application/json")
@@ -241,4 +242,29 @@ func TestRiskRecordGovernanceAPI_getsDefaultsAndUpdatesValidatedSettings(t *test
 	assert.Equal(t, model.RiskRecordSaveUnsafe, updated.Data.SaveScope)
 	assert.Equal(t, model.RiskContentSaveUnsafe, updated.Data.ContentSaveScope)
 	assert.Equal(t, 90, updated.Data.RetentionDays)
+	assert.Equal(t, 1200, updated.Data.PreviewChars)
+}
+
+func TestRiskRecordGovernanceAPI_rejectsPreviewBelowMinimum(t *testing.T) {
+	// Given
+	server, client, accessToken := setupRiskRecordRouterTest(t, common.RoleRootUser)
+	request, err := http.NewRequestWithContext(
+		context.Background(), http.MethodPut, server.URL+"/api/risk/records/settings",
+		strings.NewReader(`{"save_scope":"all","content_save_scope":"all","retention_days":30,"preview_chars":49}`),
+	)
+	require.NoError(t, err)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+accessToken)
+
+	// When
+	response, err := client.Do(request)
+
+	// Then
+	require.NoError(t, err)
+	defer response.Body.Close()
+	var payload struct {
+		Success bool `json:"success"`
+	}
+	require.NoError(t, common.DecodeJson(response.Body, &payload))
+	assert.False(t, payload.Success)
 }

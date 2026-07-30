@@ -45,7 +45,8 @@ func setupRiskRecordModelTest(t *testing.T) *gorm.DB {
 func validRiskRecordInput(result RiskRecordResult) RiskRecordInput {
 	input := RiskRecordInput{
 		RequestID: "req-1", ChannelID: 12, UserID: 34, RuleIDs: []int{5, 8},
-		ProviderID: 21, ProviderName: "Cloudflare", Result: result, Categories: []string{"violent crimes"},
+		ProviderID: 21, ProviderName: "Cloudflare", ProviderType: RiskProviderCloudflare,
+		Result: result, Categories: []string{"violent crimes"},
 		LatencyMS: 93, PromptTokens: 11, CompletionTokens: 2, TotalTokens: 13, Neurons: 7,
 		ObservedAt: time.Date(2026, time.July, 25, 10, 0, 0, 0, time.UTC),
 	}
@@ -77,6 +78,7 @@ func TestRecordRiskObservation_persistsSafeUnsafeAndErrorMetadata(t *testing.T) 
 			assert.Equal(t, input.RuleIDs, records[0].RuleIDs)
 			assert.Equal(t, input.Result, records[0].Result)
 			assert.Equal(t, input.Categories, records[0].Categories)
+			assert.Equal(t, input.ProviderType, records[0].ProviderType)
 			assert.Equal(t, input.Neurons, records[0].Neurons)
 			assert.Equal(t, input.ErrorCode, records[0].ErrorCode)
 			assert.Equal(t, input.ErrorDetail, records[0].ErrorDetail)
