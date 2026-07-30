@@ -269,6 +269,9 @@ func migrateDB() error {
 		return err
 	}
 
+	if err := prepareRiskSchemaMigration(DB); err != nil {
+		return err
+	}
 	err := DB.AutoMigrate(
 		&Channel{},
 		&Token{},
@@ -335,6 +338,9 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
+	if err := prepareRiskSchemaMigration(DB); err != nil {
+		return err
+	}
 
 	var wg sync.WaitGroup
 

@@ -78,3 +78,98 @@ func TestRiskModerationExecutor_Execute_usesSelectedProviderTimeout(t *testing.T
 	assert.Positive(t, remaining)
 	assert.LessOrEqual(t, remaining, 80*time.Millisecond)
 }
+
+func TestRiskModerationExecutor_Execute_circuitOpenDoesNotAdvanceProviderPool(t *testing.T) {
+	// Given
+	useRiskModerationMiniRedis(t)
+	providers := riskModerationProviderPoolForTest()[:2]
+	fixedNow := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	blockedExecutor := newRiskModerationExecutor(riskModerationExecutorDeps{
+		Cache: newRiskReviewCacheService(newFakeRiskReviewCacheStore(), "pool-circuit-open"),
+		Reviewer: func(context.Context, *model.RiskProvider, string) (RiskReviewResult, error) {
+			return RiskReviewResult{Status: RiskReviewSafe}, nil
+		},
+		Now: func() time.Time { return fixedNow },
+	})
+	providerVersion, err := RiskModerationPolicyVersion(RiskModerationInput{
+		Provider: providers[0], ReviewMode: model.RiskReviewSelective,
+	})
+	require.NoError(t, err)
+	blockedExecutor.circuit.Failure(riskModerationCircuitPermit{
+		key: providerVersion, threshold: 1, cooldown: time.Hour,
+	})
+	selected := 0
+	freshExecutor := newRiskModerationExecutor(riskModerationExecutorDeps{
+		Cache: newRiskReviewCacheService(newFakeRiskReviewCacheStore(), "pool-circuit-fresh"),
+		Reviewer: func(_ context.Context, provider *model.RiskProvider, _ string) (RiskReviewResult, error) {
+			selected = provider.Id
+			return RiskReviewResult{Status: RiskReviewSafe}, nil
+		},
+		Now: time.Now,
+	})
+
+	// When
+	_, blockedErr := blockedExecutor.Execute(context.Background(), RiskModerationInput{
+		Providers: providers, Content: "blocked", ReviewMode: model.RiskReviewSelective,
+	})
+	_, freshErr := freshExecutor.Execute(context.Background(), RiskModerationInput{
+		Providers: providers, Content: "fresh", ReviewMode: model.RiskReviewSelective,
+	})
+
+	// Then
+	require.ErrorIs(t, blockedErr, ErrRiskModerationCircuitOpen)
+	require.NoError(t, freshErr)
+	assert.Equal(t, providers[0].Id, selected)
+}
+
+func TestRiskModerationExecutor_Execute_preCallCanceledContextDoesNotAdvanceProviderPool(t *testing.T) {
+	// Given
+	useRiskModerationMiniRedis(t)
+	providers := riskModerationProviderPoolForTest()[:2]
+	ctx, cancel := context.WithCancel(context.Background())
+	baseNow := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	nowCalls := 0
+	preCallExecutor := newRiskModerationExecutor(riskModerationExecutorDeps{
+		Cache: newRiskReviewCacheService(newFakeRiskReviewCacheStore(), "pool-pre-call-cancel"),
+		Reviewer: func(context.Context, *model.RiskProvider, string) (RiskReviewResult, error) {
+			return RiskReviewResult{Status: RiskReviewSafe}, nil
+		},
+		Now: func() time.Time {
+			nowCalls++
+			if nowCalls == 2 {
+				cancel()
+				return baseNow.Add(2 * time.Hour)
+			}
+			return baseNow
+		},
+	})
+	providerVersion, err := RiskModerationPolicyVersion(RiskModerationInput{
+		Provider: providers[0], ReviewMode: model.RiskReviewSelective,
+	})
+	require.NoError(t, err)
+	preCallExecutor.circuit.Failure(riskModerationCircuitPermit{
+		key: providerVersion, threshold: 1, cooldown: time.Hour,
+	})
+	selected := 0
+	freshExecutor := newRiskModerationExecutor(riskModerationExecutorDeps{
+		Cache: newRiskReviewCacheService(newFakeRiskReviewCacheStore(), "pool-pre-call-fresh"),
+		Reviewer: func(_ context.Context, provider *model.RiskProvider, _ string) (RiskReviewResult, error) {
+			selected = provider.Id
+			return RiskReviewResult{Status: RiskReviewSafe}, nil
+		},
+		Now: time.Now,
+	})
+
+	// When
+	_, canceledErr := preCallExecutor.Execute(ctx, RiskModerationInput{
+		Providers: providers, Content: "canceled", ReviewMode: model.RiskReviewSelective,
+	})
+	_, freshErr := freshExecutor.Execute(context.Background(), RiskModerationInput{
+		Providers: providers, Content: "fresh", ReviewMode: model.RiskReviewSelective,
+	})
+
+	// Then
+	require.ErrorIs(t, canceledErr, context.Canceled)
+	require.NoError(t, freshErr)
+	assert.Equal(t, providers[0].Id, selected)
+}

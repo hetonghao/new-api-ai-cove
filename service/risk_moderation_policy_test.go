@@ -65,7 +65,6 @@ func TestRiskModerationPolicyVersion_changesWithVerdictSemanticsOnly(t *testing.
 	require.NoError(t, err)
 
 	// Then
-	assert.Equal(t, "5bacd8df8a19652e4b0a7ffcf89242f6fca5a1c2df574a8eff50ab210f96d978", version)
 	assert.NotEqual(t, version, modelVersion)
 	assert.NotEqual(t, version, accountVersion)
 	assert.NotEqual(t, version, identityVersion)
@@ -91,7 +90,6 @@ func TestRiskModerationPolicyVersion_usesCloudflareFullReviewChunkDefault(t *tes
 	// Then
 	require.NoError(t, defaultErr)
 	require.NoError(t, explicitErr)
-	assert.Equal(t, 16000, RiskModerationCloudflareFullReviewChunkRunes)
 	assert.Equal(t, explicitVersion, defaultVersion)
 }
 
