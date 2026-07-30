@@ -16,7 +16,7 @@ func TestProcessRiskObservationForRelay_records_not_reviewed_when_selective_rule
 	providerID := provider.Id
 	channelID := createRiskPolicyChannel(t)
 	_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
-		ProviderID:      &providerID,
+		ProviderIDs:     []int{providerID},
 		EnabledChannels: []int{channelID},
 		ReviewMode:      model.RiskReviewSelective,
 		ActionMode:      model.RiskActionBlock,
@@ -66,7 +66,7 @@ func TestProcessRiskObservationForRelay_sends_bounded_excerpt_when_selective_rul
 	providerID := provider.Id
 	channelID := createRiskPolicyChannel(t)
 	_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
-		ProviderID:      &providerID,
+		ProviderIDs:     []int{providerID},
 		EnabledChannels: []int{channelID},
 		ReviewMode:      model.RiskReviewSelective,
 		ActionMode:      model.RiskActionBlock,

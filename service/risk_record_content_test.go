@@ -25,7 +25,7 @@ func TestBuildRiskRecordContentMetadata_usesDomainSeparatedHMACOfNormalizedConte
 	assert.NotContains(t, first.ContentHash, "hello")
 }
 
-func TestBuildRiskRecordContentMetadata_masksSensitivePreviewAndLimitsRunes(t *testing.T) {
+func TestBuildRiskRecordContentMetadata_masksSensitivePreviewWithoutTruncating(t *testing.T) {
 	// Given
 	originalSecret := common.CryptoSecret
 	common.CryptoSecret = "fixed-secret"
@@ -36,7 +36,8 @@ func TestBuildRiskRecordContentMetadata_masksSensitivePreviewAndLimitsRunes(t *t
 	metadata := BuildRiskRecordContentMetadata(content)
 
 	// Then
-	require.Len(t, []rune(metadata.Preview), 200)
+	require.Greater(t, len([]rune(metadata.Preview)), 200)
+	assert.Contains(t, metadata.Preview, strings.Repeat("隐", 220))
 	assert.NotContains(t, metadata.Preview, "api.example.com")
 	assert.NotContains(t, metadata.Preview, "192.168.1.1")
 	assert.NotContains(t, metadata.Preview, "api_key:abc")

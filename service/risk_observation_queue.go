@@ -22,6 +22,7 @@ type RiskObservationJob struct {
 	Path        string
 	Text        string
 	ProviderID  int
+	ProviderIDs []int
 	ReviewMode  model.RiskReviewMode
 	ActionMode  model.RiskActionMode
 }

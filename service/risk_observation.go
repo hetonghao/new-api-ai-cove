@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/QuantumNous/new-api/model"
 )
 
 const (
@@ -44,6 +46,7 @@ type RiskObservationEvent struct {
 	RuleIDs          []int
 	ProviderID       int
 	ProviderName     string
+	ProviderType     model.RiskProviderType
 	Result           RiskObservationResult
 	Categories       []string
 	LatencyMS        int64

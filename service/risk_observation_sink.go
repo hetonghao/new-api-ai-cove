@@ -43,6 +43,7 @@ func (riskObservationModelSink) RecordRiskObservation(ctx context.Context, event
 		RuleIDs:          event.RuleIDs,
 		ProviderID:       event.ProviderID,
 		ProviderName:     event.ProviderName,
+		ProviderType:     event.ProviderType,
 		Result:           model.RiskRecordResult(event.Result),
 		Categories:       event.Categories,
 		LatencyMS:        event.LatencyMS,

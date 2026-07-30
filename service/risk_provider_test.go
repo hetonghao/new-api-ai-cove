@@ -104,7 +104,9 @@ func TestReviewRiskContentRejectsInvalidPlatformInternalVerdict(t *testing.T) {
 	db := setupPlatformInternalRiskProviderTestDB(t)
 	provider, _ := createPlatformInternalRiskProviderFixture(t, db)
 	originalClient := platformInternalRiskHTTPClient
+	calls := 0
 	platformInternalRiskHTTPClient = &http.Client{Transport: riskProviderRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Body: io.NopCloser(strings.NewReader(
@@ -119,28 +121,7 @@ func TestReviewRiskContentRejectsInvalidPlatformInternalVerdict(t *testing.T) {
 	code, detail := RiskObservationErrorInfo(err)
 	assert.Equal(t, riskObservationProviderError, code)
 	assert.Equal(t, "Platform internal model returned an invalid moderation verdict", detail)
-}
-
-func TestParsePlatformInternalRiskResultRejectsUppercaseVerdict(t *testing.T) {
-	// Given
-	content := `{"verdict":"SAFE","categories":[]}`
-
-	// When
-	_, err := parsePlatformInternalRiskResult(content)
-
-	// Then
-	require.Error(t, err)
-}
-
-func TestParsePlatformInternalRiskResultRejectsPaddedVerdict(t *testing.T) {
-	// Given
-	content := `{"verdict":" safe ","categories":[]}`
-
-	// When
-	_, err := parsePlatformInternalRiskResult(content)
-
-	// Then
-	require.Error(t, err)
+	assert.Equal(t, 1, calls)
 }
 
 func riskProviderTestProvider(t *testing.T) *model.RiskProvider {

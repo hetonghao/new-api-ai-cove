@@ -31,7 +31,7 @@ func TestProcessRiskObservationForRelay_fails_open_for_safe_provider_error_and_o
 			providerID := provider.Id
 			channelID := createRiskPolicyChannel(t)
 			_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
-				ProviderID: &providerID, EnabledChannels: []int{channelID}, ReviewMode: model.RiskReviewFull, ActionMode: model.RiskActionBlock,
+				ProviderIDs: []int{providerID}, EnabledChannels: []int{channelID}, ReviewMode: model.RiskReviewFull, ActionMode: model.RiskActionBlock,
 			})
 			require.NoError(t, err)
 			var completed RiskObservationEvent

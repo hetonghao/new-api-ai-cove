@@ -15,10 +15,6 @@ type RiskRecordContentMetadata struct {
 
 func BuildRiskRecordContentMetadata(content string) RiskRecordContentMetadata {
 	preview := common.MaskSensitiveInfo(strings.TrimSpace(content))
-	previewRunes := []rune(preview)
-	if len(previewRunes) > 200 {
-		preview = string(previewRunes[:200])
-	}
 
 	normalized := NormalizeRiskText(content)
 	if normalized == "" {
