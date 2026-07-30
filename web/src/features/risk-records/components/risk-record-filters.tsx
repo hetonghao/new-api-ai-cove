@@ -66,12 +66,9 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
   const startTime = form.watch('start_time')
   const endTime = form.watch('end_time')
   const providerId = form.watch('provider_id')
-  const providerType = form.watch('provider_type')
   const channelId = form.watch('channel_id')
   const errors = form.formState.errors
-  const advancedFilterCount = [providerId, providerType, channelId].filter(
-    Boolean
-  ).length
+  const advancedFilterCount = [providerId, channelId].filter(Boolean).length
 
   useEffect(() => {
     if (!props.usernameOverride) return
@@ -98,7 +95,7 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
       noValidate
     >
       <div className='flex flex-col gap-2 sm:flex-row sm:items-start'>
-        <FieldGroup className='grid min-w-0 flex-1 gap-3 md:grid-cols-2 xl:grid-cols-[max-content_repeat(3,minmax(9rem,1fr))]'>
+        <FieldGroup className='grid min-w-0 flex-1 gap-3 md:grid-cols-2 xl:grid-cols-[max-content_repeat(4,minmax(9rem,1fr))]'>
           <Field
             className='w-fit max-w-full md:col-span-2 xl:col-span-1'
             data-invalid={Boolean(errors.start_time || errors.end_time)}
@@ -135,6 +132,28 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
             />
             <FieldError>{errors.username?.message}</FieldError>
           </Field>
+          <Field data-invalid={Boolean(errors.provider_type)}>
+            <FieldLabel htmlFor='risk-record-provider-type'>
+              {t('Provider type')}
+            </FieldLabel>
+            <NativeSelect
+              id='risk-record-provider-type'
+              className='w-full'
+              aria-invalid={Boolean(errors.provider_type)}
+              {...form.register('provider_type')}
+            >
+              <NativeSelectOption value=''>
+                {t('All provider types')}
+              </NativeSelectOption>
+              <NativeSelectOption value='cloudflare'>
+                Cloudflare Workers AI
+              </NativeSelectOption>
+              <NativeSelectOption value='platform_internal'>
+                {t('Platform internal model')}
+              </NativeSelectOption>
+            </NativeSelect>
+            <FieldError>{errors.provider_type?.message}</FieldError>
+          </Field>
         </FieldGroup>
         <Button
           type='button'
@@ -160,28 +179,6 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
             control={form.control}
             providers={props.providers}
           />
-          <Field data-invalid={Boolean(errors.provider_type)}>
-            <FieldLabel htmlFor='risk-record-provider-type'>
-              {t('Provider type')}
-            </FieldLabel>
-            <NativeSelect
-              id='risk-record-provider-type'
-              className='w-full'
-              aria-invalid={Boolean(errors.provider_type)}
-              {...form.register('provider_type')}
-            >
-              <NativeSelectOption value=''>
-                {t('All provider types')}
-              </NativeSelectOption>
-              <NativeSelectOption value='cloudflare'>
-                Cloudflare Workers AI
-              </NativeSelectOption>
-              <NativeSelectOption value='platform_internal'>
-                {t('Platform internal model')}
-              </NativeSelectOption>
-            </NativeSelect>
-            <FieldError>{errors.provider_type?.message}</FieldError>
-          </Field>
           <Field data-invalid={Boolean(errors.channel_id)}>
             <FieldLabel htmlFor='risk-record-channel-id'>
               {t('Channel ID')}

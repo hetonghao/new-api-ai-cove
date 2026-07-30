@@ -98,13 +98,12 @@ describe('risk record filters presentation', () => {
     assert.ok(searchButton.querySelector('.animate-spin'))
   })
 
-  test('submits the selected cloud review provider type', async () => {
+  test('shows and submits the provider type in the primary filter row', async () => {
     let submitted: { readonly provider_type?: string } | undefined
     renderFilters(false, (filters) => {
       submitted = filters
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
     fireEvent.change(screen.getByRole('combobox', { name: 'Provider type' }), {
       target: { value: 'platform_internal' },
     })
