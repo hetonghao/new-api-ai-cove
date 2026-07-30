@@ -8,6 +8,32 @@ import (
 	"gorm.io/gorm"
 )
 
+type riskPolicyProviderIDsMigration struct {
+	ProviderIDs *string `gorm:"column:provider_ids;type:text"`
+}
+
+func (riskPolicyProviderIDsMigration) TableName() string {
+	return "risk_policies"
+}
+
+func prepareRiskSchemaMigration(db *gorm.DB) error {
+	migrator := db.Migrator()
+	if !migrator.HasTable(&RiskPolicy{}) {
+		return nil
+	}
+	if !migrator.HasColumn(&riskPolicyProviderIDsMigration{}, "ProviderIDs") {
+		if err := migrator.AddColumn(&riskPolicyProviderIDsMigration{}, "ProviderIDs"); err != nil {
+			return fmt.Errorf("add risk policy provider pool column: %w", err)
+		}
+	}
+	if err := db.Table("risk_policies").
+		Where("provider_ids IS NULL OR provider_ids = ?", "").
+		Update("provider_ids", "[]").Error; err != nil {
+		return fmt.Errorf("initialize risk policy provider pool column: %w", err)
+	}
+	return nil
+}
+
 func migrateRiskData(db *gorm.DB) error {
 	if err := backfillLegacyRiskPolicyProviderIDs(db); err != nil {
 		return err

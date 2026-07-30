@@ -121,39 +121,75 @@ func (e *RiskModerationExecutor) Execute(ctx context.Context, input RiskModerati
 	cacheOutcome, reviewErr := e.cache.Review(reviewCtx, RiskReviewCacheInput{
 		Content: input.Content, PolicyVersion: policyVersion,
 	}, func(reviewParent context.Context) (RiskReviewResult, error) {
-		provider := providers[nextRiskModerationProviderIndex(reviewParent, policyVersion, len(providers))]
-		providerVersion, versionErr := RiskModerationPolicyVersion(RiskModerationInput{
-			Provider: provider, ReviewMode: input.ReviewMode, FullReviewChunkRunes: chunkLimit,
-		})
-		if versionErr != nil {
-			return RiskReviewResult{}, versionErr
+		cursor, cursorErr := loadRiskModerationProviderCursor(reviewParent, policyVersion, len(providers))
+		if cursorErr != nil {
+			cursor = riskModerationProviderCursor{}
 		}
-		permit, allowErr := e.circuit.Allow(
-			providerVersion,
-			provider.FailureThreshold,
-			time.Duration(provider.CooldownSeconds)*time.Second,
-		)
-		if allowErr != nil {
-			return riskReviewResultWithProvider(RiskReviewResult{}, provider), allowErr
-		}
-		providerCtx, providerCancel := context.WithDeadline(reviewParent, startedAt.Add(time.Duration(provider.TimeoutMs)*time.Millisecond))
-		defer providerCancel()
-		selectedInput := resolvedInput
-		selectedInput.Provider = provider
-		selectedInput.Providers = nil
-		result, chunks, providerErr := e.executeProviderReview(providerCtx, selectedInput, &providerCalled)
-		result = riskReviewResultWithProvider(result, provider)
-		providerChunks.Store(&chunks)
-		if providerErr != nil {
-			if ctx.Err() != nil {
-				e.circuit.Abandon(permit)
-			} else {
-				e.circuit.Failure(permit)
+		for {
+			provider := providers[cursor.index(len(providers))]
+			providerVersion, versionErr := RiskModerationPolicyVersion(RiskModerationInput{
+				Provider: provider, ReviewMode: input.ReviewMode, FullReviewChunkRunes: chunkLimit,
+			})
+			if versionErr != nil {
+				return RiskReviewResult{}, versionErr
 			}
-			return result, providerErr
+			permit, allowErr := e.circuit.Allow(
+				providerVersion,
+				provider.FailureThreshold,
+				time.Duration(provider.CooldownSeconds)*time.Second,
+			)
+			if allowErr != nil {
+				return riskReviewResultWithProvider(RiskReviewResult{}, provider), allowErr
+			}
+			if err := reviewParent.Err(); err != nil {
+				e.circuit.Abandon(permit)
+				return riskReviewResultWithProvider(RiskReviewResult{}, provider), err
+			}
+			providerCtx, providerCancel := context.WithDeadline(reviewParent, startedAt.Add(time.Duration(provider.TimeoutMs)*time.Millisecond))
+			if err := providerCtx.Err(); err != nil {
+				providerCancel()
+				e.circuit.Abandon(permit)
+				return riskReviewResultWithProvider(RiskReviewResult{}, provider), err
+			}
+			advanced, advanceErr := cursor.advance(providerCtx)
+			if advanceErr != nil {
+				if err := providerCtx.Err(); err != nil {
+					providerCancel()
+					e.circuit.Abandon(permit)
+					return riskReviewResultWithProvider(RiskReviewResult{}, provider), err
+				}
+				providerCancel()
+				e.circuit.Abandon(permit)
+				cursor = riskModerationProviderCursor{}
+				continue
+			}
+			if !advanced {
+				providerCancel()
+				e.circuit.Abandon(permit)
+				cursor, cursorErr = loadRiskModerationProviderCursor(reviewParent, policyVersion, len(providers))
+				if cursorErr != nil {
+					cursor = riskModerationProviderCursor{}
+				}
+				continue
+			}
+			selectedInput := resolvedInput
+			selectedInput.Provider = provider
+			selectedInput.Providers = nil
+			result, chunks, providerErr := e.executeProviderReview(providerCtx, selectedInput, &providerCalled)
+			providerCancel()
+			result = riskReviewResultWithProvider(result, provider)
+			providerChunks.Store(&chunks)
+			if providerErr != nil {
+				if ctx.Err() != nil {
+					e.circuit.Abandon(permit)
+				} else {
+					e.circuit.Failure(permit)
+				}
+				return result, providerErr
+			}
+			e.circuit.Success(permit)
+			return result, nil
 		}
-		e.circuit.Success(permit)
-		return result, nil
 	})
 	called := providerCalled.Load()
 	source := cacheOutcome.Source

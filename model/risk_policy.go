@@ -26,7 +26,7 @@ var ErrInvalidRiskPolicy = errors.New("invalid risk policy")
 type RiskPolicy struct {
 	Id              int            `json:"-" gorm:"primaryKey"`
 	Enabled         bool           `json:"-" gorm:"not null;default:true"`
-	ProviderIDs     string         `json:"-" gorm:"type:text;not null;default:'[]'"`
+	ProviderIDs     string         `json:"-" gorm:"type:text;not null"`
 	EnabledChannels string         `json:"-" gorm:"type:text;not null"`
 	ExcludedUserIDs string         `json:"-" gorm:"type:text;not null;default:'[]'"`
 	ExcludedModels  string         `json:"-" gorm:"type:text;not null;default:'[]'"`
