@@ -180,6 +180,22 @@ describe('risk record details button presentation', () => {
     assert.ok(screen.getByText('Risk record details'))
   })
 
+  for (const providerType of ['', 'future_provider']) {
+    test(`shows an unknown provider type for historical value ${providerType || 'empty'}`, () => {
+      // Given a record with an immutable provider type the UI cannot identify
+      renderDetailsButton({ ...BASE_RECORD, provider_type: providerType })
+
+      // When the operator opens the record details
+      fireEvent.click(screen.getByRole('button', { name: '12 tokens' }))
+
+      // Then the unknown type remains visible instead of disappearing
+      const recordDialog = screen.getByRole('dialog', {
+        name: 'Risk record details',
+      })
+      assert.ok(within(recordDialog).getByText('Unknown'))
+    })
+  }
+
   test('opens a separate dialog with the saved provider error detail', () => {
     // Given a failed risk record with a sanitized provider diagnostic
     renderDetailsButton({
