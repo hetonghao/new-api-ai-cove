@@ -28,6 +28,7 @@ export function createDefaultRiskRecordFilterDraft(): RiskRecordFilterFormValues
     channel_id: '',
     username: '',
     provider_id: '',
+    provider_type: '',
     result: '',
     source: '',
   }

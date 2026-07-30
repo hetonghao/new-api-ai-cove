@@ -77,12 +77,3 @@ export async function validateRiskProvider(
   )
   return response.data
 }
-
-export async function activateRiskProvider(
-  providerId: number
-): Promise<ApiResponse<RiskProvider>> {
-  const response = await api.put<ApiResponse<RiskProvider>>(
-    `${BASE_PATH}/${providerId}/active`
-  )
-  return response.data
-}

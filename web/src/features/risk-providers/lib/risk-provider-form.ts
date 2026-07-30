@@ -167,7 +167,3 @@ export function getRiskProviderServerFormError(
     error: { type: 'server', message },
   }
 }
-
-export function canActivateProvider(provider: RiskProvider): boolean {
-  return provider.validated_at !== null && !provider.active
-}

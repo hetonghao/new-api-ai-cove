@@ -79,6 +79,11 @@ await i18n.use(initReactI18next).init({
           'Risk records older than this are deleted by the daily cleanup task.',
         'Retention days must be between {{min}} and {{max}}':
           'Retention days must be between {{min}} and {{max}}',
+        'Preview characters': 'Preview characters',
+        'Stores at least {{min}} redacted characters with no maximum limit.':
+          'Stores at least {{min}} redacted characters with no maximum limit.',
+        'Preview characters must be at least {{min}}':
+          'Preview characters must be at least {{min}}',
         'Save settings': 'Save settings',
         'Saving...': 'Saving...',
         'Risk record settings saved': 'Risk record settings saved',
@@ -135,6 +140,7 @@ describe('risk record governance settings', () => {
             save_scope: 'all',
             content_save_scope: 'all',
             retention_days: 30,
+            preview_chars: 200,
           },
         },
         headers: {},
@@ -157,6 +163,7 @@ describe('risk record governance settings', () => {
         save_scope: 'all',
         content_save_scope: 'all',
         retention_days: 90,
+        preview_chars: 200,
       })
     })
 
@@ -172,6 +179,7 @@ describe('risk record governance settings', () => {
           save_scope: 'all',
           content_save_scope: 'all',
           retention_days: 30,
+          preview_chars: 200,
         },
       },
       headers: {},
@@ -188,6 +196,92 @@ describe('risk record governance settings', () => {
     assert.equal(
       screen.getByRole('alert').textContent,
       'Retention days must be between 1 and 180'
+    )
+    assert.equal(
+      screen
+        .getByRole('button', { name: 'Save settings' })
+        .hasAttribute('disabled'),
+      true
+    )
+
+    queryClient.clear()
+  })
+
+  test('saves a preview length without imposing a maximum', async () => {
+    let savedPayload: unknown
+    api.defaults.adapter = async (config) => {
+      if (config.method === 'put') {
+        savedPayload = JSON.parse(String(config.data))
+        return {
+          config,
+          data: { success: true, data: savedPayload },
+          headers: {},
+          status: 200,
+          statusText: 'OK',
+        }
+      }
+      return {
+        config,
+        data: {
+          success: true,
+          data: {
+            save_scope: 'all',
+            content_save_scope: 'all',
+            retention_days: 30,
+            preview_chars: 200,
+          },
+        },
+        headers: {},
+        status: 200,
+        statusText: 'OK',
+      }
+    }
+    const queryClient = renderSettings()
+
+    const input = await screen.findByRole('spinbutton', {
+      name: 'Preview characters',
+    })
+    fireEvent.change(input, { target: { value: '12000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
+
+    await waitFor(() => {
+      assert.deepEqual(savedPayload, {
+        save_scope: 'all',
+        content_save_scope: 'all',
+        retention_days: 30,
+        preview_chars: 12000,
+      })
+    })
+
+    queryClient.clear()
+  })
+
+  test('blocks a preview length below fifty characters', async () => {
+    api.defaults.adapter = async (config) => ({
+      config,
+      data: {
+        success: true,
+        data: {
+          save_scope: 'all',
+          content_save_scope: 'all',
+          retention_days: 30,
+          preview_chars: 200,
+        },
+      },
+      headers: {},
+      status: 200,
+      statusText: 'OK',
+    })
+    const queryClient = renderSettings()
+
+    const input = await screen.findByRole('spinbutton', {
+      name: 'Preview characters',
+    })
+    fireEvent.change(input, { target: { value: '49' } })
+
+    assert.equal(
+      screen.getByRole('alert').textContent,
+      'Preview characters must be at least 50'
     )
     assert.equal(
       screen

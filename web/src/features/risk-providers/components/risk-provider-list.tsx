@@ -37,7 +37,7 @@ import { RiskProviderCard } from './risk-provider-card'
 
 const SKELETON_KEYS = ['risk-provider-1', 'risk-provider-2'] as const
 
-export type RiskProviderPendingAction = 'validate' | 'activate' | 'delete'
+export type RiskProviderPendingAction = 'validate' | 'delete'
 
 type RiskProviderListProps = {
   readonly providers: readonly RiskProvider[]
@@ -51,7 +51,6 @@ type RiskProviderListProps = {
   readonly onCreate: () => void
   readonly onEdit: (provider: RiskProvider) => void
   readonly onValidate: (provider: RiskProvider) => void
-  readonly onActivate: (provider: RiskProvider) => void
   readonly onDelete: (provider: RiskProvider) => void
 }
 
@@ -91,7 +90,6 @@ export function RiskProviderList(props: RiskProviderListProps) {
             }
             onEdit={props.onEdit}
             onValidate={props.onValidate}
-            onActivate={props.onActivate}
             onDelete={props.onDelete}
           />
         ))}
@@ -104,7 +102,9 @@ export function RiskProviderList(props: RiskProviderListProps) {
           </EmptyMedia>
           <EmptyTitle>{t('No cloud review providers')}</EmptyTitle>
           <EmptyDescription>
-            {t('Add a provider, test its connection, then set it active.')}
+            {t(
+              'Add a provider, test its connection, then add it to the global risk policy.'
+            )}
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
@@ -121,7 +121,7 @@ export function RiskProviderList(props: RiskProviderListProps) {
     <TitledCard
       title={t('Cloud review providers')}
       description={t(
-        'Manage encrypted credentials, connection checks, timeouts, and the single active provider.'
+        'Manage encrypted credentials, connection checks, timeouts, and provider pool membership.'
       )}
       descriptionClassName='text-pretty'
       icon={<ShieldCheck className='size-5' />}

@@ -48,7 +48,8 @@ for (const key of domGlobals) {
   })
 }
 
-const { cleanup, render, screen } = await import('@testing-library/react')
+const { cleanup, fireEvent, render, screen, waitFor } =
+  await import('@testing-library/react')
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
 const { RiskRecordFiltersForm } = await import('../risk-record-filters')
@@ -56,7 +57,10 @@ const { RiskRecordFiltersForm } = await import('../risk-record-filters')
 const i18n = createInstance()
 await i18n.use(initReactI18next).init({ lng: 'en' })
 
-function renderFilters(disabled: boolean) {
+function renderFilters(
+  disabled: boolean,
+  onApply: (filters: { readonly provider_type?: string }) => void = () => {}
+) {
   render(
     <I18nextProvider i18n={i18n}>
       <RiskRecordFiltersForm
@@ -67,10 +71,11 @@ function renderFilters(disabled: boolean) {
           channel_id: '',
           username: '',
           provider_id: '',
+          provider_type: '',
           result: '',
           source: '',
         }}
-        onApply={() => {}}
+        onApply={onApply}
         providers={[]}
       />
     </I18nextProvider>
@@ -91,5 +96,22 @@ describe('risk record filters presentation', () => {
 
     assert.equal(searchButton.hasAttribute('disabled'), true)
     assert.ok(searchButton.querySelector('.animate-spin'))
+  })
+
+  test('submits the selected cloud review provider type', async () => {
+    let submitted: { readonly provider_type?: string } | undefined
+    renderFilters(false, (filters) => {
+      submitted = filters
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
+    fireEvent.change(screen.getByRole('combobox', { name: 'Provider type' }), {
+      target: { value: 'platform_internal' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+
+    await waitFor(() => {
+      assert.equal(submitted?.provider_type, 'platform_internal')
+    })
   })
 })

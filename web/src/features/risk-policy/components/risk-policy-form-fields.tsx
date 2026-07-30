@@ -62,6 +62,10 @@ export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
     label: `#${user.id} · ${user.username}`,
     value: String(user.id),
   }))
+  const providerOptions = props.validatedProviders.map((provider) => ({
+    label: `#${provider.id} · ${provider.name}`,
+    value: String(provider.id),
+  }))
   const modelOptions = mergeRiskPolicyModelOptions(
     props.models,
     excludedModels
@@ -107,30 +111,37 @@ export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
           </FieldDescription>
           <FieldError errors={[errors.enabled_channels]} />
         </Field>
-        <Field data-invalid={Boolean(errors.provider_id)}>
+        <Field data-invalid={Boolean(errors.provider_ids)}>
           <FieldLabel htmlFor='risk-policy-provider'>
-            {t('Active cloud review provider')}
+            {t('Cloud review provider pool')}
           </FieldLabel>
-          <NativeSelect
-            id='risk-policy-provider'
-            className='w-full'
-            disabled={!enabled || props.validatedProviders.length === 0}
-            aria-invalid={Boolean(errors.provider_id)}
-            {...form.register('provider_id')}
-          >
-            <NativeSelectOption value=''>
-              {t('Select a validated provider')}
-            </NativeSelectOption>
-            {props.validatedProviders.map((provider) => (
-              <NativeSelectOption key={provider.id} value={provider.id}>
-                {provider.name}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+          <Controller
+            control={form.control}
+            name='provider_ids'
+            render={({ field }) => (
+              <MultiSelect
+                id='risk-policy-provider'
+                options={providerOptions}
+                selected={field.value.map(String)}
+                onChange={(values) => field.onChange(values.map(Number))}
+                placeholder={t('Select a validated provider')}
+                emptyText={t('No validated provider available')}
+                disabled={!enabled || providerOptions.length === 0}
+                maxVisibleChips={3}
+                aria-invalid={Boolean(errors.provider_ids)}
+                aria-describedby={
+                  errors.provider_ids ? 'risk-policy-provider-error' : undefined
+                }
+              />
+            )}
+          />
           <FieldDescription>
-            {t('Saving the policy makes this validated provider active.')}
+            {t('Selection order is preserved for the cloud review pool.')}
           </FieldDescription>
-          <FieldError errors={[errors.provider_id]} />
+          <FieldError
+            id='risk-policy-provider-error'
+            errors={[errors.provider_ids]}
+          />
         </Field>
         <Field data-invalid={Boolean(errors.excluded_user_ids)}>
           <FieldLabel htmlFor='risk-policy-excluded-users'>
