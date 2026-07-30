@@ -30,7 +30,6 @@ import { RiskRecordGovernanceSettings } from '@/features/risk-records/components
 import { RiskRecordList } from '@/features/risk-records/components/risk-record-list'
 
 import {
-  activateRiskProvider,
   deleteRiskProvider,
   listRiskProviders,
   validateRiskProvider,
@@ -48,7 +47,6 @@ const QUERY_KEY = ['risk', 'providers'] as const
 type RiskCenterTab = 'records' | 'configuration'
 type RiskProviderAction =
   | { readonly kind: 'validate'; readonly text: string }
-  | { readonly kind: 'activate' }
   | { readonly kind: 'delete' }
 
 function assertNever(action: never): never {
@@ -106,12 +104,6 @@ export function RiskProviders() {
               status: response.data.status,
             })
           )
-          break
-        }
-        case 'activate': {
-          const response = await activateRiskProvider(provider.id)
-          if (!response.success) throw new Error(response.message)
-          toast.success(t('Active provider updated'))
           break
         }
         case 'delete': {
@@ -190,9 +182,6 @@ export function RiskProviders() {
                   onCreate={openCreateDialog}
                   onEdit={openEditDialog}
                   onValidate={setValidatingProvider}
-                  onActivate={(provider) =>
-                    void runProviderAction(provider, { kind: 'activate' })
-                  }
                   onDelete={setDeletingProvider}
                 />
               </div>

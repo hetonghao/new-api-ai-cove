@@ -40,7 +40,7 @@ describe('risk policy form behavior', () => {
     const policy: RiskPolicy = {
       configured: false,
       enabled: false,
-      provider_id: null,
+      provider_ids: [],
       enabled_channels: [],
       excluded_user_ids: [],
       excluded_models: [],
@@ -57,7 +57,7 @@ describe('risk policy form behavior', () => {
       enabled_channels: [],
       excluded_user_ids: [],
       excluded_models: [],
-      provider_id: '',
+      provider_ids: [],
       review_mode: 'selective',
       action_mode: 'observe',
     })
@@ -68,7 +68,7 @@ describe('risk policy form behavior', () => {
     const policy: RiskPolicy = {
       configured: true,
       enabled: false,
-      provider_id: null,
+      provider_ids: [],
       enabled_channels: [],
       excluded_user_ids: [],
       review_mode: 'selective',
@@ -92,7 +92,7 @@ describe('risk policy form behavior', () => {
       enabled_channels: [24],
       excluded_user_ids: [42],
       excluded_models: ['codex-auto-review'],
-      provider_id: '9',
+      provider_ids: [9],
       review_mode: 'selective',
       action_mode: 'observe',
     })
@@ -111,7 +111,7 @@ describe('risk policy form behavior', () => {
       enabled_channels: [24],
       excluded_user_ids: [42],
       excluded_models: ['codex-auto-review'],
-      provider_id: '9',
+      provider_ids: [9],
       review_mode: 'selective',
       action_mode: 'observe',
     })
@@ -119,7 +119,7 @@ describe('risk policy form behavior', () => {
     // Then the error can render beside the provider control
     assert.equal(parsed.success, false)
     if (parsed.success) return
-    assert.deepEqual(parsed.error.issues[0]?.path, ['provider_id'])
+    assert.deepEqual(parsed.error.issues[0]?.path, ['provider_ids'])
     assert.equal(parsed.error.issues[0]?.message, 'Select a validated provider')
   })
 
@@ -130,7 +130,7 @@ describe('risk policy form behavior', () => {
       enabled_channels: [24],
       excluded_user_ids: [42],
       excluded_models: ['codex-auto-review'],
-      provider_id: '7',
+      provider_ids: [9, 7],
       review_mode: 'full' as const,
       action_mode: 'block' as const,
     }
@@ -141,7 +141,7 @@ describe('risk policy form behavior', () => {
     // Then only the enabled state changes and the saved selections remain
     assert.deepEqual(payload, {
       enabled: false,
-      provider_id: 7,
+      provider_ids: [9, 7],
       enabled_channels: [24],
       excluded_user_ids: [42],
       excluded_models: ['codex-auto-review'],
@@ -150,14 +150,14 @@ describe('risk policy form behavior', () => {
     })
   })
 
-  test('persists the selected actual channel ids with the validated provider', () => {
+  test('persists provider selection order with the actual channel ids', () => {
     // Given an enabled form with actual channel selections
     const values = {
       enabled: true,
       enabled_channels: [24, 31],
       excluded_user_ids: [42, 84],
       excluded_models: ['codex-auto-review', 'gpt-5.6'],
-      provider_id: '7',
+      provider_ids: [9, 7],
       review_mode: 'selective' as const,
       action_mode: 'observe' as const,
     }
@@ -168,7 +168,7 @@ describe('risk policy form behavior', () => {
     // Then the contract preserves the selected channel IDs
     assert.deepEqual(payload, {
       enabled: true,
-      provider_id: 7,
+      provider_ids: [9, 7],
       enabled_channels: [24, 31],
       excluded_user_ids: [42, 84],
       excluded_models: ['codex-auto-review', 'gpt-5.6'],
@@ -187,7 +187,7 @@ describe('risk policy form behavior', () => {
       enabled_channels: [],
       excluded_user_ids: [],
       excluded_models: [],
-      provider_id: '7',
+      provider_ids: [7],
       review_mode: 'selective',
       action_mode: 'observe',
     })

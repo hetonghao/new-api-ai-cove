@@ -38,6 +38,12 @@ const RISK_RECORD_FILTER_SOURCES = [
   'local',
 ] as const
 
+const RISK_RECORD_FILTER_PROVIDER_TYPES = [
+  '',
+  'cloudflare',
+  'platform_internal',
+] as const
+
 type Translate = (key: string) => string
 export type RiskRecordLatencyTone = 'green' | 'blue' | 'yellow' | 'red'
 
@@ -63,6 +69,9 @@ export function createRiskRecordFilterFormSchema(t: Translate) {
       channel_id: positiveInteger,
       username: z.string().trim().max(20, t('Invalid configuration')),
       provider_id: nonnegativeInteger,
+      provider_type: z.enum(RISK_RECORD_FILTER_PROVIDER_TYPES, {
+        error: t('Invalid configuration'),
+      }),
       result: z.enum(RISK_RECORD_FILTER_RESULTS, {
         error: t('Invalid configuration'),
       }),
@@ -203,6 +212,7 @@ export function commitRiskRecordFilters(
     ...(channelId === undefined ? {} : { channel_id: channelId }),
     ...(username ? { username } : {}),
     ...(providerId === undefined ? {} : { provider_id: providerId }),
+    ...(draft.provider_type ? { provider_type: draft.provider_type } : {}),
     ...(draft.result ? { result: draft.result } : {}),
     ...(draft.source ? { source: draft.source } : {}),
   }
@@ -220,6 +230,7 @@ export function shouldRefetchRiskRecords(
     left.channel_id === right.channel_id &&
     left.username === right.username &&
     left.provider_id === right.provider_id &&
+    left.provider_type === right.provider_type &&
     left.result === right.result &&
     left.source === right.source
   )

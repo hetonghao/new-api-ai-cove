@@ -16,22 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { CheckCircle2, Pencil, PlugZap, Power, Trash2 } from 'lucide-react'
+import { Pencil, PlugZap, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
-import { canActivateProvider } from '../lib/risk-provider-form'
 import type { RiskProvider } from '../types'
 
 type RiskProviderCardProps = {
   readonly provider: RiskProvider
-  readonly pendingAction: 'validate' | 'activate' | 'delete' | null
+  readonly pendingAction: 'validate' | 'delete' | null
   readonly onEdit: (provider: RiskProvider) => void
   readonly onValidate: (provider: RiskProvider) => void
-  readonly onActivate: (provider: RiskProvider) => void
   readonly onDelete: (provider: RiskProvider) => void
 }
 
@@ -54,7 +52,7 @@ export function RiskProviderCard(props: RiskProviderCardProps) {
             </p>
           </div>
           <div className='flex flex-wrap gap-1.5'>
-            {provider.active && <Badge>{t('Active')}</Badge>}
+            {provider.active && <Badge>{t('In provider pool')}</Badge>}
             <Badge variant={provider.validated_at ? 'secondary' : 'outline'}>
               {provider.validated_at ? t('Verified') : t('Not verified')}
             </Badge>
@@ -146,29 +144,6 @@ export function RiskProviderCard(props: RiskProviderCardProps) {
               ? t('Testing...')
               : t('Test connection')}
           </Button>
-          {!provider.active && (
-            <Button
-              size='sm'
-              disabled={
-                !canActivateProvider(provider) || props.pendingAction !== null
-              }
-              title={
-                provider.validated_at
-                  ? undefined
-                  : t('Test the connection before activating this provider.')
-              }
-              onClick={() => props.onActivate(provider)}
-            >
-              {provider.validated_at ? (
-                <Power className='size-4' />
-              ) : (
-                <CheckCircle2 className='size-4' />
-              )}
-              {props.pendingAction === 'activate'
-                ? t('Activating...')
-                : t('Set active')}
-            </Button>
-          )}
           <Button
             size='sm'
             variant='destructive'

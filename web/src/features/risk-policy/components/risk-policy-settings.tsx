@@ -56,7 +56,7 @@ const DEFAULT_VALUES: RiskPolicyFormValues = {
   enabled_channels: [],
   excluded_user_ids: [],
   excluded_models: [],
-  provider_id: '',
+  provider_ids: [],
   review_mode: 'selective',
   action_mode: 'observe',
 }
@@ -212,7 +212,7 @@ export function RiskPolicySettings(props: RiskPolicySettingsProps) {
     <TitledCard
       title={t('Global risk policy')}
       description={t(
-        'All enabled risk channels share one provider, review scope, and decision action.'
+        'All enabled risk channels share one ordered provider pool, review scope, and decision action.'
       )}
       descriptionClassName='text-balance'
       icon={<ShieldCheck className='size-5' />}

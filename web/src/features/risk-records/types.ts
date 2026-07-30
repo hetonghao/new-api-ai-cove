@@ -21,6 +21,7 @@ import { z } from 'zod'
 export const riskRecordResultSchema = z.string().min(1)
 export const riskContentSaveScopeSchema = z.enum(['all', 'unsafe', 'none'])
 export const riskRecordRetentionDaysSchema = z.number().int().min(1).max(180)
+export const riskRecordPreviewCharsSchema = z.number().int().min(50)
 
 export const riskRecordChunkSchema = z
   .object({
@@ -52,6 +53,7 @@ export const riskRecordSchema = z
     rule_ids: z.array(z.number().int().positive()).readonly(),
     provider_id: z.number().int().nonnegative(),
     provider_name: z.string(),
+    provider_type: z.string().default(''),
     result: riskRecordResultSchema,
     source: z.string().default(''),
     provider_called: z.boolean().default(false),
@@ -95,6 +97,7 @@ export const riskRecordGovernanceSchema = z
     save_scope: z.enum(['all', 'suspicious', 'unsafe']),
     content_save_scope: riskContentSaveScopeSchema,
     retention_days: riskRecordRetentionDaysSchema,
+    preview_chars: riskRecordPreviewCharsSchema.default(200),
   })
   .readonly()
 
@@ -123,6 +126,7 @@ export type RiskRecordFilterDraft = {
   readonly channel_id: string
   readonly username: string
   readonly provider_id: string
+  readonly provider_type: '' | 'cloudflare' | 'platform_internal'
   readonly result: string
   readonly source: string
 }
@@ -133,6 +137,7 @@ export type RiskRecordFilters = {
   readonly channel_id?: number
   readonly username?: string
   readonly provider_id?: number
+  readonly provider_type?: 'cloudflare' | 'platform_internal'
   readonly result?: string
   readonly source?: string
 }

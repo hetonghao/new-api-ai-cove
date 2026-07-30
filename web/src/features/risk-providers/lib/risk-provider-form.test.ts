@@ -21,9 +21,8 @@ import { describe, test } from 'node:test'
 
 import { t } from 'i18next'
 
-import type { RiskProvider, RiskProviderFormValues } from '../types'
+import type { RiskProviderFormValues } from '../types'
 import {
-  canActivateProvider,
   formValuesToPayload,
   getChannelModelOptions,
   getRiskProviderFormSchema,
@@ -40,27 +39,6 @@ const formValues: RiskProviderFormValues = {
   timeout_ms: 800,
   failure_threshold: 5,
   cooldown_seconds: 30,
-}
-
-function provider(overrides: Partial<RiskProvider> = {}): RiskProvider {
-  return {
-    id: 1,
-    name: formValues.name,
-    provider_type: 'cloudflare',
-    model: formValues.model,
-    account_id: formValues.account_id,
-    channel_id: 0,
-    has_credential: true,
-    system_managed: false,
-    timeout_ms: 800,
-    failure_threshold: 5,
-    cooldown_seconds: 30,
-    validated_at: null,
-    active: false,
-    created_at: '2026-07-25T00:00:00Z',
-    updated_at: '2026-07-25T00:00:00Z',
-    ...overrides,
-  }
 }
 
 describe('risk provider form behavior', () => {
@@ -182,21 +160,5 @@ describe('risk provider form behavior', () => {
     if (!result.success) {
       assert.deepEqual(result.error.issues[0]?.path, ['channel_id'])
     }
-  })
-
-  test('allows activation only after successful validation', () => {
-    // Given saved providers in unvalidated, validated, and active states
-    const unvalidated = provider()
-    const validated = provider({ validated_at: '2026-07-25T00:10:00Z' })
-    const active = provider({
-      validated_at: '2026-07-25T00:10:00Z',
-      active: true,
-    })
-
-    // When the activation affordance is evaluated
-    // Then only the validated inactive provider can be selected
-    assert.equal(canActivateProvider(unvalidated), false)
-    assert.equal(canActivateProvider(validated), true)
-    assert.equal(canActivateProvider(active), false)
   })
 })

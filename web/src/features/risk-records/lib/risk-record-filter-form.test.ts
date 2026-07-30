@@ -38,6 +38,7 @@ describe('risk record filter form behavior', () => {
       channel_id: '1.5',
       username: 'a'.repeat(21),
       provider_id: '-1',
+      provider_type: 'future-provider',
       result: 'future-result',
       source: 'future-source',
     })
@@ -50,6 +51,7 @@ describe('risk record filter form behavior', () => {
         channel_id: ['translated:Please enter a valid number'],
         username: ['translated:Invalid configuration'],
         provider_id: ['translated:Please enter a valid number'],
+        provider_type: ['translated:Invalid configuration'],
         result: ['translated:Invalid configuration'],
         source: ['translated:Invalid configuration'],
       })
@@ -67,6 +69,7 @@ describe('risk record filter form behavior', () => {
       channel_id: '',
       username: '',
       provider_id: '',
+      provider_type: '',
       result: '',
       source: '',
     })
@@ -92,6 +95,7 @@ describe('risk record filter form behavior', () => {
       channel_id: '12',
       username: ' alice ',
       provider_id: '0',
+      provider_type: '',
       result: 'not_reviewed',
       source: 'local',
     })

@@ -38,6 +38,7 @@ import { TitledCard } from '@/components/ui/titled-card'
 import { getRiskRecordGovernance, updateRiskRecordGovernance } from '../api'
 import {
   riskContentSaveScopeSchema,
+  riskRecordPreviewCharsSchema,
   riskRecordRetentionDaysSchema,
   type RiskContentSaveScope,
 } from '../types'
@@ -49,6 +50,7 @@ export function RiskRecordGovernanceSettings() {
   const [contentSaveScope, setContentSaveScope] =
     useState<RiskContentSaveScope>('all')
   const [retentionDaysDraft, setRetentionDaysDraft] = useState('30')
+  const [previewCharsDraft, setPreviewCharsDraft] = useState('200')
   const [saving, setSaving] = useState(false)
   const settingsQuery = useQuery({
     queryKey: QUERY_KEY,
@@ -68,6 +70,7 @@ export function RiskRecordGovernanceSettings() {
     if (settingsQuery.data) {
       setContentSaveScope(settingsQuery.data.content_save_scope)
       setRetentionDaysDraft(String(settingsQuery.data.retention_days))
+      setPreviewCharsDraft(String(settingsQuery.data.preview_chars))
     }
   }, [settingsQuery.data])
 
@@ -77,21 +80,35 @@ export function RiskRecordGovernanceSettings() {
   const retentionDays = retentionDaysResult.success
     ? retentionDaysResult.data
     : null
+  const previewCharsResult = riskRecordPreviewCharsSchema.safeParse(
+    Number(previewCharsDraft)
+  )
+  const previewChars = previewCharsResult.success
+    ? previewCharsResult.data
+    : null
 
   async function saveSettings() {
-    if (!settingsQuery.data || retentionDays === null) return
+    if (
+      !settingsQuery.data ||
+      retentionDays === null ||
+      previewChars === null
+    ) {
+      return
+    }
     setSaving(true)
     try {
       const response = await updateRiskRecordGovernance({
         ...settingsQuery.data,
         content_save_scope: contentSaveScope,
         retention_days: retentionDays,
+        preview_chars: previewChars,
       })
       if (!response.success || !response.data) {
         throw new Error(response.message || t('Request failed'))
       }
       setContentSaveScope(response.data.content_save_scope)
       setRetentionDaysDraft(String(response.data.retention_days))
+      setPreviewCharsDraft(String(response.data.preview_chars))
       toast.success(t('Risk record settings saved'))
       await settingsQuery.refetch()
     } catch (error) {
@@ -177,14 +194,42 @@ export function RiskRecordGovernanceSettings() {
             </FieldError>
           )}
         </Field>
+        <Field data-invalid={!previewCharsResult.success}>
+          <FieldLabel htmlFor='risk-record-preview-chars'>
+            {t('Preview characters')}
+          </FieldLabel>
+          <Input
+            id='risk-record-preview-chars'
+            className='sm:max-w-32'
+            type='number'
+            min={50}
+            step={1}
+            value={previewCharsDraft}
+            aria-invalid={!previewCharsResult.success}
+            onChange={(event) => setPreviewCharsDraft(event.target.value)}
+          />
+          <FieldDescription>
+            {t(
+              'Stores at least {{min}} redacted characters with no maximum limit.',
+              { min: 50 }
+            )}
+          </FieldDescription>
+          {!previewCharsResult.success && (
+            <FieldError>
+              {t('Preview characters must be at least {{min}}', { min: 50 })}
+            </FieldError>
+          )}
+        </Field>
         <div className='flex justify-end md:col-span-2'>
           <Button
             type='button'
             disabled={
               saving ||
               retentionDays === null ||
+              previewChars === null ||
               (contentSaveScope === settingsQuery.data?.content_save_scope &&
-                retentionDays === settingsQuery.data?.retention_days)
+                retentionDays === settingsQuery.data?.retention_days &&
+                previewChars === settingsQuery.data?.preview_chars)
             }
             onClick={() => void saveSettings()}
           >

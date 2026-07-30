@@ -29,7 +29,7 @@ export type LocalRiskRuleAction = (typeof LOCAL_RISK_RULE_ACTIONS)[number]
 export type RiskPolicy = {
   readonly configured: boolean
   readonly enabled: boolean
-  readonly provider_id: number | null
+  readonly provider_ids: readonly number[]
   readonly enabled_channels: readonly number[]
   readonly excluded_user_ids: readonly number[]
   readonly excluded_models?: readonly string[]
@@ -39,7 +39,7 @@ export type RiskPolicy = {
 
 export type RiskPolicyPayload = {
   readonly enabled: boolean
-  readonly provider_id: number | null
+  readonly provider_ids: readonly number[]
   readonly enabled_channels: readonly number[]
   readonly excluded_user_ids: readonly number[]
   readonly excluded_models: readonly string[]

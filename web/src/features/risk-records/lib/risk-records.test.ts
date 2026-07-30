@@ -19,7 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { riskRecordGovernanceSchema, riskRecordPageSchema } from '../types.ts'
+import {
+  riskRecordGovernanceSchema,
+  riskRecordPageSchema,
+  type RiskRecordFilterDraft,
+} from '../types.ts'
 import {
   buildRiskRecordQueryParams,
   commitRiskRecordFilters,
@@ -49,6 +53,7 @@ const VALID_RECORD = {
   rule_ids: [5],
   provider_id: 7,
   provider_name: 'Cloud review',
+  provider_type: 'cloudflare',
   result: 'unsafe',
   source: 'provider',
   provider_called: true,
@@ -193,6 +198,7 @@ describe('risk record behavior', () => {
       save_scope: 'all',
       content_save_scope: 'unsafe',
       retention_days: 30,
+      preview_chars: 200,
     }
 
     // When
@@ -368,9 +374,10 @@ describe('risk record behavior', () => {
       channel_id: '12',
       username: 'alice',
       provider_id: '7',
+      provider_type: 'platform_internal',
       result: 'unsafe',
       source: 'provider',
-    }
+    } satisfies RiskRecordFilterDraft
 
     // When
     const filters = commitRiskRecordFilters(draft)
@@ -385,6 +392,7 @@ describe('risk record behavior', () => {
       channel_id: 12,
       username: 'alice',
       provider_id: 7,
+      provider_type: 'platform_internal',
       result: 'unsafe',
       source: 'provider',
     })
@@ -398,9 +406,10 @@ describe('risk record behavior', () => {
       channel_id: '',
       username: '',
       provider_id: '0',
+      provider_type: '',
       result: '',
       source: '',
-    }
+    } satisfies RiskRecordFilterDraft
 
     // When
     const filters = commitRiskRecordFilters(draft)
@@ -418,9 +427,10 @@ describe('risk record behavior', () => {
       channel_id: '',
       username: '',
       provider_id: '',
+      provider_type: '',
       result: '',
       source: '',
-    }
+    } satisfies RiskRecordFilterDraft
 
     // When
     const filters = commitRiskRecordFilters(draft)

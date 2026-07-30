@@ -87,6 +87,7 @@ const BASE_RECORD: RiskRecord = {
   rule_ids: [],
   provider_id: 1,
   provider_name: 'HTH',
+  provider_type: 'cloudflare',
   result: 'safe',
   source: 'provider',
   provider_called: true,

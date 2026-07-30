@@ -31,6 +31,7 @@ import {
   FieldLabel,
 } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import type { RiskProvider } from '@/features/risk-providers/types'
 import { CompactDateTimeRangePicker } from '@/features/usage-logs/components/compact-date-time-range-picker'
 
@@ -65,9 +66,12 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
   const startTime = form.watch('start_time')
   const endTime = form.watch('end_time')
   const providerId = form.watch('provider_id')
+  const providerType = form.watch('provider_type')
   const channelId = form.watch('channel_id')
   const errors = form.formState.errors
-  const advancedFilterCount = [providerId, channelId].filter(Boolean).length
+  const advancedFilterCount = [providerId, providerType, channelId].filter(
+    Boolean
+  ).length
 
   useEffect(() => {
     if (!props.usernameOverride) return
@@ -156,6 +160,28 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
             control={form.control}
             providers={props.providers}
           />
+          <Field data-invalid={Boolean(errors.provider_type)}>
+            <FieldLabel htmlFor='risk-record-provider-type'>
+              {t('Provider type')}
+            </FieldLabel>
+            <NativeSelect
+              id='risk-record-provider-type'
+              className='w-full'
+              aria-invalid={Boolean(errors.provider_type)}
+              {...form.register('provider_type')}
+            >
+              <NativeSelectOption value=''>
+                {t('All provider types')}
+              </NativeSelectOption>
+              <NativeSelectOption value='cloudflare'>
+                Cloudflare Workers AI
+              </NativeSelectOption>
+              <NativeSelectOption value='platform_internal'>
+                {t('Platform internal model')}
+              </NativeSelectOption>
+            </NativeSelect>
+            <FieldError>{errors.provider_type?.message}</FieldError>
+          </Field>
           <Field data-invalid={Boolean(errors.channel_id)}>
             <FieldLabel htmlFor='risk-record-channel-id'>
               {t('Channel ID')}
