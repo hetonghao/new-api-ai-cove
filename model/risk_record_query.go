@@ -16,6 +16,7 @@ type RiskRecordQuery struct {
 	ChannelID      int
 	Username       string
 	ProviderID     *int
+	ProviderType   RiskProviderType
 	Result         RiskRecordResult
 	Source         RiskRecordSource
 }
@@ -57,6 +58,9 @@ func QueryRiskRecords(ctx context.Context, filter RiskRecordQuery) ([]*RiskRecor
 	}
 	if filter.ProviderID != nil {
 		query = query.Where("risk_records.provider_id = ?", *filter.ProviderID)
+	}
+	if filter.ProviderType != "" {
+		query = query.Where("risk_records.provider_type = ?", filter.ProviderType)
 	}
 	if filter.Result != "" {
 		query = query.Where("risk_records.result = ?", filter.Result)
@@ -100,6 +104,11 @@ func validateRiskRecordQuery(filter RiskRecordQuery) error {
 	}
 	switch filter.Result {
 	case "", RiskRecordResultNotReviewed, RiskRecordResultSafe, RiskRecordResultUnsafe, RiskRecordResultError:
+	default:
+		return ErrInvalidRiskRecordPage
+	}
+	switch filter.ProviderType {
+	case "", RiskProviderCloudflare, RiskProviderPlatformInternal:
 	default:
 		return ErrInvalidRiskRecordPage
 	}

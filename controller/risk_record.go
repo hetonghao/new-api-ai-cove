@@ -12,6 +12,7 @@ type riskRecordListQuery struct {
 	ChannelID      int                    `form:"channel_id"`
 	Username       string                 `form:"username"`
 	ProviderID     *int                   `form:"provider_id"`
+	ProviderType   model.RiskProviderType `form:"provider_type"`
 	Result         model.RiskRecordResult `form:"result"`
 	Source         model.RiskRecordSource `form:"source"`
 }
@@ -27,7 +28,8 @@ func ListRiskRecords(c *gin.Context) {
 		Offset: pageInfo.GetStartIdx(), Limit: pageInfo.GetPageSize(),
 		StartTimestamp: query.StartTimestamp, EndTimestamp: query.EndTimestamp,
 		ChannelID: query.ChannelID, Username: query.Username, ProviderID: query.ProviderID,
-		Result: query.Result, Source: query.Source,
+		ProviderType: query.ProviderType,
+		Result:       query.Result, Source: query.Source,
 	})
 	if err != nil {
 		common.ApiError(c, err)

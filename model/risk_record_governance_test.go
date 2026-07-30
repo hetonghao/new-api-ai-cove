@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,6 +21,27 @@ func TestRiskRecordGovernance_defaultsToAllForThirtyDays(t *testing.T) {
 	assert.Equal(t, RiskRecordSaveAll, governance.SaveScope)
 	assert.Equal(t, RiskContentSaveAll, governance.ContentSaveScope)
 	assert.Equal(t, 30, governance.RetentionDays)
+	assert.Equal(t, 200, governance.PreviewChars)
+}
+
+func TestRecordRiskObservation_truncatesPreviewByConfiguredUnicodeCharacters(t *testing.T) {
+	// Given
+	setupRiskRecordModelTest(t)
+	_, err := SaveRiskRecordGovernance(context.Background(), RiskRecordGovernanceInput{
+		SaveScope: RiskRecordSaveAll, ContentSaveScope: RiskContentSaveAll, RetentionDays: 30, PreviewChars: 50,
+	})
+	require.NoError(t, err)
+	input := validRiskRecordInput(RiskRecordResultSafe)
+	input.Preview = "中文🙂" + strings.Repeat("a", 60)
+
+	// When
+	require.NoError(t, RecordRiskObservation(context.Background(), input))
+
+	// Then
+	var record RiskRecord
+	require.NoError(t, DB.Take(&record).Error)
+	assert.Equal(t, "中文🙂"+strings.Repeat("a", 47), record.Preview)
+	assert.Len(t, []rune(record.Preview), 50)
 }
 
 func TestSaveRiskRecordGovernance_rejectsInvalidScopeAndRetention(t *testing.T) {
@@ -53,6 +75,7 @@ func TestRecordRiskObservation_appliesConfiguredSaveScopeAtPersistenceBoundary(t
 			input.Result = RiskRecordResultNotReviewed
 			input.ProviderID = 0
 			input.ProviderName = ""
+			input.ProviderType = ""
 			input.Source = RiskRecordSourceLocal
 			return input
 		}(), wantSaved: true},
@@ -63,6 +86,7 @@ func TestRecordRiskObservation_appliesConfiguredSaveScopeAtPersistenceBoundary(t
 			input.Result = RiskRecordResultNotReviewed
 			input.ProviderID = 0
 			input.ProviderName = ""
+			input.ProviderType = ""
 			input.Source = RiskRecordSourceLocal
 			return input
 		}(), wantSaved: false},
@@ -77,6 +101,7 @@ func TestRecordRiskObservation_appliesConfiguredSaveScopeAtPersistenceBoundary(t
 			input := validRiskRecordInput(RiskRecordResultError)
 			input.ProviderID = 0
 			input.ProviderName = ""
+			input.ProviderType = ""
 			input.ErrorCode = "queue_full"
 			return input
 		}(), wantSaved: true},

@@ -29,7 +29,7 @@ func TestProcessRiskObservationForRelay_skips_cloud_review_for_enabled_skip_rule
 			deps := riskObservationRelayDeps{
 				loadPolicy: func() (model.RiskPolicyState, error) {
 					return model.RiskPolicyState{
-						Enabled: true, ProviderID: &providerID, EnabledChannels: []int{24},
+						Enabled: true, ProviderIDs: []int{providerID}, EnabledChannels: []int{24},
 						ReviewMode: test.reviewMode, ActionMode: test.actionMode,
 					}, nil
 				},
@@ -79,7 +79,7 @@ func TestProcessRiskObservationForRelay_ignores_disabled_skip_rule(t *testing.T)
 	deps := riskObservationRelayDeps{
 		loadPolicy: func() (model.RiskPolicyState, error) {
 			return model.RiskPolicyState{
-				Enabled: true, ProviderID: &providerID, EnabledChannels: []int{24},
+				Enabled: true, ProviderIDs: []int{providerID}, EnabledChannels: []int{24},
 				ReviewMode: model.RiskReviewFull, ActionMode: model.RiskActionObserve,
 			}, nil
 		},
@@ -112,7 +112,7 @@ func TestProcessRiskObservationForRelay_does_not_skip_similar_non_prefix_text(t 
 	deps := riskObservationRelayDeps{
 		loadPolicy: func() (model.RiskPolicyState, error) {
 			return model.RiskPolicyState{
-				Enabled: true, ProviderID: &providerID, EnabledChannels: []int{24},
+				Enabled: true, ProviderIDs: []int{providerID}, EnabledChannels: []int{24},
 				ReviewMode: model.RiskReviewFull, ActionMode: model.RiskActionObserve,
 			}, nil
 		},
@@ -147,7 +147,7 @@ func TestProcessRiskObservationForRelay_skips_excluded_original_model(t *testing
 	deps := riskObservationRelayDeps{
 		loadPolicy: func() (model.RiskPolicyState, error) {
 			return model.RiskPolicyState{
-				Enabled: true, ProviderID: &providerID, EnabledChannels: []int{24}, ExcludedModels: []string{"codex-auto-review"},
+				Enabled: true, ProviderIDs: []int{providerID}, EnabledChannels: []int{24}, ExcludedModels: []string{"codex-auto-review"},
 				ReviewMode: model.RiskReviewFull, ActionMode: model.RiskActionBlock,
 			}, nil
 		},
@@ -189,7 +189,7 @@ func TestProcessRiskObservationForRelay_does_not_skip_different_original_model(t
 	deps := riskObservationRelayDeps{
 		loadPolicy: func() (model.RiskPolicyState, error) {
 			return model.RiskPolicyState{
-				Enabled: true, ProviderID: &providerID, EnabledChannels: []int{24}, ExcludedModels: []string{"codex-auto-review"},
+				Enabled: true, ProviderIDs: []int{providerID}, EnabledChannels: []int{24}, ExcludedModels: []string{"codex-auto-review"},
 				ReviewMode: model.RiskReviewFull, ActionMode: model.RiskActionObserve,
 			}, nil
 		},

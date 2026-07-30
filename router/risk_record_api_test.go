@@ -161,19 +161,21 @@ func TestRiskRecordAPI_filtersGovernedRecords(t *testing.T) {
 	for _, input := range []model.RiskRecordInput{
 		{
 			RequestID: "req-match", ChannelID: 12, UserID: 34, ProviderID: 21, ProviderName: "Cloudflare",
-			Result: model.RiskRecordResultUnsafe, Source: model.RiskRecordSourceInflight,
+			ProviderType: model.RiskProviderPlatformInternal,
+			Result:       model.RiskRecordResultUnsafe, Source: model.RiskRecordSourceInflight,
 			ObservedAt: observedAt,
 		},
 		{
 			RequestID: "req-other-user", ChannelID: 12, UserID: 35, ProviderID: 21, ProviderName: "Cloudflare",
-			Result: model.RiskRecordResultUnsafe, Source: model.RiskRecordSourceInflight,
+			ProviderType: model.RiskProviderCloudflare,
+			Result:       model.RiskRecordResultUnsafe, Source: model.RiskRecordSourceInflight,
 			ObservedAt: observedAt,
 		},
 	} {
 		require.NoError(t, model.RecordRiskObservation(context.Background(), input))
 	}
 	url := fmt.Sprintf(
-		"%s/api/risk/records?p=1&page_size=20&start_timestamp=%d&end_timestamp=%d&channel_id=12&username=alice&result=unsafe&source=inflight&provider_id=21",
+		"%s/api/risk/records?p=1&page_size=20&start_timestamp=%d&end_timestamp=%d&channel_id=12&username=alice&result=unsafe&source=inflight&provider_id=21&provider_type=platform_internal",
 		server.URL, observedAt.Unix(), observedAt.Unix(),
 	)
 	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
@@ -193,6 +195,7 @@ func TestRiskRecordAPI_filtersGovernedRecords(t *testing.T) {
 	assert.Equal(t, 1, payload.Data.Total)
 	require.Len(t, payload.Data.Items, 1)
 	assert.Equal(t, "req-match", payload.Data.Items[0].RequestID)
+	assert.Equal(t, model.RiskProviderPlatformInternal, payload.Data.Items[0].ProviderType)
 }
 
 func TestRiskRecordGovernanceAPI_getsDefaultsAndUpdatesValidatedSettings(t *testing.T) {
@@ -217,11 +220,12 @@ func TestRiskRecordGovernanceAPI_getsDefaultsAndUpdatesValidatedSettings(t *test
 	assert.Equal(t, model.RiskRecordSaveAll, defaults.Data.SaveScope)
 	assert.Equal(t, model.RiskContentSaveAll, defaults.Data.ContentSaveScope)
 	assert.Equal(t, 30, defaults.Data.RetentionDays)
+	assert.Equal(t, 200, defaults.Data.PreviewChars)
 
 	// When
 	updateRequest, err := http.NewRequestWithContext(
 		context.Background(), http.MethodPut, server.URL+"/api/risk/records/settings",
-		strings.NewReader(`{"save_scope":"unsafe","content_save_scope":"unsafe","retention_days":90}`),
+		strings.NewReader(`{"save_scope":"unsafe","content_save_scope":"unsafe","retention_days":90,"preview_chars":1200}`),
 	)
 	require.NoError(t, err)
 	updateRequest.Header.Set("Content-Type", "application/json")
@@ -241,4 +245,29 @@ func TestRiskRecordGovernanceAPI_getsDefaultsAndUpdatesValidatedSettings(t *test
 	assert.Equal(t, model.RiskRecordSaveUnsafe, updated.Data.SaveScope)
 	assert.Equal(t, model.RiskContentSaveUnsafe, updated.Data.ContentSaveScope)
 	assert.Equal(t, 90, updated.Data.RetentionDays)
+	assert.Equal(t, 1200, updated.Data.PreviewChars)
+}
+
+func TestRiskRecordGovernanceAPI_rejectsPreviewBelowMinimum(t *testing.T) {
+	// Given
+	server, client, accessToken := setupRiskRecordRouterTest(t, common.RoleRootUser)
+	request, err := http.NewRequestWithContext(
+		context.Background(), http.MethodPut, server.URL+"/api/risk/records/settings",
+		strings.NewReader(`{"save_scope":"all","content_save_scope":"all","retention_days":30,"preview_chars":49}`),
+	)
+	require.NoError(t, err)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+accessToken)
+
+	// When
+	response, err := client.Do(request)
+
+	// Then
+	require.NoError(t, err)
+	defer response.Body.Close()
+	var payload struct {
+		Success bool `json:"success"`
+	}
+	require.NoError(t, common.DecodeJson(response.Body, &payload))
+	assert.False(t, payload.Success)
 }

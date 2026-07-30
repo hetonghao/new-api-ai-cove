@@ -28,7 +28,7 @@ func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 				Model: "gpt-5.6", Path: "/v1/responses", Preview: "masked preview",
 				ContentHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 				Source:      RiskObservationSourceCache, CacheHit: true, Blocked: true, RuleIDs: []int{5, 8},
-				ProviderID: 21, ProviderName: "Cloudflare", Result: RiskObservationUnsafe,
+				ProviderID: 21, ProviderName: "Cloudflare", ProviderType: model.RiskProviderCloudflare, Result: RiskObservationUnsafe,
 				Categories: []string{"violent crimes"}, LatencyMS: 93, PromptTokens: 11,
 				CompletionTokens: 2, TotalTokens: 13, Neurons: 9.072817475858999,
 				ObservedAt: time.Date(2026, time.July, 25, 12, 30, 0, 0, time.UTC),
@@ -48,7 +48,7 @@ func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 			wantSource: model.RiskRecordSourceProvider,
 			event: RiskObservationEvent{
 				RequestID: "req-error", ChannelID: 12, UserID: 34,
-				ProviderID: 21, ProviderName: "Cloudflare", Result: RiskObservationError,
+				ProviderID: 21, ProviderName: "Cloudflare", ProviderType: model.RiskProviderCloudflare, Result: RiskObservationError,
 				Source: RiskObservationSourceProvider, ProviderCalled: true,
 				ErrorCode: riskObservationProviderError, ErrorDetail: "Cloudflare returned HTTP 429",
 				ObservedAt: time.Date(2026, time.July, 25, 12, 31, 30, 0, time.UTC),
@@ -60,7 +60,7 @@ func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 			wantChunkNeurons: 6,
 			event: RiskObservationEvent{
 				RequestID: "req-provider", ChannelID: 12, UserID: 34,
-				ProviderID: 21, ProviderName: "Cloudflare", Result: RiskObservationSafe,
+				ProviderID: 21, ProviderName: "Cloudflare", ProviderType: model.RiskProviderCloudflare, Result: RiskObservationSafe,
 				Source: RiskObservationSourceProvider, ProviderCalled: true,
 				Chunks: []RiskReviewChunkAudit{{
 					Index: 0, Status: RiskReviewSafe, Categories: []string{"clean"}, LatencyMS: 17,
@@ -111,6 +111,7 @@ func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 			}
 			assert.Equal(t, test.event.ProviderID, record.ProviderID)
 			assert.Equal(t, test.event.ProviderName, record.ProviderName)
+			assert.Equal(t, test.event.ProviderType, record.ProviderType)
 			assert.Equal(t, model.RiskRecordResult(test.event.Result), record.Result)
 			if len(test.event.Categories) == 0 {
 				assert.Empty(t, record.Categories)

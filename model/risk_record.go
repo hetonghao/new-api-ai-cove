@@ -46,11 +46,12 @@ type RiskRecord struct {
 	TokenName        string            `json:"token_name" gorm:"->;-:migration"`
 	Model            string            `json:"model" gorm:"type:varchar(256);not null"`
 	Path             string            `json:"path" gorm:"type:varchar(512);not null"`
-	Preview          string            `json:"preview" gorm:"type:varchar(800);not null"`
+	Preview          string            `json:"preview" gorm:"type:text;not null"`
 	ContentHash      string            `json:"content_hash" gorm:"type:varchar(64);not null"`
 	RuleIDs          []int             `json:"rule_ids" gorm:"serializer:json;type:text;not null"`
 	ProviderID       int               `json:"provider_id" gorm:"not null;index"`
 	ProviderName     string            `json:"provider_name" gorm:"type:varchar(128);not null"`
+	ProviderType     RiskProviderType  `json:"provider_type" gorm:"type:varchar(32);not null;default:'';index"`
 	Result           RiskRecordResult  `json:"result" gorm:"type:varchar(16);not null;index"`
 	Categories       []string          `json:"categories" gorm:"serializer:json;type:text;not null"`
 	LatencyMS        int64             `json:"latency_ms" gorm:"not null"`
@@ -80,6 +81,7 @@ type RiskRecordInput struct {
 	RuleIDs          []int
 	ProviderID       int
 	ProviderName     string
+	ProviderType     RiskProviderType
 	Result           RiskRecordResult
 	Categories       []string
 	LatencyMS        int64
@@ -110,7 +112,7 @@ func RecordRiskObservation(ctx context.Context, input RiskRecordInput) error {
 	if err != nil {
 		return fmt.Errorf("load risk record governance: %w", err)
 	}
-	applyRiskRecordContentGovernance(&record, governance.ContentSaveScope)
+	applyRiskRecordContentGovernance(&record, governance)
 	if record.Result != RiskRecordResultError {
 		switch governance.SaveScope {
 		case RiskRecordSaveSuspicious:
@@ -139,15 +141,20 @@ func RecordRiskProviderValidation(ctx context.Context, input RiskRecordInput) er
 	if err != nil {
 		return fmt.Errorf("load risk record governance: %w", err)
 	}
-	applyRiskRecordContentGovernance(&record, governance.ContentSaveScope)
+	applyRiskRecordContentGovernance(&record, governance)
 	if err := DB.WithContext(ctx).Create(&record).Error; err != nil {
 		return fmt.Errorf("record risk provider validation %q: %w", record.RequestID, err)
 	}
 	return nil
 }
 
-func applyRiskRecordContentGovernance(record *RiskRecord, scope RiskContentSaveScope) {
-	if scope == RiskContentSaveAll || (scope == RiskContentSaveUnsafe && record.Result == RiskRecordResultUnsafe) {
+func applyRiskRecordContentGovernance(record *RiskRecord, governance RiskRecordGovernance) {
+	if governance.ContentSaveScope == RiskContentSaveAll ||
+		(governance.ContentSaveScope == RiskContentSaveUnsafe && record.Result == RiskRecordResultUnsafe) {
+		previewRunes := []rune(record.Preview)
+		if len(previewRunes) > governance.PreviewChars {
+			record.Preview = string(previewRunes[:governance.PreviewChars])
+		}
 		return
 	}
 	record.Preview = ""
@@ -180,6 +187,11 @@ func newRiskRecord(input RiskRecordInput) (RiskRecord, error) {
 	if len(input.ProviderName) > 128 || input.ObservedAt.IsZero() {
 		return RiskRecord{}, ErrInvalidRiskRecord
 	}
+	switch input.ProviderType {
+	case "", RiskProviderCloudflare, RiskProviderPlatformInternal:
+	default:
+		return RiskRecord{}, ErrInvalidRiskRecord
+	}
 	if input.TokenID < 0 || len(input.Model) > 256 || len(input.Path) > 512 {
 		return RiskRecord{}, ErrInvalidRiskRecord
 	}
@@ -188,10 +200,6 @@ func newRiskRecord(input RiskRecordInput) (RiskRecord, error) {
 	}
 	if input.ContentHash != "" && !riskRecordContentHash.MatchString(input.ContentHash) {
 		return RiskRecord{}, ErrInvalidRiskRecord
-	}
-	previewRunes := []rune(input.Preview)
-	if len(previewRunes) > 200 {
-		input.Preview = string(previewRunes[:200])
 	}
 	if input.LatencyMS < 0 || input.PromptTokens < 0 || input.CompletionTokens < 0 || input.TotalTokens < 0 || input.Neurons < 0 {
 		return RiskRecord{}, ErrInvalidRiskRecord
@@ -220,6 +228,9 @@ func newRiskRecord(input RiskRecordInput) (RiskRecord, error) {
 	}
 	providerPresent := input.ProviderID > 0 && input.ProviderName != ""
 	providerMissing := input.ProviderID == 0 && input.ProviderName == ""
+	if providerMissing && input.ProviderType != "" {
+		return RiskRecord{}, ErrInvalidRiskRecord
+	}
 	if !providerPresent && (!providerOptional || !providerMissing) {
 		return RiskRecord{}, ErrInvalidRiskRecord
 	}
@@ -285,7 +296,8 @@ func newRiskRecord(input RiskRecordInput) (RiskRecord, error) {
 	return RiskRecord{
 		RequestID: input.RequestID, ChannelID: input.ChannelID, UserID: input.UserID, TokenID: input.TokenID,
 		Model: input.Model, Path: input.Path, Preview: input.Preview, ContentHash: input.ContentHash, RuleIDs: ruleIDs,
-		ProviderID: input.ProviderID, ProviderName: input.ProviderName, Result: input.Result, Categories: categories,
+		ProviderID: input.ProviderID, ProviderName: input.ProviderName, ProviderType: input.ProviderType,
+		Result: input.Result, Categories: categories,
 		LatencyMS: input.LatencyMS, PromptTokens: input.PromptTokens, CompletionTokens: input.CompletionTokens,
 		TotalTokens: input.TotalTokens, Neurons: input.Neurons, Chunks: chunks, ErrorCode: input.ErrorCode, ErrorDetail: input.ErrorDetail, Source: input.Source,
 		CacheHit: input.CacheHit, ProviderCalled: input.ProviderCalled, Blocked: input.Blocked, ObservedAt: input.ObservedAt.UTC(),

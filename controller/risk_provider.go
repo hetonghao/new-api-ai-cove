@@ -231,7 +231,7 @@ func riskProviderValidationRecordInput(
 	}
 	return model.RiskRecordInput{
 		RequestID: requestID, ChannelID: provider.ChannelID, UserID: c.GetInt("id"), Model: provider.Model,
-		ProviderID: provider.Id, ProviderName: provider.Name,
+		ProviderID: provider.Id, ProviderName: provider.Name, ProviderType: provider.ProviderType,
 		Result: recordResult, Categories: append([]string(nil), result.Categories...),
 		LatencyMS:    time.Since(startedAt).Milliseconds(),
 		PromptTokens: result.Usage.PromptTokens, CompletionTokens: result.Usage.CompletionTokens,

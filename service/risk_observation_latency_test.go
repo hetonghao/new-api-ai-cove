@@ -27,7 +27,7 @@ func TestProcessRiskObservationForRelay_does_not_wait_for_slow_sink_in_block_mod
 			providerID := provider.Id
 			channelID := createRiskPolicyChannel(t)
 			_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
-				ProviderID:      &providerID,
+				ProviderIDs:     []int{providerID},
 				EnabledChannels: []int{channelID},
 				ReviewMode:      model.RiskReviewFull,
 				ActionMode:      model.RiskActionBlock,

@@ -45,7 +45,8 @@ func setupRiskRecordModelTest(t *testing.T) *gorm.DB {
 func validRiskRecordInput(result RiskRecordResult) RiskRecordInput {
 	input := RiskRecordInput{
 		RequestID: "req-1", ChannelID: 12, UserID: 34, RuleIDs: []int{5, 8},
-		ProviderID: 21, ProviderName: "Cloudflare", Result: result, Categories: []string{"violent crimes"},
+		ProviderID: 21, ProviderName: "Cloudflare", ProviderType: RiskProviderCloudflare,
+		Result: result, Categories: []string{"violent crimes"},
 		LatencyMS: 93, PromptTokens: 11, CompletionTokens: 2, TotalTokens: 13, Neurons: 7,
 		ObservedAt: time.Date(2026, time.July, 25, 10, 0, 0, 0, time.UTC),
 	}
@@ -77,82 +78,11 @@ func TestRecordRiskObservation_persistsSafeUnsafeAndErrorMetadata(t *testing.T) 
 			assert.Equal(t, input.RuleIDs, records[0].RuleIDs)
 			assert.Equal(t, input.Result, records[0].Result)
 			assert.Equal(t, input.Categories, records[0].Categories)
+			assert.Equal(t, input.ProviderType, records[0].ProviderType)
 			assert.Equal(t, input.Neurons, records[0].Neurons)
 			assert.Equal(t, input.ErrorCode, records[0].ErrorCode)
 			assert.Equal(t, input.ErrorDetail, records[0].ErrorDetail)
 			assert.Equal(t, input.ObservedAt, records[0].ObservedAt)
-		})
-	}
-}
-
-func TestRecordRiskObservation_persistsPreProviderErrorsWithoutProvider(t *testing.T) {
-	errorCodes := []string{"queue_full", "service_shutdown", "policy_error", "rules_error"}
-	for _, errorCode := range errorCodes {
-		t.Run(errorCode, func(t *testing.T) {
-			// Given
-			setupRiskRecordModelTest(t)
-			input := validRiskRecordInput(RiskRecordResultError)
-			input.ProviderID = 0
-			input.ProviderName = ""
-			input.ErrorCode = errorCode
-
-			// When
-			err := RecordRiskObservation(context.Background(), input)
-
-			// Then
-			require.NoError(t, err)
-			records, total, err := ListRiskRecords(context.Background(), 0, 1)
-			require.NoError(t, err)
-			require.EqualValues(t, 1, total)
-			require.Len(t, records, 1)
-			assert.Zero(t, records[0].ProviderID)
-			assert.Empty(t, records[0].ProviderName)
-			assert.Equal(t, errorCode, records[0].ErrorCode)
-		})
-	}
-}
-
-func TestRecordRiskObservation_truncatesErrorDetail(t *testing.T) {
-	// Given
-	setupRiskRecordModelTest(t)
-	input := validRiskRecordInput(RiskRecordResultError)
-	input.ErrorDetail = strings.Repeat("诊", riskRecordErrorDetailMaxRunes+50)
-
-	// When
-	err := RecordRiskObservation(context.Background(), input)
-
-	// Then
-	require.NoError(t, err)
-	records, _, err := ListRiskRecords(context.Background(), 0, 1)
-	require.NoError(t, err)
-	require.Len(t, records, 1)
-	assert.Len(t, []rune(records[0].ErrorDetail), riskRecordErrorDetailMaxRunes)
-}
-
-func TestRecordRiskObservation_rejectsMissingProviderOutsidePreProviderErrors(t *testing.T) {
-	tests := []struct {
-		name      string
-		result    RiskRecordResult
-		errorCode string
-	}{
-		{name: "safe", result: RiskRecordResultSafe},
-		{name: "unsafe", result: RiskRecordResultUnsafe},
-		{name: "provider error", result: RiskRecordResultError, errorCode: "provider_error"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			// Given
-			setupRiskRecordModelTest(t)
-			input := validRiskRecordInput(test.result)
-			input.ProviderID = 0
-			input.ProviderName = ""
-			input.ErrorCode = test.errorCode
-
-			// When
-			err := RecordRiskObservation(context.Background(), input)
-
-			// Then
-			require.ErrorIs(t, err, ErrInvalidRiskRecord)
 		})
 	}
 }

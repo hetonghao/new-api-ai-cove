@@ -75,7 +75,7 @@ func processRiskObservationForRelay(ctx context.Context, job RiskObservationJob,
 	if !state.Enabled || !riskChannelEnabled(state.EnabledChannels, job.ChannelID) || slices.Contains(state.ExcludedUserIDs, job.UserID) || slices.Contains(state.ExcludedModels, job.Model) {
 		return RiskObservationRelayDecision{}
 	}
-	if state.ProviderID == nil {
+	if len(state.ProviderIDs) == 0 {
 		event := riskObservationErrorEvent(job, riskObservationProviderConfigError)
 		result := deps.enqueueEvent(event)
 		decision := RiskObservationRelayDecision{}
@@ -110,7 +110,8 @@ func processRiskObservationForRelay(ctx context.Context, job RiskObservationJob,
 		}
 		return decision
 	}
-	job.ProviderID = *state.ProviderID
+	job.ProviderIDs = append([]int(nil), state.ProviderIDs...)
+	job.ProviderID = 0
 	job.ReviewMode = state.ReviewMode
 	job.ActionMode = state.ActionMode
 	if state.ActionMode == model.RiskActionObserve {
@@ -135,7 +136,7 @@ func processRiskObservationForRelay(ctx context.Context, job RiskObservationJob,
 }
 
 func evaluateRiskObservation(ctx context.Context, job RiskObservationJob, executor riskModerationRunner) (RiskObservationEvent, bool) {
-	if job.ProviderID < 1 || executor == nil {
+	if len(riskObservationProviderIDs(job)) == 0 || executor == nil {
 		return RiskObservationEvent{}, false
 	}
 	var rules []*model.RiskRule
@@ -154,7 +155,8 @@ func evaluateRiskObservation(ctx context.Context, job RiskObservationJob, execut
 }
 
 func evaluateRiskObservationWithRules(ctx context.Context, job RiskObservationJob, evaluation riskObservationEvaluation) (RiskObservationEvent, bool) {
-	if job.ProviderID < 1 || evaluation.executor == nil {
+	providerIDs := riskObservationProviderIDs(job)
+	if len(providerIDs) == 0 || evaluation.executor == nil {
 		return RiskObservationEvent{}, false
 	}
 	event := newRiskObservationEvent(job)
@@ -168,19 +170,24 @@ func evaluateRiskObservationWithRules(ctx context.Context, job RiskObservationJo
 		}
 	}
 
-	provider, err := model.GetRiskProviderByID(job.ProviderID)
-	if err != nil {
-		event.Result = RiskObservationError
-		event.ErrorCode = riskObservationProviderConfigError
-		event.Source = RiskObservationSourceLocal
-		return event, true
+	providers := make([]*model.RiskProvider, 0, len(providerIDs))
+	for _, providerID := range providerIDs {
+		provider, err := model.GetRiskProviderByID(providerID)
+		if err != nil {
+			event.Result = RiskObservationError
+			event.ErrorCode = riskObservationProviderConfigError
+			event.Source = RiskObservationSourceLocal
+			return event, true
+		}
+		providers = append(providers, provider)
 	}
 	startedAt := time.Now()
 	outcome, executeErr := evaluation.executor.Execute(ctx, RiskModerationInput{
-		Provider: provider, Content: content, ReviewMode: job.ReviewMode, FullReviewChunkRunes: 0,
+		Providers: providers, Content: content, ReviewMode: job.ReviewMode, FullReviewChunkRunes: 0,
 	})
-	event.ProviderID = provider.Id
-	event.ProviderName = provider.Name
+	event.ProviderID = outcome.Result.ProviderID
+	event.ProviderName = outcome.Result.ProviderName
+	event.ProviderType = outcome.Result.ProviderType
 	event.Result = RiskObservationResult(outcome.Result.Status)
 	event.Categories = append([]string(nil), outcome.Result.Categories...)
 	event.LatencyMS = time.Since(startedAt).Milliseconds()
@@ -203,6 +210,16 @@ func evaluateRiskObservationWithRules(ctx context.Context, job RiskObservationJo
 	}
 	event.Blocked = job.ActionMode == model.RiskActionBlock && outcome.Result.Status == RiskReviewUnsafe
 	return event, true
+}
+
+func riskObservationProviderIDs(job RiskObservationJob) []int {
+	if len(job.ProviderIDs) > 0 {
+		return job.ProviderIDs
+	}
+	if job.ProviderID > 0 {
+		return []int{job.ProviderID}
+	}
+	return nil
 }
 
 func matchingRiskSkipRuleIDs(text string, rules []*model.RiskRule) []int {

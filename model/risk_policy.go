@@ -26,6 +26,7 @@ var ErrInvalidRiskPolicy = errors.New("invalid risk policy")
 type RiskPolicy struct {
 	Id              int            `json:"-" gorm:"primaryKey"`
 	Enabled         bool           `json:"-" gorm:"not null;default:true"`
+	ProviderIDs     string         `json:"-" gorm:"type:text;not null;default:'[]'"`
 	EnabledChannels string         `json:"-" gorm:"type:text;not null"`
 	ExcludedUserIDs string         `json:"-" gorm:"type:text;not null;default:'[]'"`
 	ExcludedModels  string         `json:"-" gorm:"type:text;not null;default:'[]'"`
@@ -37,7 +38,7 @@ type RiskPolicy struct {
 
 type RiskPolicyInput struct {
 	Enabled         *bool
-	ProviderID      *int
+	ProviderIDs     []int
 	EnabledChannels []int
 	ExcludedUserIDs []int
 	ExcludedModels  []string
@@ -48,7 +49,7 @@ type RiskPolicyInput struct {
 type RiskPolicyState struct {
 	Configured      bool           `json:"configured"`
 	Enabled         bool           `json:"enabled"`
-	ProviderID      *int           `json:"provider_id"`
+	ProviderIDs     []int          `json:"provider_ids"`
 	EnabledChannels []int          `json:"enabled_channels"`
 	ExcludedUserIDs []int          `json:"excluded_user_ids"`
 	ExcludedModels  []string       `json:"excluded_models"`
@@ -70,6 +71,7 @@ func GetRiskPolicyStateForRelay(userID int, modelName string) (RiskPolicyState, 
 
 func getRiskPolicyState(relayUserID int, relayModel string) (RiskPolicyState, error) {
 	state := RiskPolicyState{
+		ProviderIDs:     []int{},
 		EnabledChannels: []int{},
 		ExcludedUserIDs: []int{},
 		ExcludedModels:  []string{},
@@ -83,6 +85,10 @@ func getRiskPolicyState(relayUserID int, relayModel string) (RiskPolicyState, er
 		return RiskPolicyState{}, fmt.Errorf("get risk policy: %w", policyQuery.Error)
 	}
 	if policyQuery.RowsAffected > 0 {
+		providerIDs, err := decodeRiskPolicyList[int](policy.ProviderIDs)
+		if err != nil {
+			return RiskPolicyState{}, fmt.Errorf("decode risk policy providers: %w", err)
+		}
 		enabledChannels, err := decodeRiskChannelIDs(policy.EnabledChannels)
 		if err != nil {
 			return RiskPolicyState{}, fmt.Errorf("decode risk policy channels: %w", err)
@@ -97,6 +103,7 @@ func getRiskPolicyState(relayUserID int, relayModel string) (RiskPolicyState, er
 		}
 		state.Configured = true
 		policyEnabled = policy.Enabled
+		state.ProviderIDs = providerIDs
 		state.EnabledChannels = enabledChannels
 		state.ExcludedUserIDs = excludedUserIDs
 		state.ExcludedModels = excludedModels
@@ -110,15 +117,7 @@ func getRiskPolicyState(relayUserID int, relayModel string) (RiskPolicyState, er
 		return state, nil
 	}
 
-	var provider RiskProvider
-	providerQuery := DB.Where("active = ?", true).Limit(1).Find(&provider)
-	if providerQuery.Error != nil {
-		return RiskPolicyState{}, fmt.Errorf("get active risk provider: %w", providerQuery.Error)
-	}
-	if providerQuery.RowsAffected > 0 {
-		state.ProviderID = &provider.Id
-	}
-	state.Enabled = policyEnabled && state.ProviderID != nil && len(state.EnabledChannels) > 0
+	state.Enabled = policyEnabled && len(state.ProviderIDs) > 0 && len(state.EnabledChannels) > 0
 	return state, nil
 }
 
@@ -126,6 +125,10 @@ func SaveRiskPolicy(input RiskPolicyInput) (RiskPolicyState, error) {
 	input, err := normalizeRiskPolicyInput(input)
 	if err != nil {
 		return RiskPolicyState{}, err
+	}
+	providerIDs, err := common.Marshal(input.ProviderIDs)
+	if err != nil {
+		return RiskPolicyState{}, fmt.Errorf("encode risk policy providers: %w", err)
 	}
 	enabledChannels, err := common.Marshal(input.EnabledChannels)
 	if err != nil {
@@ -158,29 +161,33 @@ func SaveRiskPolicy(input RiskPolicyInput) (RiskPolicyState, error) {
 				return fmt.Errorf("%w: user does not exist", ErrInvalidRiskPolicy)
 			}
 		}
-		if input.ProviderID == nil {
-			if err := tx.Model(&RiskProvider{}).Where("active = ?", true).Update("active", false).Error; err != nil {
-				return fmt.Errorf("clear active risk provider: %w", err)
+		if len(input.ProviderIDs) > 0 {
+			providers := make([]RiskProvider, 0, len(input.ProviderIDs))
+			if err := lockForUpdate(tx).Where("id IN ?", input.ProviderIDs).Find(&providers).Error; err != nil {
+				return fmt.Errorf("get risk providers: %w", err)
 			}
-		} else {
-			var provider RiskProvider
-			if err := lockForUpdate(tx).First(&provider, *input.ProviderID).Error; err != nil {
-				return fmt.Errorf("get risk provider %d: %w", *input.ProviderID, err)
+			if len(providers) != len(input.ProviderIDs) {
+				return fmt.Errorf("%w: provider does not exist", ErrInvalidRiskPolicy)
 			}
-			if provider.ValidatedAt == nil {
-				return ErrRiskProviderNotValidated
+			for _, provider := range providers {
+				if provider.ValidatedAt == nil {
+					return ErrRiskProviderNotValidated
+				}
 			}
-			if err := tx.Model(&RiskProvider{}).Where("active = ?", true).Update("active", false).Error; err != nil {
-				return fmt.Errorf("deactivate risk providers: %w", err)
-			}
-			if err := tx.Model(&provider).Update("active", true).Error; err != nil {
-				return fmt.Errorf("activate risk provider %d: %w", provider.Id, err)
+		}
+		if err := tx.Model(&RiskProvider{}).Where("active = ?", true).Update("active", false).Error; err != nil {
+			return fmt.Errorf("clear risk provider pool mirror: %w", err)
+		}
+		if len(input.ProviderIDs) > 0 {
+			if err := tx.Model(&RiskProvider{}).Where("id IN ?", input.ProviderIDs).Update("active", true).Error; err != nil {
+				return fmt.Errorf("update risk provider pool mirror: %w", err)
 			}
 		}
 
 		policy := RiskPolicy{Id: riskPolicySingletonID}
 		values := map[string]any{
 			"enabled":           *input.Enabled,
+			"provider_ids":      string(providerIDs),
 			"enabled_channels":  string(enabledChannels),
 			"excluded_user_ids": string(excludedUserIDs),
 			"excluded_models":   string(excludedModels),
@@ -197,8 +204,8 @@ func SaveRiskPolicy(input RiskPolicyInput) (RiskPolicyState, error) {
 	}
 	return RiskPolicyState{
 		Configured:      true,
-		Enabled:         *input.Enabled && input.ProviderID != nil && len(input.EnabledChannels) > 0,
-		ProviderID:      input.ProviderID,
+		Enabled:         *input.Enabled && len(input.ProviderIDs) > 0 && len(input.EnabledChannels) > 0,
+		ProviderIDs:     input.ProviderIDs,
 		EnabledChannels: input.EnabledChannels,
 		ExcludedUserIDs: input.ExcludedUserIDs,
 		ExcludedModels:  input.ExcludedModels,

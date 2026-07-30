@@ -19,7 +19,7 @@ func TestProcessRiskObservationForRelay_fails_open_when_enabled_policy_has_no_pr
 		loadPolicy: func() (model.RiskPolicyState, error) {
 			return model.RiskPolicyState{
 				Enabled:         true,
-				ProviderID:      nil,
+				ProviderIDs:     nil,
 				EnabledChannels: []int{24},
 				ReviewMode:      model.RiskReviewFull,
 				ActionMode:      model.RiskActionBlock,

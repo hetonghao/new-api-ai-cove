@@ -44,7 +44,7 @@ func TestProcessRiskObservation_reviews_selective_hit_and_records_usage(t *testi
 	provider := createActiveRiskProvider(t, providerServer.URL)
 	providerID := provider.Id
 	_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
-		ProviderID:      &providerID,
+		ProviderIDs:     []int{providerID},
 		EnabledChannels: []int{createRiskPolicyChannel(t)},
 		ReviewMode:      model.RiskReviewSelective,
 		ActionMode:      model.RiskActionObserve,
@@ -92,7 +92,7 @@ func TestProcessRiskObservation_skips_selected_channel_not_enabled(t *testing.T)
 	provider := createActiveRiskProvider(t, providerServer.URL)
 	providerID := provider.Id
 	_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
-		ProviderID:      &providerID,
+		ProviderIDs:     []int{providerID},
 		EnabledChannels: []int{createRiskPolicyChannel(t)},
 		ReviewMode:      model.RiskReviewFull,
 		ActionMode:      model.RiskActionObserve,
@@ -164,7 +164,7 @@ func TestProcessRiskObservation_records_safe_and_provider_error(t *testing.T) {
 			provider := createActiveRiskProvider(t, providerServer.URL)
 			providerID := provider.Id
 			_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
-				ProviderID:      &providerID,
+				ProviderIDs:     []int{providerID},
 				EnabledChannels: []int{createRiskPolicyChannel(t)},
 				ReviewMode:      model.RiskReviewFull,
 				ActionMode:      model.RiskActionObserve,

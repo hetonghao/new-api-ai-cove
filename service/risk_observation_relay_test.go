@@ -22,10 +22,10 @@ func TestProcessRiskObservationForRelay_does_not_direct_record_retained_observe_
 	// Given
 	setupRiskObservationTest(t)
 	provider := createActiveRiskProvider(t, "https://example.com")
-	providerID := provider.Id
+	secondProvider := createActiveRiskProvider(t, "https://second.example.com")
 	channelID := createRiskPolicyChannel(t)
 	_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
-		ProviderID:      &providerID,
+		ProviderIDs:     []int{provider.Id, secondProvider.Id},
 		EnabledChannels: []int{channelID},
 		ReviewMode:      model.RiskReviewFull,
 		ActionMode:      model.RiskActionObserve,
@@ -58,7 +58,7 @@ func TestProcessRiskObservationForRelay_does_not_direct_record_retained_observe_
 	require.Nil(t, decision.DirectRecord)
 	require.Zero(t, executorCalls)
 	require.Equal(t, job.RequestID, queuedJob.RequestID)
-	require.Equal(t, providerID, queuedJob.ProviderID)
+	require.Equal(t, []int{provider.Id, secondProvider.Id}, queuedJob.ProviderIDs)
 	require.Equal(t, model.RiskReviewFull, queuedJob.ReviewMode)
 	require.Equal(t, model.RiskActionObserve, queuedJob.ActionMode)
 	require.Zero(t, completedEvents)
@@ -72,7 +72,7 @@ func TestProcessRiskObservationForRelay_returns_direct_record_for_unretained_obs
 		loadPolicy: func() (model.RiskPolicyState, error) {
 			return model.RiskPolicyState{
 				Enabled:         true,
-				ProviderID:      &providerID,
+				ProviderIDs:     []int{providerID},
 				EnabledChannels: []int{24},
 				ReviewMode:      model.RiskReviewFull,
 				ActionMode:      model.RiskActionObserve,
@@ -96,7 +96,8 @@ func TestProcessRiskObservationForRelay_returns_direct_record_for_unretained_obs
 	require.NotNil(t, decision.DirectRecord.Job)
 	require.Nil(t, decision.DirectRecord.Event)
 	require.Equal(t, RiskObservationErrorQueueFull, decision.DirectRecord.ErrorCode)
-	require.Equal(t, providerID, decision.DirectRecord.Job.ProviderID)
+	require.Equal(t, []int{providerID}, decision.DirectRecord.Job.ProviderIDs)
+	require.Zero(t, decision.DirectRecord.Job.ProviderID)
 	require.Equal(t, model.RiskActionObserve, decision.DirectRecord.Job.ActionMode)
 }
 
@@ -104,10 +105,10 @@ func TestProcessRiskObservationForRelay_blocks_unsafe_result_and_enqueues_comple
 	// Given
 	setupRiskObservationTest(t)
 	provider := createActiveRiskProvider(t, "https://example.com")
-	providerID := provider.Id
+	secondProvider := createActiveRiskProvider(t, "https://second.example.com")
 	channelID := createRiskPolicyChannel(t)
 	_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
-		ProviderID:      &providerID,
+		ProviderIDs:     []int{provider.Id, secondProvider.Id},
 		EnabledChannels: []int{channelID},
 		ReviewMode:      model.RiskReviewFull,
 		ActionMode:      model.RiskActionBlock,
@@ -118,11 +119,16 @@ func TestProcessRiskObservationForRelay_blocks_unsafe_result_and_enqueues_comple
 	deps := riskObservationRelayDeps{
 		executor: riskModerationExecutorFunc(func(_ context.Context, input RiskModerationInput) (RiskModerationOutcome, error) {
 			executorCalls++
-			require.Equal(t, providerID, input.Provider.Id)
+			require.Nil(t, input.Provider)
+			require.Len(t, input.Providers, 2)
+			require.Equal(t, []int{provider.Id, secondProvider.Id}, []int{input.Providers[0].Id, input.Providers[1].Id})
 			require.Equal(t, model.RiskReviewFull, input.ReviewMode)
 			require.Zero(t, input.FullReviewChunkRunes)
 			return RiskModerationOutcome{
-				Result: RiskReviewResult{Status: RiskReviewUnsafe, Categories: []string{"S1"}},
+				Result: RiskReviewResult{
+					Status: RiskReviewUnsafe, Categories: []string{"S1"}, ProviderID: secondProvider.Id,
+					ProviderName: secondProvider.Name, ProviderType: secondProvider.ProviderType,
+				},
 				Chunks: []RiskReviewChunkAudit{{
 					Index: 0, Status: RiskReviewUnsafe, Categories: []string{"S1"}, LatencyMS: 41,
 					Usage: RiskReviewUsage{PromptTokens: 5, CompletionTokens: 1, TotalTokens: 6, Neurons: 9},
@@ -151,7 +157,9 @@ func TestProcessRiskObservationForRelay_blocks_unsafe_result_and_enqueues_comple
 	require.Nil(t, decision.DirectRecord)
 	require.Equal(t, 1, executorCalls)
 	require.Equal(t, RiskObservationUnsafe, completed.Result)
-	require.Equal(t, providerID, completed.ProviderID)
+	require.Equal(t, secondProvider.Id, completed.ProviderID)
+	require.Equal(t, secondProvider.Name, completed.ProviderName)
+	require.Equal(t, secondProvider.ProviderType, completed.ProviderType)
 	require.Equal(t, []string{"S1"}, completed.Categories)
 	require.Equal(t, []RiskReviewChunkAudit{{
 		Index: 0, Status: RiskReviewUnsafe, Categories: []string{"S1"}, LatencyMS: 41,
@@ -167,7 +175,7 @@ func TestProcessRiskObservationForRelay_skips_unselected_channel_id(t *testing.T
 	deps := riskObservationRelayDeps{
 		loadPolicy: func() (model.RiskPolicyState, error) {
 			providerID := 17
-			return model.RiskPolicyState{Enabled: true, ProviderID: &providerID, EnabledChannels: []int{24}}, nil
+			return model.RiskPolicyState{Enabled: true, ProviderIDs: []int{providerID}, EnabledChannels: []int{24}}, nil
 		},
 		executor: riskModerationExecutorFunc(func(context.Context, RiskModerationInput) (RiskModerationOutcome, error) {
 			executorCalls++
@@ -204,7 +212,7 @@ func TestProcessRiskObservationForRelay_skips_excluded_user(t *testing.T) {
 		loadPolicy: func() (model.RiskPolicyState, error) {
 			return model.RiskPolicyState{
 				Enabled:         true,
-				ProviderID:      &providerID,
+				ProviderIDs:     []int{providerID},
 				EnabledChannels: []int{24},
 				ExcludedUserIDs: []int{42},
 				ReviewMode:      model.RiskReviewFull,
@@ -244,7 +252,7 @@ func TestProcessRiskObservationForRelay_keeps_unsafe_block_when_completed_event_
 	providerID := provider.Id
 	channelID := createRiskPolicyChannel(t)
 	_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
-		ProviderID:      &providerID,
+		ProviderIDs:     []int{providerID},
 		EnabledChannels: []int{channelID},
 		ReviewMode:      model.RiskReviewFull,
 		ActionMode:      model.RiskActionBlock,

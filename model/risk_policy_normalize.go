@@ -7,7 +7,7 @@ import (
 
 func normalizeRiskPolicyInput(input RiskPolicyInput) (RiskPolicyInput, error) {
 	if input.Enabled == nil {
-		enabled := input.ProviderID != nil && len(input.EnabledChannels) > 0
+		enabled := len(input.ProviderIDs) > 0 && len(input.EnabledChannels) > 0
 		input.Enabled = &enabled
 	}
 	if input.ReviewMode == "" {
@@ -26,12 +26,22 @@ func normalizeRiskPolicyInput(input RiskPolicyInput) (RiskPolicyInput, error) {
 	default:
 		return RiskPolicyInput{}, fmt.Errorf("%w: unsupported action mode", ErrInvalidRiskPolicy)
 	}
-	if input.ProviderID == nil && len(input.EnabledChannels) > 0 {
-		return RiskPolicyInput{}, fmt.Errorf("%w: provider is required for enabled channels", ErrInvalidRiskPolicy)
-	}
-	if *input.Enabled && (input.ProviderID == nil || len(input.EnabledChannels) == 0) {
+	if *input.Enabled && (len(input.ProviderIDs) == 0 || len(input.EnabledChannels) == 0) {
 		return RiskPolicyInput{}, fmt.Errorf("%w: enabled policy requires provider and channels", ErrInvalidRiskPolicy)
 	}
+
+	seenProviders := make(map[int]struct{}, len(input.ProviderIDs))
+	providerIDs := make([]int, 0, len(input.ProviderIDs))
+	for _, providerID := range input.ProviderIDs {
+		if providerID < 1 {
+			return RiskPolicyInput{}, fmt.Errorf("%w: provider id must be positive", ErrInvalidRiskPolicy)
+		}
+		if _, exists := seenProviders[providerID]; !exists {
+			seenProviders[providerID] = struct{}{}
+			providerIDs = append(providerIDs, providerID)
+		}
+	}
+	input.ProviderIDs = providerIDs
 
 	seenChannels := make(map[int]struct{}, len(input.EnabledChannels))
 	channels := make([]int, 0, len(input.EnabledChannels))
@@ -70,8 +80,5 @@ func normalizeRiskPolicyInput(input RiskPolicyInput) (RiskPolicyInput, error) {
 	}
 	input.ExcludedModels = excludedModels
 
-	if input.ProviderID != nil && *input.ProviderID < 1 {
-		return RiskPolicyInput{}, fmt.Errorf("%w: provider id must be positive", ErrInvalidRiskPolicy)
-	}
 	return input, nil
 }

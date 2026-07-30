@@ -81,6 +81,7 @@ func TestRecordRiskObservation_rejectsInconsistentGovernanceMetadata(t *testing.
 		{name: "local source marked provider called", mutate: func(input *RiskRecordInput) {
 			input.ProviderID = 0
 			input.ProviderName = ""
+			input.ProviderType = ""
 			input.Result = RiskRecordResultNotReviewed
 			input.Source = RiskRecordSourceLocal
 			input.ProviderCalled = true
@@ -137,6 +138,7 @@ func TestRecordRiskObservation_derivesLocalSourceForLegacyPreProviderError(t *te
 	input := validRiskRecordInput(RiskRecordResultError)
 	input.ProviderID = 0
 	input.ProviderName = ""
+	input.ProviderType = ""
 	input.ErrorCode = "queue_full"
 
 	// When
@@ -156,6 +158,7 @@ func TestRecordRiskObservation_recordsProviderConfigFailureAsLocalWithoutProvide
 	input := validRiskRecordInput(RiskRecordResultError)
 	input.ProviderID = 0
 	input.ProviderName = ""
+	input.ProviderType = ""
 	input.ErrorCode = "provider_config_error"
 	input.Source = RiskRecordSourceLocal
 
