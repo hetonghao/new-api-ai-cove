@@ -97,7 +97,7 @@ const RISK_RECORD_RESULT_LABELS: Readonly<Record<string, string>> = {
 const RISK_RECORD_RESULT_VARIANTS: Readonly<Record<string, StatusVariant>> = {
   safe: 'success',
   unsafe: 'danger',
-  error: 'danger',
+  error: 'warning',
   not_reviewed: 'neutral',
 }
 

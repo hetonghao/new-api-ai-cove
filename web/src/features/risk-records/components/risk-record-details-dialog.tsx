@@ -235,7 +235,7 @@ export function RiskRecordDetailsButton(props: {
         onClick={() => setOpen(true)}
       >
         <span
-          className={cn('min-w-0 truncate', isError && 'text-destructive')}
+          className={cn('min-w-0 truncate', isError && 'text-warning')}
           title={label}
         >
           {label}

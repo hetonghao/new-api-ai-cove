@@ -334,10 +334,7 @@ export function RiskRecordResultSummary(props: {
       <RiskRecordBadges record={record} />
       <RiskRecordCategoryList values={record.categories} />
       {record.error_code && (
-        <p
-          className='text-destructive text-xs break-all'
-          title={record.error_code}
-        >
+        <p className='text-warning text-xs break-all' title={record.error_code}>
           {t('Error')}: {record.error_code}
         </p>
       )}

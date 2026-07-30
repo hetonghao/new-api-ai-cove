@@ -104,7 +104,7 @@ export function RiskRecordErrorDetailsButton(props: {
         type='button'
         variant='link'
         size='sm'
-        className='text-destructive h-auto max-w-full justify-start px-0 text-sm'
+        className='text-warning h-auto max-w-full justify-start px-0 text-sm'
         onClick={() => setOpen(true)}
       >
         <span className='min-w-0 truncate' title={label}>

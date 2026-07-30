@@ -126,7 +126,7 @@ describe('risk record details button presentation', () => {
     domWindow.close()
   })
 
-  test('shows the error code in destructive text when the record failed', () => {
+  test('shows the error code in warning text when the record failed', () => {
     renderDetailsButton({
       ...BASE_RECORD,
       result: 'error',
@@ -136,11 +136,12 @@ describe('risk record details button presentation', () => {
 
     const label = getLabel('timeout')
 
-    assert.equal(label.classList.contains('text-destructive'), true)
+    assert.equal(label.classList.contains('text-warning'), true)
+    assert.equal(label.classList.contains('text-destructive'), false)
     assert.equal(label.getAttribute('title'), 'timeout')
   })
 
-  test('shows the translated error fallback in destructive text when the code is empty', () => {
+  test('shows the translated error fallback in warning text when the code is empty', () => {
     renderDetailsButton({
       ...BASE_RECORD,
       result: 'error',
@@ -149,7 +150,8 @@ describe('risk record details button presentation', () => {
 
     const label = getLabel('Error')
 
-    assert.equal(label.classList.contains('text-destructive'), true)
+    assert.equal(label.classList.contains('text-warning'), true)
+    assert.equal(label.classList.contains('text-destructive'), false)
     assert.equal(label.getAttribute('title'), 'Error')
   })
 
@@ -158,6 +160,7 @@ describe('risk record details button presentation', () => {
 
     const label = getLabel('12 tokens')
 
+    assert.equal(label.classList.contains('text-warning'), false)
     assert.equal(label.classList.contains('text-destructive'), false)
     assert.equal(label.getAttribute('title'), '12 tokens')
   })
@@ -191,9 +194,12 @@ describe('risk record details button presentation', () => {
     const recordDialog = screen.getByRole('dialog', {
       name: 'Risk record details',
     })
-    fireEvent.click(
-      within(recordDialog).getByRole('button', { name: 'provider_error' })
-    )
+    const errorButton = within(recordDialog).getByRole('button', {
+      name: 'provider_error',
+    })
+    assert.equal(errorButton.classList.contains('text-warning'), true)
+    assert.equal(errorButton.classList.contains('text-destructive'), false)
+    fireEvent.click(errorButton)
 
     // Then diagnostics open in their own dialog without expanding the record
     const errorDialog = screen.getByRole('dialog', { name: 'Error details' })

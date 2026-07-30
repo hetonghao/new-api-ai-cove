@@ -175,7 +175,7 @@ export function RiskRecordMobileList(props: {
               </dd>
               {record.error_code && (
                 <p
-                  className='text-destructive mt-1 text-xs break-all'
+                  className='text-warning mt-1 text-xs break-all'
                   title={record.error_code}
                 >
                   {t('Error')}: {record.error_code}
