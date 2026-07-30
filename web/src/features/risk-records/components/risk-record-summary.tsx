@@ -347,6 +347,16 @@ export function RiskRecordProviderSummary(props: {
 }) {
   const { t } = useTranslation()
   const { record } = props
+  let providerTypeLabel = t('Unknown')
+
+  switch (record.provider_type) {
+    case 'cloudflare':
+      providerTypeLabel = 'Cloudflare Workers AI'
+      break
+    case 'platform_internal':
+      providerTypeLabel = t('Platform internal model')
+      break
+  }
 
   if (!record.provider_id && !record.provider_name) {
     return <span className='text-muted-foreground'>{t('None')}</span>
@@ -354,14 +364,19 @@ export function RiskRecordProviderSummary(props: {
 
   return (
     <span
-      className='inline-flex max-w-full min-w-0 items-center gap-1.5 whitespace-nowrap'
-      title={`${record.provider_name} #${record.provider_id}`}
+      className='inline-flex max-w-full min-w-0 flex-col items-start gap-0.5'
+      title={`${record.provider_name} #${record.provider_id} · ${providerTypeLabel}`}
     >
-      <span className='min-w-0 truncate font-medium'>
-        {record.provider_name}
+      <span className='inline-flex max-w-full min-w-0 items-center gap-1.5 whitespace-nowrap'>
+        <span className='min-w-0 truncate font-medium'>
+          {record.provider_name}
+        </span>
+        <span className='text-muted-foreground shrink-0 text-xs'>
+          #{record.provider_id}
+        </span>
       </span>
-      <span className='text-muted-foreground shrink-0 text-xs'>
-        #{record.provider_id}
+      <span className='text-muted-foreground max-w-full truncate text-xs'>
+        {providerTypeLabel}
       </span>
     </span>
   )
