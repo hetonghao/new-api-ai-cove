@@ -33,7 +33,7 @@ func TestRiskProviderPersistenceEnforcesValidationBeforeActivation(t *testing.T)
 			_ = sqlDB.Close()
 		}
 	})
-	require.NoError(t, db.AutoMigrate(&RiskProvider{}))
+	require.NoError(t, db.AutoMigrate(&RiskProvider{}, &RiskPolicy{}))
 
 	first := &RiskProvider{Name: "primary", ProviderType: RiskProviderCloudflare, AccountID: "0123456789abcdef0123456789abcdef", Model: "@cf/meta/llama-guard-3-8b", CredentialEncrypted: "ciphertext-1"}
 	require.NoError(t, CreateRiskProvider(first))

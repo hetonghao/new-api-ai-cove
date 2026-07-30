@@ -221,6 +221,7 @@ func TestQueryRiskRecords_distinguishesMissingProviderFilterFromExplicitZero(t *
 	local.RequestID = "provider-zero"
 	local.ProviderID = 0
 	local.ProviderName = ""
+	local.ProviderType = ""
 	local.Source = RiskRecordSourceLocal
 	local.ObservedAt = observedAt
 	provider := validRiskRecordInput(RiskRecordResultSafe)

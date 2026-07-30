@@ -161,19 +161,21 @@ func TestRiskRecordAPI_filtersGovernedRecords(t *testing.T) {
 	for _, input := range []model.RiskRecordInput{
 		{
 			RequestID: "req-match", ChannelID: 12, UserID: 34, ProviderID: 21, ProviderName: "Cloudflare",
-			Result: model.RiskRecordResultUnsafe, Source: model.RiskRecordSourceInflight,
+			ProviderType: model.RiskProviderPlatformInternal,
+			Result:       model.RiskRecordResultUnsafe, Source: model.RiskRecordSourceInflight,
 			ObservedAt: observedAt,
 		},
 		{
 			RequestID: "req-other-user", ChannelID: 12, UserID: 35, ProviderID: 21, ProviderName: "Cloudflare",
-			Result: model.RiskRecordResultUnsafe, Source: model.RiskRecordSourceInflight,
+			ProviderType: model.RiskProviderCloudflare,
+			Result:       model.RiskRecordResultUnsafe, Source: model.RiskRecordSourceInflight,
 			ObservedAt: observedAt,
 		},
 	} {
 		require.NoError(t, model.RecordRiskObservation(context.Background(), input))
 	}
 	url := fmt.Sprintf(
-		"%s/api/risk/records?p=1&page_size=20&start_timestamp=%d&end_timestamp=%d&channel_id=12&username=alice&result=unsafe&source=inflight&provider_id=21",
+		"%s/api/risk/records?p=1&page_size=20&start_timestamp=%d&end_timestamp=%d&channel_id=12&username=alice&result=unsafe&source=inflight&provider_id=21&provider_type=platform_internal",
 		server.URL, observedAt.Unix(), observedAt.Unix(),
 	)
 	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
@@ -193,6 +195,7 @@ func TestRiskRecordAPI_filtersGovernedRecords(t *testing.T) {
 	assert.Equal(t, 1, payload.Data.Total)
 	require.Len(t, payload.Data.Items, 1)
 	assert.Equal(t, "req-match", payload.Data.Items[0].RequestID)
+	assert.Equal(t, model.RiskProviderPlatformInternal, payload.Data.Items[0].ProviderType)
 }
 
 func TestRiskRecordGovernanceAPI_getsDefaultsAndUpdatesValidatedSettings(t *testing.T) {

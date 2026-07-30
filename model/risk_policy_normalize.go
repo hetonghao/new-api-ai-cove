@@ -6,9 +6,6 @@ import (
 )
 
 func normalizeRiskPolicyInput(input RiskPolicyInput) (RiskPolicyInput, error) {
-	if len(input.ProviderIDs) == 0 && input.ProviderID != nil {
-		input.ProviderIDs = []int{*input.ProviderID}
-	}
 	if input.Enabled == nil {
 		enabled := len(input.ProviderIDs) > 0 && len(input.EnabledChannels) > 0
 		input.Enabled = &enabled
@@ -45,10 +42,6 @@ func normalizeRiskPolicyInput(input RiskPolicyInput) (RiskPolicyInput, error) {
 		}
 	}
 	input.ProviderIDs = providerIDs
-	input.ProviderID = nil
-	if len(providerIDs) > 0 {
-		input.ProviderID = &input.ProviderIDs[0]
-	}
 
 	seenChannels := make(map[int]struct{}, len(input.EnabledChannels))
 	channels := make([]int, 0, len(input.EnabledChannels))

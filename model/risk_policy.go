@@ -38,7 +38,6 @@ type RiskPolicy struct {
 
 type RiskPolicyInput struct {
 	Enabled         *bool
-	ProviderID      *int
 	ProviderIDs     []int
 	EnabledChannels []int
 	ExcludedUserIDs []int
@@ -50,7 +49,6 @@ type RiskPolicyInput struct {
 type RiskPolicyState struct {
 	Configured      bool           `json:"configured"`
 	Enabled         bool           `json:"enabled"`
-	ProviderID      *int           `json:"-"`
 	ProviderIDs     []int          `json:"provider_ids"`
 	EnabledChannels []int          `json:"enabled_channels"`
 	ExcludedUserIDs []int          `json:"excluded_user_ids"`
@@ -106,9 +104,6 @@ func getRiskPolicyState(relayUserID int, relayModel string) (RiskPolicyState, er
 		state.Configured = true
 		policyEnabled = policy.Enabled
 		state.ProviderIDs = providerIDs
-		if len(providerIDs) > 0 {
-			state.ProviderID = &state.ProviderIDs[0]
-		}
 		state.EnabledChannels = enabledChannels
 		state.ExcludedUserIDs = excludedUserIDs
 		state.ExcludedModels = excludedModels
@@ -210,7 +205,6 @@ func SaveRiskPolicy(input RiskPolicyInput) (RiskPolicyState, error) {
 	return RiskPolicyState{
 		Configured:      true,
 		Enabled:         *input.Enabled && len(input.ProviderIDs) > 0 && len(input.EnabledChannels) > 0,
-		ProviderID:      input.ProviderID,
 		ProviderIDs:     input.ProviderIDs,
 		EnabledChannels: input.EnabledChannels,
 		ExcludedUserIDs: input.ExcludedUserIDs,

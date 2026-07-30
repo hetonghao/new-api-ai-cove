@@ -84,11 +84,12 @@ func TestRiskPolicy_persists_first_enable_defaults(t *testing.T) {
 	require.Equal(t, RiskActionObserve, state.ActionMode)
 }
 
-func TestRiskPolicyForRelay_skips_broken_provider_lookup_for_excluded_user_or_model(t *testing.T) {
+func TestRiskPolicyForRelay_readsProviderPoolWithoutProviderTableLookup(t *testing.T) {
 	// Given
 	setupRiskPolicyModelTest(t)
 	require.NoError(t, DB.Create(&RiskPolicy{
 		Id:              riskPolicySingletonID,
+		ProviderIDs:     `[7]`,
 		EnabledChannels: `[24]`,
 		ExcludedUserIDs: `[42]`,
 		ExcludedModels:  `["codex-auto-review"]`,
@@ -114,13 +115,14 @@ func TestRiskPolicyForRelay_skips_broken_provider_lookup_for_excluded_user_or_mo
 			require.True(t, state.Configured)
 			require.Equal(t, []int{42}, state.ExcludedUserIDs)
 			require.Equal(t, []string{"codex-auto-review"}, state.ExcludedModels)
-			require.Nil(t, state.ProviderID)
+			require.Equal(t, []int{7}, state.ProviderIDs)
 			require.False(t, state.Enabled)
 		})
 	}
 
-	_, err := GetRiskPolicyStateForRelay(7, "codex-auto-review-upstream")
-	require.ErrorContains(t, err, "get active risk provider")
+	state, err := GetRiskPolicyStateForRelay(7, "codex-auto-review-upstream")
+	require.NoError(t, err)
+	require.Equal(t, []int{7}, state.ProviderIDs)
 }
 
 func TestRiskPolicy_rejects_unknown_excluded_user_id(t *testing.T) {
@@ -140,12 +142,11 @@ func TestRiskPolicy_rejects_unvalidated_provider(t *testing.T) {
 	setupRiskPolicyModelTest(t)
 	provider := &RiskProvider{Name: "draft", ProviderType: RiskProviderCloudflare, AccountID: "0123456789abcdef0123456789abcdef", Model: "guard", BaseURL: "https://example.com", CredentialEncrypted: "ciphertext"}
 	require.NoError(t, CreateRiskProvider(provider))
-	providerID := provider.Id
 	channel := &Channel{Name: "Selected", Key: "secret", Models: "gpt-test"}
 	require.NoError(t, DB.Create(channel).Error)
 
 	// When
-	_, err := SaveRiskPolicy(RiskPolicyInput{ProviderID: &providerID, EnabledChannels: []int{channel.Id}})
+	_, err := SaveRiskPolicy(RiskPolicyInput{ProviderIDs: []int{provider.Id}, EnabledChannels: []int{channel.Id}})
 
 	// Then
 	require.Error(t, err)
@@ -158,10 +159,8 @@ func TestRiskPolicy_rejects_unknown_channel_id(t *testing.T) {
 	provider := &RiskProvider{Name: "validated", ProviderType: RiskProviderCloudflare, AccountID: "0123456789abcdef0123456789abcdef", Model: "guard", BaseURL: "https://example.com", CredentialEncrypted: "ciphertext"}
 	require.NoError(t, CreateRiskProvider(provider))
 	require.NoError(t, MarkRiskProviderValidated(provider.Id))
-	providerID := provider.Id
-
 	// When
-	_, err := SaveRiskPolicy(RiskPolicyInput{ProviderID: &providerID, EnabledChannels: []int{999}})
+	_, err := SaveRiskPolicy(RiskPolicyInput{ProviderIDs: []int{provider.Id}, EnabledChannels: []int{999}})
 
 	// Then
 	require.Error(t, err)
@@ -197,13 +196,12 @@ func TestRiskPolicy_keeps_provider_and_channels_when_disabled(t *testing.T) {
 	provider := &RiskProvider{Name: "validated", ProviderType: RiskProviderCloudflare, AccountID: "0123456789abcdef0123456789abcdef", Model: "guard", BaseURL: "https://example.com", CredentialEncrypted: "ciphertext"}
 	require.NoError(t, CreateRiskProvider(provider))
 	require.NoError(t, MarkRiskProviderValidated(provider.Id))
-	providerID := provider.Id
 	channel := &Channel{Name: "Selected", Key: "secret", Models: "gpt-test"}
 	require.NoError(t, DB.Create(channel).Error)
-	_, err := SaveRiskPolicy(RiskPolicyInput{ProviderID: &providerID, EnabledChannels: []int{channel.Id}})
+	_, err := SaveRiskPolicy(RiskPolicyInput{ProviderIDs: []int{provider.Id}, EnabledChannels: []int{channel.Id}})
 	require.NoError(t, err)
 	disabled := false
-	_, err = SaveRiskPolicy(RiskPolicyInput{Enabled: &disabled, ProviderID: &providerID, EnabledChannels: []int{channel.Id}})
+	_, err = SaveRiskPolicy(RiskPolicyInput{Enabled: &disabled, ProviderIDs: []int{provider.Id}, EnabledChannels: []int{channel.Id}})
 	require.NoError(t, err)
 
 	// When
@@ -212,7 +210,7 @@ func TestRiskPolicy_keeps_provider_and_channels_when_disabled(t *testing.T) {
 	// Then
 	require.NoError(t, err)
 	require.False(t, state.Enabled)
-	require.Equal(t, &providerID, state.ProviderID)
+	require.Equal(t, []int{provider.Id}, state.ProviderIDs)
 	require.Equal(t, []int{channel.Id}, state.EnabledChannels)
 }
 
@@ -238,4 +236,48 @@ func TestActivateRiskProvider_replacesPoolAndPreservesPolicy(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []int{second.Id}, state.ProviderIDs)
 	require.Equal(t, []int{channel.Id}, state.EnabledChannels)
+}
+
+func TestDeleteRiskProvider_removesItFromProviderPool(t *testing.T) {
+	// Given
+	setupRiskPolicyModelTest(t)
+	first := &RiskProvider{Name: "first", ProviderType: RiskProviderCloudflare, AccountID: "0123456789abcdef0123456789abcdef", Model: "guard", CredentialEncrypted: "ciphertext"}
+	second := &RiskProvider{Name: "second", ProviderType: RiskProviderCloudflare, AccountID: "fedcba9876543210fedcba9876543210", Model: "guard", CredentialEncrypted: "ciphertext"}
+	require.NoError(t, CreateRiskProvider(first))
+	require.NoError(t, CreateRiskProvider(second))
+	require.NoError(t, MarkRiskProviderValidated(first.Id))
+	require.NoError(t, MarkRiskProviderValidated(second.Id))
+	disabled := false
+	_, err := SaveRiskPolicy(RiskPolicyInput{Enabled: &disabled, ProviderIDs: []int{first.Id, second.Id}})
+	require.NoError(t, err)
+
+	// When
+	require.NoError(t, DeleteRiskProvider(first.Id))
+
+	// Then
+	state, err := GetRiskPolicyState()
+	require.NoError(t, err)
+	require.Equal(t, []int{second.Id}, state.ProviderIDs)
+}
+
+func TestUpdateRiskProvider_removesInvalidatedProviderFromPool(t *testing.T) {
+	// Given
+	setupRiskPolicyModelTest(t)
+	provider := &RiskProvider{Name: "provider", ProviderType: RiskProviderCloudflare, AccountID: "0123456789abcdef0123456789abcdef", Model: "guard", CredentialEncrypted: "ciphertext"}
+	require.NoError(t, CreateRiskProvider(provider))
+	require.NoError(t, MarkRiskProviderValidated(provider.Id))
+	disabled := false
+	_, err := SaveRiskPolicy(RiskPolicyInput{Enabled: &disabled, ProviderIDs: []int{provider.Id}})
+	require.NoError(t, err)
+	require.NoError(t, DB.First(provider, provider.Id).Error)
+	provider.Model = "guard-v2"
+	provider.ValidatedAt = nil
+
+	// When
+	require.NoError(t, UpdateRiskProvider(provider))
+
+	// Then
+	state, err := GetRiskPolicyState()
+	require.NoError(t, err)
+	require.Empty(t, state.ProviderIDs)
 }

@@ -28,6 +28,7 @@ func TestRiskPolicyAPI_returns_disabled_defaults_when_missing(t *testing.T) {
 	require.NoError(t, common.Unmarshal(response.Data, &state))
 	require.False(t, state.Configured)
 	require.False(t, state.Enabled)
+	require.Empty(t, state.ProviderIDs)
 	require.Equal(t, model.RiskReviewSelective, state.ReviewMode)
 	require.Equal(t, model.RiskActionObserve, state.ActionMode)
 }
@@ -76,7 +77,7 @@ func TestRiskPolicyAPI_disables_without_clearing_provider_or_channels(t *testing
 
 	// When
 	response := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodPut, Target: "/api/risk/policy", Body: map[string]any{
-		"enabled": false, "provider_id": provider.Id, "enabled_channels": []int{channel.Id},
+		"enabled": false, "provider_ids": []int{provider.Id}, "enabled_channels": []int{channel.Id},
 	}, Handler: UpdateRiskPolicy})
 
 	// Then
@@ -85,6 +86,6 @@ func TestRiskPolicyAPI_disables_without_clearing_provider_or_channels(t *testing
 	require.NoError(t, common.Unmarshal(response.Data, &state))
 	require.True(t, state.Configured)
 	require.False(t, state.Enabled)
-	require.Equal(t, &provider.Id, state.ProviderID)
+	require.Equal(t, []int{provider.Id}, state.ProviderIDs)
 	require.Equal(t, []int{channel.Id}, state.EnabledChannels)
 }

@@ -75,6 +75,7 @@ func TestRecordRiskObservation_appliesConfiguredSaveScopeAtPersistenceBoundary(t
 			input.Result = RiskRecordResultNotReviewed
 			input.ProviderID = 0
 			input.ProviderName = ""
+			input.ProviderType = ""
 			input.Source = RiskRecordSourceLocal
 			return input
 		}(), wantSaved: true},
@@ -85,6 +86,7 @@ func TestRecordRiskObservation_appliesConfiguredSaveScopeAtPersistenceBoundary(t
 			input.Result = RiskRecordResultNotReviewed
 			input.ProviderID = 0
 			input.ProviderName = ""
+			input.ProviderType = ""
 			input.Source = RiskRecordSourceLocal
 			return input
 		}(), wantSaved: false},
@@ -99,6 +101,7 @@ func TestRecordRiskObservation_appliesConfiguredSaveScopeAtPersistenceBoundary(t
 			input := validRiskRecordInput(RiskRecordResultError)
 			input.ProviderID = 0
 			input.ProviderName = ""
+			input.ProviderType = ""
 			input.ErrorCode = "queue_full"
 			return input
 		}(), wantSaved: true},

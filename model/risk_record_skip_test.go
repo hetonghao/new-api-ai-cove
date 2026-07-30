@@ -28,6 +28,7 @@ func TestRecordRiskObservation_applies_governance_to_local_skip_result(t *testin
 			input := validRiskRecordInput(RiskRecordResultNotReviewed)
 			input.ProviderID = 0
 			input.ProviderName = ""
+			input.ProviderType = ""
 			input.Categories = nil
 
 			// When
