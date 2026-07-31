@@ -57,6 +57,7 @@ describe('risk policy form behavior', () => {
       enabled_channels: [],
       excluded_user_ids: [],
       excluded_models: [],
+      non_blocking_categories: [],
       provider_ids: [],
       review_mode: 'selective',
       action_mode: 'observe',

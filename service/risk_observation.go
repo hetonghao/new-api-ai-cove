@@ -35,33 +35,34 @@ type (
 )
 
 type RiskObservationEvent struct {
-	RequestID        string
-	ChannelID        int
-	UserID           int
-	TokenID          int
-	Model            string
-	Path             string
-	Preview          string
-	ContentHash      string
-	RuleIDs          []int
-	ProviderID       int
-	ProviderName     string
-	ProviderType     model.RiskProviderType
-	Result           RiskObservationResult
-	Categories       []string
-	LatencyMS        int64
-	PromptTokens     int
-	CompletionTokens int
-	TotalTokens      int
-	Neurons          float64
-	Chunks           []RiskReviewChunkAudit
-	ErrorCode        string
-	ErrorDetail      string
-	Source           RiskObservationSource
-	CacheHit         bool
-	ProviderCalled   bool
-	Blocked          bool
-	ObservedAt       time.Time
+	RequestID          string
+	ChannelID          int
+	UserID             int
+	TokenID            int
+	Model              string
+	Path               string
+	Preview            string
+	ContentHash        string
+	RuleIDs            []int
+	ProviderID         int
+	ProviderName       string
+	ProviderType       model.RiskProviderType
+	Result             RiskObservationResult
+	Categories         []string
+	LatencyMS          int64
+	PromptTokens       int
+	CompletionTokens   int
+	TotalTokens        int
+	Neurons            float64
+	Chunks             []RiskReviewChunkAudit
+	ErrorCode          string
+	ErrorDetail        string
+	Source             RiskObservationSource
+	CacheHit           bool
+	ProviderCalled     bool
+	Blocked            bool
+	NonBlockingMatched bool
+	ObservedAt         time.Time
 }
 
 type RiskObservationSink interface {

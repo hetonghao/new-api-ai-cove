@@ -41,6 +41,42 @@ func migrateRiskData(db *gorm.DB) error {
 	if err := backfillRiskRecordProviderTypes(db); err != nil {
 		return err
 	}
+	if err := backfillRiskRecordGovernancePreviewChars(db); err != nil {
+		return err
+	}
+	return nil
+}
+
+func backfillRiskRecordGovernancePreviewChars(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&RiskRecordGovernance{}) {
+		return nil
+	}
+	var governance struct {
+		PreviewChars        int `gorm:"column:preview_chars"`
+		SafePreviewChars    int `gorm:"column:safe_preview_chars"`
+		NonSafePreviewChars int `gorm:"column:non_safe_preview_chars"`
+	}
+	query := db.Table("risk_record_governance").Where("id = ?", riskRecordGovernanceID).Limit(1).Find(&governance)
+	if query.Error != nil {
+		return fmt.Errorf("load risk record preview settings for migration: %w", query.Error)
+	}
+	if query.RowsAffected == 0 || (governance.SafePreviewChars != 0 && governance.NonSafePreviewChars != 0) {
+		return nil
+	}
+	legacyPreviewChars := governance.PreviewChars
+	if legacyPreviewChars < RiskRecordPreviewCharsMin {
+		legacyPreviewChars = RiskRecordPreviewCharsDefault
+	}
+	updates := map[string]interface{}{}
+	if governance.SafePreviewChars == 0 {
+		updates["safe_preview_chars"] = legacyPreviewChars
+	}
+	if governance.NonSafePreviewChars == 0 {
+		updates["non_safe_preview_chars"] = legacyPreviewChars
+	}
+	if err := db.Table("risk_record_governance").Where("id = ?", riskRecordGovernanceID).Updates(updates).Error; err != nil {
+		return fmt.Errorf("backfill risk record preview settings: %w", err)
+	}
 	return nil
 }
 

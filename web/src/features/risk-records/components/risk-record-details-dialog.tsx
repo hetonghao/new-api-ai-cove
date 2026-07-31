@@ -123,6 +123,10 @@ function RiskRecordDetailsDialog(props: {
           label={t('Blocked')}
           value={record.blocked ? t('Yes') : t('No')}
         />
+        <DetailRow
+          label={t('Non-blocking category match')}
+          value={record.non_blocking_matched ? t('Yes') : t('No')}
+        />
         {record.error_code && (
           <DetailRow
             label={t('Error')}

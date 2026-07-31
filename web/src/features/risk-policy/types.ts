@@ -33,6 +33,7 @@ export type RiskPolicy = {
   readonly enabled_channels: readonly number[]
   readonly excluded_user_ids: readonly number[]
   readonly excluded_models?: readonly string[]
+  readonly non_blocking_categories?: readonly string[]
   readonly review_mode: RiskReviewMode
   readonly action_mode: RiskActionMode
 }
@@ -43,6 +44,7 @@ export type RiskPolicyPayload = {
   readonly enabled_channels: readonly number[]
   readonly excluded_user_ids: readonly number[]
   readonly excluded_models: readonly string[]
+  readonly non_blocking_categories?: readonly string[]
   readonly review_mode: RiskReviewMode
   readonly action_mode: RiskActionMode
 }

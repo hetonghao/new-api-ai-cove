@@ -9,13 +9,14 @@ import (
 )
 
 type riskPolicyRequest struct {
-	Enabled         *bool                `json:"enabled"`
-	ProviderIDs     []int                `json:"provider_ids"`
-	EnabledChannels []int                `json:"enabled_channels"`
-	ExcludedUserIDs []int                `json:"excluded_user_ids"`
-	ExcludedModels  []string             `json:"excluded_models"`
-	ReviewMode      model.RiskReviewMode `json:"review_mode"`
-	ActionMode      model.RiskActionMode `json:"action_mode"`
+	Enabled               *bool                `json:"enabled"`
+	ProviderIDs           []int                `json:"provider_ids"`
+	EnabledChannels       []int                `json:"enabled_channels"`
+	ExcludedUserIDs       []int                `json:"excluded_user_ids"`
+	ExcludedModels        []string             `json:"excluded_models"`
+	NonBlockingCategories []string             `json:"non_blocking_categories"`
+	ReviewMode            model.RiskReviewMode `json:"review_mode"`
+	ActionMode            model.RiskActionMode `json:"action_mode"`
 }
 
 func GetRiskPolicy(c *gin.Context) {
@@ -34,13 +35,14 @@ func UpdateRiskPolicy(c *gin.Context) {
 		return
 	}
 	state, err := model.SaveRiskPolicy(model.RiskPolicyInput{
-		Enabled:         request.Enabled,
-		ProviderIDs:     request.ProviderIDs,
-		EnabledChannels: request.EnabledChannels,
-		ExcludedUserIDs: request.ExcludedUserIDs,
-		ExcludedModels:  request.ExcludedModels,
-		ReviewMode:      request.ReviewMode,
-		ActionMode:      request.ActionMode,
+		Enabled:               request.Enabled,
+		ProviderIDs:           request.ProviderIDs,
+		EnabledChannels:       request.EnabledChannels,
+		ExcludedUserIDs:       request.ExcludedUserIDs,
+		ExcludedModels:        request.ExcludedModels,
+		NonBlockingCategories: request.NonBlockingCategories,
+		ReviewMode:            request.ReviewMode,
+		ActionMode:            request.ActionMode,
 	})
 	if err != nil {
 		if errors.Is(err, model.ErrRiskProviderNotValidated) {

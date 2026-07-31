@@ -13,18 +13,19 @@ const (
 )
 
 type RiskObservationJob struct {
-	RequestID   string
-	ChannelID   int
-	ChannelName string
-	UserID      int
-	TokenID     int
-	Model       string
-	Path        string
-	Text        string
-	ProviderID  int
-	ProviderIDs []int
-	ReviewMode  model.RiskReviewMode
-	ActionMode  model.RiskActionMode
+	RequestID             string
+	ChannelID             int
+	ChannelName           string
+	UserID                int
+	TokenID               int
+	Model                 string
+	Path                  string
+	Text                  string
+	ProviderID            int
+	ProviderIDs           []int
+	ReviewMode            model.RiskReviewMode
+	ActionMode            model.RiskActionMode
+	NonBlockingCategories []string
 }
 
 type riskObservationQueueItemKind uint8

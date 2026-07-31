@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -22,6 +23,7 @@ func TestRiskPolicy_returns_disabled_defaults_when_missing(t *testing.T) {
 	require.Empty(t, state.EnabledChannels)
 	require.Empty(t, state.ExcludedUserIDs)
 	require.Empty(t, state.ExcludedModels)
+	require.Empty(t, state.NonBlockingCategories)
 	require.Equal(t, RiskReviewSelective, state.ReviewMode)
 	require.Equal(t, RiskActionObserve, state.ActionMode)
 }
@@ -62,10 +64,11 @@ func TestRiskPolicy_persists_first_enable_defaults(t *testing.T) {
 	require.NoError(t, DB.Create(firstUser).Error)
 	require.NoError(t, DB.Create(secondUser).Error)
 	_, err := SaveRiskPolicy(RiskPolicyInput{
-		ProviderIDs:     []int{secondProvider.Id, provider.Id, secondProvider.Id},
-		EnabledChannels: []int{secondChannel.Id, firstChannel.Id, secondChannel.Id},
-		ExcludedUserIDs: []int{secondUser.Id, firstUser.Id, secondUser.Id},
-		ExcludedModels:  []string{" codex-auto-review ", "", "gpt-test", "codex-auto-review"},
+		ProviderIDs:           []int{secondProvider.Id, provider.Id, secondProvider.Id},
+		EnabledChannels:       []int{secondChannel.Id, firstChannel.Id, secondChannel.Id},
+		ExcludedUserIDs:       []int{secondUser.Id, firstUser.Id, secondUser.Id},
+		ExcludedModels:        []string{" codex-auto-review ", "", "gpt-test", "codex-auto-review"},
+		NonBlockingCategories: []string{" S14 ", "s14", "S8"},
 	})
 	require.NoError(t, err)
 
@@ -80,6 +83,7 @@ func TestRiskPolicy_persists_first_enable_defaults(t *testing.T) {
 	require.Equal(t, []int{secondChannel.Id, firstChannel.Id}, state.EnabledChannels)
 	require.Equal(t, []int{secondUser.Id, firstUser.Id}, state.ExcludedUserIDs)
 	require.Equal(t, []string{"codex-auto-review", "gpt-test"}, state.ExcludedModels)
+	require.Equal(t, []string{"s14", "s8"}, state.NonBlockingCategories)
 	require.Equal(t, RiskReviewSelective, state.ReviewMode)
 	require.Equal(t, RiskActionObserve, state.ActionMode)
 }
@@ -188,6 +192,18 @@ func TestRiskPolicy_rejects_unknown_modes(t *testing.T) {
 			require.True(t, errors.Is(err, ErrInvalidRiskPolicy))
 		})
 	}
+}
+
+func TestRiskPolicy_rejects_oversized_non_blocking_category(t *testing.T) {
+	// Given
+	setupRiskPolicyModelTest(t)
+
+	// When
+	_, err := SaveRiskPolicy(RiskPolicyInput{NonBlockingCategories: []string{strings.Repeat("x", 129)}})
+
+	// Then
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ErrInvalidRiskPolicy))
 }
 
 func TestRiskPolicy_keeps_provider_and_channels_when_disabled(t *testing.T) {

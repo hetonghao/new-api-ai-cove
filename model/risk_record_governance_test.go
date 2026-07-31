@@ -22,26 +22,47 @@ func TestRiskRecordGovernance_defaultsToAllForThirtyDays(t *testing.T) {
 	assert.Equal(t, RiskContentSaveAll, governance.ContentSaveScope)
 	assert.Equal(t, 30, governance.RetentionDays)
 	assert.Equal(t, 200, governance.PreviewChars)
+	assert.Equal(t, 200, governance.SafePreviewChars)
+	assert.Equal(t, 200, governance.NonSafePreviewChars)
 }
 
-func TestRecordRiskObservation_truncatesPreviewByConfiguredUnicodeCharacters(t *testing.T) {
-	// Given
-	setupRiskRecordModelTest(t)
-	_, err := SaveRiskRecordGovernance(context.Background(), RiskRecordGovernanceInput{
-		SaveScope: RiskRecordSaveAll, ContentSaveScope: RiskContentSaveAll, RetentionDays: 30, PreviewChars: 50,
-	})
-	require.NoError(t, err)
-	input := validRiskRecordInput(RiskRecordResultSafe)
-	input.Preview = "中文🙂" + strings.Repeat("a", 60)
+func TestRecordRiskObservation_truncatesPreviewByReviewResult(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		result RiskRecordResult
+		want   int
+	}{
+		{name: "safe", result: RiskRecordResultSafe, want: 50},
+		{name: "unsafe", result: RiskRecordResultUnsafe, want: 80},
+		{name: "error", result: RiskRecordResultError, want: 80},
+		{name: "not reviewed", result: RiskRecordResultNotReviewed, want: 80},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			// Given
+			setupRiskRecordModelTest(t)
+			_, err := SaveRiskRecordGovernance(context.Background(), RiskRecordGovernanceInput{
+				SaveScope: RiskRecordSaveAll, ContentSaveScope: RiskContentSaveAll, RetentionDays: 30,
+				SafePreviewChars: 50, NonSafePreviewChars: 80,
+			})
+			require.NoError(t, err)
+			input := validRiskRecordInput(test.result)
+			if test.result == RiskRecordResultNotReviewed {
+				input.ProviderID = 0
+				input.ProviderName = ""
+				input.ProviderType = ""
+				input.Source = RiskRecordSourceLocal
+			}
+			input.Preview = "中文🙂" + strings.Repeat("a", 100)
 
-	// When
-	require.NoError(t, RecordRiskObservation(context.Background(), input))
+			// When
+			require.NoError(t, RecordRiskObservation(context.Background(), input))
 
-	// Then
-	var record RiskRecord
-	require.NoError(t, DB.Take(&record).Error)
-	assert.Equal(t, "中文🙂"+strings.Repeat("a", 47), record.Preview)
-	assert.Len(t, []rune(record.Preview), 50)
+			// Then
+			var record RiskRecord
+			require.NoError(t, DB.Take(&record).Error)
+			assert.Len(t, []rune(record.Preview), test.want)
+		})
+	}
 }
 
 func TestSaveRiskRecordGovernance_rejectsInvalidScopeAndRetention(t *testing.T) {
@@ -52,6 +73,8 @@ func TestSaveRiskRecordGovernance_rejectsInvalidScopeAndRetention(t *testing.T) 
 		{SaveScope: RiskRecordSaveAll, ContentSaveScope: "sometimes", RetentionDays: 30},
 		{SaveScope: RiskRecordSaveAll, ContentSaveScope: RiskContentSaveAll, RetentionDays: 0},
 		{SaveScope: RiskRecordSaveAll, ContentSaveScope: RiskContentSaveAll, RetentionDays: 181},
+		{SaveScope: RiskRecordSaveAll, ContentSaveScope: RiskContentSaveAll, RetentionDays: 30, SafePreviewChars: 49, NonSafePreviewChars: 50},
+		{SaveScope: RiskRecordSaveAll, ContentSaveScope: RiskContentSaveAll, RetentionDays: 30, SafePreviewChars: 50, NonSafePreviewChars: 49},
 	}
 
 	for _, input := range tests {

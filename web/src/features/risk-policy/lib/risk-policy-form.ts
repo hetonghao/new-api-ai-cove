@@ -42,6 +42,7 @@ export function createRiskPolicyFormSchema(
       enabled_channels: z.array(z.number().int().positive()),
       excluded_user_ids: z.array(z.number().int().positive()),
       excluded_models: z.array(z.string().trim().min(1)),
+      non_blocking_categories: z.array(z.string().trim().min(1)).optional(),
       provider_ids: z.array(z.number().int().positive()),
       review_mode: z.enum(RISK_REVIEW_MODES),
       action_mode: z.enum(RISK_ACTION_MODES),
@@ -84,6 +85,7 @@ export function riskPolicyToFormValues(
     enabled_channels: [...policy.enabled_channels],
     excluded_user_ids: [...policy.excluded_user_ids],
     excluded_models: [...(policy.excluded_models ?? [])],
+    non_blocking_categories: [...(policy.non_blocking_categories ?? [])],
     provider_ids: [...policy.provider_ids],
     review_mode: policy.review_mode,
     action_mode: policy.action_mode,
@@ -93,7 +95,7 @@ export function riskPolicyToFormValues(
 export function riskPolicyFormValuesToPayload(
   values: RiskPolicyFormValues
 ): RiskPolicyPayload {
-  return {
+  const payload = {
     enabled: values.enabled,
     provider_ids: values.provider_ids,
     enabled_channels: values.enabled_channels,
@@ -101,7 +103,11 @@ export function riskPolicyFormValuesToPayload(
     excluded_models: values.excluded_models,
     review_mode: values.review_mode,
     action_mode: values.action_mode,
-  }
+    ...(values.non_blocking_categories
+      ? { non_blocking_categories: values.non_blocking_categories }
+      : {}),
+  } satisfies RiskPolicyPayload
+  return payload
 }
 
 export function createLocalRuleFormSchema(t: Translate) {

@@ -80,5 +80,23 @@ func normalizeRiskPolicyInput(input RiskPolicyInput) (RiskPolicyInput, error) {
 	}
 	input.ExcludedModels = excludedModels
 
+	seenCategories := make(map[string]struct{}, len(input.NonBlockingCategories))
+	nonBlockingCategories := make([]string, 0, len(input.NonBlockingCategories))
+	for _, category := range input.NonBlockingCategories {
+		category = strings.ToLower(strings.TrimSpace(category))
+		if category == "" {
+			continue
+		}
+		if len(category) > 128 {
+			return RiskPolicyInput{}, fmt.Errorf("%w: non-blocking category is too long", ErrInvalidRiskPolicy)
+		}
+		if _, exists := seenCategories[category]; exists {
+			continue
+		}
+		seenCategories[category] = struct{}{}
+		nonBlockingCategories = append(nonBlockingCategories, category)
+	}
+	input.NonBlockingCategories = nonBlockingCategories
+
 	return input, nil
 }

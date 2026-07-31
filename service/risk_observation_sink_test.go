@@ -35,6 +35,17 @@ func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 			},
 		},
 		{
+			name:       "unsafe result allowed by category",
+			wantSource: model.RiskRecordSourceCache,
+			event: RiskObservationEvent{
+				RequestID: "req-allowed", ChannelID: 12, UserID: 34,
+				ProviderID: 21, ProviderName: "Cloudflare", ProviderType: model.RiskProviderCloudflare,
+				Result: RiskObservationUnsafe, Categories: []string{"S14"}, Source: RiskObservationSourceCache,
+				CacheHit: true, NonBlockingMatched: true,
+				ObservedAt: time.Date(2026, time.July, 25, 12, 30, 30, 0, time.UTC),
+			},
+		},
+		{
 			name:       "queue degradation before provider selection",
 			wantSource: model.RiskRecordSourceLocal,
 			event: RiskObservationEvent{
@@ -104,6 +115,7 @@ func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 			assert.Equal(t, test.event.CacheHit, record.CacheHit)
 			assert.Equal(t, test.event.ProviderCalled, record.ProviderCalled)
 			assert.Equal(t, test.event.Blocked, record.Blocked)
+			assert.Equal(t, test.event.NonBlockingMatched, record.NonBlockingMatched)
 			if len(test.event.RuleIDs) == 0 {
 				assert.Empty(t, record.RuleIDs)
 			} else {

@@ -79,9 +79,13 @@ await i18n.use(initReactI18next).init({
           'Risk records older than this are deleted by the daily cleanup task.',
         'Retention days must be between {{min}} and {{max}}':
           'Retention days must be between {{min}} and {{max}}',
-        'Preview characters': 'Preview characters',
-        'Stores at least {{min}} redacted characters with no maximum limit.':
-          'Stores at least {{min}} redacted characters with no maximum limit.',
+        'Safe review preview characters': 'Safe review preview characters',
+        'Stores at least {{min}} redacted characters for safe review results.':
+          'Stores at least {{min}} redacted characters for safe review results.',
+        'Error or unsafe review preview characters':
+          'Error or unsafe review preview characters',
+        'Stores at least {{min}} redacted characters for error or unsafe review results.':
+          'Stores at least {{min}} redacted characters for error or unsafe review results.',
         'Preview characters must be at least {{min}}':
           'Preview characters must be at least {{min}}',
         'Save settings': 'Save settings',
@@ -140,7 +144,8 @@ describe('risk record governance settings', () => {
             save_scope: 'all',
             content_save_scope: 'all',
             retention_days: 30,
-            preview_chars: 200,
+            safe_preview_chars: 200,
+            non_safe_preview_chars: 200,
           },
         },
         headers: {},
@@ -163,7 +168,8 @@ describe('risk record governance settings', () => {
         save_scope: 'all',
         content_save_scope: 'all',
         retention_days: 90,
-        preview_chars: 200,
+        safe_preview_chars: 200,
+        non_safe_preview_chars: 200,
       })
     })
 
@@ -179,7 +185,8 @@ describe('risk record governance settings', () => {
           save_scope: 'all',
           content_save_scope: 'all',
           retention_days: 30,
-          preview_chars: 200,
+          safe_preview_chars: 200,
+          non_safe_preview_chars: 200,
         },
       },
       headers: {},
@@ -207,7 +214,7 @@ describe('risk record governance settings', () => {
     queryClient.clear()
   })
 
-  test('saves a preview length without imposing a maximum', async () => {
+  test('saves separate preview lengths without imposing a maximum', async () => {
     let savedPayload: unknown
     api.defaults.adapter = async (config) => {
       if (config.method === 'put') {
@@ -228,7 +235,8 @@ describe('risk record governance settings', () => {
             save_scope: 'all',
             content_save_scope: 'all',
             retention_days: 30,
-            preview_chars: 200,
+            safe_preview_chars: 200,
+            non_safe_preview_chars: 200,
           },
         },
         headers: {},
@@ -238,10 +246,14 @@ describe('risk record governance settings', () => {
     }
     const queryClient = renderSettings()
 
-    const input = await screen.findByRole('spinbutton', {
-      name: 'Preview characters',
+    const safeInput = await screen.findByRole('spinbutton', {
+      name: 'Safe review preview characters',
     })
-    fireEvent.change(input, { target: { value: '12000' } })
+    const nonSafeInput = screen.getByRole('spinbutton', {
+      name: 'Error or unsafe review preview characters',
+    })
+    fireEvent.change(safeInput, { target: { value: '12000' } })
+    fireEvent.change(nonSafeInput, { target: { value: '600' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
 
     await waitFor(() => {
@@ -249,7 +261,8 @@ describe('risk record governance settings', () => {
         save_scope: 'all',
         content_save_scope: 'all',
         retention_days: 30,
-        preview_chars: 12000,
+        safe_preview_chars: 12000,
+        non_safe_preview_chars: 600,
       })
     })
 
@@ -265,7 +278,8 @@ describe('risk record governance settings', () => {
           save_scope: 'all',
           content_save_scope: 'all',
           retention_days: 30,
-          preview_chars: 200,
+          safe_preview_chars: 200,
+          non_safe_preview_chars: 200,
         },
       },
       headers: {},
@@ -275,7 +289,7 @@ describe('risk record governance settings', () => {
     const queryClient = renderSettings()
 
     const input = await screen.findByRole('spinbutton', {
-      name: 'Preview characters',
+      name: 'Safe review preview characters',
     })
     fireEvent.change(input, { target: { value: '49' } })
 

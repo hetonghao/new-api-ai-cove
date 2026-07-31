@@ -65,6 +65,11 @@ await i18n.use(initReactI18next).init({
         'Error details': 'Error details',
         'No error details available': 'No error details available',
         'Risk record details': 'Risk record details',
+        Categories: 'Categories',
+        'Code interpreter abuse': 'Code interpreter abuse',
+        Unsafe: 'Unsafe',
+        Yes: 'Yes',
+        'Non-blocking category match': 'Non-blocking category match',
         '{{count}} tokens': '{{count}} tokens',
       },
     },
@@ -93,6 +98,7 @@ const BASE_RECORD: RiskRecord = {
   provider_called: true,
   cache_hit: false,
   blocked: false,
+  non_blocking_matched: false,
   categories: [],
   latency_ms: 800,
   prompt_tokens: 0,
@@ -178,6 +184,32 @@ describe('risk record details button presentation', () => {
 
     assert.ok(screen.getByRole('dialog'))
     assert.ok(screen.getByText('Risk record details'))
+  })
+
+  test('shows unsafe categories and the non-blocking audit match', () => {
+    // Given an unsafe record allowed by the configured category exception
+    renderDetailsButton({
+      ...BASE_RECORD,
+      result: 'unsafe',
+      categories: ['S14'],
+      non_blocking_matched: true,
+    })
+
+    // When the operator opens the record details
+    fireEvent.click(screen.getByRole('button', { name: '12 tokens' }))
+    const recordDialog = screen.getByRole('dialog', {
+      name: 'Risk record details',
+    })
+
+    // Then the unsafe result, category and audit decision are visible together
+    assert.ok(within(recordDialog).getByText('Unsafe'))
+    assert.ok(within(recordDialog).getByText('S14 · Code interpreter abuse'))
+    const matchLabel = within(recordDialog).getByText(
+      'Non-blocking category match'
+    )
+    const matchRow = matchLabel.parentElement
+    assert.ok(matchRow)
+    assert.ok(within(matchRow).getByText('Yes'))
   })
 
   for (const providerType of ['', 'future_provider']) {

@@ -50,7 +50,7 @@ func TestRiskPolicyAPI_saves_first_enable_defaults(t *testing.T) {
 	// When
 	response := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodPut, Target: "/api/risk/policy", Body: map[string]any{
 		"provider_ids": []int{secondProvider.Id, provider.Id}, "enabled_channels": []int{channel.Id}, "excluded_user_ids": []int{excludedUser.Id},
-		"excluded_models": []string{" codex-auto-review ", "", "gpt-test", "codex-auto-review"},
+		"excluded_models": []string{" codex-auto-review ", "", "gpt-test", "codex-auto-review"}, "non_blocking_categories": []string{"S14", "s14"},
 	}, Handler: UpdateRiskPolicy})
 
 	// Then
@@ -62,6 +62,7 @@ func TestRiskPolicyAPI_saves_first_enable_defaults(t *testing.T) {
 	require.Equal(t, []int{channel.Id}, state.EnabledChannels)
 	require.Equal(t, []int{excludedUser.Id}, state.ExcludedUserIDs)
 	require.Equal(t, []string{"codex-auto-review", "gpt-test"}, state.ExcludedModels)
+	require.Equal(t, []string{"s14"}, state.NonBlockingCategories)
 	require.Equal(t, model.RiskReviewSelective, state.ReviewMode)
 	require.Equal(t, model.RiskActionObserve, state.ActionMode)
 }

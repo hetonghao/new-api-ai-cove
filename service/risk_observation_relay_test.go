@@ -167,6 +167,49 @@ func TestProcessRiskObservationForRelay_blocks_unsafe_result_and_enqueues_comple
 	}}, completed.Chunks)
 }
 
+func TestProcessRiskObservationForRelay_allows_configured_non_blocking_category(t *testing.T) {
+	// Given
+	setupRiskObservationTest(t)
+	provider := createActiveRiskProvider(t, "https://example.com")
+	channelID := createRiskPolicyChannel(t)
+	_, err := model.SaveRiskPolicy(model.RiskPolicyInput{
+		ProviderIDs: []int{provider.Id}, EnabledChannels: []int{channelID},
+		ReviewMode: model.RiskReviewFull, ActionMode: model.RiskActionBlock,
+		NonBlockingCategories: []string{"S14"},
+	})
+	require.NoError(t, err)
+	var completed RiskObservationEvent
+	deps := riskObservationRelayDeps{
+		executor: riskModerationExecutorFunc(func(context.Context, RiskModerationInput) (RiskModerationOutcome, error) {
+			return RiskModerationOutcome{
+				Result: RiskReviewResult{Status: RiskReviewUnsafe, Categories: []string{"s14"}},
+				Source: RiskReviewSourceCache, CacheHit: true,
+			}, nil
+		}),
+		enqueueJob: func(RiskObservationJob) RiskObservationEnqueueResult {
+			t.Fatal("block mode must not enqueue a pending review job")
+			return RiskObservationEnqueueResult{}
+		},
+		enqueueEvent: func(event RiskObservationEvent) RiskObservationEnqueueResult {
+			completed = event
+			return queuedRiskObservationResult()
+		},
+	}
+
+	// When
+	decision := processRiskObservationForRelay(context.Background(), RiskObservationJob{
+		RequestID: "non-blocking", ChannelID: channelID, UserID: 42, Text: "current",
+	}, deps)
+
+	// Then
+	require.False(t, decision.Blocked)
+	require.Nil(t, decision.DirectRecord)
+	require.Equal(t, RiskObservationUnsafe, completed.Result)
+	require.False(t, completed.Blocked)
+	require.True(t, completed.NonBlockingMatched)
+	require.True(t, completed.CacheHit)
+}
+
 func TestProcessRiskObservationForRelay_skips_unselected_channel_id(t *testing.T) {
 	// Given
 	setupRiskObservationTest(t)

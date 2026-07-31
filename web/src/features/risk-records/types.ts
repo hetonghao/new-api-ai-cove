@@ -59,6 +59,7 @@ export const riskRecordSchema = z
     provider_called: z.boolean().default(false),
     cache_hit: z.boolean().default(false),
     blocked: z.boolean().default(false),
+    non_blocking_matched: z.boolean().default(false),
     categories: z.array(z.string()).readonly(),
     latency_ms: z.number().int().nonnegative(),
     prompt_tokens: z.number().int().nonnegative(),
@@ -97,8 +98,22 @@ export const riskRecordGovernanceSchema = z
     save_scope: z.enum(['all', 'suspicious', 'unsafe']),
     content_save_scope: riskContentSaveScopeSchema,
     retention_days: riskRecordRetentionDaysSchema,
-    preview_chars: riskRecordPreviewCharsSchema.default(200),
+    safe_preview_chars: riskRecordPreviewCharsSchema.optional(),
+    non_safe_preview_chars: riskRecordPreviewCharsSchema.optional(),
+    preview_chars: riskRecordPreviewCharsSchema.optional(),
   })
+  .transform(
+    ({
+      preview_chars,
+      safe_preview_chars,
+      non_safe_preview_chars,
+      ...settings
+    }) => ({
+      ...settings,
+      safe_preview_chars: safe_preview_chars ?? preview_chars ?? 200,
+      non_safe_preview_chars: non_safe_preview_chars ?? preview_chars ?? 200,
+    })
+  )
   .readonly()
 
 export const riskRecordGovernanceResponseSchema = z

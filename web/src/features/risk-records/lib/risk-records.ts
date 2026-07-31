@@ -117,6 +117,23 @@ const RISK_RECORD_SOURCE_LABELS: Readonly<Record<string, string>> = {
   local: 'Local source',
 }
 
+export const RISK_RECORD_CATEGORY_CODES = [
+  'S1',
+  'S2',
+  'S3',
+  'S4',
+  'S5',
+  'S6',
+  'S7',
+  'S8',
+  'S9',
+  'S10',
+  'S11',
+  'S12',
+  'S13',
+  'S14',
+] as const
+
 const RISK_RECORD_CATEGORY_LABELS: Readonly<Record<string, string>> = {
   S1: 'Violent crimes',
   S2: 'Non-violent crimes',

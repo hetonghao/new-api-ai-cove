@@ -36,67 +36,69 @@ var (
 const riskRecordErrorDetailMaxRunes = 512
 
 type RiskRecord struct {
-	Id               int               `json:"id" gorm:"primaryKey"`
-	RequestID        string            `json:"request_id" gorm:"type:varchar(256);not null;index"`
-	ChannelID        int               `json:"channel_id" gorm:"not null;index"`
-	ChannelName      string            `json:"channel_name" gorm:"->;-:migration"`
-	UserID           int               `json:"user_id" gorm:"not null;index"`
-	Username         string            `json:"username" gorm:"->;-:migration"`
-	TokenID          int               `json:"token_id" gorm:"not null"`
-	TokenName        string            `json:"token_name" gorm:"->;-:migration"`
-	Model            string            `json:"model" gorm:"type:varchar(256);not null"`
-	Path             string            `json:"path" gorm:"type:varchar(512);not null"`
-	Preview          string            `json:"preview" gorm:"type:text;not null"`
-	ContentHash      string            `json:"content_hash" gorm:"type:varchar(64);not null"`
-	RuleIDs          []int             `json:"rule_ids" gorm:"serializer:json;type:text;not null"`
-	ProviderID       int               `json:"provider_id" gorm:"not null;index"`
-	ProviderName     string            `json:"provider_name" gorm:"type:varchar(128);not null"`
-	ProviderType     RiskProviderType  `json:"provider_type" gorm:"type:varchar(32);not null;default:'';index"`
-	Result           RiskRecordResult  `json:"result" gorm:"type:varchar(16);not null;index"`
-	Categories       []string          `json:"categories" gorm:"serializer:json;type:text;not null"`
-	LatencyMS        int64             `json:"latency_ms" gorm:"not null"`
-	PromptTokens     int               `json:"prompt_tokens" gorm:"not null"`
-	CompletionTokens int               `json:"completion_tokens" gorm:"not null"`
-	TotalTokens      int               `json:"total_tokens" gorm:"not null"`
-	Neurons          int64             `json:"neurons" gorm:"not null"`
-	Chunks           []RiskRecordChunk `json:"chunks" gorm:"serializer:json;type:text"`
-	ErrorCode        string            `json:"error_code" gorm:"type:varchar(128);not null"`
-	ErrorDetail      string            `json:"error_detail,omitempty" gorm:"type:varchar(512)"`
-	Source           RiskRecordSource  `json:"source" gorm:"type:varchar(16);not null;index"`
-	CacheHit         bool              `json:"cache_hit" gorm:"not null"`
-	ProviderCalled   bool              `json:"provider_called" gorm:"not null"`
-	Blocked          bool              `json:"blocked" gorm:"not null"`
-	ObservedAt       time.Time         `json:"observed_at" gorm:"not null;index"`
+	Id                 int               `json:"id" gorm:"primaryKey"`
+	RequestID          string            `json:"request_id" gorm:"type:varchar(256);not null;index"`
+	ChannelID          int               `json:"channel_id" gorm:"not null;index"`
+	ChannelName        string            `json:"channel_name" gorm:"->;-:migration"`
+	UserID             int               `json:"user_id" gorm:"not null;index"`
+	Username           string            `json:"username" gorm:"->;-:migration"`
+	TokenID            int               `json:"token_id" gorm:"not null"`
+	TokenName          string            `json:"token_name" gorm:"->;-:migration"`
+	Model              string            `json:"model" gorm:"type:varchar(256);not null"`
+	Path               string            `json:"path" gorm:"type:varchar(512);not null"`
+	Preview            string            `json:"preview" gorm:"type:text;not null"`
+	ContentHash        string            `json:"content_hash" gorm:"type:varchar(64);not null"`
+	RuleIDs            []int             `json:"rule_ids" gorm:"serializer:json;type:text;not null"`
+	ProviderID         int               `json:"provider_id" gorm:"not null;index"`
+	ProviderName       string            `json:"provider_name" gorm:"type:varchar(128);not null"`
+	ProviderType       RiskProviderType  `json:"provider_type" gorm:"type:varchar(32);not null;default:'';index"`
+	Result             RiskRecordResult  `json:"result" gorm:"type:varchar(16);not null;index"`
+	Categories         []string          `json:"categories" gorm:"serializer:json;type:text;not null"`
+	LatencyMS          int64             `json:"latency_ms" gorm:"not null"`
+	PromptTokens       int               `json:"prompt_tokens" gorm:"not null"`
+	CompletionTokens   int               `json:"completion_tokens" gorm:"not null"`
+	TotalTokens        int               `json:"total_tokens" gorm:"not null"`
+	Neurons            int64             `json:"neurons" gorm:"not null"`
+	Chunks             []RiskRecordChunk `json:"chunks" gorm:"serializer:json;type:text"`
+	ErrorCode          string            `json:"error_code" gorm:"type:varchar(128);not null"`
+	ErrorDetail        string            `json:"error_detail,omitempty" gorm:"type:varchar(512)"`
+	Source             RiskRecordSource  `json:"source" gorm:"type:varchar(16);not null;index"`
+	CacheHit           bool              `json:"cache_hit" gorm:"not null"`
+	ProviderCalled     bool              `json:"provider_called" gorm:"not null"`
+	Blocked            bool              `json:"blocked" gorm:"not null"`
+	NonBlockingMatched bool              `json:"non_blocking_matched" gorm:"not null;default:false"`
+	ObservedAt         time.Time         `json:"observed_at" gorm:"not null;index"`
 }
 
 type RiskRecordInput struct {
-	RequestID        string
-	ChannelID        int
-	UserID           int
-	TokenID          int
-	Model            string
-	Path             string
-	Preview          string
-	ContentHash      string
-	RuleIDs          []int
-	ProviderID       int
-	ProviderName     string
-	ProviderType     RiskProviderType
-	Result           RiskRecordResult
-	Categories       []string
-	LatencyMS        int64
-	PromptTokens     int
-	CompletionTokens int
-	TotalTokens      int
-	Neurons          int64
-	Chunks           []RiskRecordChunk
-	ErrorCode        string
-	ErrorDetail      string
-	Source           RiskRecordSource
-	CacheHit         bool
-	ProviderCalled   bool
-	Blocked          bool
-	ObservedAt       time.Time
+	RequestID          string
+	ChannelID          int
+	UserID             int
+	TokenID            int
+	Model              string
+	Path               string
+	Preview            string
+	ContentHash        string
+	RuleIDs            []int
+	ProviderID         int
+	ProviderName       string
+	ProviderType       RiskProviderType
+	Result             RiskRecordResult
+	Categories         []string
+	LatencyMS          int64
+	PromptTokens       int
+	CompletionTokens   int
+	TotalTokens        int
+	Neurons            int64
+	Chunks             []RiskRecordChunk
+	ErrorCode          string
+	ErrorDetail        string
+	Source             RiskRecordSource
+	CacheHit           bool
+	ProviderCalled     bool
+	Blocked            bool
+	NonBlockingMatched bool
+	ObservedAt         time.Time
 }
 
 func (RiskRecord) TableName() string {
@@ -152,8 +154,9 @@ func applyRiskRecordContentGovernance(record *RiskRecord, governance RiskRecordG
 	if governance.ContentSaveScope == RiskContentSaveAll ||
 		(governance.ContentSaveScope == RiskContentSaveUnsafe && record.Result == RiskRecordResultUnsafe) {
 		previewRunes := []rune(record.Preview)
-		if len(previewRunes) > governance.PreviewChars {
-			record.Preview = string(previewRunes[:governance.PreviewChars])
+		previewChars := governance.PreviewCharsForResult(record.Result)
+		if len(previewRunes) > previewChars {
+			record.Preview = string(previewRunes[:previewChars])
 		}
 		return
 	}
@@ -263,6 +266,9 @@ func newRiskRecord(input RiskRecordInput) (RiskRecord, error) {
 	if input.Blocked && input.Result != RiskRecordResultUnsafe {
 		return RiskRecord{}, ErrInvalidRiskRecord
 	}
+	if input.NonBlockingMatched && (input.Result != RiskRecordResultUnsafe || input.Blocked) {
+		return RiskRecord{}, ErrInvalidRiskRecord
+	}
 	if input.Result == RiskRecordResultNotReviewed && input.Source != RiskRecordSourceLocal {
 		return RiskRecord{}, ErrInvalidRiskRecord
 	}
@@ -300,6 +306,6 @@ func newRiskRecord(input RiskRecordInput) (RiskRecord, error) {
 		Result: input.Result, Categories: categories,
 		LatencyMS: input.LatencyMS, PromptTokens: input.PromptTokens, CompletionTokens: input.CompletionTokens,
 		TotalTokens: input.TotalTokens, Neurons: input.Neurons, Chunks: chunks, ErrorCode: input.ErrorCode, ErrorDetail: input.ErrorDetail, Source: input.Source,
-		CacheHit: input.CacheHit, ProviderCalled: input.ProviderCalled, Blocked: input.Blocked, ObservedAt: input.ObservedAt.UTC(),
+		CacheHit: input.CacheHit, ProviderCalled: input.ProviderCalled, Blocked: input.Blocked, NonBlockingMatched: input.NonBlockingMatched, ObservedAt: input.ObservedAt.UTC(),
 	}, nil
 }

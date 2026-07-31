@@ -73,6 +73,31 @@ func TestEvaluateRiskObservation_maps_source_accounting_and_blocking(t *testing.
 	}
 }
 
+func TestRiskObservationDecision_requires_all_non_blocking_categories_to_match(t *testing.T) {
+	tests := []struct {
+		name                  string
+		actionMode            model.RiskActionMode
+		status                RiskReviewStatus
+		categories            []string
+		nonBlockingCategories []string
+		wantBlocked           bool
+		wantMatched           bool
+	}{
+		{name: "all categories match", actionMode: model.RiskActionBlock, status: RiskReviewUnsafe, categories: []string{"S14", "s8"}, nonBlockingCategories: []string{"s14", "S8"}, wantMatched: true},
+		{name: "mixed categories still block", actionMode: model.RiskActionBlock, status: RiskReviewUnsafe, categories: []string{"S14", "S1"}, nonBlockingCategories: []string{"S14"}, wantBlocked: true},
+		{name: "empty categories still block", actionMode: model.RiskActionBlock, status: RiskReviewUnsafe, nonBlockingCategories: []string{"S14"}, wantBlocked: true},
+		{name: "observe never records category exception", actionMode: model.RiskActionObserve, status: RiskReviewUnsafe, categories: []string{"S14"}, nonBlockingCategories: []string{"S14"}},
+		{name: "safe never records category exception", actionMode: model.RiskActionBlock, status: RiskReviewSafe, categories: []string{"S14"}, nonBlockingCategories: []string{"S14"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			blocked, matched := riskObservationDecision(test.actionMode, test.status, test.categories, test.nonBlockingCategories)
+			require.Equal(t, test.wantBlocked, blocked)
+			require.Equal(t, test.wantMatched, matched)
+		})
+	}
+}
+
 func TestEvaluateRiskObservation_records_provider_config_error_as_local_without_provider(t *testing.T) {
 	// Given
 	setupRiskObservationTest(t)

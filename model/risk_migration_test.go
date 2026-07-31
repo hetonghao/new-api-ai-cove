@@ -90,6 +90,27 @@ func TestBackfillRiskRecordProviderTypes_updatesOnlyMatchableHistory(t *testing.
 	assert.Empty(t, records[1].ProviderType)
 }
 
+func TestBackfillRiskRecordGovernancePreviewChars_copiesLegacySettingOnce(t *testing.T) {
+	// Given
+	db := setupRiskRecordModelTest(t)
+	require.NoError(t, db.Create(&RiskRecordGovernance{
+		Id: riskRecordGovernanceID, SaveScope: RiskRecordSaveAll, ContentSaveScope: RiskContentSaveAll,
+		RetentionDays: 30, PreviewChars: 1200,
+	}).Error)
+
+	// When
+	require.NoError(t, backfillRiskRecordGovernancePreviewChars(db))
+	require.NoError(t, db.Model(&RiskRecordGovernance{}).Where("id = ?", riskRecordGovernanceID).
+		Update("safe_preview_chars", 50).Error)
+	require.NoError(t, backfillRiskRecordGovernancePreviewChars(db))
+
+	// Then
+	var governance RiskRecordGovernance
+	require.NoError(t, db.First(&governance, riskRecordGovernanceID).Error)
+	assert.Equal(t, 50, governance.SafePreviewChars)
+	assert.Equal(t, 1200, governance.NonSafePreviewChars)
+}
+
 func TestRiskSchemaMigration_preservesLegacyDataAndExpandsTextColumns(t *testing.T) {
 	// Given
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))

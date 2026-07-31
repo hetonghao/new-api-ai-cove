@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -114,6 +115,7 @@ func processRiskObservationForRelay(ctx context.Context, job RiskObservationJob,
 	job.ProviderID = 0
 	job.ReviewMode = state.ReviewMode
 	job.ActionMode = state.ActionMode
+	job.NonBlockingCategories = append([]string(nil), state.NonBlockingCategories...)
 	if state.ActionMode == model.RiskActionObserve {
 		result := deps.enqueueJob(job)
 		decision := RiskObservationRelayDecision{}
@@ -208,8 +210,45 @@ func evaluateRiskObservationWithRules(ctx context.Context, job RiskObservationJo
 		}
 		return event, true
 	}
-	event.Blocked = job.ActionMode == model.RiskActionBlock && outcome.Result.Status == RiskReviewUnsafe
+	event.Blocked, event.NonBlockingMatched = riskObservationDecision(
+		job.ActionMode, outcome.Result.Status, outcome.Result.Categories, job.NonBlockingCategories,
+	)
 	return event, true
+}
+
+func riskObservationDecision(
+	actionMode model.RiskActionMode,
+	status RiskReviewStatus,
+	categories []string,
+	nonBlockingCategories []string,
+) (blocked bool, nonBlockingMatched bool) {
+	if actionMode != model.RiskActionBlock || status != RiskReviewUnsafe {
+		return false, false
+	}
+	allowed := make(map[string]struct{}, len(nonBlockingCategories))
+	for _, category := range nonBlockingCategories {
+		category = normalizeRiskCategory(category)
+		if category != "" {
+			allowed[category] = struct{}{}
+		}
+	}
+	if len(categories) == 0 {
+		return true, false
+	}
+	for _, category := range categories {
+		category = normalizeRiskCategory(category)
+		if category == "" {
+			return true, false
+		}
+		if _, ok := allowed[category]; !ok {
+			return true, false
+		}
+	}
+	return false, true
+}
+
+func normalizeRiskCategory(category string) string {
+	return strings.ToLower(strings.TrimSpace(category))
 }
 
 func riskObservationProviderIDs(job RiskObservationJob) []int {

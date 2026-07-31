@@ -38,6 +38,7 @@ import {
   type RiskPolicyFormValues,
 } from '../lib/risk-policy-form'
 import { RiskPolicyActivationField } from './risk-policy-activation-field'
+import { RiskPolicyNonBlockingCategoriesField } from './risk-policy-non-blocking-categories-field'
 
 type RiskPolicyFormFieldsProps = {
   readonly validatedProviders: readonly RiskProvider[]
@@ -249,6 +250,7 @@ export function RiskPolicyFormFields(props: RiskPolicyFormFieldsProps) {
           </FieldDescription>
           <FieldError errors={[errors.action_mode]} />
         </Field>
+        <RiskPolicyNonBlockingCategoriesField />
       </FieldGroup>
     </>
   )

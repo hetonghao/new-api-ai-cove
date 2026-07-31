@@ -79,6 +79,7 @@ func TestRecordRiskObservation_persistsSafeUnsafeAndErrorMetadata(t *testing.T) 
 			assert.Equal(t, input.Result, records[0].Result)
 			assert.Equal(t, input.Categories, records[0].Categories)
 			assert.Equal(t, input.ProviderType, records[0].ProviderType)
+			assert.Equal(t, input.NonBlockingMatched, records[0].NonBlockingMatched)
 			assert.Equal(t, input.Neurons, records[0].Neurons)
 			assert.Equal(t, input.ErrorCode, records[0].ErrorCode)
 			assert.Equal(t, input.ErrorDetail, records[0].ErrorDetail)
@@ -100,6 +101,12 @@ func TestRecordRiskObservation_rejectsInvalidMetadata(t *testing.T) {
 		{name: "error without code", mutate: func(input *RiskRecordInput) { input.Result = RiskRecordResultError }},
 		{name: "safe with error code", mutate: func(input *RiskRecordInput) { input.ErrorCode = "unexpected" }},
 		{name: "safe with error detail", mutate: func(input *RiskRecordInput) { input.ErrorDetail = "unexpected" }},
+		{name: "non-blocking match without unsafe result", mutate: func(input *RiskRecordInput) { input.NonBlockingMatched = true }},
+		{name: "non-blocking match on blocked result", mutate: func(input *RiskRecordInput) {
+			input.Result = RiskRecordResultUnsafe
+			input.Blocked = true
+			input.NonBlockingMatched = true
+		}},
 		{name: "zero observation time", mutate: func(input *RiskRecordInput) { input.ObservedAt = time.Time{} }},
 		{name: "chunk audit on cache hit", mutate: func(input *RiskRecordInput) {
 			input.Source = RiskRecordSourceCache

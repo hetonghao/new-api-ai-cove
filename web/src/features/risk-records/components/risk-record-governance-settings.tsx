@@ -50,7 +50,9 @@ export function RiskRecordGovernanceSettings() {
   const [contentSaveScope, setContentSaveScope] =
     useState<RiskContentSaveScope>('all')
   const [retentionDaysDraft, setRetentionDaysDraft] = useState('30')
-  const [previewCharsDraft, setPreviewCharsDraft] = useState('200')
+  const [safePreviewCharsDraft, setSafePreviewCharsDraft] = useState('200')
+  const [nonSafePreviewCharsDraft, setNonSafePreviewCharsDraft] =
+    useState('200')
   const [saving, setSaving] = useState(false)
   const settingsQuery = useQuery({
     queryKey: QUERY_KEY,
@@ -70,7 +72,10 @@ export function RiskRecordGovernanceSettings() {
     if (settingsQuery.data) {
       setContentSaveScope(settingsQuery.data.content_save_scope)
       setRetentionDaysDraft(String(settingsQuery.data.retention_days))
-      setPreviewCharsDraft(String(settingsQuery.data.preview_chars))
+      setSafePreviewCharsDraft(String(settingsQuery.data.safe_preview_chars))
+      setNonSafePreviewCharsDraft(
+        String(settingsQuery.data.non_safe_preview_chars)
+      )
     }
   }, [settingsQuery.data])
 
@@ -80,18 +85,25 @@ export function RiskRecordGovernanceSettings() {
   const retentionDays = retentionDaysResult.success
     ? retentionDaysResult.data
     : null
-  const previewCharsResult = riskRecordPreviewCharsSchema.safeParse(
-    Number(previewCharsDraft)
+  const safePreviewCharsResult = riskRecordPreviewCharsSchema.safeParse(
+    Number(safePreviewCharsDraft)
   )
-  const previewChars = previewCharsResult.success
-    ? previewCharsResult.data
+  const safePreviewChars = safePreviewCharsResult.success
+    ? safePreviewCharsResult.data
+    : null
+  const nonSafePreviewCharsResult = riskRecordPreviewCharsSchema.safeParse(
+    Number(nonSafePreviewCharsDraft)
+  )
+  const nonSafePreviewChars = nonSafePreviewCharsResult.success
+    ? nonSafePreviewCharsResult.data
     : null
 
   async function saveSettings() {
     if (
       !settingsQuery.data ||
       retentionDays === null ||
-      previewChars === null
+      safePreviewChars === null ||
+      nonSafePreviewChars === null
     ) {
       return
     }
@@ -101,14 +113,16 @@ export function RiskRecordGovernanceSettings() {
         ...settingsQuery.data,
         content_save_scope: contentSaveScope,
         retention_days: retentionDays,
-        preview_chars: previewChars,
+        safe_preview_chars: safePreviewChars,
+        non_safe_preview_chars: nonSafePreviewChars,
       })
       if (!response.success || !response.data) {
         throw new Error(response.message || t('Request failed'))
       }
       setContentSaveScope(response.data.content_save_scope)
       setRetentionDaysDraft(String(response.data.retention_days))
-      setPreviewCharsDraft(String(response.data.preview_chars))
+      setSafePreviewCharsDraft(String(response.data.safe_preview_chars))
+      setNonSafePreviewCharsDraft(String(response.data.non_safe_preview_chars))
       toast.success(t('Risk record settings saved'))
       await settingsQuery.refetch()
     } catch (error) {
@@ -194,27 +208,55 @@ export function RiskRecordGovernanceSettings() {
             </FieldError>
           )}
         </Field>
-        <Field data-invalid={!previewCharsResult.success}>
-          <FieldLabel htmlFor='risk-record-preview-chars'>
-            {t('Preview characters')}
+        <Field data-invalid={!safePreviewCharsResult.success}>
+          <FieldLabel htmlFor='risk-record-safe-preview-chars'>
+            {t('Safe review preview characters')}
           </FieldLabel>
           <Input
-            id='risk-record-preview-chars'
+            id='risk-record-safe-preview-chars'
             className='sm:max-w-32'
             type='number'
             min={50}
             step={1}
-            value={previewCharsDraft}
-            aria-invalid={!previewCharsResult.success}
-            onChange={(event) => setPreviewCharsDraft(event.target.value)}
+            value={safePreviewCharsDraft}
+            aria-invalid={!safePreviewCharsResult.success}
+            onChange={(event) => setSafePreviewCharsDraft(event.target.value)}
           />
           <FieldDescription>
             {t(
-              'Stores at least {{min}} redacted characters with no maximum limit.',
+              'Stores at least {{min}} redacted characters for safe review results.',
               { min: 50 }
             )}
           </FieldDescription>
-          {!previewCharsResult.success && (
+          {!safePreviewCharsResult.success && (
+            <FieldError>
+              {t('Preview characters must be at least {{min}}', { min: 50 })}
+            </FieldError>
+          )}
+        </Field>
+        <Field data-invalid={!nonSafePreviewCharsResult.success}>
+          <FieldLabel htmlFor='risk-record-non-safe-preview-chars'>
+            {t('Error or unsafe review preview characters')}
+          </FieldLabel>
+          <Input
+            id='risk-record-non-safe-preview-chars'
+            className='sm:max-w-32'
+            type='number'
+            min={50}
+            step={1}
+            value={nonSafePreviewCharsDraft}
+            aria-invalid={!nonSafePreviewCharsResult.success}
+            onChange={(event) =>
+              setNonSafePreviewCharsDraft(event.target.value)
+            }
+          />
+          <FieldDescription>
+            {t(
+              'Stores at least {{min}} redacted characters for error or unsafe review results.',
+              { min: 50 }
+            )}
+          </FieldDescription>
+          {!nonSafePreviewCharsResult.success && (
             <FieldError>
               {t('Preview characters must be at least {{min}}', { min: 50 })}
             </FieldError>
@@ -226,10 +268,13 @@ export function RiskRecordGovernanceSettings() {
             disabled={
               saving ||
               retentionDays === null ||
-              previewChars === null ||
+              safePreviewChars === null ||
+              nonSafePreviewChars === null ||
               (contentSaveScope === settingsQuery.data?.content_save_scope &&
                 retentionDays === settingsQuery.data?.retention_days &&
-                previewChars === settingsQuery.data?.preview_chars)
+                safePreviewChars === settingsQuery.data?.safe_preview_chars &&
+                nonSafePreviewChars ===
+                  settingsQuery.data?.non_safe_preview_chars)
             }
             onClick={() => void saveSettings()}
           >

@@ -198,7 +198,8 @@ describe('risk record behavior', () => {
       save_scope: 'all',
       content_save_scope: 'unsafe',
       retention_days: 30,
-      preview_chars: 200,
+      safe_preview_chars: 200,
+      non_safe_preview_chars: 800,
     }
 
     // When
@@ -208,6 +209,23 @@ describe('risk record behavior', () => {
     assert.equal(result.success, true)
     if (result.success) {
       assert.equal(result.data.content_save_scope, 'unsafe')
+      assert.equal(result.data.safe_preview_chars, 200)
+      assert.equal(result.data.non_safe_preview_chars, 800)
+    }
+  })
+
+  it('maps the legacy preview length to both result-specific settings', () => {
+    const result = riskRecordGovernanceSchema.safeParse({
+      save_scope: 'all',
+      content_save_scope: 'all',
+      retention_days: 30,
+      preview_chars: 1200,
+    })
+
+    assert.equal(result.success, true)
+    if (result.success) {
+      assert.equal(result.data.safe_preview_chars, 1200)
+      assert.equal(result.data.non_safe_preview_chars, 1200)
     }
   })
 
