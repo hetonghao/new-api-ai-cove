@@ -48,3 +48,5 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ inputs.image_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
