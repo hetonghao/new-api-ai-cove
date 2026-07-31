@@ -35,7 +35,7 @@ func TestProcessRiskObservationForRelay_skips_cloud_review_for_enabled_skip_rule
 				},
 				loadRules: func() ([]*model.RiskRule, error) {
 					return []*model.RiskRule{
-						{Id: 7, RuleType: model.RiskRuleRegex, Pattern: `^heartbeat`, Enabled: true, Action: model.RiskRuleActionSkip},
+						{Id: 7, RuleType: model.RiskRuleRegex, Pattern: `^\s*HEARTBEAT`, Enabled: true, Action: model.RiskRuleActionSkip},
 						{Id: 8, RuleType: model.RiskRuleKeyword, Pattern: "heartbeat", Enabled: true, Action: model.RiskRuleActionReview},
 					}, nil
 				},

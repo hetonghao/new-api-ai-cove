@@ -36,15 +36,15 @@ func ExtractRiskObservationText(request dto.Request) string {
 		return extractResponsesRiskText(typed)
 	case *dto.ClaudeRequest:
 		if len(typed.Messages) > 0 && typed.Messages[len(typed.Messages)-1].Role == "user" {
-			return strings.TrimSpace(typed.Messages[len(typed.Messages)-1].GetStringContent())
+			return typed.Messages[len(typed.Messages)-1].GetStringContent()
 		}
 	case *dto.GeminiChatRequest:
 		if len(typed.Contents) > 0 && typed.Contents[len(typed.Contents)-1].Role == "user" {
 			content := typed.Contents[len(typed.Contents)-1]
 			texts := make([]string, 0, len(content.Parts))
 			for _, part := range content.Parts {
-				if text := strings.TrimSpace(part.Text); text != "" {
-					texts = append(texts, text)
+				if part.Text != "" {
+					texts = append(texts, part.Text)
 				}
 			}
 			return strings.Join(texts, "\n")
@@ -62,16 +62,16 @@ func extractOpenAIRiskText(request *dto.GeneralOpenAIRequest) string {
 		parts := message.ParseContent()
 		texts := make([]string, 0, len(parts))
 		for _, part := range parts {
-			if part.Type == dto.ContentTypeText && strings.TrimSpace(part.Text) != "" {
-				texts = append(texts, strings.TrimSpace(part.Text))
+			if part.Type == dto.ContentTypeText && part.Text != "" {
+				texts = append(texts, part.Text)
 			}
 		}
 		return strings.Join(texts, "\n")
 	}
 	texts := stringValues(request.Prompt)
 	texts = append(texts, stringValues(request.Input)...)
-	if instruction := strings.TrimSpace(request.Instruction); instruction != "" {
-		texts = append(texts, instruction)
+	if request.Instruction != "" {
+		texts = append(texts, request.Instruction)
 	}
 	return strings.Join(texts, "\n")
 }
@@ -80,7 +80,7 @@ func extractResponsesRiskText(request *dto.OpenAIResponsesRequest) string {
 	if common.GetJsonType(request.Input) == "string" {
 		var text string
 		if common.Unmarshal(request.Input, &text) == nil {
-			return strings.TrimSpace(text)
+			return text
 		}
 		return ""
 	}
@@ -98,7 +98,7 @@ func extractResponsesRiskText(request *dto.OpenAIResponsesRequest) string {
 	if common.GetJsonType(input.Content) == "string" {
 		var text string
 		if common.Unmarshal(input.Content, &text) == nil {
-			return strings.TrimSpace(text)
+			return text
 		}
 		return ""
 	}
@@ -108,8 +108,8 @@ func extractResponsesRiskText(request *dto.OpenAIResponsesRequest) string {
 	}
 	texts := make([]string, 0, len(parts))
 	for _, part := range parts {
-		if part.Type == "input_text" && strings.TrimSpace(part.Text) != "" {
-			texts = append(texts, strings.TrimSpace(part.Text))
+		if part.Type == "input_text" && part.Text != "" {
+			texts = append(texts, part.Text)
 		}
 	}
 	return strings.Join(texts, "\n")
@@ -118,14 +118,14 @@ func extractResponsesRiskText(request *dto.OpenAIResponsesRequest) string {
 func stringValues(value any) []string {
 	switch typed := value.(type) {
 	case string:
-		if text := strings.TrimSpace(typed); text != "" {
-			return []string{text}
+		if typed != "" {
+			return []string{typed}
 		}
 	case []any:
 		texts := make([]string, 0, len(typed))
 		for _, item := range typed {
-			if text, ok := item.(string); ok && strings.TrimSpace(text) != "" {
-				texts = append(texts, strings.TrimSpace(text))
+			if text, ok := item.(string); ok && text != "" {
+				texts = append(texts, text)
 			}
 		}
 		return texts
@@ -134,27 +134,47 @@ func stringValues(value any) []string {
 }
 
 func BuildSelectiveRiskExcerpt(text string, rules []*model.RiskRule) (string, []int) {
-	normalized := NormalizeRiskText(text)
-	if normalized == "" {
+	if text == "" {
 		return "", nil
 	}
-	var ranges []riskTextRange
+	normalized := NormalizeRiskText(text)
+	var normalizedRanges []riskTextRange
+	var rawRanges []riskTextRange
 	var ruleIDs []int
 	for _, rule := range rules {
 		if rule == nil || !rule.Enabled || rule.Action == model.RiskRuleActionSkip {
 			continue
 		}
-		matches := riskRuleMatches(normalized, rule)
+		matchText := normalized
+		if rule.RuleType == model.RiskRuleRegex {
+			matchText = text
+		}
+		matches := riskRuleMatches(matchText, rule)
 		if len(matches) == 0 {
 			continue
 		}
-		ranges = append(ranges, matches...)
+		if rule.RuleType == model.RiskRuleRegex {
+			rawRanges = append(rawRanges, matches...)
+		} else {
+			normalizedRanges = append(normalizedRanges, matches...)
+		}
 		ruleIDs = append(ruleIDs, rule.Id)
 	}
-	if len(ranges) == 0 {
+	if len(normalizedRanges) == 0 && len(rawRanges) == 0 {
 		return "", nil
 	}
-	return mergeRiskExcerpt(normalized, ranges), ruleIDs
+	parts := make([]string, 0, 2)
+	if len(normalizedRanges) > 0 {
+		parts = append(parts, mergeRiskExcerpt(normalized, normalizedRanges))
+	}
+	if len(rawRanges) > 0 {
+		parts = append(parts, NormalizeRiskText(mergeRiskExcerpt(text, rawRanges)))
+	}
+	excerpt := []rune(strings.Join(parts, "\n...\n"))
+	if len(excerpt) > riskExcerptLimit {
+		excerpt = excerpt[:riskExcerptLimit]
+	}
+	return string(excerpt), ruleIDs
 }
 
 func riskRuleMatches(text string, rule *model.RiskRule) []riskTextRange {

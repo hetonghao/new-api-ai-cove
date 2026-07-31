@@ -58,22 +58,27 @@ type LocalRuleTestDialogProps = {
 export function LocalRuleTestDialog(props: LocalRuleTestDialogProps) {
   const { t } = useTranslation()
   const [result, setResult] = useState<LocalRiskRuleTestResult | null>(null)
+  const [testedText, setTestedText] = useState<string | null>(null)
   const form = useForm<LocalRiskRuleTestFormValues>({
     resolver: zodResolver(createLocalRuleTestFormSchema(t)),
     defaultValues: localRuleTestToFormValues(null),
   })
   const errors = form.formState.errors
+  const isRegexRule = props.rule?.rule_type === 'regex'
 
   useEffect(() => {
     if (!props.open) return
     form.reset(localRuleTestToFormValues(props.rule))
     setResult(null)
+    setTestedText(null)
   }, [form, props.open, props.rule])
 
   async function handleSubmit(values: LocalRiskRuleTestFormValues) {
     if (!props.rule) return
 
     form.clearErrors('root.server')
+    setResult(null)
+    setTestedText(null)
     try {
       const response = await testLocalRiskRule(
         localRuleTestFormValuesToPayload(values)
@@ -86,6 +91,7 @@ export function LocalRuleTestDialog(props: LocalRuleTestDialogProps) {
         return
       }
       setResult(response.data)
+      setTestedText(values.text)
     } catch (error) {
       form.setError('root.server', {
         type: 'server',
@@ -121,7 +127,9 @@ export function LocalRuleTestDialog(props: LocalRuleTestDialogProps) {
             />
             <FieldDescription>
               {t(
-                'The server applies Unicode normalization, lowercase conversion, trimming, and whitespace collapse.'
+                isRegexRule
+                  ? 'Keywords and phrases use normalized text; Go regular expressions use the text as entered.'
+                  : 'The server applies Unicode normalization, lowercase conversion, trimming, and whitespace collapse.'
               )}
             </FieldDescription>
             <FieldError errors={[errors.text]} />
@@ -147,10 +155,10 @@ export function LocalRuleTestDialog(props: LocalRuleTestDialogProps) {
               </AlertTitle>
               <AlertDescription>
                 <span className='block font-medium'>
-                  {t('Normalized text')}
+                  {t(isRegexRule ? 'Test text' : 'Normalized text')}
                 </span>
                 <code className='mt-1 block break-words whitespace-pre-wrap'>
-                  {result.normalized_text}
+                  {isRegexRule ? testedText : result.normalized_text}
                 </code>
               </AlertDescription>
             </Alert>

@@ -5290,6 +5290,7 @@
     "Local risk trigger rules": "Quy tắc kích hoạt rủi ro cục bộ",
     "Local rules only select content for cloud review. They never reject requests by themselves.": "Quy tắc cục bộ chỉ chọn nội dung để kiểm duyệt trên đám mây và không tự từ chối yêu cầu.",
     "Matching is case-insensitive after text normalization.": "Việc khớp không phân biệt chữ hoa chữ thường sau khi chuẩn hóa văn bản.",
+    "Keywords and phrases use normalized text; Go regular expressions use the text as entered.": "Từ khóa và cụm từ dùng văn bản đã chuẩn hóa; biểu thức chính quy Go dùng nguyên văn bản đã nhập.",
     "No local risk rules": "Chưa có quy tắc rủi ro cục bộ",
     "No validated provider available": "Không có nhà cung cấp đã xác minh",
     "Normalized text": "Văn bản đã chuẩn hóa",

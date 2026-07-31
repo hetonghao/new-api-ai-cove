@@ -5433,6 +5433,7 @@
     "Local risk trigger rules": "Local risk trigger rules",
     "Local rules only select content for cloud review. They never reject requests by themselves.": "Local rules only select content for cloud review. They never reject requests by themselves.",
     "Matching is case-insensitive after text normalization.": "Matching is case-insensitive after text normalization.",
+    "Keywords and phrases use normalized text; Go regular expressions use the text as entered.": "Keywords and phrases use normalized text; Go regular expressions use the text as entered.",
     "No local risk rules": "No local risk rules",
     "No validated provider available": "No validated provider available",
     "Normalized text": "Normalized text",

@@ -179,7 +179,7 @@ export function LocalRuleManager() {
       <TitledCard
         title={t('Local risk trigger rules')}
         description={t(
-          'Rules run on normalized new user text and decide whether cloud review is sent or skipped.'
+          'Keywords and phrases use normalized text; Go regular expressions use the text as entered.'
         )}
         icon={<ListFilter className='size-5' />}
         action={

@@ -5290,6 +5290,7 @@
     "Local risk trigger rules": "ローカルリスク起動ルール",
     "Local rules only select content for cloud review. They never reject requests by themselves.": "ローカルルールはクラウド審査対象を選ぶだけで、単独ではリクエストを拒否しません。",
     "Matching is case-insensitive after text normalization.": "テキスト正規化後は大文字と小文字を区別せず照合します。",
+    "Keywords and phrases use normalized text; Go regular expressions use the text as entered.": "キーワードとフレーズは正規化テキストを使い、Go 正規表現は入力されたテキストを使います。",
     "No local risk rules": "ローカルリスクルールはありません",
     "No validated provider available": "検証済みプロバイダーがありません",
     "Normalized text": "正規化テキスト",

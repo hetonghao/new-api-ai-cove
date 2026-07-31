@@ -66,6 +66,24 @@ func TestRiskRuleAPI_tests_normalized_text(t *testing.T) {
 	require.Equal(t, model.RiskRuleActionSkip, result.Action)
 }
 
+func TestRiskRuleAPI_tests_regex_against_original_text(t *testing.T) {
+	// Given
+	setupRiskPolicyControllerTest(t)
+
+	// When
+	response := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodPost, Target: "/api/risk/rules/test", Body: map[string]any{
+		"rule_type": "regex",
+		"pattern":   `^Calculate and respond with ONLY the number, nothing else\.$`,
+		"text":      "Calculate and respond with ONLY the number, nothing else.",
+	}, Handler: TestRiskRule})
+
+	// Then
+	require.True(t, response.Success, response.Message)
+	var result service.RiskRuleTestResult
+	require.NoError(t, common.Unmarshal(response.Data, &result))
+	require.True(t, result.Matched)
+}
+
 func TestRiskRuleAPI_rejects_invalid_regex(t *testing.T) {
 	// Given
 	setupRiskPolicyControllerTest(t)

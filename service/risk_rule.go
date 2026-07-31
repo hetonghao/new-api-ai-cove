@@ -46,7 +46,7 @@ func TestRiskRule(input RiskRuleTestInput) (RiskRuleTestResult, error) {
 		if err != nil {
 			return RiskRuleTestResult{}, fmt.Errorf("compile risk rule regex: %w", err)
 		}
-		result.Matched = compiled.MatchString(normalizedText)
+		result.Matched = compiled.MatchString(input.Text)
 	}
 	return result, nil
 }

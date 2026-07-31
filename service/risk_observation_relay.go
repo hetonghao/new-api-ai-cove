@@ -224,7 +224,7 @@ func riskObservationProviderIDs(job RiskObservationJob) []int {
 
 func matchingRiskSkipRuleIDs(text string, rules []*model.RiskRule) []int {
 	normalized := NormalizeRiskText(text)
-	if normalized == "" {
+	if text == "" {
 		return nil
 	}
 	ruleIDs := make([]int, 0)
@@ -232,7 +232,11 @@ func matchingRiskSkipRuleIDs(text string, rules []*model.RiskRule) []int {
 		if rule == nil || !rule.Enabled || rule.Action != model.RiskRuleActionSkip {
 			continue
 		}
-		if len(riskRuleMatches(normalized, rule)) > 0 {
+		matchText := normalized
+		if rule.RuleType == model.RiskRuleRegex {
+			matchText = text
+		}
+		if len(riskRuleMatches(matchText, rule)) > 0 {
 			ruleIDs = append(ruleIDs, rule.Id)
 		}
 	}

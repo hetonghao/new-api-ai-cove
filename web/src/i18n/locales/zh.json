@@ -5444,6 +5444,7 @@
     "Local risk trigger rules": "本地风险触发规则",
     "Local rules only select content for cloud review. They never reject requests by themselves.": "本地规则只用于筛选需要云审核的内容，不会直接拒绝请求。",
     "Matching is case-insensitive after text normalization.": "文本归一化后按不区分大小写的方式匹配。",
+    "Keywords and phrases use normalized text; Go regular expressions use the text as entered.": "关键词和短语使用归一化文本；Go 正则表达式按输入原文匹配。",
     "No local risk rules": "暂无本地风险规则",
     "No validated provider available": "暂无已验证供应商",
     "Normalized text": "归一化文本",

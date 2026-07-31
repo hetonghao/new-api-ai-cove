@@ -23,11 +23,11 @@ func TestExtractRiskObservationText_returns_only_latest_user_text(t *testing.T) 
 				{Role: "assistant", Content: "old answer"},
 				{Role: "tool", Content: "tool result"},
 				{Role: "user", Content: []any{
-					map[string]any{"type": "text", "text": "current text"},
+					map[string]any{"type": "text", "text": "  current  text  "},
 					map[string]any{"type": "image_url", "image_url": "https://example.com/image.png"},
 				}},
 			}},
-			want: "current text",
+			want: "  current  text  ",
 		},
 		{
 			name:    "openai completion",
@@ -69,6 +69,22 @@ func TestExtractRiskObservationText_returns_only_latest_user_text(t *testing.T) 
 			require.Equal(t, test.want, got)
 		})
 	}
+}
+
+func TestBuildSelectiveRiskExcerpt_matches_regex_against_original_text(t *testing.T) {
+	// Given
+	text := "Calculate  and respond with ONLY the number, nothing else."
+	rules := []*model.RiskRule{{
+		Id: 1, RuleType: model.RiskRuleRegex,
+		Pattern: `Calculate  and respond with ONLY`, Enabled: true,
+	}}
+
+	// When
+	excerpt, ruleIDs := BuildSelectiveRiskExcerpt(text, rules)
+
+	// Then
+	require.Equal(t, []int{1}, ruleIDs)
+	require.Equal(t, "calculate and respond with only the number, nothing else.", excerpt)
 }
 
 func TestExtractRiskObservationText_filters_responses_history_and_tools(t *testing.T) {

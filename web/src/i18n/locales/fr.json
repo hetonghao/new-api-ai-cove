@@ -5290,6 +5290,7 @@
     "Local risk trigger rules": "Règles locales de déclenchement du risque",
     "Local rules only select content for cloud review. They never reject requests by themselves.": "Les règles locales sélectionnent uniquement le contenu à contrôler dans le cloud. Elles ne rejettent jamais seules une requête.",
     "Matching is case-insensitive after text normalization.": "La correspondance ne tient pas compte de la casse après normalisation du texte.",
+    "Keywords and phrases use normalized text; Go regular expressions use the text as entered.": "Les mots-clés et les phrases utilisent le texte normalisé ; les expressions régulières Go utilisent le texte saisi.",
     "No local risk rules": "Aucune règle de risque locale",
     "No validated provider available": "Aucun fournisseur validé disponible",
     "Normalized text": "Texte normalisé",

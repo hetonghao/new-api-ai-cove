@@ -5288,6 +5288,7 @@
     "Local risk trigger rules": "本機風險觸發規則",
     "Local rules only select content for cloud review. They never reject requests by themselves.": "本機規則只用來篩選需要雲端審核的內容，不會直接拒絕請求。",
     "Matching is case-insensitive after text normalization.": "文字正規化後會以不區分大小寫的方式比對。",
+    "Keywords and phrases use normalized text; Go regular expressions use the text as entered.": "關鍵字和片語使用正規化文字；Go 正規表示式依輸入原文比對。",
     "No local risk rules": "尚無本機風險規則",
     "No validated provider available": "沒有已驗證的供應商",
     "Normalized text": "正規化文字",
