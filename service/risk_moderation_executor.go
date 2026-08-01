@@ -188,15 +188,26 @@ func (e *RiskModerationExecutor) Execute(ctx context.Context, input RiskModerati
 				selectedInput.Providers = nil
 				result, chunks, providerErr := e.executeProviderReview(providerCtx, selectedInput, &providerCalled)
 				providerCancel()
+				called := providerCalled.Load()
+				if called {
+					result = riskReviewResultWithProvider(result, provider)
+					providerResult.Store(&result)
+					providerChunks.Store(&chunks)
+				}
 				if isRiskProviderLocalBudgetUnavailable(providerErr) {
 					e.circuit.Abandon(context.Background(), permit)
+					if called {
+						return result, providerErr
+					}
 					otherUnavailable = true
 					tried++
 					continue
 				}
-				result = riskReviewResultWithProvider(result, provider)
-				providerResult.Store(&result)
-				providerChunks.Store(&chunks)
+				if !called {
+					result = riskReviewResultWithProvider(result, provider)
+					providerResult.Store(&result)
+					providerChunks.Store(&chunks)
+				}
 				if providerErr != nil {
 					if ctx.Err() != nil {
 						e.circuit.Abandon(context.Background(), permit)

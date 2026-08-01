@@ -94,9 +94,35 @@ func TestRiskModerationExecutor_Execute_keepsProviderCallAfterLaterBudgetFailure
 		Provider: riskModerationProviderForTest(), Content: "abcdef", ReviewMode: model.RiskReviewFull, FullReviewChunkRunes: 2,
 	})
 
-	require.ErrorIs(t, err, ErrRiskModerationNoAvailableProvider)
+	require.ErrorIs(t, err, ErrRiskProviderBudgetUnavailable)
 	assert.Equal(t, RiskReviewSourceProvider, outcome.Source)
 	assert.True(t, outcome.ProviderCalled)
+}
+
+func TestRiskModerationExecutor_Execute_doesNotSwitchProviderAfterPartialFullReview(t *testing.T) {
+	providers := riskModerationProviderPoolForTest()[:2]
+	selected := make([]int, 0, 2)
+	reviewer := func(_ context.Context, provider *model.RiskProvider, chunk string) (RiskReviewResult, error) {
+		selected = append(selected, provider.Id)
+		if provider.Id == providers[0].Id && chunk == "cd" {
+			return RiskReviewResult{}, ErrRiskProviderBudgetUnavailable
+		}
+		return RiskReviewResult{Status: RiskReviewSafe}, nil
+	}
+	executor := newRiskModerationExecutor(riskModerationExecutorDeps{
+		Cache:    newRiskReviewCacheService(newFakeRiskReviewCacheStore(), "partial-full-review-test-secret"),
+		Reviewer: reviewer, Now: time.Now,
+	})
+
+	outcome, err := executor.Execute(context.Background(), RiskModerationInput{
+		Providers: providers, Content: "abcdef", ReviewMode: model.RiskReviewFull, FullReviewChunkRunes: 2,
+	})
+
+	require.ErrorIs(t, err, ErrRiskProviderBudgetUnavailable)
+	assert.Equal(t, RiskReviewSourceProvider, outcome.Source)
+	assert.Equal(t, providers[0].Id, outcome.Result.ProviderID)
+	assert.True(t, outcome.ProviderCalled)
+	assert.NotContains(t, selected, providers[1].Id)
 }
 
 func TestRiskModerationExecutor_Execute_fallsThroughWhenCacheFails(t *testing.T) {
