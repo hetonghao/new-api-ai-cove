@@ -178,7 +178,7 @@ func TestProcessRiskObservation_records_safe_and_provider_error(t *testing.T) {
 
 			// When
 			processRiskObservation(context.Background(), RiskObservationJob{
-				RequestID: "req", ChannelName: "CPA-pro", Text: "current",
+				RequestID: "req", ChannelName: "CPA-pro", Text: "current-" + strings.ReplaceAll(test.name, " ", "-"),
 				ProviderID: providerID, ReviewMode: model.RiskReviewFull, ActionMode: model.RiskActionObserve,
 			})
 
@@ -192,6 +192,7 @@ func TestProcessRiskObservation_records_safe_and_provider_error(t *testing.T) {
 
 func setupRiskObservationTest(t *testing.T) {
 	t.Helper()
+	useRiskModerationMiniRedis(t)
 	originalDB := model.DB
 	originalSecret := common.CryptoSecret
 	originalMainType := common.MainDatabaseType()
@@ -240,6 +241,7 @@ func createActiveRiskProvider(t *testing.T, baseURL string) *model.RiskProvider 
 	}
 	require.NoError(t, model.CreateRiskProvider(provider))
 	require.NoError(t, model.MarkRiskProviderValidated(provider.Id))
+	require.NoError(t, model.ActivateRiskProvider(provider.Id))
 	return provider
 }
 

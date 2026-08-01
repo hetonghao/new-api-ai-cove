@@ -16,9 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { ChevronDown } from 'lucide-react'
+import { useState } from 'react'
 import { useFormContext } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
+import { Button } from '@/components/ui/button'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import {
   Field,
   FieldDescription,
@@ -45,6 +53,7 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
   const form = useFormContext<RiskProviderFormValues>()
   const errors = form.formState.errors
   const providerType = form.watch('provider_type')
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   return (
     <FieldGroup className='grid gap-4 sm:grid-cols-2'>
@@ -167,45 +176,130 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
           </FieldDescription>
         </Field>
       )}
-      <Field data-invalid={Boolean(errors.timeout_ms)}>
-        <FieldLabel htmlFor='risk-provider-timeout'>
-          {t('Review timeout (ms)')}
-        </FieldLabel>
-        <Input
-          id='risk-provider-timeout'
-          type='number'
-          min={1}
-          aria-invalid={Boolean(errors.timeout_ms)}
-          {...form.register('timeout_ms', { valueAsNumber: true })}
-        />
-        <FieldError errors={[errors.timeout_ms]} />
-      </Field>
-      <Field data-invalid={Boolean(errors.failure_threshold)}>
-        <FieldLabel htmlFor='risk-provider-failure-threshold'>
-          {t('Failure threshold')}
-        </FieldLabel>
-        <Input
-          id='risk-provider-failure-threshold'
-          type='number'
-          min={1}
-          aria-invalid={Boolean(errors.failure_threshold)}
-          {...form.register('failure_threshold', { valueAsNumber: true })}
-        />
-        <FieldError errors={[errors.failure_threshold]} />
-      </Field>
-      <Field data-invalid={Boolean(errors.cooldown_seconds)}>
-        <FieldLabel htmlFor='risk-provider-cooldown'>
-          {t('Circuit pause (seconds)')}
-        </FieldLabel>
-        <Input
-          id='risk-provider-cooldown'
-          type='number'
-          min={1}
-          aria-invalid={Boolean(errors.cooldown_seconds)}
-          {...form.register('cooldown_seconds', { valueAsNumber: true })}
-        />
-        <FieldError errors={[errors.cooldown_seconds]} />
-      </Field>
+      <Collapsible
+        open={advancedOpen}
+        onOpenChange={setAdvancedOpen}
+        className='rounded-lg border sm:col-span-2'
+      >
+        <CollapsibleTrigger
+          render={
+            <Button
+              type='button'
+              variant='ghost'
+              className='h-auto w-full justify-between rounded-lg px-3 py-2.5 text-sm'
+            />
+          }
+        >
+          <span>
+            <span className='block text-left font-medium'>{t('Advanced')}</span>
+            <span className='text-muted-foreground block text-left text-xs font-normal'>
+              {t('Priority, quota, reset time, and circuit breaker settings.')}
+            </span>
+          </span>
+          <ChevronDown
+            className={advancedOpen ? 'size-4 rotate-180' : 'size-4'}
+          />
+        </CollapsibleTrigger>
+        <CollapsibleContent className='border-t p-3'>
+          <FieldGroup className='grid gap-4 sm:grid-cols-2'>
+            <Field data-invalid={Boolean(errors.priority)}>
+              <FieldLabel htmlFor='risk-provider-priority'>
+                {t('Priority')}
+              </FieldLabel>
+              <Input
+                id='risk-provider-priority'
+                type='number'
+                min={0}
+                aria-invalid={Boolean(errors.priority)}
+                {...form.register('priority', { valueAsNumber: true })}
+              />
+              <FieldDescription>
+                {t(
+                  'Higher values are selected first, matching channel priority.'
+                )}
+              </FieldDescription>
+              <FieldError errors={[errors.priority]} />
+            </Field>
+            <Field data-invalid={Boolean(errors.daily_neurons_limit)}>
+              <FieldLabel htmlFor='risk-provider-daily-neurons-limit'>
+                {t('Daily Neurons limit')}
+              </FieldLabel>
+              <Input
+                id='risk-provider-daily-neurons-limit'
+                type='number'
+                min={1}
+                aria-invalid={Boolean(errors.daily_neurons_limit)}
+                {...form.register('daily_neurons_limit', {
+                  valueAsNumber: true,
+                })}
+              />
+              <FieldDescription>
+                {t('Cloudflare only; default is 10,000 Neurons per day.')}
+              </FieldDescription>
+              <FieldError errors={[errors.daily_neurons_limit]} />
+            </Field>
+            <Field data-invalid={Boolean(errors.daily_reset_time)}>
+              <FieldLabel htmlFor='risk-provider-daily-reset-time'>
+                {t('Daily reset time (UTC+8)')}
+              </FieldLabel>
+              <Input
+                id='risk-provider-daily-reset-time'
+                type='time'
+                step={60}
+                aria-invalid={Boolean(errors.daily_reset_time)}
+                {...form.register('daily_reset_time')}
+              />
+              <FieldDescription>
+                {t(
+                  'Default 08:00 UTC+8 equals 00:00 UTC; re-enable occurs about 5 minutes later.'
+                )}
+              </FieldDescription>
+              <FieldError errors={[errors.daily_reset_time]} />
+            </Field>
+            <Field data-invalid={Boolean(errors.timeout_ms)}>
+              <FieldLabel htmlFor='risk-provider-timeout'>
+                {t('Review timeout (ms)')}
+              </FieldLabel>
+              <Input
+                id='risk-provider-timeout'
+                type='number'
+                min={1}
+                aria-invalid={Boolean(errors.timeout_ms)}
+                {...form.register('timeout_ms', { valueAsNumber: true })}
+              />
+              <FieldError errors={[errors.timeout_ms]} />
+            </Field>
+            <Field data-invalid={Boolean(errors.failure_threshold)}>
+              <FieldLabel htmlFor='risk-provider-failure-threshold'>
+                {t('Failure threshold')}
+              </FieldLabel>
+              <Input
+                id='risk-provider-failure-threshold'
+                type='number'
+                min={1}
+                aria-invalid={Boolean(errors.failure_threshold)}
+                {...form.register('failure_threshold', {
+                  valueAsNumber: true,
+                })}
+              />
+              <FieldError errors={[errors.failure_threshold]} />
+            </Field>
+            <Field data-invalid={Boolean(errors.cooldown_seconds)}>
+              <FieldLabel htmlFor='risk-provider-cooldown'>
+                {t('Circuit pause (seconds)')}
+              </FieldLabel>
+              <Input
+                id='risk-provider-cooldown'
+                type='number'
+                min={1}
+                aria-invalid={Boolean(errors.cooldown_seconds)}
+                {...form.register('cooldown_seconds', { valueAsNumber: true })}
+              />
+              <FieldError errors={[errors.cooldown_seconds]} />
+            </Field>
+          </FieldGroup>
+        </CollapsibleContent>
+      </Collapsible>
     </FieldGroup>
   )
 }

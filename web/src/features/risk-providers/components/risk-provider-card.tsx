@@ -22,15 +22,37 @@ import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Switch } from '@/components/ui/switch'
+import { formatNumber } from '@/lib/format'
 
 import type { RiskProvider } from '../types'
 
 type RiskProviderCardProps = {
   readonly provider: RiskProvider
-  readonly pendingAction: 'validate' | 'delete' | null
+  readonly pendingAction: 'validate' | 'delete' | 'activate' | null
   readonly onEdit: (provider: RiskProvider) => void
   readonly onValidate: (provider: RiskProvider) => void
   readonly onDelete: (provider: RiskProvider) => void
+  readonly onToggleActive: (provider: RiskProvider, active: boolean) => void
+}
+
+function getCurrentStatusLabel(
+  provider: RiskProvider,
+  t: (key: string) => string
+) {
+  if (provider.current_status === 'circuit_open') return t('Circuit open')
+  if (provider.current_status === 'daily_exhausted') {
+    return t('Daily quota exhausted')
+  }
+  return t('Normal')
+}
+
+function getCurrentStatusVariant(provider: RiskProvider) {
+  if (provider.current_status === 'circuit_open') return 'warning' as const
+  if (provider.current_status === 'daily_exhausted') {
+    return 'destructive' as const
+  }
+  return 'secondary' as const
 }
 
 export function RiskProviderCard(props: RiskProviderCardProps) {
@@ -52,7 +74,6 @@ export function RiskProviderCard(props: RiskProviderCardProps) {
             </p>
           </div>
           <div className='flex flex-wrap gap-1.5'>
-            {provider.active && <Badge>{t('In provider pool')}</Badge>}
             <Badge variant={provider.validated_at ? 'secondary' : 'outline'}>
               {provider.validated_at ? t('Verified') : t('Not verified')}
             </Badge>
@@ -73,11 +94,18 @@ export function RiskProviderCard(props: RiskProviderCardProps) {
                   : t('Credential missing')}
               </Badge>
             )}
+            <Badge variant={getCurrentStatusVariant(provider)}>
+              {getCurrentStatusLabel(provider, t)}
+            </Badge>
           </div>
         </div>
       </CardHeader>
       <CardContent className='space-y-4 p-4'>
         <dl className='grid gap-3 text-sm sm:grid-cols-2'>
+          <div>
+            <dt className='text-muted-foreground text-xs'>{t('Priority')}</dt>
+            <dd className='tabular-nums'>{provider.priority}</dd>
+          </div>
           <div className='min-w-0'>
             <dt className='text-muted-foreground text-xs'>{t('Model')}</dt>
             <dd className='truncate font-mono text-xs' title={provider.model}>
@@ -108,6 +136,22 @@ export function RiskProviderCard(props: RiskProviderCardProps) {
           )}
           <div>
             <dt className='text-muted-foreground text-xs'>
+              {t('Daily Neurons')}
+            </dt>
+            <dd className='tabular-nums'>
+              {provider.provider_type === 'cloudflare'
+                ? `${formatNumber(provider.daily_neurons_used)} / ${formatNumber(provider.daily_neurons_limit)}`
+                : t('Not applicable')}
+            </dd>
+          </div>
+          <div>
+            <dt className='text-muted-foreground text-xs'>
+              {t('Daily reset time')}
+            </dt>
+            <dd className='tabular-nums'>{provider.daily_reset_time} UTC+8</dd>
+          </div>
+          <div>
+            <dt className='text-muted-foreground text-xs'>
               {t('Review timeout')}
             </dt>
             <dd className='tabular-nums'>{provider.timeout_ms} ms</dd>
@@ -124,6 +168,26 @@ export function RiskProviderCard(props: RiskProviderCardProps) {
             </dd>
           </div>
         </dl>
+        <div className='bg-muted/30 flex items-center justify-between gap-3 rounded-lg border px-3 py-2'>
+          <div>
+            <div className='text-sm font-medium'>{t('Enabled')}</div>
+            <div className='text-muted-foreground text-xs'>
+              {provider.active
+                ? t('Provider can receive reviews.')
+                : t('Provider is manually disabled.')}
+            </div>
+          </div>
+          <Switch
+            checked={provider.active}
+            disabled={
+              props.pendingAction !== null || provider.validated_at === null
+            }
+            onCheckedChange={(active) => props.onToggleActive(provider, active)}
+            aria-label={
+              provider.active ? t('Disable provider') : t('Enable provider')
+            }
+          />
+        </div>
         <div className='flex flex-wrap gap-2 border-t pt-4'>
           <Button
             size='sm'

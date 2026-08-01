@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -15,6 +16,7 @@ const (
 	riskModerationPromptSemantics         = "cloudflare-user-message-max16-temp0-v1"
 	riskModerationClassificationSemantics = "safe-unsafe-error-unsafe-first-v1"
 	riskModerationRoundRobinNamespace     = "new-api:risk-moderation-round-robin:v1"
+	riskModerationCircuitNamespace        = "new-api:risk-moderation-circuit:v1"
 )
 
 var advanceRiskModerationProviderCursorScript = redis.NewScript(`
@@ -35,66 +37,45 @@ type riskModerationProviderCursor struct {
 	shared bool
 }
 
+type riskModerationProviderTier struct {
+	priority  int
+	providers []*model.RiskProvider
+}
+
 func RiskModerationPolicyVersion(input RiskModerationInput) (string, error) {
-	if len(input.Providers) > 0 {
-		if input.Provider != nil {
-			return "", ErrInvalidRiskModerationInput
-		}
-		versions := make([]string, 0, len(input.Providers))
-		for _, provider := range input.Providers {
-			version, err := RiskModerationPolicyVersion(RiskModerationInput{
-				Provider: provider, ReviewMode: input.ReviewMode, FullReviewChunkRunes: input.FullReviewChunkRunes,
-			})
-			if err != nil {
-				return "", err
-			}
-			versions = append(versions, version)
-		}
-		material, err := common.Marshal(struct {
-			ProviderVersions []string `json:"provider_versions"`
-		}{ProviderVersions: versions})
-		if err != nil {
-			return "", fmt.Errorf("encode risk moderation provider pool policy: %w", err)
-		}
-		return hex.EncodeToString(common.Sha256Raw(material)), nil
-	}
-	if input.Provider == nil {
-		return "", ErrInvalidRiskModerationInput
-	}
 	chunkLimit, err := riskModerationChunkLimit(input)
 	if err != nil {
 		return "", err
 	}
-	provider := input.Provider
-	accountID := ""
-	channelID := 0
-	promptSemantics := riskModerationPromptSemantics
-	switch provider.ProviderType {
-	case model.RiskProviderCloudflare:
-		accountID, err = provider.CloudflareAccountID()
-		if err != nil {
-			return "", fmt.Errorf("resolve risk provider account ID: %w", err)
-		}
-	case model.RiskProviderPlatformInternal:
-		channelID = provider.ChannelID
-		promptSemantics = platformInternalRiskPromptSemantics
-	default:
-		return "", fmt.Errorf("%w: provider type", ErrInvalidRiskModerationInput)
+	providers, err := riskModerationPolicyProviders(input)
+	if err != nil {
+		return "", err
 	}
+	promptSemantics := make([]string, 0, len(providers))
+	seenSemantics := make(map[string]struct{}, len(providers))
+	for _, provider := range providers {
+		semantics, ok := map[model.RiskProviderType]string{
+			model.RiskProviderCloudflare:       riskModerationPromptSemantics,
+			model.RiskProviderPlatformInternal: platformInternalRiskPromptSemantics,
+		}[provider.ProviderType]
+		if !ok {
+			return "", fmt.Errorf("%w: provider type", ErrInvalidRiskModerationInput)
+		}
+		if _, exists := seenSemantics[semantics]; exists {
+			continue
+		}
+		seenSemantics[semantics] = struct{}{}
+		promptSemantics = append(promptSemantics, semantics)
+	}
+	sort.Strings(promptSemantics)
 	material, err := common.Marshal(struct {
-		ProviderID              int                    `json:"provider_id"`
-		ProviderType            model.RiskProviderType `json:"provider_type"`
-		AccountID               string                 `json:"account_id"`
-		ChannelID               int                    `json:"channel_id"`
-		Model                   string                 `json:"model"`
-		ReviewMode              model.RiskReviewMode   `json:"review_mode"`
-		ChunkLimit              int                    `json:"chunk_limit"`
-		PromptSemantics         string                 `json:"prompt_semantics"`
-		ClassificationSemantics string                 `json:"classification_semantics"`
+		ReviewMode              model.RiskReviewMode `json:"review_mode"`
+		ChunkLimit              int                  `json:"chunk_limit"`
+		PromptSemantics         []string             `json:"prompt_semantics"`
+		ClassificationSemantics string               `json:"classification_semantics"`
 	}{
-		ProviderID: provider.Id, ProviderType: provider.ProviderType,
-		AccountID: accountID, ChannelID: channelID, Model: provider.Model,
-		ReviewMode: input.ReviewMode, ChunkLimit: chunkLimit,
+		ReviewMode:              input.ReviewMode,
+		ChunkLimit:              chunkLimit,
 		PromptSemantics:         promptSemantics,
 		ClassificationSemantics: riskModerationClassificationSemantics,
 	})
@@ -104,29 +85,77 @@ func RiskModerationPolicyVersion(input RiskModerationInput) (string, error) {
 	return hex.EncodeToString(common.Sha256Raw(material)), nil
 }
 
+func riskModerationPolicyProviders(input RiskModerationInput) ([]*model.RiskProvider, error) {
+	if len(input.Providers) > 0 {
+		if input.Provider != nil {
+			return nil, ErrInvalidRiskModerationInput
+		}
+		return validateRiskModerationProviders(input.Providers)
+	}
+	if input.Provider != nil {
+		return validateRiskModerationProviders([]*model.RiskProvider{input.Provider})
+	}
+	return nil, ErrInvalidRiskModerationInput
+}
+
+func validateRiskModerationProviders(providers []*model.RiskProvider) ([]*model.RiskProvider, error) {
+	if len(providers) == 0 {
+		return nil, ErrInvalidRiskModerationInput
+	}
+	for _, provider := range providers {
+		if provider == nil {
+			return nil, ErrInvalidRiskModerationInput
+		}
+	}
+	return providers, nil
+}
+
 func riskModerationProviders(input RiskModerationInput) ([]*model.RiskProvider, error) {
 	if len(input.Providers) > 0 {
 		if input.Provider != nil {
 			return nil, ErrInvalidRiskModerationInput
 		}
-		for _, provider := range input.Providers {
-			if provider == nil {
-				return nil, ErrInvalidRiskModerationInput
-			}
-		}
-		return input.Providers, nil
+		return validateRiskModerationProviders(input.Providers)
 	}
-	if input.Provider == nil {
-		return nil, ErrInvalidRiskModerationInput
+	if input.Provider != nil {
+		return validateRiskModerationProviders([]*model.RiskProvider{input.Provider})
 	}
-	return []*model.RiskProvider{input.Provider}, nil
+	providers, err := model.GetEnabledRiskProviders()
+	if err != nil {
+		return nil, fmt.Errorf("load enabled risk providers: %w", err)
+	}
+	if len(providers) == 0 {
+		return nil, ErrRiskModerationNoAvailableProvider
+	}
+	return providers, nil
 }
 
-func loadRiskModerationProviderCursor(ctx context.Context, policyVersion string, size int) (riskModerationProviderCursor, error) {
+func riskModerationProviderTiers(providers []*model.RiskProvider) []riskModerationProviderTier {
+	byPriority := make(map[int][]*model.RiskProvider)
+	for _, provider := range providers {
+		byPriority[provider.Priority] = append(byPriority[provider.Priority], provider)
+	}
+	priorities := make([]int, 0, len(byPriority))
+	for priority := range byPriority {
+		priorities = append(priorities, priority)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(priorities)))
+	tiers := make([]riskModerationProviderTier, 0, len(priorities))
+	for _, priority := range priorities {
+		members := byPriority[priority]
+		sort.SliceStable(members, func(left, right int) bool {
+			return members[left].Id < members[right].Id
+		})
+		tiers = append(tiers, riskModerationProviderTier{priority: priority, providers: members})
+	}
+	return tiers
+}
+
+func loadRiskModerationProviderCursor(ctx context.Context, policyVersion string, priority int, size int) (riskModerationProviderCursor, error) {
 	if size < 2 || !common.RedisEnabled || common.RDB == nil {
 		return riskModerationProviderCursor{}, nil
 	}
-	key := riskModerationRoundRobinNamespace + ":" + policyVersion
+	key := fmt.Sprintf("%s:%s:%d", riskModerationRoundRobinNamespace, policyVersion, priority)
 	value, err := common.RDB.Get(ctx, key).Int64()
 	if errors.Is(err, redis.Nil) {
 		return riskModerationProviderCursor{key: key, shared: true}, nil
@@ -135,6 +164,10 @@ func loadRiskModerationProviderCursor(ctx context.Context, policyVersion string,
 		return riskModerationProviderCursor{}, err
 	}
 	return riskModerationProviderCursor{key: key, value: value, shared: true}, nil
+}
+
+func riskModerationProviderCircuitKey(provider *model.RiskProvider) string {
+	return fmt.Sprintf("%s:%d", riskModerationCircuitNamespace, provider.Id)
 }
 
 func (cursor riskModerationProviderCursor) index(size int) int {

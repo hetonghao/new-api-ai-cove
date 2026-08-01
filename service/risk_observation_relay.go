@@ -291,7 +291,7 @@ func riskObservationSource(outcome RiskModerationOutcome, executeErr error) Risk
 	case RiskReviewSourceInflight:
 		return RiskObservationSourceInflight
 	default:
-		if executeErr != nil {
+		if executeErr != nil && (outcome.ProviderCalled || outcome.Result.ProviderID > 0) {
 			return RiskObservationSourceProvider
 		}
 		return RiskObservationSourceLocal

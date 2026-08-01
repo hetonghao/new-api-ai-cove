@@ -71,7 +71,7 @@ func TestRiskModerationExecutor_Execute_roundRobinsProviderPoolAcrossInstances(t
 	assert.Equal(t, []int{1, 2, 3, 1}, selected)
 }
 
-func TestRiskModerationPolicyVersion_changesWithProviderPoolOrder(t *testing.T) {
+func TestRiskModerationPolicyVersion_ignoresProviderPoolOrder(t *testing.T) {
 	// Given
 	providers := riskModerationProviderPoolForTest()
 	input := RiskModerationInput{Providers: providers, ReviewMode: model.RiskReviewSelective}
@@ -85,7 +85,7 @@ func TestRiskModerationPolicyVersion_changesWithProviderPoolOrder(t *testing.T) 
 
 	// Then
 	require.NoError(t, err)
-	assert.NotEqual(t, version, reorderedVersion)
+	assert.Equal(t, version, reorderedVersion)
 }
 
 func TestRiskModerationExecutor_Execute_cacheHitDoesNotAdvanceProviderPool(t *testing.T) {
@@ -117,7 +117,7 @@ func TestRiskModerationExecutor_Execute_cacheHitDoesNotAdvanceProviderPool(t *te
 	assert.Equal(t, RiskReviewSourceProvider, third.Source)
 	assert.Equal(t, []int{1, 2}, selected)
 	assert.Equal(t, 1, first.Result.ProviderID)
-	assert.Equal(t, 1, second.Result.ProviderID)
+	assert.Zero(t, second.Result.ProviderID)
 	assert.Equal(t, 2, third.Result.ProviderID)
 }
 
@@ -231,7 +231,7 @@ func TestRiskModerationExecutor_Execute_inflightFollowerDoesNotAdvanceProviderPo
 	require.NoError(t, thirdErr)
 	assert.Equal(t, RiskReviewSourceProvider, leader.outcome.Source)
 	assert.Equal(t, RiskReviewSourceInflight, follower.outcome.Source)
-	assert.Equal(t, 1, follower.outcome.Result.ProviderID)
+	assert.Zero(t, follower.outcome.Result.ProviderID)
 	assert.Equal(t, 2, third.Result.ProviderID)
 	assert.Equal(t, []int{1, 2}, selected)
 }

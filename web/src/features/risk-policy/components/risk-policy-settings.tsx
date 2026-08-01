@@ -57,7 +57,6 @@ const DEFAULT_VALUES: RiskPolicyFormValues = {
   excluded_user_ids: [],
   excluded_models: [],
   non_blocking_categories: [],
-  provider_ids: [],
   review_mode: 'selective',
   action_mode: 'observe',
 }
@@ -73,12 +72,8 @@ export function RiskPolicySettings(props: RiskPolicySettingsProps) {
     () => props.providers.filter((provider) => provider.validated_at !== null),
     [props.providers]
   )
-  const validatedProviderIds = useMemo(
-    () => validatedProviders.map((provider) => provider.id),
-    [validatedProviders]
-  )
   const form = useForm<RiskPolicyFormValues>({
-    resolver: zodResolver(createRiskPolicyFormSchema(validatedProviderIds, t)),
+    resolver: zodResolver(createRiskPolicyFormSchema(t)),
     defaultValues: DEFAULT_VALUES,
   })
 
@@ -186,7 +181,9 @@ export function RiskPolicySettings(props: RiskPolicySettingsProps) {
       <FormProvider {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)} className='space-y-5'>
           <RiskPolicyFormFields
-            validatedProviders={validatedProviders}
+            availableProviderCount={
+              validatedProviders.filter((provider) => provider.active).length
+            }
             channels={channelsQuery.data ?? []}
             users={usersQuery.data ?? []}
             models={modelsQuery.data ?? []}
@@ -213,7 +210,7 @@ export function RiskPolicySettings(props: RiskPolicySettingsProps) {
     <TitledCard
       title={t('Global risk policy')}
       description={t(
-        'All enabled risk channels share one ordered provider pool, review scope, and decision action.'
+        'All enabled risk channels share one review scope and decision action.'
       )}
       descriptionClassName='text-balance'
       icon={<ShieldCheck className='size-5' />}

@@ -223,11 +223,14 @@ func newRiskRecord(input RiskRecordInput) (RiskRecord, error) {
 			return RiskRecord{}, ErrInvalidRiskRecord
 		}
 		switch input.ErrorCode {
-		case "queue_full", "service_shutdown", "policy_error", "rules_error", "provider_config_error":
+		case "queue_full", "service_shutdown", "policy_error", "rules_error", "provider_config_error", "daily_neurons_exhausted", "budget_unavailable", "provider_unavailable":
 			providerOptional = true
 		}
 	default:
 		return RiskRecord{}, ErrInvalidRiskRecord
+	}
+	if input.Source == RiskRecordSourceCache || input.Source == RiskRecordSourceInflight {
+		providerOptional = true
 	}
 	providerPresent := input.ProviderID > 0 && input.ProviderName != ""
 	providerMissing := input.ProviderID == 0 && input.ProviderName == ""
@@ -253,11 +256,11 @@ func newRiskRecord(input RiskRecordInput) (RiskRecord, error) {
 			return RiskRecord{}, ErrInvalidRiskRecord
 		}
 	case RiskRecordSourceInflight:
-		if input.CacheHit || input.ProviderCalled || !providerPresent {
+		if input.CacheHit || input.ProviderCalled || !providerMissing {
 			return RiskRecord{}, ErrInvalidRiskRecord
 		}
 	case RiskRecordSourceCache:
-		if !input.CacheHit || input.ProviderCalled || !providerPresent {
+		if !input.CacheHit || input.ProviderCalled || !providerMissing {
 			return RiskRecord{}, ErrInvalidRiskRecord
 		}
 	default:

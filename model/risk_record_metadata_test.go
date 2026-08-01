@@ -19,6 +19,9 @@ func TestRecordRiskObservation_persistsGovernedMetadataWithinPrivacyBounds(t *te
 	input.Preview = strings.Repeat("隐", 205)
 	input.ContentHash = strings.Repeat("a", 64)
 	input.Source = RiskRecordSourceCache
+	input.ProviderID = 0
+	input.ProviderName = ""
+	input.ProviderType = ""
 	input.CacheHit = true
 	input.ProviderCalled = false
 	input.Blocked = false

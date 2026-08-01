@@ -17,33 +17,44 @@ import (
 )
 
 type RiskProviderResponse struct {
-	Id               int                    `json:"id"`
-	Name             string                 `json:"name"`
-	ProviderType     model.RiskProviderType `json:"provider_type"`
-	AccountID        string                 `json:"account_id"`
-	ChannelID        int                    `json:"channel_id"`
-	Model            string                 `json:"model"`
-	HasCredential    bool                   `json:"has_credential"`
-	SystemManaged    bool                   `json:"system_managed"`
-	TimeoutMs        int                    `json:"timeout_ms"`
-	FailureThreshold int                    `json:"failure_threshold"`
-	CooldownSeconds  int                    `json:"cooldown_seconds"`
-	ValidatedAt      *time.Time             `json:"validated_at"`
-	Active           bool                   `json:"active"`
-	CreatedAt        time.Time              `json:"created_at"`
-	UpdatedAt        time.Time              `json:"updated_at"`
+	Id                    int                    `json:"id"`
+	Name                  string                 `json:"name"`
+	ProviderType          model.RiskProviderType `json:"provider_type"`
+	AccountID             string                 `json:"account_id"`
+	ChannelID             int                    `json:"channel_id"`
+	Model                 string                 `json:"model"`
+	HasCredential         bool                   `json:"has_credential"`
+	SystemManaged         bool                   `json:"system_managed"`
+	TimeoutMs             int                    `json:"timeout_ms"`
+	FailureThreshold      int                    `json:"failure_threshold"`
+	CooldownSeconds       int                    `json:"cooldown_seconds"`
+	Priority              int                    `json:"priority"`
+	DailyNeuronsLimit     int64                  `json:"daily_neurons_limit"`
+	DailyResetTime        string                 `json:"daily_reset_time"`
+	CurrentStatus         string                 `json:"current_status"`
+	DailyNeuronsUsed      int64                  `json:"daily_neurons_used"`
+	DailyNeuronsReserved  int64                  `json:"daily_neurons_reserved"`
+	DailyNeuronsRemaining int64                  `json:"daily_neurons_remaining"`
+	DailyNeuronsResetAt   *time.Time             `json:"daily_neurons_reset_at,omitempty"`
+	ValidatedAt           *time.Time             `json:"validated_at"`
+	Active                bool                   `json:"active"`
+	CreatedAt             time.Time              `json:"created_at"`
+	UpdatedAt             time.Time              `json:"updated_at"`
 }
 
 type riskProviderRequest struct {
-	Name             string                 `json:"name" binding:"required"`
-	ProviderType     model.RiskProviderType `json:"provider_type" binding:"required,oneof=cloudflare platform_internal"`
-	AccountID        string                 `json:"account_id"`
-	ChannelID        int                    `json:"channel_id"`
-	Model            string                 `json:"model" binding:"required"`
-	Credential       string                 `json:"credential"`
-	TimeoutMs        int                    `json:"timeout_ms" binding:"omitempty,gte=1,lte=60000"`
-	FailureThreshold int                    `json:"failure_threshold" binding:"omitempty,gte=1,lte=100"`
-	CooldownSeconds  int                    `json:"cooldown_seconds" binding:"omitempty,gte=1,lte=86400"`
+	Name              string                 `json:"name" binding:"required"`
+	ProviderType      model.RiskProviderType `json:"provider_type" binding:"required,oneof=cloudflare platform_internal"`
+	AccountID         string                 `json:"account_id"`
+	ChannelID         int                    `json:"channel_id"`
+	Model             string                 `json:"model" binding:"required"`
+	Credential        string                 `json:"credential"`
+	TimeoutMs         int                    `json:"timeout_ms" binding:"omitempty,gte=1,lte=60000"`
+	FailureThreshold  int                    `json:"failure_threshold" binding:"omitempty,gte=1,lte=100"`
+	CooldownSeconds   int                    `json:"cooldown_seconds" binding:"omitempty,gte=1,lte=86400"`
+	Priority          int                    `json:"priority" binding:"omitempty,gte=0,lte=1000000000"`
+	DailyNeuronsLimit int64                  `json:"daily_neurons_limit" binding:"omitempty,gte=1,lte=1000000000000"`
+	DailyResetTime    string                 `json:"daily_reset_time"`
 }
 
 type riskProviderValidationRequest struct {
@@ -60,7 +71,7 @@ func ListRiskProviders(c *gin.Context) {
 	}
 	response := make([]RiskProviderResponse, 0, len(providers))
 	for _, provider := range providers {
-		response = append(response, toRiskProviderResponse(provider))
+		response = append(response, toRiskProviderResponse(c.Request.Context(), provider))
 	}
 	common.ApiSuccess(c, response)
 }
@@ -86,12 +97,13 @@ func CreateRiskProvider(c *gin.Context) {
 		ChannelID: request.ChannelID, Model: request.Model,
 		CredentialEncrypted: ciphertext, TimeoutMs: request.TimeoutMs, FailureThreshold: request.FailureThreshold,
 		CooldownSeconds: request.CooldownSeconds,
+		Priority:        request.Priority, DailyNeuronsLimit: request.DailyNeuronsLimit, DailyResetTime: request.DailyResetTime,
 	}
 	if err := model.CreateRiskProvider(provider); err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, toRiskProviderResponse(provider))
+	common.ApiSuccess(c, toRiskProviderResponse(c.Request.Context(), provider))
 }
 
 func UpdateRiskProvider(c *gin.Context) {
@@ -126,6 +138,9 @@ func UpdateRiskProvider(c *gin.Context) {
 	provider.TimeoutMs = request.TimeoutMs
 	provider.FailureThreshold = request.FailureThreshold
 	provider.CooldownSeconds = request.CooldownSeconds
+	provider.Priority = request.Priority
+	provider.DailyNeuronsLimit = request.DailyNeuronsLimit
+	provider.DailyResetTime = request.DailyResetTime
 	if request.ProviderType == model.RiskProviderCloudflare && request.Credential != "" {
 		provider.CredentialEncrypted, err = common.EncryptCredential(request.Credential)
 		if err != nil {
@@ -141,7 +156,7 @@ func UpdateRiskProvider(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, toRiskProviderResponse(provider))
+	common.ApiSuccess(c, toRiskProviderResponse(c.Request.Context(), provider))
 }
 
 func DeleteRiskProvider(c *gin.Context) {
@@ -180,7 +195,7 @@ func ValidateRiskProvider(c *gin.Context) {
 		}
 	}
 	startedAt := time.Now()
-	result, err := service.ReviewRiskContent(c.Request.Context(), provider, validationText)
+	result, err := service.ReviewRiskContentWithBudget(c.Request.Context(), provider, validationText)
 	recordInput := riskProviderValidationRecordInput(c, provider, result, err, startedAt)
 	metadata := service.BuildRiskRecordContentMetadata(validationText)
 	recordInput.Preview = metadata.Preview
@@ -229,15 +244,26 @@ func riskProviderValidationRecordInput(
 	if math.IsNaN(neurons) || math.IsInf(neurons, 0) || neurons < 0 {
 		neurons = 0
 	}
+	providerCalled := reviewErr == nil || !service.IsRiskProviderLocalBudgetUnavailable(reviewErr)
+	providerID := 0
+	providerName := ""
+	providerType := model.RiskProviderType("")
+	source := model.RiskRecordSourceLocal
+	if providerCalled {
+		providerID = provider.Id
+		providerName = provider.Name
+		providerType = provider.ProviderType
+		source = model.RiskRecordSourceProvider
+	}
 	return model.RiskRecordInput{
 		RequestID: requestID, ChannelID: provider.ChannelID, UserID: c.GetInt("id"), Model: provider.Model,
-		ProviderID: provider.Id, ProviderName: provider.Name, ProviderType: provider.ProviderType,
+		ProviderID: providerID, ProviderName: providerName, ProviderType: providerType,
 		Result: recordResult, Categories: append([]string(nil), result.Categories...),
 		LatencyMS:    time.Since(startedAt).Milliseconds(),
 		PromptTokens: result.Usage.PromptTokens, CompletionTokens: result.Usage.CompletionTokens,
 		TotalTokens: result.Usage.TotalTokens, Neurons: int64(math.Round(neurons)),
-		ErrorCode: errorCode, ErrorDetail: errorDetail, Source: model.RiskRecordSourceProvider,
-		ProviderCalled: true, ObservedAt: time.Now(),
+		ErrorCode: errorCode, ErrorDetail: errorDetail, Source: source,
+		ProviderCalled: providerCalled, ObservedAt: time.Now(),
 	}
 }
 
@@ -246,7 +272,20 @@ func ActivateRiskProvider(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := model.ActivateRiskProvider(id); err != nil {
+	active := true
+	if c.Request.ContentLength != 0 {
+		var request struct {
+			Active *bool `json:"active"`
+		}
+		if err := c.ShouldBindJSON(&request); err != nil {
+			common.ApiErrorMsg(c, "无效的供应商启用状态")
+			return
+		}
+		if request.Active != nil {
+			active = *request.Active
+		}
+	}
+	if err := model.SetRiskProviderActive(id, active); err != nil {
 		if errors.Is(err, model.ErrRiskProviderNotValidated) {
 			common.ApiErrorMsg(c, "供应商连接尚未验证")
 			return
@@ -259,7 +298,7 @@ func ActivateRiskProvider(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, toRiskProviderResponse(provider))
+	common.ApiSuccess(c, toRiskProviderResponse(c.Request.Context(), provider))
 }
 
 func parseRiskProviderID(c *gin.Context) (int, bool) {
@@ -271,17 +310,52 @@ func parseRiskProviderID(c *gin.Context) (int, bool) {
 	return id, true
 }
 
-func toRiskProviderResponse(provider *model.RiskProvider) RiskProviderResponse {
+func toRiskProviderResponse(ctx context.Context, provider *model.RiskProvider) RiskProviderResponse {
 	accountID := ""
 	if provider.ProviderType == model.RiskProviderCloudflare {
 		accountID, _ = provider.CloudflareAccountID()
 	}
-	return RiskProviderResponse{
+	dailyLimit := provider.DailyNeuronsLimit
+	if dailyLimit < 1 {
+		dailyLimit = model.DefaultRiskProviderDailyNeuronsLimit
+	}
+	dailyResetTime := provider.DailyResetTime
+	if dailyResetTime == "" {
+		dailyResetTime = model.DefaultRiskProviderDailyResetTime
+	}
+	response := RiskProviderResponse{
 		Id: provider.Id, Name: provider.Name, ProviderType: provider.ProviderType, Model: provider.Model,
 		AccountID: accountID, ChannelID: provider.ChannelID, HasCredential: provider.CredentialEncrypted != "",
 		SystemManaged:    provider.ProviderType == model.RiskProviderPlatformInternal && provider.InternalTokenID > 0,
 		TimeoutMs:        provider.TimeoutMs,
 		FailureThreshold: provider.FailureThreshold, CooldownSeconds: provider.CooldownSeconds,
-		ValidatedAt: provider.ValidatedAt, Active: provider.Active, CreatedAt: provider.CreatedAt, UpdatedAt: provider.UpdatedAt,
+		Priority: provider.Priority, DailyNeuronsLimit: dailyLimit, DailyResetTime: dailyResetTime,
+		CurrentStatus: service.RiskProviderStatusNormal,
+		ValidatedAt:   provider.ValidatedAt, Active: provider.Active, CreatedAt: provider.CreatedAt, UpdatedAt: provider.UpdatedAt,
 	}
+	if provider.Active {
+		response.CurrentStatus = service.RiskProviderStatusNormal
+		if service.RiskProviderCircuitOpen(provider.Id) {
+			response.CurrentStatus = service.RiskProviderStatusCircuitOpen
+		}
+		if provider.ProviderType == model.RiskProviderCloudflare {
+			if snapshot, err := service.GetRiskProviderBudgetSnapshot(ctx, provider); err == nil {
+				response.DailyNeuronsUsed = snapshot.Used
+				response.DailyNeuronsReserved = snapshot.Reserved
+				response.DailyNeuronsRemaining = maxInt64(dailyLimit-snapshot.Used-snapshot.Reserved, 0)
+				response.DailyNeuronsResetAt = &snapshot.ReadyAt
+				if snapshot.Exhausted {
+					response.CurrentStatus = service.RiskProviderStatusDailyExhausted
+				}
+			}
+		}
+	}
+	return response
+}
+
+func maxInt64(value, minimum int64) int64 {
+	if value < minimum {
+		return minimum
+	}
+	return value
 }

@@ -66,7 +66,10 @@ func TestRiskModerationExecutor_Execute_coalescesSameKeyFullReview(t *testing.T)
 	assert.True(t, leader.outcome.ProviderCalled)
 	assert.Equal(t, RiskReviewSourceInflight, follower.outcome.Source)
 	assert.False(t, follower.outcome.ProviderCalled)
-	assert.Equal(t, leader.outcome.Result, follower.outcome.Result)
+	assert.Equal(t, leader.outcome.Result.Status, follower.outcome.Result.Status)
+	assert.Equal(t, leader.outcome.Result.Categories, follower.outcome.Result.Categories)
+	assert.Zero(t, follower.outcome.Result.ProviderID)
+	assert.Zero(t, follower.outcome.Result.Usage)
 	assert.EqualValues(t, 3, calls.Load())
 }
 

@@ -95,6 +95,15 @@ func RiskObservationErrorInfo(err error) (string, string) {
 	} else if errors.Is(err, ErrRiskModerationCircuitOpen) {
 		code = riskObservationCircuitOpen
 		detail = "Risk moderation circuit is open; provider was not called"
+	} else if errors.Is(err, ErrRiskProviderDailyNeuronsExhausted) {
+		code = "daily_neurons_exhausted"
+		detail = "Risk provider daily Neurons limit exhausted"
+	} else if errors.Is(err, ErrRiskProviderBudgetUnavailable) {
+		code = "budget_unavailable"
+		detail = "Risk provider Neurons budget is unavailable"
+	} else if errors.Is(err, ErrRiskModerationNoAvailableProvider) {
+		code = "provider_unavailable"
+		detail = "No risk provider is currently available"
 	}
 	var providerErr *riskProviderError
 	if errors.As(err, &providerErr) && providerErr.detail != "" {
@@ -165,7 +174,11 @@ func reviewCloudflareRiskContent(ctx context.Context, provider *model.RiskProvid
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+		if response.StatusCode == http.StatusTooManyRequests && cloudflareDailyNeuronsResponse(body) {
+			cause := fmt.Errorf("%w: %w", ErrRiskProviderDailyNeuronsResponse, ErrRiskProviderDailyNeuronsExhausted)
+			return RiskReviewResult{}, newRiskProviderError(cause, "Cloudflare daily Neurons limit exhausted")
+		}
 		cause := fmt.Errorf("Cloudflare risk provider returned HTTP %d", response.StatusCode)
 		return RiskReviewResult{}, newRiskProviderError(cause, fmt.Sprintf("Cloudflare returned HTTP %d", response.StatusCode))
 	}
@@ -185,6 +198,18 @@ func reviewCloudflareRiskContent(ctx context.Context, provider *model.RiskProvid
 	}
 	result.Usage = decoded.Result.Usage
 	return result, nil
+}
+
+func cloudflareDailyNeuronsResponse(body []byte) bool {
+	message := strings.ToLower(strings.Join(strings.Fields(string(body)), " "))
+	for _, marker := range []string{
+		"daily neurons", "neurons limit", "daily quota", "daily limit", "quota exceeded", "quota exhausted",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func parseCloudflareRiskResult(raw json.RawMessage) (RiskReviewResult, error) {

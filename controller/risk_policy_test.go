@@ -42,6 +42,8 @@ func TestRiskPolicyAPI_saves_first_enable_defaults(t *testing.T) {
 	secondProvider := &model.RiskProvider{Name: "validated second", ProviderType: model.RiskProviderCloudflare, AccountID: "fedcba9876543210fedcba9876543210", Model: "guard", BaseURL: "https://example.com", CredentialEncrypted: "ciphertext"}
 	require.NoError(t, model.CreateRiskProvider(secondProvider))
 	require.NoError(t, model.MarkRiskProviderValidated(secondProvider.Id))
+	require.NoError(t, model.ActivateRiskProvider(provider.Id))
+	require.NoError(t, model.ActivateRiskProvider(secondProvider.Id))
 	channel := &model.Channel{Name: "CPA Pro", Key: "secret", Models: "gpt-test"}
 	require.NoError(t, model.DB.Create(channel).Error)
 	excludedUser := &model.User{Username: "excluded"}
@@ -49,7 +51,7 @@ func TestRiskPolicyAPI_saves_first_enable_defaults(t *testing.T) {
 
 	// When
 	response := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodPut, Target: "/api/risk/policy", Body: map[string]any{
-		"provider_ids": []int{secondProvider.Id, provider.Id}, "enabled_channels": []int{channel.Id}, "excluded_user_ids": []int{excludedUser.Id},
+		"enabled": true, "enabled_channels": []int{channel.Id}, "excluded_user_ids": []int{excludedUser.Id},
 		"excluded_models": []string{" codex-auto-review ", "", "gpt-test", "codex-auto-review"}, "non_blocking_categories": []string{"S14", "s14"},
 	}, Handler: UpdateRiskPolicy})
 
@@ -58,7 +60,7 @@ func TestRiskPolicyAPI_saves_first_enable_defaults(t *testing.T) {
 	var state model.RiskPolicyState
 	require.NoError(t, common.Unmarshal(response.Data, &state))
 	require.True(t, state.Enabled)
-	require.Equal(t, []int{secondProvider.Id, provider.Id}, state.ProviderIDs)
+	require.Empty(t, state.ProviderIDs)
 	require.Equal(t, []int{channel.Id}, state.EnabledChannels)
 	require.Equal(t, []int{excludedUser.Id}, state.ExcludedUserIDs)
 	require.Equal(t, []string{"codex-auto-review", "gpt-test"}, state.ExcludedModels)
@@ -78,7 +80,7 @@ func TestRiskPolicyAPI_disables_without_clearing_provider_or_channels(t *testing
 
 	// When
 	response := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodPut, Target: "/api/risk/policy", Body: map[string]any{
-		"enabled": false, "provider_ids": []int{provider.Id}, "enabled_channels": []int{channel.Id},
+		"enabled": false, "enabled_channels": []int{channel.Id},
 	}, Handler: UpdateRiskPolicy})
 
 	// Then
@@ -87,6 +89,6 @@ func TestRiskPolicyAPI_disables_without_clearing_provider_or_channels(t *testing
 	require.NoError(t, common.Unmarshal(response.Data, &state))
 	require.True(t, state.Configured)
 	require.False(t, state.Enabled)
-	require.Equal(t, []int{provider.Id}, state.ProviderIDs)
+	require.Empty(t, state.ProviderIDs)
 	require.Equal(t, []int{channel.Id}, state.EnabledChannels)
 }

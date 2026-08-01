@@ -56,8 +56,29 @@ func TestRiskProviderPersistenceEnforcesValidationBeforeActivation(t *testing.T)
 	providers, err := GetRiskProviders()
 	require.NoError(t, err)
 	require.Len(t, providers, 2)
-	assert.False(t, providers[0].Active)
+	assert.True(t, providers[0].Active)
 	assert.True(t, providers[1].Active)
+}
+
+func TestRiskProviderPersistenceDefaultsPriorityAndCloudflareDailyBudget(t *testing.T) {
+	// Given
+	db := setupRiskRecordModelTest(t)
+	require.NoError(t, db.AutoMigrate(&RiskProvider{}))
+	provider := &RiskProvider{
+		Name:                "daily-budget",
+		ProviderType:        RiskProviderCloudflare,
+		AccountID:           "0123456789abcdef0123456789abcdef",
+		Model:               "@cf/meta/llama-guard-3-8b",
+		CredentialEncrypted: "ciphertext",
+	}
+
+	// When
+	require.NoError(t, CreateRiskProvider(provider))
+
+	// Then
+	assert.Equal(t, 0, provider.Priority)
+	assert.EqualValues(t, 10000, provider.DailyNeuronsLimit)
+	assert.Equal(t, "08:00", provider.DailyResetTime)
 }
 
 func TestRiskProviderAccountIDRejectsInvalidInputAndReadsLegacyBaseURL(t *testing.T) {

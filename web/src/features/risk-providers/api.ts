@@ -24,6 +24,8 @@ import type {
   RiskProviderPayload,
   RiskProviderValidation,
   RiskProviderValidationPayload,
+  RiskStatistics,
+  RiskStatisticsGranularity,
 } from './types'
 
 const BASE_PATH = '/api/risk/providers'
@@ -74,6 +76,29 @@ export async function validateRiskProvider(
       skipBusinessError: true,
       skipErrorHandler: true,
     }
+  )
+  return response.data
+}
+
+export async function setRiskProviderActive(
+  providerId: number,
+  active: boolean
+): Promise<ApiResponse<RiskProvider>> {
+  const response = await api.put<ApiResponse<RiskProvider>>(
+    `${BASE_PATH}/${providerId}/active`,
+    { active }
+  )
+  return response.data
+}
+
+export async function getRiskStatistics(params: {
+  readonly start_timestamp: number
+  readonly end_timestamp: number
+  readonly granularity: RiskStatisticsGranularity
+}): Promise<ApiResponse<RiskStatistics>> {
+  const response = await api.get<ApiResponse<RiskStatistics>>(
+    '/api/risk/statistics',
+    { params }
   )
   return response.data
 }

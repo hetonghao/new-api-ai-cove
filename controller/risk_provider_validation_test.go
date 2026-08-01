@@ -68,6 +68,47 @@ func TestValidateRiskProvider_acceptsFractionalCloudflareNeurons(t *testing.T) {
 	assert.EqualValues(t, 9, record.Neurons)
 }
 
+func TestValidateRiskProvider_recordsExplicitDailyQuotaResponseAsProviderCall(t *testing.T) {
+	// Given
+	db := setupRiskProviderControllerTest(t)
+	ciphertext, err := common.EncryptCredential("cf-token")
+	require.NoError(t, err)
+	provider := &model.RiskProvider{
+		Id: 901, Name: "Cloudflare quota", ProviderType: model.RiskProviderCloudflare,
+		AccountID: "0123456789abcdef0123456789abcdef", Model: "@cf/meta/llama-guard-3-8b",
+		CredentialEncrypted: ciphertext, TimeoutMs: 800,
+	}
+	require.NoError(t, model.CreateRiskProvider(provider))
+	client := service.GetHttpClient()
+	require.NotNil(t, client)
+	originalTransport := client.Transport
+	client.Transport = riskProviderControllerRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusTooManyRequests,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":"daily neurons quota exceeded"}`)),
+		}, nil
+	})
+	t.Cleanup(func() { client.Transport = originalTransport })
+
+	// When
+	response := callRiskProviderHandler(t, riskProviderTestCall{
+		Method: http.MethodPost, Target: "/api/risk/providers/901/validate", Id: provider.Id, Handler: ValidateRiskProvider,
+	})
+
+	// Then
+	assert.False(t, response.Success)
+	var record model.RiskRecord
+	require.NoError(t, db.Take(&record).Error)
+	assert.Equal(t, provider.Id, record.ProviderID)
+	assert.Equal(t, provider.Name, record.ProviderName)
+	assert.Equal(t, provider.ProviderType, record.ProviderType)
+	assert.Equal(t, model.RiskRecordResultError, record.Result)
+	assert.Equal(t, model.RiskRecordSourceProvider, record.Source)
+	assert.True(t, record.ProviderCalled)
+	assert.Equal(t, "daily_neurons_exhausted", record.ErrorCode)
+}
+
 func TestValidateRiskProvider_usesCustomTestContentAndRecordsItsPreview(t *testing.T) {
 	// Given
 	db := setupRiskProviderControllerTest(t)

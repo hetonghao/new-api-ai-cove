@@ -20,17 +20,16 @@ func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 		wantChunkNeurons int64
 	}{
 		{
-			name:        "unsafe result with provider",
+			name:        "unsafe result from cache",
 			wantSource:  model.RiskRecordSourceCache,
-			wantNeurons: 9,
+			wantNeurons: 0,
 			event: RiskObservationEvent{
 				RequestID: "req-sink", ChannelID: 12, UserID: 34, TokenID: 55,
 				Model: "gpt-5.6", Path: "/v1/responses", Preview: "masked preview",
 				ContentHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 				Source:      RiskObservationSourceCache, CacheHit: true, Blocked: true, RuleIDs: []int{5, 8},
-				ProviderID: 21, ProviderName: "Cloudflare", ProviderType: model.RiskProviderCloudflare, Result: RiskObservationUnsafe,
-				Categories: []string{"violent crimes"}, LatencyMS: 93, PromptTokens: 11,
-				CompletionTokens: 2, TotalTokens: 13, Neurons: 9.072817475858999,
+				Result:     RiskObservationUnsafe,
+				Categories: []string{"violent crimes"}, LatencyMS: 93,
 				ObservedAt: time.Date(2026, time.July, 25, 12, 30, 0, 0, time.UTC),
 			},
 		},
@@ -39,7 +38,6 @@ func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 			wantSource: model.RiskRecordSourceCache,
 			event: RiskObservationEvent{
 				RequestID: "req-allowed", ChannelID: 12, UserID: 34,
-				ProviderID: 21, ProviderName: "Cloudflare", ProviderType: model.RiskProviderCloudflare,
 				Result: RiskObservationUnsafe, Categories: []string{"S14"}, Source: RiskObservationSourceCache,
 				CacheHit: true, NonBlockingMatched: true,
 				ObservedAt: time.Date(2026, time.July, 25, 12, 30, 30, 0, time.UTC),

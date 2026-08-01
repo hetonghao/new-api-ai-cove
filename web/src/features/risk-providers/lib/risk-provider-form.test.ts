@@ -39,6 +39,9 @@ const formValues: RiskProviderFormValues = {
   timeout_ms: 800,
   failure_threshold: 5,
   cooldown_seconds: 30,
+  priority: 10,
+  daily_neurons_limit: 10000,
+  daily_reset_time: '08:00',
 }
 
 describe('risk provider form behavior', () => {
@@ -144,6 +147,9 @@ describe('risk provider form behavior', () => {
       timeout_ms: 800,
       failure_threshold: 5,
       cooldown_seconds: 30,
+      priority: 10,
+      daily_neurons_limit: 10000,
+      daily_reset_time: '08:00',
     })
   })
 

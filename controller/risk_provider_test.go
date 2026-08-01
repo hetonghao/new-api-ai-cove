@@ -16,8 +16,10 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -51,9 +53,13 @@ func setupRiskProviderControllerTest(t *testing.T) *gorm.DB {
 	originalSecret := common.CryptoSecret
 	originalMainType := common.MainDatabaseType()
 	originalLogType := common.LogDatabaseType()
+	originalRedisClient := common.RDB
 	originalRedisEnabled := common.RedisEnabled
 	common.CryptoSecret = "risk-provider-controller-key"
-	common.RedisEnabled = false
+	redisServer := miniredis.RunT(t)
+	riskProviderRedisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	common.RedisEnabled = true
+	common.RDB = riskProviderRedisClient
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
@@ -65,9 +71,11 @@ func setupRiskProviderControllerTest(t *testing.T) *gorm.DB {
 	))
 	service.InitHttpClient()
 	t.Cleanup(func() {
+		_ = riskProviderRedisClient.Close()
 		model.DB = originalDB
 		common.CryptoSecret = originalSecret
 		common.RedisEnabled = originalRedisEnabled
+		common.RDB = originalRedisClient
 		common.SetDatabaseTypes(originalMainType, originalLogType)
 	})
 	return db

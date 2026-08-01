@@ -40,7 +40,6 @@ describe('risk policy form behavior', () => {
     const policy: RiskPolicy = {
       configured: false,
       enabled: false,
-      provider_ids: [],
       enabled_channels: [],
       excluded_user_ids: [],
       excluded_models: [],
@@ -58,7 +57,6 @@ describe('risk policy form behavior', () => {
       excluded_user_ids: [],
       excluded_models: [],
       non_blocking_categories: [],
-      provider_ids: [],
       review_mode: 'selective',
       action_mode: 'observe',
     })
@@ -69,7 +67,6 @@ describe('risk policy form behavior', () => {
     const policy: RiskPolicy = {
       configured: true,
       enabled: false,
-      provider_ids: [],
       enabled_channels: [],
       excluded_user_ids: [],
       review_mode: 'selective',
@@ -83,9 +80,8 @@ describe('risk policy form behavior', () => {
     assert.deepEqual(values.excluded_models, [])
   })
 
-  test('requires a validated provider before enabling CPA Pro risk control', () => {
-    // Given only provider 7 has passed connection validation
-    const schema = createRiskPolicyFormSchema([7], translate)
+  test('does not require a provider pool before enabling risk control', () => {
+    const schema = createRiskPolicyFormSchema(translate)
 
     // When an operator enables risk control with another provider
     const invalid = schema.safeParse({
@@ -93,35 +89,11 @@ describe('risk policy form behavior', () => {
       enabled_channels: [24],
       excluded_user_ids: [42],
       excluded_models: ['codex-auto-review'],
-      provider_ids: [9],
       review_mode: 'selective',
       action_mode: 'observe',
     })
 
-    // Then the public form boundary rejects the unvalidated selection
-    assert.equal(invalid.success, false)
-  })
-
-  test('assigns an invalid provider selection to the provider field', () => {
-    // Given an enabled policy whose provider has not passed validation
-    const schema = createRiskPolicyFormSchema([7], translate)
-
-    // When React Hook Form resolves the public form schema
-    const parsed = schema.safeParse({
-      enabled: true,
-      enabled_channels: [24],
-      excluded_user_ids: [42],
-      excluded_models: ['codex-auto-review'],
-      provider_ids: [9],
-      review_mode: 'selective',
-      action_mode: 'observe',
-    })
-
-    // Then the error can render beside the provider control
-    assert.equal(parsed.success, false)
-    if (parsed.success) return
-    assert.deepEqual(parsed.error.issues[0]?.path, ['provider_ids'])
-    assert.equal(parsed.error.issues[0]?.message, 'Select a validated provider')
+    assert.equal(invalid.success, true)
   })
 
   test('keeps provider and channels when the policy is disabled', () => {
@@ -131,7 +103,6 @@ describe('risk policy form behavior', () => {
       enabled_channels: [24],
       excluded_user_ids: [42],
       excluded_models: ['codex-auto-review'],
-      provider_ids: [9, 7],
       review_mode: 'full' as const,
       action_mode: 'block' as const,
     }
@@ -142,7 +113,6 @@ describe('risk policy form behavior', () => {
     // Then only the enabled state changes and the saved selections remain
     assert.deepEqual(payload, {
       enabled: false,
-      provider_ids: [9, 7],
       enabled_channels: [24],
       excluded_user_ids: [42],
       excluded_models: ['codex-auto-review'],
@@ -151,14 +121,13 @@ describe('risk policy form behavior', () => {
     })
   })
 
-  test('persists provider selection order with the actual channel ids', () => {
+  test('preserves selected channel ids in the policy payload', () => {
     // Given an enabled form with actual channel selections
     const values = {
       enabled: true,
       enabled_channels: [24, 31],
       excluded_user_ids: [42, 84],
       excluded_models: ['codex-auto-review', 'gpt-5.6'],
-      provider_ids: [9, 7],
       review_mode: 'selective' as const,
       action_mode: 'observe' as const,
     }
@@ -169,7 +138,6 @@ describe('risk policy form behavior', () => {
     // Then the contract preserves the selected channel IDs
     assert.deepEqual(payload, {
       enabled: true,
-      provider_ids: [9, 7],
       enabled_channels: [24, 31],
       excluded_user_ids: [42, 84],
       excluded_models: ['codex-auto-review', 'gpt-5.6'],
@@ -180,7 +148,7 @@ describe('risk policy form behavior', () => {
 
   test('requires at least one actual channel when risk control is enabled', () => {
     // Given a validated provider but no selected channel
-    const schema = createRiskPolicyFormSchema([7], translate)
+    const schema = createRiskPolicyFormSchema(translate)
 
     // When the enabled form crosses the public boundary
     const parsed = schema.safeParse({
@@ -188,7 +156,6 @@ describe('risk policy form behavior', () => {
       enabled_channels: [],
       excluded_user_ids: [],
       excluded_models: [],
-      provider_ids: [7],
       review_mode: 'selective',
       action_mode: 'observe',
     })

@@ -49,12 +49,14 @@ func TestRiskPolicy_treats_legacy_named_channels_as_empty_selection(t *testing.T
 func TestRiskPolicy_persists_first_enable_defaults(t *testing.T) {
 	// Given
 	setupRiskPolicyModelTest(t)
-	provider := &RiskProvider{Name: "validated", ProviderType: RiskProviderCloudflare, AccountID: "0123456789abcdef0123456789abcdef", Model: "guard", BaseURL: "https://example.com", CredentialEncrypted: "ciphertext"}
+	provider := &RiskProvider{Name: "validated", ProviderType: RiskProviderCloudflare, AccountID: "0123456789abcdef0123456789abcdef", Model: "guard", BaseURL: "https://example.com", CredentialEncrypted: "ciphertext", Priority: 5}
 	require.NoError(t, CreateRiskProvider(provider))
 	require.NoError(t, MarkRiskProviderValidated(provider.Id))
-	secondProvider := &RiskProvider{Name: "validated second", ProviderType: RiskProviderCloudflare, AccountID: "fedcba9876543210fedcba9876543210", Model: "guard", BaseURL: "https://example.com", CredentialEncrypted: "ciphertext"}
+	secondProvider := &RiskProvider{Name: "validated second", ProviderType: RiskProviderCloudflare, AccountID: "fedcba9876543210fedcba9876543210", Model: "guard", BaseURL: "https://example.com", CredentialEncrypted: "ciphertext", Priority: 10}
 	require.NoError(t, CreateRiskProvider(secondProvider))
 	require.NoError(t, MarkRiskProviderValidated(secondProvider.Id))
+	require.NoError(t, ActivateRiskProvider(provider.Id))
+	require.NoError(t, ActivateRiskProvider(secondProvider.Id))
 	firstChannel := &Channel{Name: "Primary", Key: "secret", Models: "gpt-test"}
 	secondChannel := &Channel{Name: "Backup", Key: "secret", Models: "gpt-test"}
 	require.NoError(t, DB.Create(firstChannel).Error)
@@ -63,8 +65,9 @@ func TestRiskPolicy_persists_first_enable_defaults(t *testing.T) {
 	secondUser := &User{Username: "bob", AffCode: "risk-bob"}
 	require.NoError(t, DB.Create(firstUser).Error)
 	require.NoError(t, DB.Create(secondUser).Error)
+	enabled := true
 	_, err := SaveRiskPolicy(RiskPolicyInput{
-		ProviderIDs:           []int{secondProvider.Id, provider.Id, secondProvider.Id},
+		Enabled:               &enabled,
 		EnabledChannels:       []int{secondChannel.Id, firstChannel.Id, secondChannel.Id},
 		ExcludedUserIDs:       []int{secondUser.Id, firstUser.Id, secondUser.Id},
 		ExcludedModels:        []string{" codex-auto-review ", "", "gpt-test", "codex-auto-review"},
@@ -88,11 +91,11 @@ func TestRiskPolicy_persists_first_enable_defaults(t *testing.T) {
 	require.Equal(t, RiskActionObserve, state.ActionMode)
 }
 
-func TestRiskPolicyForRelay_readsProviderPoolWithoutProviderTableLookup(t *testing.T) {
+func TestRiskPolicyForRelay_ignoresLegacyProviderPool(t *testing.T) {
 	// Given
 	setupRiskPolicyModelTest(t)
 	require.NoError(t, DB.Create(&RiskPolicy{
-		Id:              riskPolicySingletonID,
+		Id: riskPolicySingletonID, Enabled: false,
 		ProviderIDs:     `[7]`,
 		EnabledChannels: `[24]`,
 		ExcludedUserIDs: `[42]`,
@@ -100,8 +103,6 @@ func TestRiskPolicyForRelay_readsProviderPoolWithoutProviderTableLookup(t *testi
 		ReviewMode:      RiskReviewFull,
 		ActionMode:      RiskActionBlock,
 	}).Error)
-	require.NoError(t, DB.Migrator().DropTable(&RiskProvider{}))
-
 	for _, test := range []struct {
 		name   string
 		userID int
@@ -119,14 +120,14 @@ func TestRiskPolicyForRelay_readsProviderPoolWithoutProviderTableLookup(t *testi
 			require.True(t, state.Configured)
 			require.Equal(t, []int{42}, state.ExcludedUserIDs)
 			require.Equal(t, []string{"codex-auto-review"}, state.ExcludedModels)
-			require.Equal(t, []int{7}, state.ProviderIDs)
+			require.Empty(t, state.ProviderIDs)
 			require.False(t, state.Enabled)
 		})
 	}
 
 	state, err := GetRiskPolicyStateForRelay(7, "codex-auto-review-upstream")
 	require.NoError(t, err)
-	require.Equal(t, []int{7}, state.ProviderIDs)
+	require.Empty(t, state.ProviderIDs)
 }
 
 func TestRiskPolicy_rejects_unknown_excluded_user_id(t *testing.T) {
@@ -141,7 +142,7 @@ func TestRiskPolicy_rejects_unknown_excluded_user_id(t *testing.T) {
 	require.True(t, errors.Is(err, ErrInvalidRiskPolicy))
 }
 
-func TestRiskPolicy_rejects_unvalidated_provider(t *testing.T) {
+func TestRiskPolicy_rejects_enabled_policy_without_active_provider(t *testing.T) {
 	// Given
 	setupRiskPolicyModelTest(t)
 	provider := &RiskProvider{Name: "draft", ProviderType: RiskProviderCloudflare, AccountID: "0123456789abcdef0123456789abcdef", Model: "guard", BaseURL: "https://example.com", CredentialEncrypted: "ciphertext"}
@@ -150,11 +151,12 @@ func TestRiskPolicy_rejects_unvalidated_provider(t *testing.T) {
 	require.NoError(t, DB.Create(channel).Error)
 
 	// When
-	_, err := SaveRiskPolicy(RiskPolicyInput{ProviderIDs: []int{provider.Id}, EnabledChannels: []int{channel.Id}})
+	enabled := true
+	_, err := SaveRiskPolicy(RiskPolicyInput{Enabled: &enabled, EnabledChannels: []int{channel.Id}})
 
 	// Then
 	require.Error(t, err)
-	require.True(t, errors.Is(err, ErrRiskProviderNotValidated))
+	require.True(t, errors.Is(err, ErrInvalidRiskPolicy))
 }
 
 func TestRiskPolicy_rejects_unknown_channel_id(t *testing.T) {
@@ -164,7 +166,8 @@ func TestRiskPolicy_rejects_unknown_channel_id(t *testing.T) {
 	require.NoError(t, CreateRiskProvider(provider))
 	require.NoError(t, MarkRiskProviderValidated(provider.Id))
 	// When
-	_, err := SaveRiskPolicy(RiskPolicyInput{ProviderIDs: []int{provider.Id}, EnabledChannels: []int{999}})
+	enabled := true
+	_, err := SaveRiskPolicy(RiskPolicyInput{Enabled: &enabled, EnabledChannels: []int{999}})
 
 	// Then
 	require.Error(t, err)
@@ -212,12 +215,14 @@ func TestRiskPolicy_keeps_provider_and_channels_when_disabled(t *testing.T) {
 	provider := &RiskProvider{Name: "validated", ProviderType: RiskProviderCloudflare, AccountID: "0123456789abcdef0123456789abcdef", Model: "guard", BaseURL: "https://example.com", CredentialEncrypted: "ciphertext"}
 	require.NoError(t, CreateRiskProvider(provider))
 	require.NoError(t, MarkRiskProviderValidated(provider.Id))
+	require.NoError(t, ActivateRiskProvider(provider.Id))
 	channel := &Channel{Name: "Selected", Key: "secret", Models: "gpt-test"}
 	require.NoError(t, DB.Create(channel).Error)
-	_, err := SaveRiskPolicy(RiskPolicyInput{ProviderIDs: []int{provider.Id}, EnabledChannels: []int{channel.Id}})
+	enabled := true
+	_, err := SaveRiskPolicy(RiskPolicyInput{Enabled: &enabled, EnabledChannels: []int{channel.Id}})
 	require.NoError(t, err)
 	disabled := false
-	_, err = SaveRiskPolicy(RiskPolicyInput{Enabled: &disabled, ProviderIDs: []int{provider.Id}, EnabledChannels: []int{channel.Id}})
+	_, err = SaveRiskPolicy(RiskPolicyInput{Enabled: &disabled, EnabledChannels: []int{channel.Id}})
 	require.NoError(t, err)
 
 	// When
@@ -226,11 +231,11 @@ func TestRiskPolicy_keeps_provider_and_channels_when_disabled(t *testing.T) {
 	// Then
 	require.NoError(t, err)
 	require.False(t, state.Enabled)
-	require.Equal(t, []int{provider.Id}, state.ProviderIDs)
+	require.Empty(t, state.ProviderIDs)
 	require.Equal(t, []int{channel.Id}, state.EnabledChannels)
 }
 
-func TestActivateRiskProvider_replacesPoolAndPreservesPolicy(t *testing.T) {
+func TestActivateRiskProvider_allowsMultipleProvidersAndPreservesPolicy(t *testing.T) {
 	// Given
 	setupRiskPolicyModelTest(t)
 	first := &RiskProvider{Name: "first", ProviderType: RiskProviderCloudflare, AccountID: "0123456789abcdef0123456789abcdef", Model: "guard", CredentialEncrypted: "ciphertext"}
@@ -239,13 +244,16 @@ func TestActivateRiskProvider_replacesPoolAndPreservesPolicy(t *testing.T) {
 	require.NoError(t, CreateRiskProvider(second))
 	require.NoError(t, MarkRiskProviderValidated(first.Id))
 	require.NoError(t, MarkRiskProviderValidated(second.Id))
+	require.NoError(t, ActivateRiskProvider(first.Id))
+	require.NoError(t, ActivateRiskProvider(second.Id))
 	channel := &Channel{Name: "Selected", Key: "secret", Models: "gpt-test"}
 	require.NoError(t, DB.Create(channel).Error)
-	_, err := SaveRiskPolicy(RiskPolicyInput{ProviderIDs: []int{first.Id, second.Id}, EnabledChannels: []int{channel.Id}})
+	enabled := true
+	_, err := SaveRiskPolicy(RiskPolicyInput{Enabled: &enabled, EnabledChannels: []int{channel.Id}})
 	require.NoError(t, err)
 
 	// When
-	require.NoError(t, ActivateRiskProvider(second.Id))
+	require.NoError(t, SetRiskProviderActive(first.Id, false))
 
 	// Then
 	state, err := GetRiskPolicyState()
@@ -254,7 +262,7 @@ func TestActivateRiskProvider_replacesPoolAndPreservesPolicy(t *testing.T) {
 	require.Equal(t, []int{channel.Id}, state.EnabledChannels)
 }
 
-func TestDeleteRiskProvider_removesItFromProviderPool(t *testing.T) {
+func TestDeleteRiskProvider_removesItFromDerivedProviderSet(t *testing.T) {
 	// Given
 	setupRiskPolicyModelTest(t)
 	first := &RiskProvider{Name: "first", ProviderType: RiskProviderCloudflare, AccountID: "0123456789abcdef0123456789abcdef", Model: "guard", CredentialEncrypted: "ciphertext"}
@@ -263,8 +271,12 @@ func TestDeleteRiskProvider_removesItFromProviderPool(t *testing.T) {
 	require.NoError(t, CreateRiskProvider(second))
 	require.NoError(t, MarkRiskProviderValidated(first.Id))
 	require.NoError(t, MarkRiskProviderValidated(second.Id))
-	disabled := false
-	_, err := SaveRiskPolicy(RiskPolicyInput{Enabled: &disabled, ProviderIDs: []int{first.Id, second.Id}})
+	require.NoError(t, ActivateRiskProvider(first.Id))
+	require.NoError(t, ActivateRiskProvider(second.Id))
+	channel := &Channel{Name: "Selected", Key: "secret", Models: "gpt-test"}
+	require.NoError(t, DB.Create(channel).Error)
+	enabled := true
+	_, err := SaveRiskPolicy(RiskPolicyInput{Enabled: &enabled, EnabledChannels: []int{channel.Id}})
 	require.NoError(t, err)
 
 	// When
@@ -276,14 +288,17 @@ func TestDeleteRiskProvider_removesItFromProviderPool(t *testing.T) {
 	require.Equal(t, []int{second.Id}, state.ProviderIDs)
 }
 
-func TestUpdateRiskProvider_removesInvalidatedProviderFromPool(t *testing.T) {
+func TestUpdateRiskProvider_removesInvalidatedProviderFromDerivedSet(t *testing.T) {
 	// Given
 	setupRiskPolicyModelTest(t)
 	provider := &RiskProvider{Name: "provider", ProviderType: RiskProviderCloudflare, AccountID: "0123456789abcdef0123456789abcdef", Model: "guard", CredentialEncrypted: "ciphertext"}
 	require.NoError(t, CreateRiskProvider(provider))
 	require.NoError(t, MarkRiskProviderValidated(provider.Id))
-	disabled := false
-	_, err := SaveRiskPolicy(RiskPolicyInput{Enabled: &disabled, ProviderIDs: []int{provider.Id}})
+	require.NoError(t, ActivateRiskProvider(provider.Id))
+	channel := &Channel{Name: "Selected", Key: "secret", Models: "gpt-test"}
+	require.NoError(t, DB.Create(channel).Error)
+	enabled := true
+	_, err := SaveRiskPolicy(RiskPolicyInput{Enabled: &enabled, EnabledChannels: []int{channel.Id}})
 	require.NoError(t, err)
 	require.NoError(t, DB.First(provider, provider.Id).Error)
 	provider.Model = "guard-v2"

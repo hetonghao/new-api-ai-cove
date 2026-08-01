@@ -32,10 +32,7 @@ import {
 
 type Translate = (key: string) => string
 
-export function createRiskPolicyFormSchema(
-  validatedProviderIds: readonly number[],
-  t: Translate
-) {
+export function createRiskPolicyFormSchema(t: Translate) {
   return z
     .object({
       enabled: z.boolean(),
@@ -43,7 +40,6 @@ export function createRiskPolicyFormSchema(
       excluded_user_ids: z.array(z.number().int().positive()),
       excluded_models: z.array(z.string().trim().min(1)),
       non_blocking_categories: z.array(z.string().trim().min(1)).optional(),
-      provider_ids: z.array(z.number().int().positive()),
       review_mode: z.enum(RISK_REVIEW_MODES),
       action_mode: z.enum(RISK_ACTION_MODES),
     })
@@ -55,19 +51,6 @@ export function createRiskPolicyFormSchema(
           code: 'custom',
           path: ['enabled_channels'],
           message: t('Select at least one risk channel'),
-        })
-      }
-
-      if (
-        values.provider_ids.length === 0 ||
-        values.provider_ids.some(
-          (providerId) => !validatedProviderIds.includes(providerId)
-        )
-      ) {
-        context.addIssue({
-          code: 'custom',
-          path: ['provider_ids'],
-          message: t('Select a validated provider'),
         })
       }
     })
@@ -86,7 +69,6 @@ export function riskPolicyToFormValues(
     excluded_user_ids: [...policy.excluded_user_ids],
     excluded_models: [...(policy.excluded_models ?? [])],
     non_blocking_categories: [...(policy.non_blocking_categories ?? [])],
-    provider_ids: [...policy.provider_ids],
     review_mode: policy.review_mode,
     action_mode: policy.action_mode,
   }
@@ -97,7 +79,6 @@ export function riskPolicyFormValuesToPayload(
 ): RiskPolicyPayload {
   const payload = {
     enabled: values.enabled,
-    provider_ids: values.provider_ids,
     enabled_channels: values.enabled_channels,
     excluded_user_ids: values.excluded_user_ids,
     excluded_models: values.excluded_models,

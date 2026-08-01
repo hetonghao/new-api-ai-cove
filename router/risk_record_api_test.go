@@ -136,6 +136,50 @@ func TestRiskRecordAPI_returnsRootOnlyPaginatedMetadata(t *testing.T) {
 	assert.Equal(t, baseTime.Add(time.Minute), record.ObservedAt)
 }
 
+func TestRiskStatisticsAPI_returnsAggregatedData(t *testing.T) {
+	// Given
+	server, client, accessToken := setupRiskRecordRouterTest(t, common.RoleRootUser)
+	user := &model.User{Username: "statistics-user", Password: "password", AffCode: "statistics-user"}
+	channel := &model.Channel{Name: "Statistics channel", Key: "statistics-channel"}
+	require.NoError(t, model.DB.Create(user).Error)
+	require.NoError(t, model.DB.Create(channel).Error)
+	baseTime := time.Date(2026, time.July, 25, 10, 0, 0, 0, time.UTC)
+	require.NoError(t, model.RecordRiskObservation(context.Background(), model.RiskRecordInput{
+		RequestID: "statistics-provider", ChannelID: channel.Id, UserID: user.Id,
+		ProviderID: 21, ProviderName: "Cloudflare", ProviderType: model.RiskProviderCloudflare,
+		Result: model.RiskRecordResultSafe, Source: model.RiskRecordSourceProvider,
+		ProviderCalled: true, LatencyMS: 100, ObservedAt: baseTime,
+	}))
+	require.NoError(t, model.RecordRiskObservation(context.Background(), model.RiskRecordInput{
+		RequestID: "statistics-local", ChannelID: channel.Id, UserID: user.Id,
+		Result: model.RiskRecordResultNotReviewed, Source: model.RiskRecordSourceLocal,
+		LatencyMS: 20, ObservedAt: baseTime.Add(time.Hour),
+	}))
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
+		fmt.Sprintf("%s/api/risk/statistics?start_timestamp=%d&end_timestamp=%d&granularity=hour", server.URL, baseTime.Unix(), baseTime.Add(2*time.Hour).Unix()), nil)
+	require.NoError(t, err)
+	request.Header.Set("Authorization", "Bearer "+accessToken)
+
+	// When
+	response, err := client.Do(request)
+
+	// Then
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	var payload struct {
+		Success bool                 `json:"success"`
+		Message string               `json:"message"`
+		Data    model.RiskStatistics `json:"data"`
+	}
+	require.NoError(t, common.DecodeJson(response.Body, &payload))
+	require.True(t, payload.Success, payload.Message)
+	assert.Equal(t, int64(2), payload.Data.Summary.Records)
+	assert.Equal(t, int64(1), payload.Data.Summary.ProviderCalls)
+	assert.Equal(t, int64(100), payload.Data.Summary.P95LatencyMS)
+	assert.Len(t, payload.Data.SourceTrend, 3)
+}
+
 func TestRiskRecordAPI_rejectsNonRootAdmin(t *testing.T) {
 	// Given
 	server, client, accessToken := setupRiskRecordRouterTest(t, common.RoleAdminUser)
@@ -160,22 +204,20 @@ func TestRiskRecordAPI_filtersGovernedRecords(t *testing.T) {
 	observedAt := time.Date(2026, time.July, 25, 10, 0, 0, 0, time.UTC)
 	for _, input := range []model.RiskRecordInput{
 		{
-			RequestID: "req-match", ChannelID: 12, UserID: 34, ProviderID: 21, ProviderName: "Cloudflare",
-			ProviderType: model.RiskProviderPlatformInternal,
-			Result:       model.RiskRecordResultUnsafe, Source: model.RiskRecordSourceInflight,
+			RequestID: "req-match", ChannelID: 12, UserID: 34,
+			Result: model.RiskRecordResultUnsafe, Source: model.RiskRecordSourceInflight,
 			ObservedAt: observedAt,
 		},
 		{
-			RequestID: "req-other-user", ChannelID: 12, UserID: 35, ProviderID: 21, ProviderName: "Cloudflare",
-			ProviderType: model.RiskProviderCloudflare,
-			Result:       model.RiskRecordResultUnsafe, Source: model.RiskRecordSourceInflight,
+			RequestID: "req-other-user", ChannelID: 12, UserID: 35,
+			Result: model.RiskRecordResultUnsafe, Source: model.RiskRecordSourceInflight,
 			ObservedAt: observedAt,
 		},
 	} {
 		require.NoError(t, model.RecordRiskObservation(context.Background(), input))
 	}
 	url := fmt.Sprintf(
-		"%s/api/risk/records?p=1&page_size=20&start_timestamp=%d&end_timestamp=%d&channel_id=12&username=alice&result=unsafe&source=inflight&provider_id=21&provider_type=platform_internal",
+		"%s/api/risk/records?p=1&page_size=20&start_timestamp=%d&end_timestamp=%d&channel_id=12&username=alice&result=unsafe&source=inflight",
 		server.URL, observedAt.Unix(), observedAt.Unix(),
 	)
 	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
@@ -195,7 +237,9 @@ func TestRiskRecordAPI_filtersGovernedRecords(t *testing.T) {
 	assert.Equal(t, 1, payload.Data.Total)
 	require.Len(t, payload.Data.Items, 1)
 	assert.Equal(t, "req-match", payload.Data.Items[0].RequestID)
-	assert.Equal(t, model.RiskProviderPlatformInternal, payload.Data.Items[0].ProviderType)
+	assert.Zero(t, payload.Data.Items[0].ProviderID)
+	assert.Empty(t, payload.Data.Items[0].ProviderName)
+	assert.Empty(t, payload.Data.Items[0].ProviderType)
 }
 
 func TestRiskRecordGovernanceAPI_getsDefaultsAndUpdatesValidatedSettings(t *testing.T) {

@@ -112,7 +112,7 @@ func (s *RiskReviewCacheService) Review(ctx context.Context, input RiskReviewCac
 		return RiskReviewOutcome{}, err
 	}
 	if cached, found, cacheErr := s.store.Get(ctx, key); cacheErr == nil && found && cacheableRiskReview(cached) {
-		return RiskReviewOutcome{Result: cloneRiskReviewResult(cached), Source: RiskReviewSourceCache}, nil
+		return RiskReviewOutcome{Result: sanitizeRiskReviewResult(cached), Source: RiskReviewSourceCache}, nil
 	}
 	if err := ctx.Err(); err != nil {
 		return RiskReviewOutcome{}, err
@@ -122,14 +122,14 @@ func (s *RiskReviewCacheService) Review(ctx context.Context, input RiskReviewCac
 	resultChannel := s.flights.DoChan(key, func() (any, error) {
 		executed = true
 		result, reviewErr := review(ctx)
-		result = cloneRiskReviewResult(result)
 		if reviewErr != nil {
-			return result, reviewErr
+			return cloneRiskReviewResult(result), reviewErr
 		}
-		if cacheableRiskReview(result) {
-			_ = s.store.Set(ctx, key, result, riskReviewCacheTTL)
+		cacheResult := sanitizeRiskReviewResult(result)
+		if cacheableRiskReview(cacheResult) {
+			_ = s.store.Set(ctx, key, cacheResult, riskReviewCacheTTL)
 		}
-		return result, nil
+		return cacheResult, nil
 	})
 
 	select {
@@ -151,7 +151,7 @@ func (s *RiskReviewCacheService) Review(ctx context.Context, input RiskReviewCac
 		if !ok {
 			return RiskReviewOutcome{}, ErrRiskReviewCacheInternal
 		}
-		return RiskReviewOutcome{Result: cloneRiskReviewResult(result), Source: source}, nil
+		return RiskReviewOutcome{Result: sanitizeRiskReviewResult(result), Source: source}, nil
 	}
 }
 
@@ -166,5 +166,14 @@ func cacheableRiskReview(result RiskReviewResult) bool {
 
 func cloneRiskReviewResult(result RiskReviewResult) RiskReviewResult {
 	result.Categories = append([]string(nil), result.Categories...)
+	return result
+}
+
+func sanitizeRiskReviewResult(result RiskReviewResult) RiskReviewResult {
+	result = cloneRiskReviewResult(result)
+	result.ProviderID = 0
+	result.ProviderName = ""
+	result.ProviderType = ""
+	result.Usage = RiskReviewUsage{}
 	return result
 }

@@ -51,7 +51,7 @@ type RiskPolicyInput struct {
 type RiskPolicyState struct {
 	Configured            bool           `json:"configured"`
 	Enabled               bool           `json:"enabled"`
-	ProviderIDs           []int          `json:"provider_ids"`
+	ProviderIDs           []int          `json:"-"`
 	EnabledChannels       []int          `json:"enabled_channels"`
 	ExcludedUserIDs       []int          `json:"excluded_user_ids"`
 	ExcludedModels        []string       `json:"excluded_models"`
@@ -89,10 +89,6 @@ func getRiskPolicyState(relayUserID int, relayModel string) (RiskPolicyState, er
 		return RiskPolicyState{}, fmt.Errorf("get risk policy: %w", policyQuery.Error)
 	}
 	if policyQuery.RowsAffected > 0 {
-		providerIDs, err := decodeRiskPolicyList[int](policy.ProviderIDs)
-		if err != nil {
-			return RiskPolicyState{}, fmt.Errorf("decode risk policy providers: %w", err)
-		}
 		enabledChannels, err := decodeRiskChannelIDs(policy.EnabledChannels)
 		if err != nil {
 			return RiskPolicyState{}, fmt.Errorf("decode risk policy channels: %w", err)
@@ -111,7 +107,6 @@ func getRiskPolicyState(relayUserID int, relayModel string) (RiskPolicyState, er
 		}
 		state.Configured = true
 		policyEnabled = policy.Enabled
-		state.ProviderIDs = providerIDs
 		state.EnabledChannels = enabledChannels
 		state.ExcludedUserIDs = excludedUserIDs
 		state.ExcludedModels = excludedModels
@@ -126,6 +121,16 @@ func getRiskPolicyState(relayUserID int, relayModel string) (RiskPolicyState, er
 		return state, nil
 	}
 
+	if policyEnabled {
+		providers, err := GetEnabledRiskProviders()
+		if err != nil {
+			return RiskPolicyState{}, fmt.Errorf("load enabled risk providers: %w", err)
+		}
+		state.ProviderIDs = make([]int, 0, len(providers))
+		for _, provider := range providers {
+			state.ProviderIDs = append(state.ProviderIDs, provider.Id)
+		}
+	}
 	state.Enabled = policyEnabled && len(state.ProviderIDs) > 0 && len(state.EnabledChannels) > 0
 	return state, nil
 }
@@ -135,7 +140,7 @@ func SaveRiskPolicy(input RiskPolicyInput) (RiskPolicyState, error) {
 	if err != nil {
 		return RiskPolicyState{}, err
 	}
-	providerIDs, err := common.Marshal(input.ProviderIDs)
+	providerIDs, err := common.Marshal([]int{})
 	if err != nil {
 		return RiskPolicyState{}, fmt.Errorf("encode risk policy providers: %w", err)
 	}
@@ -174,26 +179,15 @@ func SaveRiskPolicy(input RiskPolicyInput) (RiskPolicyState, error) {
 				return fmt.Errorf("%w: user does not exist", ErrInvalidRiskPolicy)
 			}
 		}
-		if len(input.ProviderIDs) > 0 {
-			providers := make([]RiskProvider, 0, len(input.ProviderIDs))
-			if err := lockForUpdate(tx).Where("id IN ?", input.ProviderIDs).Find(&providers).Error; err != nil {
-				return fmt.Errorf("get risk providers: %w", err)
+		if *input.Enabled {
+			var providerCount int64
+			if err := tx.Model(&RiskProvider{}).
+				Where("active = ? AND validated_at IS NOT NULL", true).
+				Count(&providerCount).Error; err != nil {
+				return fmt.Errorf("count enabled risk providers: %w", err)
 			}
-			if len(providers) != len(input.ProviderIDs) {
-				return fmt.Errorf("%w: provider does not exist", ErrInvalidRiskPolicy)
-			}
-			for _, provider := range providers {
-				if provider.ValidatedAt == nil {
-					return ErrRiskProviderNotValidated
-				}
-			}
-		}
-		if err := tx.Model(&RiskProvider{}).Where("active = ?", true).Update("active", false).Error; err != nil {
-			return fmt.Errorf("clear risk provider pool mirror: %w", err)
-		}
-		if len(input.ProviderIDs) > 0 {
-			if err := tx.Model(&RiskProvider{}).Where("id IN ?", input.ProviderIDs).Update("active", true).Error; err != nil {
-				return fmt.Errorf("update risk provider pool mirror: %w", err)
+			if providerCount == 0 {
+				return fmt.Errorf("%w: enabled policy requires an enabled provider", ErrInvalidRiskPolicy)
 			}
 		}
 
@@ -216,17 +210,7 @@ func SaveRiskPolicy(input RiskPolicyInput) (RiskPolicyState, error) {
 	if err != nil {
 		return RiskPolicyState{}, err
 	}
-	return RiskPolicyState{
-		Configured:            true,
-		Enabled:               *input.Enabled && len(input.ProviderIDs) > 0 && len(input.EnabledChannels) > 0,
-		ProviderIDs:           input.ProviderIDs,
-		EnabledChannels:       input.EnabledChannels,
-		ExcludedUserIDs:       input.ExcludedUserIDs,
-		ExcludedModels:        input.ExcludedModels,
-		NonBlockingCategories: input.NonBlockingCategories,
-		ReviewMode:            input.ReviewMode,
-		ActionMode:            input.ActionMode,
-	}, nil
+	return getRiskPolicyState(0, "")
 }
 
 func decodeRiskPolicyList[T any](value string) ([]T, error) {

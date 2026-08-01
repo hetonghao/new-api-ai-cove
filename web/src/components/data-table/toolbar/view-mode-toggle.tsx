@@ -84,6 +84,7 @@ export function DataTableViewModeToggle(props: DataTableViewModeToggleProps) {
                   type='button'
                   onClick={() => props.onChange(segment.value)}
                   aria-pressed={isActive}
+                  aria-label={segment.tooltip}
                   className={cn(
                     'inline-flex h-full w-7 items-center justify-center rounded-md text-xs font-medium transition-all',
                     isActive

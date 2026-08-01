@@ -10,7 +10,6 @@ import (
 
 type riskPolicyRequest struct {
 	Enabled               *bool                `json:"enabled"`
-	ProviderIDs           []int                `json:"provider_ids"`
 	EnabledChannels       []int                `json:"enabled_channels"`
 	ExcludedUserIDs       []int                `json:"excluded_user_ids"`
 	ExcludedModels        []string             `json:"excluded_models"`
@@ -36,7 +35,6 @@ func UpdateRiskPolicy(c *gin.Context) {
 	}
 	state, err := model.SaveRiskPolicy(model.RiskPolicyInput{
 		Enabled:               request.Enabled,
-		ProviderIDs:           request.ProviderIDs,
 		EnabledChannels:       request.EnabledChannels,
 		ExcludedUserIDs:       request.ExcludedUserIDs,
 		ExcludedModels:        request.ExcludedModels,

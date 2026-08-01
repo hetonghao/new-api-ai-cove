@@ -20,9 +20,12 @@ const (
 )
 
 const (
-	DefaultRiskProviderTimeoutMs        = 800
-	DefaultRiskProviderFailureThreshold = 5
-	DefaultRiskProviderCooldownSeconds  = 30
+	DefaultRiskProviderTimeoutMs               = 800
+	DefaultRiskProviderFailureThreshold        = 5
+	DefaultRiskProviderCooldownSeconds         = 30
+	DefaultRiskProviderPriority                = 0
+	DefaultRiskProviderDailyNeuronsLimit int64 = 10000
+	DefaultRiskProviderDailyResetTime          = "08:00"
 )
 
 var ErrRiskProviderNotValidated = errors.New("risk provider is not validated")
@@ -42,6 +45,9 @@ type RiskProvider struct {
 	TimeoutMs           int              `json:"timeout_ms" gorm:"not null"`
 	FailureThreshold    int              `json:"failure_threshold" gorm:"not null"`
 	CooldownSeconds     int              `json:"cooldown_seconds" gorm:"not null"`
+	Priority            int              `json:"priority" gorm:"not null;default:0;index"`
+	DailyNeuronsLimit   int64            `json:"daily_neurons_limit" gorm:"not null;default:10000"`
+	DailyResetTime      string           `json:"daily_reset_time" gorm:"type:char(5);not null;default:'08:00'"`
 	ValidatedAt         *time.Time       `json:"validated_at"`
 	Active              bool             `json:"active" gorm:"not null"`
 	CreatedAt           time.Time        `json:"created_at"`
@@ -54,8 +60,17 @@ func (RiskProvider) TableName() string {
 
 func GetRiskProviders() ([]*RiskProvider, error) {
 	var providers []*RiskProvider
-	if err := DB.Order("id asc").Find(&providers).Error; err != nil {
+	if err := DB.Order("priority desc, id asc").Find(&providers).Error; err != nil {
 		return nil, fmt.Errorf("list risk providers: %w", err)
+	}
+	return providers, nil
+}
+
+func GetEnabledRiskProviders() ([]*RiskProvider, error) {
+	var providers []*RiskProvider
+	if err := DB.Where("active = ? AND validated_at IS NOT NULL", true).
+		Order("priority desc, id asc").Find(&providers).Error; err != nil {
+		return nil, fmt.Errorf("list enabled risk providers: %w", err)
 	}
 	return providers, nil
 }
@@ -143,10 +158,34 @@ func normalizeRiskProvider(provider *RiskProvider) error {
 	if provider.CooldownSeconds == 0 {
 		provider.CooldownSeconds = DefaultRiskProviderCooldownSeconds
 	}
+	if provider.DailyNeuronsLimit == 0 {
+		provider.DailyNeuronsLimit = DefaultRiskProviderDailyNeuronsLimit
+	}
+	if provider.DailyResetTime == "" {
+		provider.DailyResetTime = DefaultRiskProviderDailyResetTime
+	}
 	if provider.TimeoutMs < 1 || provider.TimeoutMs > 60000 || provider.FailureThreshold < 1 || provider.FailureThreshold > 100 || provider.CooldownSeconds < 1 || provider.CooldownSeconds > 86400 {
 		return errors.New("risk provider timeout or circuit breaker value is out of range")
 	}
+	if provider.DailyNeuronsLimit < 1 || provider.DailyNeuronsLimit > 1_000_000_000_000 {
+		return errors.New("risk provider daily Neurons limit is out of range")
+	}
+	if _, err := ParseRiskProviderDailyResetTime(provider.DailyResetTime); err != nil {
+		return err
+	}
 	return nil
+}
+
+func ParseRiskProviderDailyResetTime(value string) (int, error) {
+	if len(value) != 5 || value[2] != ':' {
+		return 0, errors.New("risk provider daily reset time must use HH:mm")
+	}
+	hour := int(value[0]-'0')*10 + int(value[1]-'0')
+	minute := int(value[3]-'0')*10 + int(value[4]-'0')
+	if value[0] < '0' || value[0] > '9' || value[1] < '0' || value[1] > '9' || value[3] < '0' || value[3] > '9' || hour > 23 || minute > 59 {
+		return 0, errors.New("risk provider daily reset time must use HH:mm")
+	}
+	return hour*60 + minute, nil
 }
 
 func validatePlatformInternalRiskChannel(tx *gorm.DB, provider *RiskProvider) error {

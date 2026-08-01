@@ -45,6 +45,9 @@ export const RISK_PROVIDER_DEFAULT_VALUES: RiskProviderFormValues = {
   timeout_ms: 800,
   failure_threshold: 5,
   cooldown_seconds: 30,
+  priority: 0,
+  daily_neurons_limit: 10000,
+  daily_reset_time: '08:00',
 }
 
 export function getChannelModelOptions(
@@ -82,6 +85,14 @@ export function getRiskProviderFormSchema(
         .number()
         .int()
         .min(1, t('Cooldown must be greater than zero')),
+      priority: z.number().int().min(0, t('Priority must be zero or greater')),
+      daily_neurons_limit: z
+        .number()
+        .int()
+        .min(1, t('Daily Neurons limit must be greater than zero')),
+      daily_reset_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, {
+        message: t('Reset time must use HH:mm'),
+      }),
     })
     .superRefine((values, context) => {
       if (
@@ -131,6 +142,9 @@ export function providerToFormValues(
     timeout_ms: provider.timeout_ms,
     failure_threshold: provider.failure_threshold,
     cooldown_seconds: provider.cooldown_seconds,
+    priority: provider.priority,
+    daily_neurons_limit: provider.daily_neurons_limit,
+    daily_reset_time: provider.daily_reset_time,
   }
 }
 
@@ -144,6 +158,9 @@ export function formValuesToPayload(
     timeout_ms: values.timeout_ms,
     failure_threshold: values.failure_threshold,
     cooldown_seconds: values.cooldown_seconds,
+    priority: values.priority,
+    daily_neurons_limit: values.daily_neurons_limit,
+    daily_reset_time: values.daily_reset_time,
   }
   if (values.provider_type === 'platform_internal') {
     return {

@@ -1,10 +1,8 @@
 package model
 
 import (
-	"errors"
 	"fmt"
 
-	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
 )
 
@@ -94,29 +92,17 @@ func backfillLegacyRiskPolicyProviderIDs(db *gorm.DB) error {
 		return fmt.Errorf("decode risk policy providers for migration: %w", err)
 	}
 	if len(providerIDs) == 0 {
-		var provider RiskProvider
-		err := db.Where("active = ?", true).Order("id asc").First(&provider).Error
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("load legacy active risk provider: %w", err)
-		}
-		if err == nil {
-			providerIDs = []int{provider.Id}
-			encoded, marshalErr := common.Marshal(providerIDs)
-			if marshalErr != nil {
-				return fmt.Errorf("encode migrated risk policy providers: %w", marshalErr)
-			}
-			if updateErr := db.Model(&policy).Update("provider_ids", string(encoded)).Error; updateErr != nil {
-				return fmt.Errorf("migrate risk policy providers: %w", updateErr)
-			}
-		}
+		return nil
 	}
-	if err := db.Model(&RiskProvider{}).Where("active = ?", true).Update("active", false).Error; err != nil {
-		return fmt.Errorf("clear legacy risk provider mirror: %w", err)
+	if err := db.Model(&RiskProvider{}).Where("1 = 1").Update("active", false).Error; err != nil {
+		return fmt.Errorf("disable legacy risk provider pool: %w", err)
 	}
-	if len(providerIDs) > 0 {
-		if err := db.Model(&RiskProvider{}).Where("id IN ?", providerIDs).Update("active", true).Error; err != nil {
-			return fmt.Errorf("sync migrated risk provider mirror: %w", err)
-		}
+	if err := db.Model(&RiskProvider{}).Where("id IN ?", providerIDs).
+		Where("validated_at IS NOT NULL").Update("active", true).Error; err != nil {
+		return fmt.Errorf("sync migrated risk provider mirror: %w", err)
+	}
+	if err := db.Model(&RiskPolicy{}).Where("id = ?", riskPolicySingletonID).Update("provider_ids", "[]").Error; err != nil {
+		return fmt.Errorf("clear migrated risk provider pool: %w", err)
 	}
 	return nil
 }

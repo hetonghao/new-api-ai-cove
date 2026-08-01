@@ -32,6 +32,7 @@ import { RiskRecordList } from '@/features/risk-records/components/risk-record-l
 import {
   deleteRiskProvider,
   listRiskProviders,
+  setRiskProviderActive,
   validateRiskProvider,
 } from './api'
 import { RiskProviderFormDialog } from './components/risk-provider-form-dialog'
@@ -40,14 +41,16 @@ import {
   type RiskProviderPendingAction,
 } from './components/risk-provider-list'
 import { RiskProviderValidationDialog } from './components/risk-provider-validation-dialog'
+import { RiskStatistics } from './components/risk-statistics'
 import type { RiskProvider } from './types'
 
 const QUERY_KEY = ['risk', 'providers'] as const
 
-type RiskCenterTab = 'records' | 'configuration'
+type RiskCenterTab = 'records' | 'providers' | 'configuration' | 'statistics'
 type RiskProviderAction =
   | { readonly kind: 'validate'; readonly text: string }
   | { readonly kind: 'delete' }
+  | { readonly kind: 'activate'; readonly active: boolean }
 
 function assertNever(action: never): never {
   throw new Error(`Unsupported provider action: ${action}`)
@@ -113,6 +116,19 @@ export function RiskProviders() {
           setDeletingProvider(null)
           break
         }
+        case 'activate': {
+          const response = await setRiskProviderActive(
+            provider.id,
+            action.active
+          )
+          if (!response.success || !response.data) {
+            throw new Error(response.message)
+          }
+          toast.success(
+            action.active ? t('Provider enabled') : t('Provider disabled')
+          )
+          break
+        }
         default:
           assertNever(action)
       }
@@ -124,6 +140,9 @@ export function RiskProviders() {
     } finally {
       if (action.kind === 'validate') {
         await queryClient.invalidateQueries({ queryKey: ['risk', 'records'] })
+      }
+      if (action.kind === 'activate') {
+        await queryClient.invalidateQueries({ queryKey: ['risk', 'policy'] })
       }
       setPendingProviderId(null)
       setPendingAction(null)
@@ -148,17 +167,52 @@ export function RiskProviders() {
             className='h-full min-h-0 min-w-0 overflow-hidden'
             value={activeTab}
             onValueChange={(value) => {
-              if (value === 'configuration' || value === 'records') {
+              if (
+                value === 'configuration' ||
+                value === 'records' ||
+                value === 'providers' ||
+                value === 'statistics'
+              ) {
                 setActiveTab(value)
               }
             }}
           >
-            <TabsList>
-              <TabsTrigger value='records'>{t('Risk records')}</TabsTrigger>
-              <TabsTrigger value='configuration'>
-                {t('Risk Configuration')}
+            <TabsList className='grid w-full grid-cols-2 grid-rows-2 gap-0.5 group-data-horizontal/tabs:h-auto sm:grid-cols-4 sm:grid-rows-1 sm:gap-0 sm:group-data-horizontal/tabs:h-8'>
+              <TabsTrigger className='h-8' value='records'>
+                {t('Risk records')}
+              </TabsTrigger>
+              <TabsTrigger className='h-8' value='providers'>
+                {t('Cloud review providers')}
+              </TabsTrigger>
+              <TabsTrigger className='h-8' value='configuration'>
+                {t('Risk Settings')}
+              </TabsTrigger>
+              <TabsTrigger className='h-8' value='statistics'>
+                {t('Statistics')}
               </TabsTrigger>
             </TabsList>
+            <TabsContent
+              value='providers'
+              className='mt-2 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto'
+            >
+              <RiskProviderList
+                providers={providersQuery.data ?? []}
+                isLoading={providersQuery.isLoading}
+                error={providersQuery.error}
+                pendingProviderId={pendingProviderId}
+                pendingAction={pendingAction}
+                onRetry={() => void providersQuery.refetch()}
+                onRefresh={() => void providersQuery.refetch()}
+                isRefreshing={providersQuery.isFetching}
+                onCreate={openCreateDialog}
+                onEdit={openEditDialog}
+                onValidate={setValidatingProvider}
+                onDelete={setDeletingProvider}
+                onToggleActive={(provider, active) => {
+                  void runProviderAction(provider, { kind: 'activate', active })
+                }}
+              />
+            </TabsContent>
             <TabsContent
               value='configuration'
               className='mt-2 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto'
@@ -170,24 +224,16 @@ export function RiskProviders() {
                 />
                 <RiskRecordGovernanceSettings />
                 <LocalRuleManager />
-                <RiskProviderList
-                  providers={providersQuery.data ?? []}
-                  isLoading={providersQuery.isLoading}
-                  error={providersQuery.error}
-                  pendingProviderId={pendingProviderId}
-                  pendingAction={pendingAction}
-                  onRetry={() => void providersQuery.refetch()}
-                  onRefresh={() => void providersQuery.refetch()}
-                  isRefreshing={providersQuery.isFetching}
-                  onCreate={openCreateDialog}
-                  onEdit={openEditDialog}
-                  onValidate={setValidatingProvider}
-                  onDelete={setDeletingProvider}
-                />
               </div>
             </TabsContent>
             <TabsContent value='records' className='mt-2 min-h-0'>
               <RiskRecordList providers={providersQuery.data ?? []} />
+            </TabsContent>
+            <TabsContent
+              value='statistics'
+              className='mt-2 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto'
+            >
+              <RiskStatistics />
             </TabsContent>
           </Tabs>
         </SectionPageLayout.Content>

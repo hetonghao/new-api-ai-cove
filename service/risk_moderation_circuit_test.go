@@ -174,20 +174,37 @@ func TestRiskModerationCircuit_Abandon_allowsNextRecoveryProbe(t *testing.T) {
 	// Given
 	clock := &fakeRiskModerationClock{now: time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)}
 	circuit := newRiskModerationCircuit(clock.Now)
-	permit, err := circuit.Allow("policy", 1, 30*time.Second)
+	permit, err := circuit.Allow(context.Background(), "policy", 1, 30*time.Second)
 	require.NoError(t, err)
-	circuit.Failure(permit)
+	circuit.Failure(context.Background(), permit)
 	clock.Advance(30 * time.Second)
-	probe, err := circuit.Allow("policy", 1, 30*time.Second)
+	probe, err := circuit.Allow(context.Background(), "policy", 1, 30*time.Second)
 	require.NoError(t, err)
 
 	// When
-	circuit.Abandon(probe)
-	nextProbe, nextErr := circuit.Allow("policy", 1, 30*time.Second)
+	circuit.Abandon(context.Background(), probe)
+	nextProbe, nextErr := circuit.Allow(context.Background(), "policy", 1, 30*time.Second)
 
 	// Then
 	require.NoError(t, nextErr)
 	assert.True(t, nextProbe.probe)
+}
+
+func TestRiskModerationCircuit_sharesOpenStateThroughRedis(t *testing.T) {
+	// Given
+	useRiskModerationMiniRedis(t)
+	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	first := newRiskModerationCircuit(func() time.Time { return now })
+	second := newRiskModerationCircuit(func() time.Time { return now })
+	permit, err := first.Allow(context.Background(), "shared", 1, 30*time.Second)
+	require.NoError(t, err)
+
+	// When
+	first.Failure(context.Background(), permit)
+	_, blockedErr := second.Allow(context.Background(), "shared", 1, 30*time.Second)
+
+	// Then
+	require.ErrorIs(t, blockedErr, ErrRiskModerationCircuitOpen)
 }
 
 func TestRiskModerationExecutor_Execute_countsProviderDeadlineFailure(t *testing.T) {

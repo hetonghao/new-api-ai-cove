@@ -33,7 +33,8 @@ func TestQueryRiskRecords_filtersByTimeChannelUserResultSourceAndProvider(t *tes
 	inputs[1].ProviderID = 77
 	inputs[1].ProviderName = "Matched"
 	inputs[1].ProviderType = RiskProviderPlatformInternal
-	inputs[1].Source = RiskRecordSourceInflight
+	inputs[1].Source = RiskRecordSourceProvider
+	inputs[1].ProviderCalled = true
 	inputs[2].RequestID = "req-after"
 	inputs[2].ObservedAt = baseTime.Add(time.Minute)
 	for _, input := range inputs {
@@ -47,7 +48,7 @@ func TestQueryRiskRecords_filtersByTimeChannelUserResultSourceAndProvider(t *tes
 		StartTimestamp: baseTime.Unix(), EndTimestamp: baseTime.Unix(),
 		ChannelID: 88, Username: "alice", ProviderID: &providerID,
 		ProviderType: RiskProviderPlatformInternal,
-		Result:       RiskRecordResultUnsafe, Source: RiskRecordSourceInflight,
+		Result:       RiskRecordResultUnsafe, Source: RiskRecordSourceProvider,
 	})
 
 	// Then

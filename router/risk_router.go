@@ -20,5 +20,6 @@ func registerRiskPolicyRoutes(apiRouter *gin.RouterGroup) {
 		riskRoute.GET("/records", controller.ListRiskRecords)
 		riskRoute.GET("/records/settings", controller.GetRiskRecordGovernance)
 		riskRoute.PUT("/records/settings", controller.UpdateRiskRecordGovernance)
+		riskRoute.GET("/statistics", controller.GetRiskStatistics)
 	}
 }

@@ -90,6 +90,32 @@ func TestBackfillRiskRecordProviderTypes_updatesOnlyMatchableHistory(t *testing.
 	assert.Empty(t, records[1].ProviderType)
 }
 
+func TestBackfillLegacyRiskPolicyProviderIDs_replacesActiveProviderMirror(t *testing.T) {
+	// Given
+	db := setupRiskRecordModelTest(t)
+	require.NoError(t, db.AutoMigrate(&RiskProvider{}, &RiskPolicy{}))
+	validatedAt := time.Date(2026, time.July, 25, 0, 0, 0, 0, time.UTC)
+	selected := &RiskProvider{Id: 21, Name: "selected", ProviderType: RiskProviderCloudflare, Active: false, ValidatedAt: &validatedAt}
+	legacyActive := &RiskProvider{Id: 22, Name: "legacy active", ProviderType: RiskProviderCloudflare, Active: true}
+	require.NoError(t, db.Create(selected).Error)
+	require.NoError(t, db.Create(legacyActive).Error)
+	require.NoError(t, db.Create(&RiskPolicy{
+		Id: riskPolicySingletonID, ProviderIDs: "[21]", EnabledChannels: "[]",
+		ExcludedUserIDs: "[]", ExcludedModels: "[]", NonBlockingCategories: "[]",
+		ReviewMode: RiskReviewSelective, ActionMode: RiskActionObserve,
+	}).Error)
+
+	// When
+	require.NoError(t, backfillLegacyRiskPolicyProviderIDs(db))
+
+	// Then
+	var providers []RiskProvider
+	require.NoError(t, db.Order("id asc").Find(&providers).Error)
+	require.Len(t, providers, 2)
+	assert.True(t, providers[0].Active)
+	assert.False(t, providers[1].Active)
+}
+
 func TestBackfillRiskRecordGovernancePreviewChars_copiesLegacySettingOnce(t *testing.T) {
 	// Given
 	db := setupRiskRecordModelTest(t)
@@ -149,7 +175,7 @@ func TestRiskSchemaMigration_preservesLegacyDataAndExpandsTextColumns(t *testing
 	require.NoError(t, db.First(&migratedPolicy, riskPolicySingletonID).Error)
 	migratedProviderIDs, err := decodeRiskPolicyList[int](migratedPolicy.ProviderIDs)
 	require.NoError(t, err)
-	require.Equal(t, []int{provider.Id}, migratedProviderIDs)
+	require.Empty(t, migratedProviderIDs)
 	require.Equal(t, "[24]", migratedPolicy.EnabledChannels)
 	require.Equal(t, RiskReviewFull, migratedPolicy.ReviewMode)
 	require.Equal(t, RiskActionBlock, migratedPolicy.ActionMode)
