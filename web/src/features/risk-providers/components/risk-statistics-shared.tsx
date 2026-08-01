@@ -110,6 +110,7 @@ function TooltipValueRow(props: {
 export function UserResultTooltip(
   props: Partial<TooltipContentProps<number, string>> & {
     readonly translate: TFunction
+    readonly affectedUsers: number
   }
 ) {
   if (!props.active || !props.payload?.length) return null
@@ -136,7 +137,7 @@ export function UserResultTooltip(
       />
       <TooltipValueRow
         label={props.translate('Affected users')}
-        value={formatNumber(1)}
+        value={formatNumber(props.affectedUsers)}
       />
       <div className='mt-2 border-t pt-2'>
         <TooltipValueRow

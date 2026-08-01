@@ -80,7 +80,7 @@ describe('risk policy form behavior', () => {
     assert.deepEqual(values.excluded_models, [])
   })
 
-  test('does not require a provider pool before enabling risk control', () => {
+  test('does not require an available provider before enabling risk control', () => {
     const schema = createRiskPolicyFormSchema(translate)
 
     // When an operator enables risk control with another provider

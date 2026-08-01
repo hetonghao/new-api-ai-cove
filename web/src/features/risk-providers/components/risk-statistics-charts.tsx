@@ -50,6 +50,7 @@ import {
 
 export function UserResultChart(props: {
   readonly users: readonly RiskStatisticsUser[]
+  readonly affectedUsers: number
   readonly loading: boolean
   readonly emptyText: string
   readonly translate: TFunction
@@ -92,7 +93,12 @@ export function UserResultChart(props: {
                     tick={{ fontSize: 11 }}
                   />
                   <Tooltip
-                    content={<UserResultTooltip translate={props.translate} />}
+                    content={
+                      <UserResultTooltip
+                        translate={props.translate}
+                        affectedUsers={props.affectedUsers}
+                      />
+                    }
                   />
                   <Legend />
                   <Bar
@@ -140,7 +146,7 @@ export function UserResultChart(props: {
               formatNumber(row.errors),
               formatNumber(row.safe),
               formatNumber(row.not_reviewed),
-              formatNumber(1),
+              formatNumber(props.affectedUsers),
               formatNumber(row.total),
             ])}
           />

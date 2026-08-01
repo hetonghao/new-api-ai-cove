@@ -214,6 +214,7 @@ export function RiskStatistics() {
           <div className='grid gap-3 xl:grid-cols-2'>
             <UserResultChart
               users={statistics?.users ?? []}
+              affectedUsers={summary?.affected_users ?? 0}
               loading={statisticsQuery.isLoading}
               emptyText={emptyText}
               translate={t}
