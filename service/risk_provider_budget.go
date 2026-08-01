@@ -57,15 +57,19 @@ end
 local reserved = tonumber(redis.call("HGET", KEYS[1], "reserved") or "0")
 local estimate = tonumber(ARGV[2])
 local actual = tonumber(ARGV[3])
-reserved = math.max(0, reserved - estimate)
-redis.call("HSET", KEYS[1], "reserved", reserved)
-redis.call("HINCRBY", KEYS[1], "used", actual)
 local used = tonumber(redis.call("HGET", KEYS[1], "used") or "0")
 local limit = tonumber(ARGV[4])
-if used + reserved >= limit then
-  redis.call("HSET", KEYS[1], "exhausted", "1")
+reserved = math.max(0, reserved - estimate)
+local available = math.max(0, limit - used - reserved)
+local applied = math.min(actual, available)
+redis.call("HSET", KEYS[1], "reserved", reserved, "used", used + applied)
+if actual > applied or used + applied + reserved >= limit then
+	redis.call("HSET", KEYS[1], "exhausted", "1")
 end
 redis.call("EXPIRE", KEYS[1], 172800)
+if actual > applied then
+	return 2
+end
 return 1
 `)
 
