@@ -60,7 +60,7 @@ export function RiskProviderCard(props: RiskProviderCardProps) {
   const provider = props.provider
 
   return (
-    <Card className='gap-0 py-0'>
+    <Card className='border-border/60 min-w-0 gap-0 border py-0 ring-0'>
       <CardHeader className='gap-3 border-b p-4'>
         <div className='flex flex-wrap items-start justify-between gap-3'>
           <div className='min-w-0 space-y-1'>

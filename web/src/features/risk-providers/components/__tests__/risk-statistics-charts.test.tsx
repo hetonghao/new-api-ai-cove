@@ -35,8 +35,10 @@ const { cleanup, fireEvent, render, screen } =
   await import('@testing-library/react')
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
-const { UserResultChart } = await import('../risk-statistics-charts')
-const { UserResultTooltip } = await import('../risk-statistics-shared')
+const { SourceTrendChart, UserResultChart } =
+  await import('../risk-statistics-charts')
+const { ChartCard, MetricCard, UserResultTooltip } =
+  await import('../risk-statistics-shared')
 
 const i18n = createInstance()
 await i18n.use(initReactI18next).init({ lng: 'en' })
@@ -131,4 +133,71 @@ test('opens the selected user from the keyboard chart action', () => {
   assert.deepEqual(navigation, [
     { start_timestamp: 100, end_timestamp: 200, user_id: 8 },
   ])
+})
+
+test('describes the source trend as a stacked bar chart', () => {
+  render(
+    React.createElement(
+      I18nextProvider,
+      { i18n },
+      React.createElement(SourceTrendChart, {
+        rows: [
+          {
+            bucket_start: 1_700_000_000,
+            label: '11/14 22:13',
+            provider: 2,
+            cache: 1,
+            inflight: 1,
+            local: 0,
+            total: 4,
+            provider_pct: 0.5,
+            cache_pct: 0.25,
+            inflight_pct: 0.25,
+            local_pct: 0,
+          },
+        ],
+        loading: false,
+        emptyText: 'No risk statistics',
+        granularity: 'hour',
+        recordFilters: { start_timestamp: 100, end_timestamp: 200 },
+        onNavigateToRecords: () => undefined,
+      })
+    )
+  )
+
+  assert.ok(
+    screen.getByText(
+      '100% stacked bars by time; hover to see both absolute counts and percentages.'
+    )
+  )
+})
+
+function TestIcon(props: { className?: string }) {
+  return React.createElement('svg', props)
+}
+
+function StatisticsCardFixture() {
+  return (
+    <div>
+      <MetricCard label='Records' value='1' icon={TestIcon} />
+      <ChartCard title='Chart' description='Description'>
+        <div />
+      </ChartCard>
+    </div>
+  )
+}
+
+test('keeps statistics card borders inside the clipped tab content', () => {
+  render(React.createElement(StatisticsCardFixture))
+
+  const cards = [...document.querySelectorAll('[data-slot="card"]')]
+  assert.equal(cards.length, 2)
+  assert.ok(
+    cards.every(
+      (card) =>
+        card.classList.contains('border') &&
+        card.classList.contains('border-border/60') &&
+        card.classList.contains('ring-0')
+    )
+  )
 })

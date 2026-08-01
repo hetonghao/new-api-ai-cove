@@ -231,7 +231,7 @@ export function MetricCard(props: {
 }) {
   const Icon = props.icon
   return (
-    <Card className='gap-2 py-3'>
+    <Card className='border-border/60 min-w-0 gap-2 border py-3 ring-0'>
       <CardHeader className='flex flex-row items-center justify-between gap-2 px-4 pb-0'>
         <CardTitle className='text-muted-foreground text-xs font-medium'>
           {props.label}
@@ -256,7 +256,7 @@ export function ChartCard(props: {
   readonly children: ReactNode
 }) {
   return (
-    <Card className='gap-0 overflow-hidden py-0'>
+    <Card className='border-border/60 min-w-0 gap-0 overflow-hidden border py-0 ring-0'>
       <CardHeader className='border-b px-4 py-3'>
         <CardTitle className='text-sm'>{props.title}</CardTitle>
         <p className='text-muted-foreground text-xs text-pretty'>

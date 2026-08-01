@@ -110,11 +110,12 @@ export function RiskStatistics(props: {
   const summary = statistics?.summary
 
   return (
-    <div className='space-y-3'>
-      <div className='flex flex-wrap items-center gap-2'>
+    <div className='max-w-full min-w-0 space-y-3'>
+      <div className='flex max-w-full min-w-0 items-center gap-1.5 overflow-x-auto pb-1 sm:gap-2'>
         <Tabs
           value={String(rangeDays)}
           onValueChange={(value) => setRangeDays(Number(value))}
+          className='shrink-0'
         >
           <TabsList>
             {TIME_RANGE_PRESETS.map((preset) => (
@@ -133,6 +134,7 @@ export function RiskStatistics(props: {
           onValueChange={(value) => {
             if (isRiskStatisticsGranularity(value)) changeGranularity(value)
           }}
+          className='shrink-0'
         >
           <TabsList>
             {TIME_GRANULARITY_OPTIONS.map((option) => (
@@ -163,7 +165,7 @@ export function RiskStatistics(props: {
         />
       ) : (
         <>
-          <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6'>
+          <div className='grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6'>
             <MetricCard
               label={t('Risk records')}
               value={formatNumber(summary?.records ?? 0)}
@@ -200,7 +202,7 @@ export function RiskStatistics(props: {
             />
           </div>
 
-          <div className='grid gap-3 sm:grid-cols-3'>
+          <div className='grid min-w-0 gap-3 sm:grid-cols-3'>
             <MetricCard
               label={t('Provider calls')}
               value={formatNumber(summary?.provider_calls ?? 0)}
@@ -218,7 +220,7 @@ export function RiskStatistics(props: {
             />
           </div>
 
-          <div className='grid gap-3 xl:grid-cols-2'>
+          <div className='grid min-w-0 gap-3 xl:grid-cols-2'>
             <UserResultChart
               users={statistics?.users ?? []}
               affectedUsers={summary?.affected_users ?? 0}

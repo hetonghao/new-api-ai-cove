@@ -188,19 +188,15 @@ export function RiskProviders() {
               }
             }}
           >
-            <TabsList className='grid w-full min-w-0 grid-cols-2 grid-rows-2 gap-0.5 group-data-horizontal/tabs:h-auto lg:grid-cols-4 lg:grid-rows-1 lg:gap-0 lg:group-data-horizontal/tabs:h-8'>
-              <TabsTrigger className='h-8 min-w-0' value='records'>
-                {t('Risk records')}
-              </TabsTrigger>
-              <TabsTrigger className='h-8 min-w-0' value='providers'>
+            <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
+              <TabsTrigger value='records'>{t('Risk records')}</TabsTrigger>
+              <TabsTrigger value='providers'>
                 {t('Cloud review providers')}
               </TabsTrigger>
-              <TabsTrigger className='h-8 min-w-0' value='configuration'>
+              <TabsTrigger value='configuration'>
                 {t('Risk Settings')}
               </TabsTrigger>
-              <TabsTrigger className='h-8 min-w-0' value='statistics'>
-                {t('Statistics')}
-              </TabsTrigger>
+              <TabsTrigger value='statistics'>{t('Statistics')}</TabsTrigger>
             </TabsList>
             <TabsContent
               value='providers'

@@ -169,3 +169,24 @@ test('switches views while keeping enabled and current status distinct', () => {
   assert.ok(screen.getByText('Normal'))
   assert.ok(screen.getByText('Enabled'))
 })
+
+test('keeps provider card edges inside clipped risk-center content', () => {
+  setViewport(1280)
+  renderProviderList()
+
+  const cardSurfaces = () => [
+    ...document.querySelectorAll<HTMLElement>('[data-slot="card"]'),
+  ]
+
+  assert.equal(cardSurfaces().length, 1)
+  assert.equal(cardSurfaces()[0]?.classList.contains('border'), true)
+  assert.equal(cardSurfaces()[0]?.classList.contains('ring-0'), true)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Card view' }))
+
+  assert.equal(cardSurfaces().length, 2)
+  for (const card of cardSurfaces()) {
+    assert.equal(card.classList.contains('border'), true)
+    assert.equal(card.classList.contains('ring-0'), true)
+  }
+})

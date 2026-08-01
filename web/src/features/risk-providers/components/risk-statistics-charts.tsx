@@ -20,8 +20,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -384,7 +382,7 @@ export function SourceTrendChart(props: {
     <ChartCard
       title={t('Risk source proportion trend')}
       description={t(
-        '100% stacked area by time; hover to see both absolute counts and percentages.'
+        '100% stacked bars by time; hover to see both absolute counts and percentages.'
       )}
     >
       {props.loading ? (
@@ -421,7 +419,7 @@ export function SourceTrendChart(props: {
               }
             >
               <ResponsiveContainer width='100%' height='100%'>
-                <AreaChart
+                <BarChart
                   data={props.rows}
                   stackOffset='expand'
                   cursor='pointer'
@@ -458,18 +456,16 @@ export function SourceTrendChart(props: {
                   />
                   <Tooltip content={<SourceTooltip />} />
                   {SOURCE_KEYS.map((key) => (
-                    <Area
+                    <Bar
                       key={key}
-                      type='monotone'
                       dataKey={`${key}_pct`}
                       stackId='source'
-                      stroke={SOURCE_COLORS[key]}
                       fill={SOURCE_COLORS[key]}
                       fillOpacity={0.78}
                       name={sourceLabel(t, key)}
                     />
                   ))}
-                </AreaChart>
+                </BarChart>
               </ResponsiveContainer>
             </div>
           </div>

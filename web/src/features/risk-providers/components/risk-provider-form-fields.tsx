@@ -193,7 +193,11 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
           <span>
             <span className='block text-left font-medium'>{t('Advanced')}</span>
             <span className='text-muted-foreground block text-left text-xs font-normal'>
-              {t('Priority, quota, reset time, and circuit breaker settings.')}
+              {t(
+                providerType === 'cloudflare'
+                  ? 'Priority, quota, reset time, and circuit breaker settings.'
+                  : 'Priority and circuit breaker settings.'
+              )}
             </span>
           </span>
           <ChevronDown
@@ -220,42 +224,46 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
               </FieldDescription>
               <FieldError errors={[errors.priority]} />
             </Field>
-            <Field data-invalid={Boolean(errors.daily_neurons_limit)}>
-              <FieldLabel htmlFor='risk-provider-daily-neurons-limit'>
-                {t('Daily Neurons limit')}
-              </FieldLabel>
-              <Input
-                id='risk-provider-daily-neurons-limit'
-                type='number'
-                min={1}
-                aria-invalid={Boolean(errors.daily_neurons_limit)}
-                {...form.register('daily_neurons_limit', {
-                  valueAsNumber: true,
-                })}
-              />
-              <FieldDescription>
-                {t('Cloudflare only; default is 10,000 Neurons per day.')}
-              </FieldDescription>
-              <FieldError errors={[errors.daily_neurons_limit]} />
-            </Field>
-            <Field data-invalid={Boolean(errors.daily_reset_time)}>
-              <FieldLabel htmlFor='risk-provider-daily-reset-time'>
-                {t('Daily reset time (UTC+8)')}
-              </FieldLabel>
-              <Input
-                id='risk-provider-daily-reset-time'
-                type='time'
-                step={60}
-                aria-invalid={Boolean(errors.daily_reset_time)}
-                {...form.register('daily_reset_time')}
-              />
-              <FieldDescription>
-                {t(
-                  'Default 08:00 UTC+8 equals 00:00 UTC; re-enable occurs about 5 minutes later.'
-                )}
-              </FieldDescription>
-              <FieldError errors={[errors.daily_reset_time]} />
-            </Field>
+            {providerType === 'cloudflare' ? (
+              <>
+                <Field data-invalid={Boolean(errors.daily_neurons_limit)}>
+                  <FieldLabel htmlFor='risk-provider-daily-neurons-limit'>
+                    {t('Daily Neurons limit')}
+                  </FieldLabel>
+                  <Input
+                    id='risk-provider-daily-neurons-limit'
+                    type='number'
+                    min={1}
+                    aria-invalid={Boolean(errors.daily_neurons_limit)}
+                    {...form.register('daily_neurons_limit', {
+                      valueAsNumber: true,
+                    })}
+                  />
+                  <FieldDescription>
+                    {t('Cloudflare only; default is 10,000 Neurons per day.')}
+                  </FieldDescription>
+                  <FieldError errors={[errors.daily_neurons_limit]} />
+                </Field>
+                <Field data-invalid={Boolean(errors.daily_reset_time)}>
+                  <FieldLabel htmlFor='risk-provider-daily-reset-time'>
+                    {t('Daily reset time (UTC+8)')}
+                  </FieldLabel>
+                  <Input
+                    id='risk-provider-daily-reset-time'
+                    type='time'
+                    step={60}
+                    aria-invalid={Boolean(errors.daily_reset_time)}
+                    {...form.register('daily_reset_time')}
+                  />
+                  <FieldDescription>
+                    {t(
+                      'Default 08:00 UTC+8 equals 00:00 UTC; re-enable occurs about 5 minutes later.'
+                    )}
+                  </FieldDescription>
+                  <FieldError errors={[errors.daily_reset_time]} />
+                </Field>
+              </>
+            ) : null}
             <Field data-invalid={Boolean(errors.timeout_ms)}>
               <FieldLabel htmlFor='risk-provider-timeout'>
                 {t('Review timeout (ms)')}
