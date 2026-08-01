@@ -14,6 +14,7 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
+// allow: SIZE_OK -- one provider-list surface owns its columns, view switch, and shared actions.
 import type { ColumnDef } from '@tanstack/react-table'
 import {
   Pencil,
@@ -23,7 +24,7 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -47,6 +48,15 @@ import { RiskProviderCard } from './risk-provider-card'
 
 const VIEW_MODE_STORAGE_KEY = 'risk-providers-view-mode'
 const SKELETON_KEYS = ['risk-provider-1', 'risk-provider-2'] as const
+const COMPACT_COLUMN_CLASSES: Record<string, string> = {
+  provider: 'max-lg:w-[82px]',
+  priority: 'max-lg:w-[44px]',
+  active: 'max-lg:w-[80px]',
+  current_status: 'max-lg:w-[72px]',
+  neurons: 'max-lg:w-[92px]',
+  model: 'max-lg:hidden',
+  actions: 'max-lg:w-[104px]',
+}
 
 export type RiskProviderPendingAction = 'validate' | 'delete' | 'activate'
 
@@ -69,7 +79,7 @@ type RiskProviderListProps = {
 function currentStatusLabel(
   provider: RiskProvider,
   t: (key: string) => string
-) {
+): string {
   if (provider.current_status === 'circuit_open') return t('Circuit open')
   if (provider.current_status === 'daily_exhausted') {
     return t('Daily quota exhausted')
@@ -77,7 +87,9 @@ function currentStatusLabel(
   return t('Normal')
 }
 
-function currentStatusVariant(provider: RiskProvider) {
+function currentStatusVariant(
+  provider: RiskProvider
+): 'warning' | 'destructive' | 'secondary' {
   if (provider.current_status === 'circuit_open') return 'warning' as const
   if (provider.current_status === 'daily_exhausted') {
     return 'destructive' as const
@@ -91,34 +103,33 @@ function ProviderActions(props: {
   readonly onEdit: (provider: RiskProvider) => void
   readonly onValidate: (provider: RiskProvider) => void
   readonly onDelete: (provider: RiskProvider) => void
-}) {
+}): ReactElement {
   const { t } = useTranslation()
-  const { provider } = props
   return (
-    <div className='flex flex-wrap gap-1.5'>
+    <div className='flex flex-wrap gap-0.5 lg:gap-1.5'>
       <Button
-        size='sm'
+        size='icon-sm'
         variant='ghost'
-        onClick={() => props.onEdit(provider)}
+        onClick={() => props.onEdit(props.provider)}
         aria-label={t('Edit')}
       >
         <Pencil className='size-4' />
       </Button>
       <Button
-        size='sm'
+        size='icon-sm'
         variant='ghost'
         disabled={props.pendingAction !== null}
-        onClick={() => props.onValidate(provider)}
+        onClick={() => props.onValidate(props.provider)}
         aria-label={t('Test connection')}
       >
         <PlugZap className='size-4' />
       </Button>
       <Button
-        size='sm'
+        size='icon-sm'
         variant='ghost'
         className='text-destructive hover:text-destructive'
         disabled={props.pendingAction !== null}
-        onClick={() => props.onDelete(provider)}
+        onClick={() => props.onDelete(props.provider)}
         aria-label={t('Delete')}
       >
         <Trash2 className='size-4' />
@@ -127,7 +138,7 @@ function ProviderActions(props: {
   )
 }
 
-export function RiskProviderList(props: RiskProviderListProps) {
+export function RiskProviderList(props: RiskProviderListProps): ReactElement {
   const { t } = useTranslation()
   const providers = useMemo(() => [...props.providers], [props.providers])
   const [viewMode, setViewMode] = useDataTableViewMode({
@@ -143,12 +154,18 @@ export function RiskProviderList(props: RiskProviderListProps) {
         accessorKey: 'name',
         meta: { mobileTitle: true },
         cell: ({ row }) => (
-          <div className='max-w-full min-w-0'>
+          <div className='max-w-full min-w-0 overflow-hidden'>
             <div className='font-medium'>{row.original.name}</div>
-            <div className='text-muted-foreground mt-0.5 text-xs'>
+            <div className='text-muted-foreground mt-0.5 truncate text-xs'>
               {row.original.provider_type === 'cloudflare'
                 ? 'Cloudflare Workers AI'
                 : t('Platform internal model')}
+            </div>
+            <div
+              className='text-muted-foreground truncate font-mono text-xs lg:hidden'
+              title={row.original.model}
+            >
+              {row.original.model}
             </div>
           </div>
         ),
@@ -344,6 +361,12 @@ export function RiskProviderList(props: RiskProviderListProps) {
           />
         )}
         cardGridClassName='grid grid-cols-1 gap-3 lg:grid-cols-2'
+        tableClassName='max-lg:table-fixed'
+        getColumnClassName={(columnId, kind) => {
+          const widthClass = COMPACT_COLUMN_CLASSES[columnId]
+          if (!widthClass) return undefined
+          return `${widthClass} ${kind === 'header' ? 'max-lg:whitespace-normal' : 'max-lg:overflow-hidden'}`
+        }}
         showPagination={false}
         fixedHeight={false}
       />
@@ -356,7 +379,6 @@ export function RiskProviderList(props: RiskProviderListProps) {
       description={t(
         'Verified and manually enabled providers are selected globally by priority, then rotated within the same priority.'
       )}
-      descriptionClassName='text-pretty'
       icon={<ShieldCheck className='size-5' />}
       action={
         <div className='flex flex-wrap items-center justify-end gap-2'>

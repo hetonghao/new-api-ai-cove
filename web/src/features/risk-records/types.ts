@@ -139,6 +139,7 @@ export type RiskRecordFilterDraft = {
   readonly start_time?: Date
   readonly end_time?: Date
   readonly channel_id: string
+  readonly user_id?: string
   readonly username: string
   readonly provider_id: string
   readonly provider_type: '' | 'cloudflare' | 'platform_internal'
@@ -150,6 +151,7 @@ export type RiskRecordFilters = {
   readonly start_timestamp?: number
   readonly end_timestamp?: number
   readonly channel_id?: number
+  readonly user_id?: number
   readonly username?: string
   readonly provider_id?: number
   readonly provider_type?: 'cloudflare' | 'platform_internal'

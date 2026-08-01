@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -239,9 +238,15 @@ func ReviewRiskContentWithBudget(ctx context.Context, provider *model.RiskProvid
 		}
 		return result, reviewErr
 	}
-	actual := int64(math.Round(result.Usage.Neurons))
-	if actual < 0 || math.IsNaN(result.Usage.Neurons) || math.IsInf(result.Usage.Neurons, 0) {
-		actual = 0
+	if reviewErr != nil {
+		if releaseErr := riskProviderNeuronsBudgetService.Settle(context.WithoutCancel(ctx), provider, reservation, 0); releaseErr != nil {
+			common.SysLog("failed to release risk provider Neurons reservation: " + releaseErr.Error())
+		}
+		return result, reviewErr
+	}
+	actual := NormalizeRiskProviderNeurons(result.Usage.Neurons)
+	if actual == 0 {
+		actual = reservation.Estimated
 	}
 	if settleErr := riskProviderNeuronsBudgetService.Settle(context.WithoutCancel(ctx), provider, reservation, actual); settleErr != nil {
 		common.SysLog("failed to settle risk provider Neurons budget: " + settleErr.Error())

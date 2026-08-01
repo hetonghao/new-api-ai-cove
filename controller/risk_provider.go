@@ -1,9 +1,9 @@
+// allow: SIZE_OK -- existing controller endpoint group; this task extends response normalization and derived runtime status mapping.
 package controller
 
 import (
 	"context"
 	"errors"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -240,10 +240,7 @@ func riskProviderValidationRecordInput(
 		recordResult = model.RiskRecordResultError
 		errorCode, errorDetail = service.RiskObservationErrorInfo(reviewErr)
 	}
-	neurons := result.Usage.Neurons
-	if math.IsNaN(neurons) || math.IsInf(neurons, 0) || neurons < 0 {
-		neurons = 0
-	}
+	neurons := service.NormalizeRiskProviderNeurons(result.Usage.Neurons)
 	providerCalled := reviewErr == nil || !service.IsRiskProviderLocalBudgetUnavailable(reviewErr)
 	providerID := 0
 	providerName := ""
@@ -261,7 +258,7 @@ func riskProviderValidationRecordInput(
 		Result: recordResult, Categories: append([]string(nil), result.Categories...),
 		LatencyMS:    time.Since(startedAt).Milliseconds(),
 		PromptTokens: result.Usage.PromptTokens, CompletionTokens: result.Usage.CompletionTokens,
-		TotalTokens: result.Usage.TotalTokens, Neurons: int64(math.Round(neurons)),
+		TotalTokens: result.Usage.TotalTokens, Neurons: neurons,
 		ErrorCode: errorCode, ErrorDetail: errorDetail, Source: source,
 		ProviderCalled: providerCalled, ObservedAt: time.Now(),
 	}
@@ -333,11 +330,8 @@ func toRiskProviderResponse(ctx context.Context, provider *model.RiskProvider) R
 		CurrentStatus: service.RiskProviderStatusNormal,
 		ValidatedAt:   provider.ValidatedAt, Active: provider.Active, CreatedAt: provider.CreatedAt, UpdatedAt: provider.UpdatedAt,
 	}
-	if provider.Active {
-		response.CurrentStatus = service.RiskProviderStatusNormal
-		if service.RiskProviderCircuitOpen(provider.Id) {
-			response.CurrentStatus = service.RiskProviderStatusCircuitOpen
-		}
+	if service.RiskProviderCircuitOpen(provider.Id) {
+		response.CurrentStatus = service.RiskProviderStatusCircuitOpen
 	}
 	if provider.ProviderType == model.RiskProviderCloudflare {
 		if snapshot, err := service.GetRiskProviderBudgetSnapshot(ctx, provider); err == nil {
@@ -345,7 +339,7 @@ func toRiskProviderResponse(ctx context.Context, provider *model.RiskProvider) R
 			response.DailyNeuronsReserved = snapshot.Reserved
 			response.DailyNeuronsRemaining = maxInt64(dailyLimit-snapshot.Used-snapshot.Reserved, 0)
 			response.DailyNeuronsResetAt = &snapshot.ReadyAt
-			if provider.Active && snapshot.Exhausted {
+			if snapshot.Exhausted {
 				response.CurrentStatus = service.RiskProviderStatusDailyExhausted
 			}
 		}

@@ -1,3 +1,4 @@
+// allow: SIZE_OK -- relay lifecycle scenarios use one shared fixture boundary.
 package service
 
 import (
@@ -58,7 +59,7 @@ func TestProcessRiskObservationForRelay_does_not_direct_record_retained_observe_
 	require.Nil(t, decision.DirectRecord)
 	require.Zero(t, executorCalls)
 	require.Equal(t, job.RequestID, queuedJob.RequestID)
-	require.Equal(t, []int{provider.Id, secondProvider.Id}, queuedJob.ProviderIDs)
+	require.Empty(t, queuedJob.ProviderIDs)
 	require.Equal(t, model.RiskReviewFull, queuedJob.ReviewMode)
 	require.Equal(t, model.RiskActionObserve, queuedJob.ActionMode)
 	require.Zero(t, completedEvents)
@@ -96,7 +97,7 @@ func TestProcessRiskObservationForRelay_returns_direct_record_for_unretained_obs
 	require.NotNil(t, decision.DirectRecord.Job)
 	require.Nil(t, decision.DirectRecord.Event)
 	require.Equal(t, RiskObservationErrorQueueFull, decision.DirectRecord.ErrorCode)
-	require.Equal(t, []int{providerID}, decision.DirectRecord.Job.ProviderIDs)
+	require.Empty(t, decision.DirectRecord.Job.ProviderIDs)
 	require.Zero(t, decision.DirectRecord.Job.ProviderID)
 	require.Equal(t, model.RiskActionObserve, decision.DirectRecord.Job.ActionMode)
 }
@@ -138,7 +139,7 @@ func TestProcessRiskObservationForRelay_blocks_unsafe_result_and_enqueues_comple
 			}, nil
 		}),
 		enqueueJob: func(RiskObservationJob) RiskObservationEnqueueResult {
-			t.Fatal("block mode must not enqueue a pending review job")
+			require.Fail(t, "block mode must not enqueue a pending review job")
 			return RiskObservationEnqueueResult{}
 		},
 		enqueueEvent: func(event RiskObservationEvent) RiskObservationEnqueueResult {
@@ -187,7 +188,7 @@ func TestProcessRiskObservationForRelay_allows_configured_non_blocking_category(
 			}, nil
 		}),
 		enqueueJob: func(RiskObservationJob) RiskObservationEnqueueResult {
-			t.Fatal("block mode must not enqueue a pending review job")
+			require.Fail(t, "block mode must not enqueue a pending review job")
 			return RiskObservationEnqueueResult{}
 		},
 		enqueueEvent: func(event RiskObservationEvent) RiskObservationEnqueueResult {

@@ -1,8 +1,11 @@
 package controller
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -78,6 +81,42 @@ func TestListRiskProvidersReportsUnusedQuotaWhenProviderIsDisabled(t *testing.T)
 	assert.False(t, providers[0].Active)
 	assert.Equal(t, int64(10000), providers[0].DailyNeuronsRemaining)
 	assert.Equal(t, service.RiskProviderStatusNormal, providers[0].CurrentStatus)
+}
+
+func TestListRiskProvidersReportsDailyExhaustionWhenProviderIsDisabled(t *testing.T) {
+	setupRiskProviderControllerTest(t)
+	ciphertext, err := common.EncryptCredential("cf-secret-token")
+	require.NoError(t, err)
+	provider := &model.RiskProvider{
+		Name: "Cloudflare exhausted", ProviderType: model.RiskProviderCloudflare,
+		AccountID: "0123456789abcdef0123456789abcdef", Model: "@cf/meta/llama-guard-3-8b",
+		CredentialEncrypted: ciphertext, DailyNeuronsLimit: 10000, DailyResetTime: "08:00",
+	}
+	require.NoError(t, model.CreateRiskProvider(provider))
+
+	location := time.FixedZone("UTC+8", 8*60*60)
+	now := time.Now().UTC().In(location)
+	reset := time.Date(now.Year(), now.Month(), now.Day(), 8, 0, 0, 0, location)
+	if now.Before(reset) {
+		reset = reset.Add(-24 * time.Hour)
+	}
+	key := fmt.Sprintf("new-api:risk-neurons-budget:v1:%d", provider.Id)
+	require.NoError(t, common.RDB.HSet(context.Background(), key, map[string]any{
+		"window":    reset.UTC().Format("20060102T150405Z"),
+		"used":      "10000",
+		"reserved":  "0",
+		"exhausted": "1",
+	}).Err())
+
+	response := callRiskProviderHandler(t, riskProviderTestCall{
+		Method: http.MethodGet, Target: "/api/risk/providers/", Handler: ListRiskProviders,
+	})
+	require.True(t, response.Success, response.Message)
+	var providers []RiskProviderResponse
+	require.NoError(t, common.Unmarshal(response.Data, &providers))
+	require.Len(t, providers, 1)
+	assert.False(t, providers[0].Active)
+	assert.Equal(t, service.RiskProviderStatusDailyExhausted, providers[0].CurrentStatus)
 }
 
 func TestUpdateRiskProviderRevokesValidationWhenConnectionChanges(t *testing.T) {

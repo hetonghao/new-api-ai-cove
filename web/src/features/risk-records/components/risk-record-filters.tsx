@@ -94,6 +94,7 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
       onSubmit={form.handleSubmit(submitFilters)}
       noValidate
     >
+      <input type='hidden' {...form.register('user_id')} />
       <div className='flex flex-col gap-2 sm:flex-row sm:items-start'>
         <FieldGroup className='grid min-w-0 flex-1 gap-3 md:grid-cols-2 xl:grid-cols-[max-content_repeat(4,minmax(9rem,1fr))]'>
           <Field

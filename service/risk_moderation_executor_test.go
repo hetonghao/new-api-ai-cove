@@ -1,3 +1,4 @@
+// allow: SIZE_OK -- executor scenarios share one cache/provider fixture boundary.
 package service
 
 import (
@@ -97,6 +98,53 @@ func TestRiskModerationExecutor_Execute_keepsProviderCallAfterLaterBudgetFailure
 	require.ErrorIs(t, err, ErrRiskProviderBudgetUnavailable)
 	assert.Equal(t, RiskReviewSourceProvider, outcome.Source)
 	assert.True(t, outcome.ProviderCalled)
+}
+
+func TestRiskModerationExecutor_Execute_keepsLocalSourceWhenBudgetPreventsProviderCall(t *testing.T) {
+	provider := riskModerationProviderForTest()
+	executor := newRiskModerationExecutor(riskModerationExecutorDeps{
+		Cache: newRiskReviewCacheService(newFakeRiskReviewCacheStore(), "budget-source-test-secret"),
+		Reviewer: func(context.Context, *model.RiskProvider, string) (RiskReviewResult, error) {
+			return RiskReviewResult{}, ErrRiskProviderBudgetUnavailable
+		},
+		Now: time.Now,
+	})
+
+	outcome, err := executor.Execute(context.Background(), RiskModerationInput{
+		Provider: provider, Content: "budget exhausted", ReviewMode: model.RiskReviewSelective,
+	})
+
+	require.ErrorIs(t, err, ErrRiskModerationNoAvailableProvider)
+	assert.Empty(t, outcome.Source)
+	assert.Zero(t, outcome.Result.ProviderID)
+	assert.False(t, outcome.ProviderCalled)
+}
+
+func TestRiskModerationExecutor_Execute_keepsLocalSourceWhenCircuitPreventsProviderCall(t *testing.T) {
+	provider := riskModerationProviderForTest()
+	provider.FailureThreshold = 1
+	circuit := newRiskModerationCircuit(time.Now)
+	permit, err := circuit.Allow(context.Background(), riskModerationProviderCircuitKey(provider), provider.FailureThreshold, time.Minute)
+	require.NoError(t, err)
+	circuit.Failure(context.Background(), permit)
+	executor := newRiskModerationExecutor(riskModerationExecutorDeps{
+		Cache: newRiskReviewCacheService(newFakeRiskReviewCacheStore(), "circuit-source-test-secret"),
+		Reviewer: func(context.Context, *model.RiskProvider, string) (RiskReviewResult, error) {
+			require.Fail(t, "circuit-open provider must not be called")
+			return RiskReviewResult{}, nil
+		},
+		Now: time.Now,
+	})
+	executor.circuit = circuit
+
+	outcome, err := executor.Execute(context.Background(), RiskModerationInput{
+		Provider: provider, Content: "circuit open", ReviewMode: model.RiskReviewSelective,
+	})
+
+	require.ErrorIs(t, err, ErrRiskModerationCircuitOpen)
+	assert.Empty(t, outcome.Source)
+	assert.Zero(t, outcome.Result.ProviderID)
+	assert.False(t, outcome.ProviderCalled)
 }
 
 func TestRiskModerationExecutor_Execute_doesNotSwitchProviderAfterPartialFullReview(t *testing.T) {

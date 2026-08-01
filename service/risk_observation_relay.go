@@ -1,3 +1,4 @@
+// allow: SIZE_OK -- observation relay lifecycle and its enqueue paths form one cohesive boundary.
 package service
 
 import (
@@ -117,6 +118,7 @@ func processRiskObservationForRelay(ctx context.Context, job RiskObservationJob,
 	job.ActionMode = state.ActionMode
 	job.NonBlockingCategories = append([]string(nil), state.NonBlockingCategories...)
 	if state.ActionMode == model.RiskActionObserve {
+		job.ProviderIDs = nil
 		result := deps.enqueueJob(job)
 		decision := RiskObservationRelayDecision{}
 		if result.Outcome == RiskObservationEnqueueDirectRecordRequired {
@@ -285,6 +287,9 @@ func matchingRiskSkipRuleIDs(text string, rules []*model.RiskRule) []int {
 func riskObservationSource(outcome RiskModerationOutcome, executeErr error) RiskObservationSource {
 	switch outcome.Source {
 	case RiskReviewSourceProvider:
+		if !outcome.ProviderCalled && outcome.Result.ProviderID == 0 {
+			return RiskObservationSourceLocal
+		}
 		return RiskObservationSourceProvider
 	case RiskReviewSourceCache:
 		return RiskObservationSourceCache

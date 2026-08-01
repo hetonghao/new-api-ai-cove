@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+// allow: SIZE_OK -- shared data-table orchestration boundary; this change only tightens its common overflow contract.
 import type {
   ColumnDef,
   Row,
@@ -429,6 +430,7 @@ function renderMobile<TData>(
           skeletonKeyPrefix={props.skeletonKeyPrefix}
           renderRow={props.renderRow}
           applyHeaderSize={props.applyHeaderSize}
+          tableClassName={props.tableClassName}
           tableHeaderClassName={cn(
             '[background-color:var(--table-header)]',
             props.tableHeaderClassName
@@ -527,6 +529,7 @@ function renderDesktop<TData>(
       skeletonKeyPrefix={props.skeletonKeyPrefix}
       renderRow={props.renderRow}
       applyHeaderSize={props.applyHeaderSize}
+      tableClassName={props.tableClassName}
       splitHeader={fixedHeight}
       tableContainerClassName={fixedHeight ? 'h-full min-h-0' : undefined}
       tableHeaderClassName={cn(

@@ -35,6 +35,7 @@ import {
   TIME_GRANULARITY_OPTIONS,
   TIME_RANGE_PRESETS,
 } from '@/features/dashboard/constants'
+import type { RiskRecordFilters } from '@/features/risk-records/types'
 import { formatNumber, formatPercent } from '@/lib/format'
 import { getRollingDateRange } from '@/lib/time'
 
@@ -54,7 +55,9 @@ function isRiskStatisticsGranularity(
   return value === 'hour' || value === 'day' || value === 'week'
 }
 
-export function RiskStatistics() {
+export function RiskStatistics(props: {
+  readonly onNavigateToRecords: (filters: RiskRecordFilters) => void
+}) {
   const { t } = useTranslation()
   const [rangeDays, setRangeDays] = useState(1)
   const [granularity, setGranularity] =
@@ -67,6 +70,10 @@ export function RiskStatistics() {
       granularity,
     }
   }, [granularity, rangeDays])
+  const recordFilters: RiskRecordFilters = {
+    start_timestamp: queryParams.start_timestamp,
+    end_timestamp: queryParams.end_timestamp,
+  }
   const statisticsQuery = useQuery({
     queryKey: ['risk', 'statistics', queryParams],
     queryFn: async () => {
@@ -217,13 +224,15 @@ export function RiskStatistics() {
               affectedUsers={summary?.affected_users ?? 0}
               loading={statisticsQuery.isLoading}
               emptyText={emptyText}
-              translate={t}
+              recordFilters={recordFilters}
+              onNavigateToRecords={props.onNavigateToRecords}
             />
             <ChannelResultChart
               channels={statistics?.channels ?? []}
               loading={statisticsQuery.isLoading}
               emptyText={emptyText}
-              translate={t}
+              recordFilters={recordFilters}
+              onNavigateToRecords={props.onNavigateToRecords}
             />
           </div>
 
@@ -231,7 +240,9 @@ export function RiskStatistics() {
             rows={sourceRows}
             loading={statisticsQuery.isLoading}
             emptyText={emptyText}
-            translate={t}
+            granularity={granularity}
+            recordFilters={recordFilters}
+            onNavigateToRecords={props.onNavigateToRecords}
           />
         </>
       )}

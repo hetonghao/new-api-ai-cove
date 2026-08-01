@@ -97,3 +97,21 @@ func TestQueryRiskStatisticsRejectsOverflowingTimestampRange(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrInvalidRiskStatisticsQuery)
 }
+
+func TestQueryRiskStatisticsExcludesChannelsWithoutCloudReviewResults(t *testing.T) {
+	setupRiskRecordModelTest(t)
+	observedAt := time.Date(2026, time.July, 25, 0, 30, 0, 0, time.UTC)
+	require.NoError(t, RecordRiskObservation(context.Background(), RiskRecordInput{
+		RequestID: "local-only-channel", ChannelID: 99, UserID: 34,
+		Result: RiskRecordResultNotReviewed, Source: RiskRecordSourceLocal,
+		ObservedAt: observedAt,
+	}))
+
+	statistics, err := QueryRiskStatistics(context.Background(), RiskStatisticsQuery{
+		StartTimestamp: observedAt.Add(-time.Hour).Unix(), EndTimestamp: observedAt.Add(time.Hour).Unix(),
+		Granularity: RiskStatisticsGranularityHour,
+	})
+
+	require.NoError(t, err)
+	require.Empty(t, statistics.Channels)
+}

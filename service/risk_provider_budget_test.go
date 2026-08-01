@@ -2,6 +2,11 @@ package service
 
 import (
 	"context"
+	"errors"
+	"io"
+	"math"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -99,4 +104,108 @@ func TestRiskProviderNeuronsBudget_settlementCannotExceedDailyLimit(t *testing.T
 	assert.True(t, state.Exhausted)
 	_, err = budget.Reserve(context.Background(), provider, 1)
 	assert.ErrorIs(t, err, ErrRiskProviderDailyNeuronsExhausted)
+}
+
+func TestNormalizeRiskProviderNeuronsSaturatesInvalidAndOverflowingUsage(t *testing.T) {
+	maxNeurons := int64(^uint64(0) >> 1)
+
+	assert.Equal(t, int64(43), NormalizeRiskProviderNeurons(42.5))
+	assert.Zero(t, NormalizeRiskProviderNeurons(-1))
+	assert.Zero(t, NormalizeRiskProviderNeurons(math.NaN()))
+	assert.Zero(t, NormalizeRiskProviderNeurons(math.Inf(-1)))
+	assert.Equal(t, maxNeurons, NormalizeRiskProviderNeurons(math.Inf(1)))
+}
+
+func TestEstimateCloudflareNeuronsUsesConservativeUTF8Size(t *testing.T) {
+	ascii := EstimateCloudflareNeurons(strings.Repeat("a", 4000))
+	unicode := EstimateCloudflareNeurons(strings.Repeat("风", 4000))
+
+	assert.Greater(t, unicode, ascii)
+}
+
+func TestReviewRiskContentWithBudgetChargesEstimateWhenUsageIsMissing(t *testing.T) {
+	useRiskModerationMiniRedis(t)
+	originalSecret := common.CryptoSecret
+	common.CryptoSecret = "risk-provider-budget-test-secret"
+	t.Cleanup(func() { common.CryptoSecret = originalSecret })
+	originalHTTPClient := httpClient
+	httpClient = &http.Client{Transport: riskProviderRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"success":true,"result":{"response":{"safe":true,"categories":[]},"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}}`)),
+		}, nil
+	})}
+	t.Cleanup(func() { httpClient = originalHTTPClient })
+
+	provider := riskProviderTestProvider(t)
+	provider.Id = 46
+	provider.DailyNeuronsLimit = 6
+	provider.DailyResetTime = "08:00"
+
+	result, err := ReviewRiskContentWithBudget(context.Background(), provider, "x")
+	require.NoError(t, err)
+	assert.Equal(t, RiskReviewSafe, result.Status)
+	snapshot, err := GetRiskProviderBudgetSnapshot(context.Background(), provider)
+	require.NoError(t, err)
+	assert.Equal(t, int64(6), snapshot.Used)
+	assert.True(t, snapshot.Exhausted)
+}
+
+func TestReviewRiskContentWithBudgetReleasesReservationOnProviderFailure(t *testing.T) {
+	useRiskModerationMiniRedis(t)
+	originalSecret := common.CryptoSecret
+	common.CryptoSecret = "risk-provider-budget-failure-test-secret"
+	t.Cleanup(func() { common.CryptoSecret = originalSecret })
+	originalHTTPClient := httpClient
+	t.Cleanup(func() { httpClient = originalHTTPClient })
+
+	tests := []struct {
+		name      string
+		transport riskProviderRoundTripFunc
+	}{
+		{
+			name: "network failure",
+			transport: func(*http.Request) (*http.Response, error) {
+				return nil, errors.New("network unavailable")
+			},
+		},
+		{
+			name: "http failure",
+			transport: func(*http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusBadGateway,
+					Body:       io.NopCloser(strings.NewReader(`{"error":"upstream failed"}`)),
+				}, nil
+			},
+		},
+		{
+			name: "invalid moderation response",
+			transport: func(*http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body: io.NopCloser(strings.NewReader(
+						`{"success":true,"result":{"response":{"unknown":true}}}`,
+					)),
+				}, nil
+			},
+		},
+	}
+
+	for index, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			httpClient = &http.Client{Transport: tt.transport}
+			provider := riskProviderTestProvider(t)
+			provider.Id = 50 + index
+			provider.DailyNeuronsLimit = 100
+			provider.DailyResetTime = "08:00"
+
+			_, err := ReviewRiskContentWithBudget(context.Background(), provider, "x")
+			require.Error(t, err)
+			snapshot, snapshotErr := GetRiskProviderBudgetSnapshot(context.Background(), provider)
+			require.NoError(t, snapshotErr)
+			assert.Zero(t, snapshot.Used)
+			assert.Zero(t, snapshot.Reserved)
+			assert.False(t, snapshot.Exhausted)
+		})
+	}
 }

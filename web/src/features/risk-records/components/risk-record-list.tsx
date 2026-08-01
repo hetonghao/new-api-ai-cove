@@ -38,7 +38,10 @@ import { UserInfoDialog } from '@/features/usage-logs/components/dialogs/user-in
 import { cn } from '@/lib/utils'
 
 import { listRiskRecords } from '../api'
-import { createDefaultRiskRecordFilterDraft } from '../lib/default-filter'
+import {
+  createDefaultRiskRecordFilterDraft,
+  createRiskRecordFilterDraftFromFilters,
+} from '../lib/default-filter'
 import {
   commitRiskRecordFilters,
   shouldRefetchRiskRecords,
@@ -92,6 +95,7 @@ function EmptyRecords() {
 
 type RiskRecordListProps = {
   readonly providers: readonly RiskProvider[]
+  readonly initialFilters?: RiskRecordFilters
 }
 
 export function RiskRecordList(props: RiskRecordListProps) {
@@ -100,9 +104,13 @@ export function RiskRecordList(props: RiskRecordListProps) {
     pageIndex: 0,
     pageSize: 20,
   })
-  const [initialDraft] = useState(createDefaultRiskRecordFilterDraft)
-  const [filters, setFilters] = useState<RiskRecordFilters>(() =>
-    commitRiskRecordFilters(initialDraft)
+  const [initialDraft] = useState(() =>
+    props.initialFilters
+      ? createRiskRecordFilterDraftFromFilters(props.initialFilters)
+      : createDefaultRiskRecordFilterDraft()
+  )
+  const [filters, setFilters] = useState<RiskRecordFilters>(
+    () => props.initialFilters ?? commitRiskRecordFilters(initialDraft)
   )
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
   const [userInfoOpen, setUserInfoOpen] = useState(false)

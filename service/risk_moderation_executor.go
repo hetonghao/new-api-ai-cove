@@ -1,3 +1,4 @@
+// allow: SIZE_OK -- moderation execution is one request-scoped state machine and must remain traceable end to end.
 package service
 
 import (
@@ -203,11 +204,6 @@ func (e *RiskModerationExecutor) Execute(ctx context.Context, input RiskModerati
 					tried++
 					continue
 				}
-				if !called {
-					result = riskReviewResultWithProvider(result, provider)
-					providerResult.Store(&result)
-					providerChunks.Store(&chunks)
-				}
 				if providerErr != nil {
 					if ctx.Err() != nil {
 						e.circuit.Abandon(context.Background(), permit)
@@ -227,8 +223,11 @@ func (e *RiskModerationExecutor) Execute(ctx context.Context, input RiskModerati
 	})
 	called := providerCalled.Load()
 	source := cacheOutcome.Source
+	if source == RiskReviewSourceProvider && !called {
+		source = ""
+	}
 	if source == "" && (called || reviewErr != nil) {
-		if called || providerResult.Load() != nil {
+		if called {
 			source = RiskReviewSourceProvider
 		}
 	}

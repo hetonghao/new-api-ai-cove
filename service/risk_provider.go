@@ -202,14 +202,10 @@ func reviewCloudflareRiskContent(ctx context.Context, provider *model.RiskProvid
 
 func cloudflareDailyNeuronsResponse(body []byte) bool {
 	message := strings.ToLower(strings.Join(strings.Fields(string(body)), " "))
-	for _, marker := range []string{
-		"daily neurons", "neurons limit", "daily quota", "daily limit", "quota exceeded", "quota exhausted",
-	} {
-		if strings.Contains(message, marker) {
-			return true
-		}
-	}
-	return false
+	hasNeurons := strings.Contains(message, "neuron")
+	hasDailyWindow := strings.Contains(message, "daily") || strings.Contains(message, "per day")
+	hasExhaustion := strings.Contains(message, "limit") || strings.Contains(message, "quota") || strings.Contains(message, "exhaust")
+	return hasNeurons && hasDailyWindow && hasExhaustion
 }
 
 func parseCloudflareRiskResult(raw json.RawMessage) (RiskReviewResult, error) {

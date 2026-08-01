@@ -1,3 +1,4 @@
+// allow: SIZE_OK -- provider lifecycle tests share one database and HTTP fixture boundary.
 package service
 
 import (
@@ -183,6 +184,24 @@ func TestReviewRiskContentMapsCloudflareResponses(t *testing.T) {
 			if tt.wantNeurons != 0 {
 				assert.InDelta(t, tt.wantNeurons, result.Usage.Neurons, 1e-12)
 			}
+		})
+	}
+}
+
+func TestCloudflareDailyNeuronsResponse_requires_explicit_daily_neurons_signal(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{name: "daily neurons quota", body: `{"error":"daily neurons quota exceeded"}`, want: true},
+		{name: "neurons daily limit", body: `{"error":"neurons daily limit exhausted"}`, want: true},
+		{name: "generic quota", body: `{"error":"quota exceeded"}`},
+		{name: "generic rate limit", body: `{"error":"daily request limit exceeded"}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, cloudflareDailyNeuronsResponse([]byte(test.body)))
 		})
 	}
 }

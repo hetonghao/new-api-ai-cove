@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+// allow: SIZE_OK -- risk-center page boundary owns the four tabs and their shared query lifecycle.
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -28,6 +29,7 @@ import { LocalRuleManager } from '@/features/risk-policy/components/local-rule-m
 import { RiskPolicySettings } from '@/features/risk-policy/components/risk-policy-settings'
 import { RiskRecordGovernanceSettings } from '@/features/risk-records/components/risk-record-governance-settings'
 import { RiskRecordList } from '@/features/risk-records/components/risk-record-list'
+import type { RiskRecordFilters } from '@/features/risk-records/types'
 
 import {
   deleteRiskProvider,
@@ -60,6 +62,9 @@ export function RiskProviders() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<RiskCenterTab>('records')
+  const [recordInitialFilters, setRecordInitialFilters] =
+    useState<RiskRecordFilters>()
+  const [recordNavigationVersion, setRecordNavigationVersion] = useState(0)
   const [formOpen, setFormOpen] = useState(false)
   const [editingProvider, setEditingProvider] = useState<RiskProvider | null>(
     null
@@ -158,6 +163,12 @@ export function RiskProviders() {
     setFormOpen(true)
   }
 
+  function openRiskRecords(filters: RiskRecordFilters) {
+    setRecordInitialFilters(filters)
+    setRecordNavigationVersion((version) => version + 1)
+    setActiveTab('records')
+  }
+
   return (
     <>
       <SectionPageLayout fixedContent>
@@ -177,17 +188,17 @@ export function RiskProviders() {
               }
             }}
           >
-            <TabsList className='grid w-full grid-cols-2 grid-rows-2 gap-0.5 group-data-horizontal/tabs:h-auto sm:grid-cols-4 sm:grid-rows-1 sm:gap-0 sm:group-data-horizontal/tabs:h-8'>
-              <TabsTrigger className='h-8' value='records'>
+            <TabsList className='grid w-full min-w-0 grid-cols-2 grid-rows-2 gap-0.5 group-data-horizontal/tabs:h-auto lg:grid-cols-4 lg:grid-rows-1 lg:gap-0 lg:group-data-horizontal/tabs:h-8'>
+              <TabsTrigger className='h-8 min-w-0' value='records'>
                 {t('Risk records')}
               </TabsTrigger>
-              <TabsTrigger className='h-8' value='providers'>
+              <TabsTrigger className='h-8 min-w-0' value='providers'>
                 {t('Cloud review providers')}
               </TabsTrigger>
-              <TabsTrigger className='h-8' value='configuration'>
+              <TabsTrigger className='h-8 min-w-0' value='configuration'>
                 {t('Risk Settings')}
               </TabsTrigger>
-              <TabsTrigger className='h-8' value='statistics'>
+              <TabsTrigger className='h-8 min-w-0' value='statistics'>
                 {t('Statistics')}
               </TabsTrigger>
             </TabsList>
@@ -226,14 +237,18 @@ export function RiskProviders() {
                 <LocalRuleManager />
               </div>
             </TabsContent>
-            <TabsContent value='records' className='mt-2 min-h-0'>
-              <RiskRecordList providers={providersQuery.data ?? []} />
+            <TabsContent value='records' className='mt-2 min-h-0 min-w-0'>
+              <RiskRecordList
+                key={recordNavigationVersion}
+                providers={providersQuery.data ?? []}
+                initialFilters={recordInitialFilters}
+              />
             </TabsContent>
             <TabsContent
               value='statistics'
               className='mt-2 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto'
             >
-              <RiskStatistics />
+              <RiskStatistics onNavigateToRecords={openRiskRecords} />
             </TabsContent>
           </Tabs>
         </SectionPageLayout.Content>

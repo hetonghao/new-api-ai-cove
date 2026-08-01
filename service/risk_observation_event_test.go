@@ -44,7 +44,7 @@ func TestEvaluateRiskObservation_maps_source_accounting_and_blocking(t *testing.
 		{
 			name: "circuit open fail open", actionMode: model.RiskActionBlock,
 			outcome: RiskModerationOutcome{Source: RiskReviewSourceProvider}, executeErr: ErrRiskModerationCircuitOpen,
-			wantSource: RiskObservationSourceProvider, wantErrorCode: riskObservationCircuitOpen,
+			wantSource: RiskObservationSourceLocal, wantErrorCode: riskObservationCircuitOpen,
 		},
 	}
 	for _, test := range tests {

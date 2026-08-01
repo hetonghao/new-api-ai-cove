@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
+import { createRiskRecordFilterDraftFromFilters } from './default-filter.ts'
 import {
   commitRiskRecordFilters,
   createRiskRecordFilterFormSchema,
@@ -112,5 +113,36 @@ describe('risk record filter form behavior', () => {
         source: 'local',
       })
     }
+  })
+
+  it('converts chart navigation filters into the record form draft', () => {
+    const draft = createRiskRecordFilterDraftFromFilters({
+      start_timestamp: 1_784_982_840,
+      end_timestamp: 1_784_986_440,
+      channel_id: 12,
+      user_id: 7,
+      username: 'alice',
+      source: 'provider',
+    })
+
+    assert.deepEqual(draft, {
+      start_time: new Date(1_784_982_840 * 1000),
+      end_time: new Date(1_784_986_440 * 1000),
+      channel_id: '12',
+      user_id: '7',
+      username: 'alice',
+      provider_id: '',
+      provider_type: '',
+      result: '',
+      source: 'provider',
+    })
+    assert.deepEqual(commitRiskRecordFilters(draft), {
+      start_timestamp: 1_784_982_840,
+      end_timestamp: 1_784_986_440,
+      channel_id: 12,
+      user_id: 7,
+      username: 'alice',
+      source: 'provider',
+    })
   })
 })

@@ -14,6 +14,7 @@ type RiskRecordQuery struct {
 	StartTimestamp int64
 	EndTimestamp   int64
 	ChannelID      int
+	UserID         int
 	Username       string
 	ProviderID     *int
 	ProviderType   RiskProviderType
@@ -35,6 +36,9 @@ func QueryRiskRecords(ctx context.Context, filter RiskRecordQuery) ([]*RiskRecor
 	}
 	if filter.ChannelID > 0 {
 		query = query.Where("risk_records.channel_id = ?", filter.ChannelID)
+	}
+	if filter.UserID > 0 {
+		query = query.Where("risk_records.user_id = ?", filter.UserID)
 	}
 	if filter.Username != "" {
 		userQuery := DB.WithContext(ctx).Model(&User{})
@@ -98,7 +102,7 @@ func validateRiskRecordQuery(filter RiskRecordQuery) error {
 		return ErrInvalidRiskRecordPage
 	}
 	usernameText := strings.ReplaceAll(filter.Username, "%", "")
-	if filter.ChannelID < 0 || utf8.RuneCountInString(usernameText) > UserNameMaxLength ||
+	if filter.ChannelID < 0 || filter.UserID < 0 || utf8.RuneCountInString(usernameText) > UserNameMaxLength ||
 		(filter.ProviderID != nil && *filter.ProviderID < 0) {
 		return ErrInvalidRiskRecordPage
 	}

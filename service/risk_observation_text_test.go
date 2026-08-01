@@ -35,6 +35,11 @@ func TestExtractRiskObservationText_returns_only_latest_user_text(t *testing.T) 
 			want:    "current\ncompletion",
 		},
 		{
+			name:    "openai instruction is not user text",
+			request: &dto.GeneralOpenAIRequest{Prompt: "current", Instruction: "developer secret"},
+			want:    "current",
+		},
+		{
 			name: "claude messages",
 			request: &dto.ClaudeRequest{Messages: []dto.ClaudeMessage{
 				{Role: "user", Content: "old user turn"},

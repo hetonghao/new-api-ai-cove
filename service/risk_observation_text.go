@@ -70,9 +70,6 @@ func extractOpenAIRiskText(request *dto.GeneralOpenAIRequest) string {
 	}
 	texts := stringValues(request.Prompt)
 	texts = append(texts, stringValues(request.Input)...)
-	if request.Instruction != "" {
-		texts = append(texts, request.Instruction)
-	}
 	return strings.Join(texts, "\n")
 }
 

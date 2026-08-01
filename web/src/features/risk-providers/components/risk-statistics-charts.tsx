@@ -16,7 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { TFunction } from 'i18next'
+// allow: SIZE_OK -- the three charts share one filter, tooltip, and accessibility contract.
+import { useState, type KeyboardEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Area,
   AreaChart,
@@ -30,9 +32,14 @@ import {
   YAxis,
 } from 'recharts'
 
+import type { RiskRecordFilters } from '@/features/risk-records/types'
 import { formatNumber, formatPercent } from '@/lib/format'
 
-import type { RiskStatisticsChannel, RiskStatisticsUser } from '../types'
+import type {
+  RiskStatisticsChannel,
+  RiskStatisticsGranularity,
+  RiskStatisticsUser,
+} from '../types'
 import {
   SOURCE_COLORS,
   SOURCE_KEYS,
@@ -48,13 +55,45 @@ import {
   UserResultTooltip,
 } from './risk-statistics-shared'
 
+function handleChartKeyDown(
+  event: KeyboardEvent<HTMLDivElement>,
+  itemCount: number,
+  activeIndex: number,
+  setActiveIndex: (index: number) => void,
+  onNavigate: (index: number) => void
+) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    onNavigate(Math.min(activeIndex, Math.max(itemCount - 1, 0)))
+    return
+  }
+
+  let nextIndex = activeIndex
+  if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+    nextIndex = Math.min(activeIndex + 1, Math.max(itemCount - 1, 0))
+  } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+    nextIndex = Math.max(activeIndex - 1, 0)
+  } else if (event.key === 'Home') {
+    nextIndex = 0
+  } else if (event.key === 'End') {
+    nextIndex = Math.max(itemCount - 1, 0)
+  } else {
+    return
+  }
+  event.preventDefault()
+  setActiveIndex(nextIndex)
+}
+
 export function UserResultChart(props: {
   readonly users: readonly RiskStatisticsUser[]
   readonly affectedUsers: number
   readonly loading: boolean
   readonly emptyText: string
-  readonly translate: TFunction
+  readonly recordFilters: RiskRecordFilters
+  readonly onNavigateToRecords: (filters: RiskRecordFilters) => void
 }) {
+  const { t } = useTranslation()
+  const [activeIndex, setActiveIndex] = useState(0)
   const rows = props.users.map((user) => ({
     ...user,
     label: user.username || `#${user.user_id}`,
@@ -62,8 +101,8 @@ export function UserResultChart(props: {
 
   return (
     <ChartCard
-      title={props.translate('User result distribution')}
-      description={props.translate(
+      title={t('User result distribution')}
+      description={t(
         'Top 10 users sorted by unsafe count, then error count, using absolute records.'
       )}
     >
@@ -74,14 +113,46 @@ export function UserResultChart(props: {
         <>
           <div className='h-80 min-w-0'>
             <div
-              role='img'
-              aria-label={props.translate('User result distribution')}
-              className='h-full w-full'
+              role='button'
+              tabIndex={0}
+              aria-label={`${t('User result distribution')}: ${rows[activeIndex]?.label ?? ''}`}
+              className='focus-visible:ring-ring h-full w-full rounded-sm focus-visible:ring-2 focus-visible:outline-none'
+              onKeyDown={(event) =>
+                handleChartKeyDown(
+                  event,
+                  rows.length,
+                  activeIndex,
+                  setActiveIndex,
+                  (index) => {
+                    const user = rows[index]
+                    if (user) {
+                      props.onNavigateToRecords({
+                        ...props.recordFilters,
+                        user_id: user.user_id,
+                      })
+                    }
+                  }
+                )
+              }
             >
               <ResponsiveContainer width='100%' height='100%'>
                 <BarChart
                   data={rows}
                   layout='vertical'
+                  cursor='pointer'
+                  onClick={(state) => {
+                    const index =
+                      typeof state.activeTooltipIndex === 'number'
+                        ? state.activeTooltipIndex
+                        : null
+                    const user = index === null ? undefined : rows[index]
+                    if (user) {
+                      props.onNavigateToRecords({
+                        ...props.recordFilters,
+                        user_id: user.user_id,
+                      })
+                    }
+                  }}
                   margin={{ top: 8, right: 12, bottom: 8, left: 8 }}
                 >
                   <CartesianGrid strokeDasharray='3 3' horizontal={false} />
@@ -94,34 +165,31 @@ export function UserResultChart(props: {
                   />
                   <Tooltip
                     content={
-                      <UserResultTooltip
-                        translate={props.translate}
-                        affectedUsers={props.affectedUsers}
-                      />
+                      <UserResultTooltip affectedUsers={props.affectedUsers} />
                     }
                   />
                   <Legend />
                   <Bar
                     dataKey='unsafe'
-                    name={props.translate('Unsafe')}
+                    name={t('Unsafe')}
                     stackId='user'
                     fill='var(--destructive)'
                   />
                   <Bar
                     dataKey='errors'
-                    name={props.translate('Errors')}
+                    name={t('Errors')}
                     stackId='user'
                     fill='var(--warning)'
                   />
                   <Bar
                     dataKey='safe'
-                    name={props.translate('Safe')}
+                    name={t('Safe')}
                     stackId='user'
                     fill='var(--success)'
                   />
                   <Bar
                     dataKey='not_reviewed'
-                    name={props.translate('Not reviewed')}
+                    name={t('Not reviewed')}
                     stackId='user'
                     fill='var(--neutral)'
                   />
@@ -129,16 +197,22 @@ export function UserResultChart(props: {
               </ResponsiveContainer>
             </div>
           </div>
+          <p className='text-muted-foreground mt-2 text-xs' aria-live='polite'>
+            {t('Select')}:
+            <span className='text-foreground font-medium'>
+              {rows[activeIndex]?.label ?? ''}
+            </span>
+          </p>
           <AccessibleDataTable
-            caption={props.translate('User result distribution')}
+            caption={t('User result distribution')}
             headers={[
-              props.translate('User'),
-              props.translate('Unsafe'),
-              props.translate('Errors'),
-              props.translate('Safe'),
-              props.translate('Not reviewed'),
-              props.translate('Affected users'),
-              props.translate('Total'),
+              t('User'),
+              t('Unsafe'),
+              t('Errors'),
+              t('Safe'),
+              t('Not reviewed'),
+              t('Affected users'),
+              t('Total'),
             ]}
             rows={rows.map((row) => [
               row.label,
@@ -163,8 +237,11 @@ export function ChannelResultChart(props: {
   readonly channels: readonly RiskStatisticsChannel[]
   readonly loading: boolean
   readonly emptyText: string
-  readonly translate: TFunction
+  readonly recordFilters: RiskRecordFilters
+  readonly onNavigateToRecords: (filters: RiskRecordFilters) => void
 }) {
+  const { t } = useTranslation()
+  const [activeIndex, setActiveIndex] = useState(0)
   const rows = props.channels.map((channel) => ({
     ...channel,
     label: channel.channel_name || `#${channel.channel_id}`,
@@ -172,8 +249,8 @@ export function ChannelResultChart(props: {
 
   return (
     <ChartCard
-      title={props.translate('Channel result distribution')}
-      description={props.translate(
+      title={t('Channel result distribution')}
+      description={t(
         'Channels sorted by unsafe count, then error count, using absolute records.'
       )}
     >
@@ -184,14 +261,46 @@ export function ChannelResultChart(props: {
         <>
           <div className='h-80 min-w-0'>
             <div
-              role='img'
-              aria-label={props.translate('Channel result distribution')}
-              className='h-full w-full'
+              role='button'
+              tabIndex={0}
+              aria-label={`${t('Channel result distribution')}: ${rows[activeIndex]?.label ?? ''}`}
+              className='focus-visible:ring-ring h-full w-full rounded-sm focus-visible:ring-2 focus-visible:outline-none'
+              onKeyDown={(event) =>
+                handleChartKeyDown(
+                  event,
+                  rows.length,
+                  activeIndex,
+                  setActiveIndex,
+                  (index) => {
+                    const channel = rows[index]
+                    if (channel) {
+                      props.onNavigateToRecords({
+                        ...props.recordFilters,
+                        channel_id: channel.channel_id,
+                      })
+                    }
+                  }
+                )
+              }
             >
               <ResponsiveContainer width='100%' height='100%'>
                 <BarChart
                   data={rows}
                   layout='vertical'
+                  cursor='pointer'
+                  onClick={(state) => {
+                    const index =
+                      typeof state.activeTooltipIndex === 'number'
+                        ? state.activeTooltipIndex
+                        : null
+                    const channel = index === null ? undefined : rows[index]
+                    if (channel) {
+                      props.onNavigateToRecords({
+                        ...props.recordFilters,
+                        channel_id: channel.channel_id,
+                      })
+                    }
+                  }}
                   margin={{ top: 8, right: 12, bottom: 8, left: 8 }}
                 >
                   <CartesianGrid strokeDasharray='3 3' horizontal={false} />
@@ -202,39 +311,37 @@ export function ChannelResultChart(props: {
                     width={128}
                     tick={{ fontSize: 11 }}
                   />
-                  <Tooltip
-                    content={
-                      <ChannelResultTooltip translate={props.translate} />
-                    }
-                  />
+                  <Tooltip content={<ChannelResultTooltip />} />
                   <Legend />
                   <Bar
                     dataKey='unsafe'
-                    name={props.translate('Unsafe')}
+                    name={t('Unsafe')}
                     fill='var(--destructive)'
                   />
                   <Bar
                     dataKey='errors'
-                    name={props.translate('Errors')}
+                    name={t('Errors')}
                     fill='var(--warning)'
                   />
-                  <Bar
-                    dataKey='safe'
-                    name={props.translate('Safe')}
-                    fill='var(--success)'
-                  />
+                  <Bar dataKey='safe' name={t('Safe')} fill='var(--success)' />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </div>
+          <p className='text-muted-foreground mt-2 text-xs' aria-live='polite'>
+            {t('Select')}:
+            <span className='text-foreground font-medium'>
+              {rows[activeIndex]?.label ?? ''}
+            </span>
+          </p>
           <AccessibleDataTable
-            caption={props.translate('Channel result distribution')}
+            caption={t('Channel result distribution')}
             headers={[
-              props.translate('Channel'),
-              props.translate('Unsafe'),
-              props.translate('Errors'),
-              props.translate('Safe'),
-              props.translate('Total'),
+              t('Channel'),
+              t('Unsafe'),
+              t('Errors'),
+              t('Safe'),
+              t('Total'),
             ]}
             rows={rows.map((row) => [
               row.label,
@@ -257,12 +364,26 @@ export function SourceTrendChart(props: {
   readonly rows: readonly SourceChartRow[]
   readonly loading: boolean
   readonly emptyText: string
-  readonly translate: TFunction
+  readonly granularity: RiskStatisticsGranularity
+  readonly recordFilters: RiskRecordFilters
+  readonly onNavigateToRecords: (filters: RiskRecordFilters) => void
 }) {
+  const { t } = useTranslation()
+  const [activeIndex, setActiveIndex] = useState(0)
+  const activeRowIndex = Math.floor(activeIndex / SOURCE_KEYS.length)
+  const activeSource = SOURCE_KEYS[activeIndex % SOURCE_KEYS.length]
+  const activeRow = props.rows[activeRowIndex]
+  let bucketSeconds = 7 * 24 * 60 * 60
+  if (props.granularity === 'hour') {
+    bucketSeconds = 60 * 60
+  } else if (props.granularity === 'day') {
+    bucketSeconds = 24 * 60 * 60
+  }
+
   return (
     <ChartCard
-      title={props.translate('Risk source proportion trend')}
-      description={props.translate(
+      title={t('Risk source proportion trend')}
+      description={t(
         '100% stacked area by time; hover to see both absolute counts and percentages.'
       )}
     >
@@ -273,14 +394,55 @@ export function SourceTrendChart(props: {
         <>
           <div className='h-80 min-w-0'>
             <div
-              role='img'
-              aria-label={props.translate('Risk source proportion trend')}
-              className='h-full w-full'
+              role='button'
+              tabIndex={0}
+              aria-label={`${t('Risk source proportion trend')}: ${props.rows[Math.floor(activeIndex / SOURCE_KEYS.length)]?.label ?? ''}`}
+              className='focus-visible:ring-ring h-full w-full rounded-sm focus-visible:ring-2 focus-visible:outline-none'
+              onKeyDown={(event) =>
+                handleChartKeyDown(
+                  event,
+                  props.rows.length * SOURCE_KEYS.length,
+                  activeIndex,
+                  setActiveIndex,
+                  (index) => {
+                    const row =
+                      props.rows[Math.floor(index / SOURCE_KEYS.length)]
+                    const source = SOURCE_KEYS[index % SOURCE_KEYS.length]
+                    if (row && source) {
+                      props.onNavigateToRecords({
+                        ...props.recordFilters,
+                        source,
+                        start_timestamp: row.bucket_start,
+                        end_timestamp: row.bucket_start + bucketSeconds - 1,
+                      })
+                    }
+                  }
+                )
+              }
             >
               <ResponsiveContainer width='100%' height='100%'>
                 <AreaChart
                   data={props.rows}
                   stackOffset='expand'
+                  cursor='pointer'
+                  onClick={(state) => {
+                    const index =
+                      typeof state.activeTooltipIndex === 'number'
+                        ? state.activeTooltipIndex
+                        : null
+                    const row = index === null ? undefined : props.rows[index]
+                    const source = SOURCE_KEYS.find(
+                      (key) => `${key}_pct` === state.activeDataKey
+                    )
+                    if (row && source) {
+                      props.onNavigateToRecords({
+                        ...props.recordFilters,
+                        source,
+                        start_timestamp: row.bucket_start,
+                        end_timestamp: row.bucket_start + bucketSeconds - 1,
+                      })
+                    }
+                  }}
                   margin={{ top: 8, right: 12, bottom: 8, left: 8 }}
                 >
                   <CartesianGrid strokeDasharray='3 3' />
@@ -294,9 +456,7 @@ export function SourceTrendChart(props: {
                       `${Math.round(Number(value) * 100)}%`
                     }
                   />
-                  <Tooltip
-                    content={<SourceTooltip translate={props.translate} />}
-                  />
+                  <Tooltip content={<SourceTooltip />} />
                   {SOURCE_KEYS.map((key) => (
                     <Area
                       key={key}
@@ -306,7 +466,7 @@ export function SourceTrendChart(props: {
                       stroke={SOURCE_COLORS[key]}
                       fill={SOURCE_COLORS[key]}
                       fillOpacity={0.78}
-                      name={sourceLabel(props.translate, key)}
+                      name={sourceLabel(t, key)}
                     />
                   ))}
                 </AreaChart>
@@ -320,16 +480,25 @@ export function SourceTrendChart(props: {
                   className='size-2 rounded-full'
                   style={{ backgroundColor: SOURCE_COLORS[key] }}
                 />
-                {sourceLabel(props.translate, key)}
+                {sourceLabel(t, key)}
               </span>
             ))}
           </div>
+          <p className='text-muted-foreground mt-2 text-xs' aria-live='polite'>
+            {t('Select')}:
+            <span className='text-foreground font-medium'>
+              {activeRow?.label ?? ''}
+              {activeRow && activeSource
+                ? ` · ${sourceLabel(t, activeSource)}`
+                : ''}
+            </span>
+          </p>
           <AccessibleDataTable
-            caption={props.translate('Risk source proportion trend')}
+            caption={t('Risk source proportion trend')}
             headers={[
-              props.translate('Time'),
-              ...SOURCE_KEYS.map((key) => sourceLabel(props.translate, key)),
-              props.translate('Total'),
+              t('Time'),
+              ...SOURCE_KEYS.map((key) => sourceLabel(t, key)),
+              t('Total'),
             ]}
             rows={props.rows.map((row) => [
               row.label,

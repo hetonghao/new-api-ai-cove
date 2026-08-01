@@ -67,6 +67,7 @@ export function createRiskRecordFilterFormSchema(t: Translate) {
       start_time: validDateTime,
       end_time: validDateTime,
       channel_id: positiveInteger,
+      user_id: positiveInteger.optional(),
       username: z.string().trim().max(20, t('Invalid configuration')),
       provider_id: nonnegativeInteger,
       provider_type: z.enum(RISK_RECORD_FILTER_PROVIDER_TYPES, {
@@ -218,6 +219,7 @@ export function commitRiskRecordFilters(
   const startTimestamp = toUnixSeconds(draft.start_time)
   const endTimestamp = toUnixSeconds(draft.end_time)
   const channelId = toPositiveInteger(draft.channel_id)
+  const userId = toPositiveInteger(draft.user_id ?? '')
   const username = draft.username.trim()
   const providerId = toPositiveInteger(draft.provider_id)
 
@@ -227,6 +229,7 @@ export function commitRiskRecordFilters(
       : { start_timestamp: startTimestamp }),
     ...(endTimestamp === undefined ? {} : { end_timestamp: endTimestamp }),
     ...(channelId === undefined ? {} : { channel_id: channelId }),
+    ...(userId === undefined ? {} : { user_id: userId }),
     ...(username ? { username } : {}),
     ...(providerId === undefined ? {} : { provider_id: providerId }),
     ...(draft.provider_type ? { provider_type: draft.provider_type } : {}),
@@ -245,6 +248,7 @@ export function shouldRefetchRiskRecords(
     left.start_timestamp === right.start_timestamp &&
     left.end_timestamp === right.end_timestamp &&
     left.channel_id === right.channel_id &&
+    left.user_id === right.user_id &&
     left.username === right.username &&
     left.provider_id === right.provider_id &&
     left.provider_type === right.provider_type &&

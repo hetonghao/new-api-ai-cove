@@ -99,10 +99,38 @@ func CloseRiskObservationQueue(ctx context.Context) {
 }
 
 func processRiskObservation(ctx context.Context, job RiskObservationJob) {
+	if job.ActionMode == model.RiskActionObserve {
+		var err error
+		job, err = refreshRiskObservationJobProviders(job)
+		if err != nil {
+			RecordRiskObservationDegradationDirect(ctx, job, riskObservationProviderConfigError)
+			return
+		}
+		if len(job.ProviderIDs) == 0 {
+			RecordRiskObservationDegradationDirect(ctx, job, riskObservationProviderConfigError)
+			return
+		}
+	}
 	event, ok := evaluateRiskObservation(ctx, job, riskObservationModerationExecutor())
 	if ok {
 		RecordRiskObservationEventDirect(ctx, event)
 	}
+}
+
+func refreshRiskObservationJobProviders(job RiskObservationJob) (RiskObservationJob, error) {
+	if job.ActionMode != model.RiskActionObserve {
+		return job, nil
+	}
+	providers, err := model.GetEnabledRiskProviders()
+	if err != nil {
+		return job, err
+	}
+	job.ProviderID = 0
+	job.ProviderIDs = make([]int, 0, len(providers))
+	for _, provider := range providers {
+		job.ProviderIDs = append(job.ProviderIDs, provider.Id)
+	}
+	return job, nil
 }
 
 func riskChannelEnabled(channels []int, selectedChannel int) bool {

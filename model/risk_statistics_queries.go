@@ -136,6 +136,7 @@ func queryRiskStatisticsUsers(ctx context.Context, query RiskStatisticsQuery) ([
 func queryRiskStatisticsChannels(ctx context.Context, query RiskStatisticsQuery) ([]RiskStatisticsChannel, error) {
 	rows := make([]riskStatisticsChannelRow, 0)
 	err := riskStatisticsBaseQuery(ctx, query).
+		Where("risk_records.result IN (?, ?, ?)", RiskRecordResultSafe, RiskRecordResultUnsafe, RiskRecordResultError).
 		Select(`
 			risk_records.channel_id AS channel_id,
 			COALESCE(channels.name, '') AS channel_name,

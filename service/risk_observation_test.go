@@ -245,6 +245,23 @@ func createActiveRiskProvider(t *testing.T, baseURL string) *model.RiskProvider 
 	return provider
 }
 
+func TestRefreshRiskObservationJobProviders_uses_current_enabled_providers(t *testing.T) {
+	setupRiskObservationTest(t)
+	oldProvider := createActiveRiskProvider(t, "https://old.example.com")
+	currentProvider := createActiveRiskProvider(t, "https://current.example.com")
+	require.NoError(t, model.SetRiskProviderActive(oldProvider.Id, false))
+
+	job, err := refreshRiskObservationJobProviders(RiskObservationJob{
+		ActionMode:  model.RiskActionObserve,
+		ProviderID:  oldProvider.Id,
+		ProviderIDs: []int{oldProvider.Id},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []int{currentProvider.Id}, job.ProviderIDs)
+	require.Zero(t, job.ProviderID)
+}
+
 func createRiskPolicyChannel(t *testing.T) int {
 	t.Helper()
 	channel := &model.Channel{Name: "Risk channel", Key: "secret", Models: "gpt-test"}

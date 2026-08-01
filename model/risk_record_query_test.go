@@ -84,6 +84,26 @@ func TestQueryRiskRecords_filtersByUsername(t *testing.T) {
 	assert.Equal(t, "req-alice", records[0].RequestID)
 }
 
+func TestQueryRiskRecords_filtersByUserIDWhenUsernameIsMissing(t *testing.T) {
+	// Given
+	setupRiskRecordModelTest(t)
+	input := validRiskRecordInput(RiskRecordResultSafe)
+	input.RequestID = "req-orphaned-user"
+	input.UserID = 404
+	require.NoError(t, RecordRiskObservation(context.Background(), input))
+
+	// When
+	records, total, err := QueryRiskRecords(context.Background(), RiskRecordQuery{
+		Offset: 0, Limit: 20, UserID: 404,
+	})
+
+	// Then
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, total)
+	require.Len(t, records, 1)
+	assert.Equal(t, "req-orphaned-user", records[0].RequestID)
+}
+
 func TestQueryRiskRecords_enrichesChannelUserAndTokenNames(t *testing.T) {
 	// Given
 	db := setupRiskRecordModelTest(t)

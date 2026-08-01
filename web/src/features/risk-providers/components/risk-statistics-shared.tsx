@@ -14,8 +14,9 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
-import type { TFunction } from 'i18next'
+// allow: SIZE_OK -- shared statistics primitives must stay together to keep chart semantics consistent.
 import type { ComponentType, ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { TooltipContentProps } from 'recharts'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -109,84 +110,58 @@ function TooltipValueRow(props: {
 
 export function UserResultTooltip(
   props: Partial<TooltipContentProps<number, string>> & {
-    readonly translate: TFunction
     readonly affectedUsers: number
   }
 ) {
+  const { t } = useTranslation()
   if (!props.active || !props.payload?.length) return null
   const point = props.payload[0]?.payload
   if (!isUserChartRow(point)) return null
 
   return (
     <TooltipBox title={point.label}>
+      <TooltipValueRow label={t('Unsafe')} value={formatNumber(point.unsafe)} />
+      <TooltipValueRow label={t('Errors')} value={formatNumber(point.errors)} />
+      <TooltipValueRow label={t('Safe')} value={formatNumber(point.safe)} />
       <TooltipValueRow
-        label={props.translate('Unsafe')}
-        value={formatNumber(point.unsafe)}
-      />
-      <TooltipValueRow
-        label={props.translate('Errors')}
-        value={formatNumber(point.errors)}
-      />
-      <TooltipValueRow
-        label={props.translate('Safe')}
-        value={formatNumber(point.safe)}
-      />
-      <TooltipValueRow
-        label={props.translate('Not reviewed')}
+        label={t('Not reviewed')}
         value={formatNumber(point.not_reviewed)}
       />
       <TooltipValueRow
-        label={props.translate('Affected users')}
+        label={t('Affected users')}
         value={formatNumber(props.affectedUsers)}
       />
       <div className='mt-2 border-t pt-2'>
-        <TooltipValueRow
-          label={props.translate('Total')}
-          value={formatNumber(point.total)}
-        />
+        <TooltipValueRow label={t('Total')} value={formatNumber(point.total)} />
       </div>
     </TooltipBox>
   )
 }
 
 export function ChannelResultTooltip(
-  props: Partial<TooltipContentProps<number, string>> & {
-    readonly translate: TFunction
-  }
+  props: Partial<TooltipContentProps<number, string>>
 ) {
+  const { t } = useTranslation()
   if (!props.active || !props.payload?.length) return null
   const point = props.payload[0]?.payload
   if (!isChannelChartRow(point)) return null
 
   return (
     <TooltipBox title={point.label}>
-      <TooltipValueRow
-        label={props.translate('Unsafe')}
-        value={formatNumber(point.unsafe)}
-      />
-      <TooltipValueRow
-        label={props.translate('Errors')}
-        value={formatNumber(point.errors)}
-      />
-      <TooltipValueRow
-        label={props.translate('Safe')}
-        value={formatNumber(point.safe)}
-      />
+      <TooltipValueRow label={t('Unsafe')} value={formatNumber(point.unsafe)} />
+      <TooltipValueRow label={t('Errors')} value={formatNumber(point.errors)} />
+      <TooltipValueRow label={t('Safe')} value={formatNumber(point.safe)} />
       <div className='mt-2 border-t pt-2'>
-        <TooltipValueRow
-          label={props.translate('Total')}
-          value={formatNumber(point.total)}
-        />
+        <TooltipValueRow label={t('Total')} value={formatNumber(point.total)} />
       </div>
     </TooltipBox>
   )
 }
 
 export function SourceTooltip(
-  props: Partial<TooltipContentProps<number, string>> & {
-    readonly translate: TFunction
-  }
+  props: Partial<TooltipContentProps<number, string>>
 ) {
+  const { t } = useTranslation()
   if (!props.active || !props.payload?.length) return null
   const point = props.payload[0]?.payload
   if (!isSourceChartRow(point)) return null
@@ -203,7 +178,7 @@ export function SourceTooltip(
               className='size-2 rounded-full'
               style={{ backgroundColor: SOURCE_COLORS[key] }}
             />
-            {sourceLabel(props.translate, key)}
+            {sourceLabel(t, key)}
           </span>
           <span className='tabular-nums'>
             {formatNumber(point[key])} ·{' '}
@@ -212,7 +187,7 @@ export function SourceTooltip(
         </div>
       ))}
       <div className='mt-2 border-t pt-2 font-medium tabular-nums'>
-        {props.translate('Total')}: {formatNumber(point.total)}
+        {t('Total')}: {formatNumber(point.total)}
       </div>
     </TooltipBox>
   )

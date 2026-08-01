@@ -1,3 +1,4 @@
+// allow: SIZE_OK -- cache behavior fixtures and concurrency probes share the same test seam.
 package service
 
 import (
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -238,6 +240,69 @@ func TestRiskReviewCacheService_Review_coalescesConcurrentSameKey(t *testing.T) 
 	assert.Equal(t, RiskReviewSourceInflight, follower.outcome.Source)
 	assert.Equal(t, leader.outcome.Result, follower.outcome.Result)
 	assert.EqualValues(t, 1, calls.Load())
+}
+
+func TestRiskReviewCacheService_Review_coalescesAcrossInstances(t *testing.T) {
+	useRiskModerationMiniRedis(t)
+	leaderStore := newFakeRiskReviewCacheStore()
+	followerStore := newFakeRiskReviewCacheStore()
+	followerCacheChecked := make(chan struct{})
+	followerStore.onGet = func(call int) {
+		if call == 2 {
+			close(followerCacheChecked)
+		}
+	}
+	leaderService := newRiskReviewCacheServiceWithRedis(leaderStore, "distributed-flight-secret", common.RDB, func() bool { return true })
+	followerService := newRiskReviewCacheServiceWithRedis(followerStore, "distributed-flight-secret", common.RDB, func() bool { return true })
+	providerStarted := make(chan struct{})
+	releaseProvider := make(chan struct{})
+	followerCalled := make(chan struct{}, 1)
+	var calls atomic.Int32
+
+	leaderResult := make(chan RiskReviewOutcome, 1)
+	leaderError := make(chan error, 1)
+	go func() {
+		outcome, err := leaderService.Review(context.Background(), RiskReviewCacheInput{Content: "same text", PolicyVersion: "v1"}, func(context.Context) (RiskReviewResult, error) {
+			calls.Add(1)
+			close(providerStarted)
+			<-releaseProvider
+			return RiskReviewResult{Status: RiskReviewSafe, ProviderID: 7, Usage: RiskReviewUsage{Neurons: 3}}, nil
+		})
+		leaderResult <- outcome
+		leaderError <- err
+	}()
+	<-providerStarted
+
+	followerResult := make(chan RiskReviewOutcome, 1)
+	followerError := make(chan error, 1)
+	go func() {
+		outcome, err := followerService.Review(context.Background(), RiskReviewCacheInput{Content: "same text", PolicyVersion: "v1"}, func(context.Context) (RiskReviewResult, error) {
+			followerCalled <- struct{}{}
+			return RiskReviewResult{Status: RiskReviewSafe}, nil
+		})
+		followerResult <- outcome
+		followerError <- err
+	}()
+
+	select {
+	case <-followerCalled:
+		require.Fail(t, "follower called provider while distributed flight was active")
+	case <-followerCacheChecked:
+	}
+	close(releaseProvider)
+
+	leader := <-leaderResult
+	leaderErr := <-leaderError
+	follower := <-followerResult
+	followerErr := <-followerError
+
+	require.NoError(t, leaderErr)
+	require.NoError(t, followerErr)
+	assert.Equal(t, RiskReviewSourceProvider, leader.Source)
+	assert.Equal(t, RiskReviewSourceInflight, follower.Source)
+	assert.EqualValues(t, 1, calls.Load())
+	assert.Zero(t, follower.Result.ProviderID)
+	assert.Zero(t, follower.Result.Usage)
 }
 
 func TestRiskReviewCacheService_Review_sanitizesInflightProviderErrors(t *testing.T) {
