@@ -145,6 +145,9 @@ func (s *RiskReviewCacheService) Review(ctx context.Context, input RiskReviewCac
 			outcome.Result = cloneRiskReviewResult(result)
 		}
 		if flight.Err != nil {
+			if source == RiskReviewSourceInflight {
+				outcome.Result = sanitizeRiskReviewResult(outcome.Result)
+			}
 			return outcome, fmt.Errorf("review risk content: %w", flight.Err)
 		}
 		result, ok := flight.Val.(RiskReviewResult)

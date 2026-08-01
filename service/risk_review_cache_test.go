@@ -239,3 +239,65 @@ func TestRiskReviewCacheService_Review_coalescesConcurrentSameKey(t *testing.T) 
 	assert.Equal(t, leader.outcome.Result, follower.outcome.Result)
 	assert.EqualValues(t, 1, calls.Load())
 }
+
+func TestRiskReviewCacheService_Review_sanitizesInflightProviderErrors(t *testing.T) {
+	// Given
+	store := newFakeRiskReviewCacheStore()
+	followerCacheChecked := make(chan struct{})
+	store.onGet = func(call int) {
+		if call == 2 {
+			close(followerCacheChecked)
+		}
+	}
+	service := newRiskReviewCacheService(store, "fixed-secret")
+	providerStarted := make(chan struct{})
+	releaseProvider := make(chan struct{})
+	providerErr := errors.New("provider unavailable")
+	providerResult := RiskReviewResult{
+		Status: RiskReviewError, ProviderID: 7, ProviderName: "secret-provider", ProviderType: "cloudflare",
+		Usage: RiskReviewUsage{PromptTokens: 3, TotalTokens: 3},
+	}
+	var calls atomic.Int32
+	input := RiskReviewCacheInput{Content: "same error text", PolicyVersion: "v1"}
+	type response struct {
+		outcome RiskReviewOutcome
+		err     error
+	}
+	leaderResult := make(chan response, 1)
+	followerResult := make(chan response, 1)
+
+	// When
+	go func() {
+		outcome, err := service.Review(context.Background(), input, func(context.Context) (RiskReviewResult, error) {
+			calls.Add(1)
+			close(providerStarted)
+			<-releaseProvider
+			return providerResult, providerErr
+		})
+		leaderResult <- response{outcome: outcome, err: err}
+	}()
+	<-providerStarted
+	go func() {
+		outcome, err := service.Review(context.Background(), input, func(context.Context) (RiskReviewResult, error) {
+			calls.Add(1)
+			return RiskReviewResult{Status: RiskReviewSafe}, nil
+		})
+		followerResult <- response{outcome: outcome, err: err}
+	}()
+	<-followerCacheChecked
+	close(releaseProvider)
+	leader := <-leaderResult
+	follower := <-followerResult
+
+	// Then
+	require.ErrorIs(t, leader.err, providerErr)
+	assert.Equal(t, providerResult, leader.outcome.Result)
+	assert.Equal(t, RiskReviewSourceProvider, leader.outcome.Source)
+	require.ErrorIs(t, follower.err, providerErr)
+	assert.Equal(t, RiskReviewSourceInflight, follower.outcome.Source)
+	assert.Zero(t, follower.outcome.Result.ProviderID)
+	assert.Empty(t, follower.outcome.Result.ProviderName)
+	assert.Empty(t, follower.outcome.Result.ProviderType)
+	assert.Zero(t, follower.outcome.Result.Usage)
+	assert.EqualValues(t, 1, calls.Load())
+}
