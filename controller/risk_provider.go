@@ -338,15 +338,15 @@ func toRiskProviderResponse(ctx context.Context, provider *model.RiskProvider) R
 		if service.RiskProviderCircuitOpen(provider.Id) {
 			response.CurrentStatus = service.RiskProviderStatusCircuitOpen
 		}
-		if provider.ProviderType == model.RiskProviderCloudflare {
-			if snapshot, err := service.GetRiskProviderBudgetSnapshot(ctx, provider); err == nil {
-				response.DailyNeuronsUsed = snapshot.Used
-				response.DailyNeuronsReserved = snapshot.Reserved
-				response.DailyNeuronsRemaining = maxInt64(dailyLimit-snapshot.Used-snapshot.Reserved, 0)
-				response.DailyNeuronsResetAt = &snapshot.ReadyAt
-				if snapshot.Exhausted {
-					response.CurrentStatus = service.RiskProviderStatusDailyExhausted
-				}
+	}
+	if provider.ProviderType == model.RiskProviderCloudflare {
+		if snapshot, err := service.GetRiskProviderBudgetSnapshot(ctx, provider); err == nil {
+			response.DailyNeuronsUsed = snapshot.Used
+			response.DailyNeuronsReserved = snapshot.Reserved
+			response.DailyNeuronsRemaining = maxInt64(dailyLimit-snapshot.Used-snapshot.Reserved, 0)
+			response.DailyNeuronsResetAt = &snapshot.ReadyAt
+			if provider.Active && snapshot.Exhausted {
+				response.CurrentStatus = service.RiskProviderStatusDailyExhausted
 			}
 		}
 	}

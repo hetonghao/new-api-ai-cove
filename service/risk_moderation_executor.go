@@ -247,9 +247,11 @@ func (e *RiskModerationExecutor) executeProviderReview(
 		if err := reviewCtx.Err(); err != nil {
 			return RiskReviewResult{}, err
 		}
+		wasCalled := providerCalled.Load()
+		providerCalled.Store(true)
 		result, err := e.reviewer(reviewCtx, input.Provider, content)
-		if !isRiskProviderLocalBudgetUnavailable(err) {
-			providerCalled.Store(true)
+		if isRiskProviderLocalBudgetUnavailable(err) && !wasCalled {
+			providerCalled.Store(false)
 		}
 		return result, err
 	}

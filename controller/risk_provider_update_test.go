@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -54,6 +55,29 @@ func TestRiskProviderAPIWorkflowKeepsCredentialsMasked(t *testing.T) {
 
 	deleted := callRiskProviderHandler(t, riskProviderTestCall{Method: http.MethodDelete, Target: "/api/risk/providers/1", Id: created.Id, Handler: DeleteRiskProvider})
 	require.True(t, deleted.Success, deleted.Message)
+}
+
+func TestListRiskProvidersReportsUnusedQuotaWhenProviderIsDisabled(t *testing.T) {
+	setupRiskProviderControllerTest(t)
+	ciphertext, err := common.EncryptCredential("cf-secret-token")
+	require.NoError(t, err)
+	provider := &model.RiskProvider{
+		Name: "Cloudflare disabled", ProviderType: model.RiskProviderCloudflare,
+		AccountID: "0123456789abcdef0123456789abcdef", Model: "@cf/meta/llama-guard-3-8b",
+		CredentialEncrypted: ciphertext, DailyNeuronsLimit: 10000,
+	}
+	require.NoError(t, model.CreateRiskProvider(provider))
+
+	response := callRiskProviderHandler(t, riskProviderTestCall{
+		Method: http.MethodGet, Target: "/api/risk/providers/", Handler: ListRiskProviders,
+	})
+	require.True(t, response.Success, response.Message)
+	var providers []RiskProviderResponse
+	require.NoError(t, common.Unmarshal(response.Data, &providers))
+	require.Len(t, providers, 1)
+	assert.False(t, providers[0].Active)
+	assert.Equal(t, int64(10000), providers[0].DailyNeuronsRemaining)
+	assert.Equal(t, service.RiskProviderStatusNormal, providers[0].CurrentStatus)
 }
 
 func TestUpdateRiskProviderRevokesValidationWhenConnectionChanges(t *testing.T) {

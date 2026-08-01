@@ -80,6 +80,25 @@ func TestRiskModerationExecutor_Execute_doesNotCacheFullReviewErrors(t *testing.
 	assert.Zero(t, setCalls)
 }
 
+func TestRiskModerationExecutor_Execute_keepsProviderCallAfterLaterBudgetFailure(t *testing.T) {
+	cache := newRiskReviewCacheService(newFakeRiskReviewCacheStore(), "full-budget-call-test-secret")
+	reviewer := func(_ context.Context, _ *model.RiskProvider, chunk string) (RiskReviewResult, error) {
+		if chunk == "cd" {
+			return RiskReviewResult{}, ErrRiskProviderBudgetUnavailable
+		}
+		return RiskReviewResult{Status: RiskReviewSafe}, nil
+	}
+	executor := newRiskModerationExecutor(riskModerationExecutorDeps{Cache: cache, Reviewer: reviewer, Now: time.Now})
+
+	outcome, err := executor.Execute(context.Background(), RiskModerationInput{
+		Provider: riskModerationProviderForTest(), Content: "abcdef", ReviewMode: model.RiskReviewFull, FullReviewChunkRunes: 2,
+	})
+
+	require.ErrorIs(t, err, ErrRiskModerationNoAvailableProvider)
+	assert.Equal(t, RiskReviewSourceProvider, outcome.Source)
+	assert.True(t, outcome.ProviderCalled)
+}
+
 func TestRiskModerationExecutor_Execute_fallsThroughWhenCacheFails(t *testing.T) {
 	// Given
 	store := newFakeRiskReviewCacheStore()
