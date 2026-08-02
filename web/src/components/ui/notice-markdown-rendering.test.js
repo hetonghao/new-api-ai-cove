@@ -1,35 +1,48 @@
-import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const noticeModalSource = readFileSync(join(__dirname, 'NoticeModal.jsx'), 'utf8');
-const announcementsPanelSource = readFileSync(
-  join(__dirname, '../dashboard/AnnouncementsPanel.jsx'),
-  'utf8',
-);
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const notificationPopoverSource = readFileSync(
+  join(__dirname, '../notification-popover.tsx'),
+  'utf8'
+)
+const announcementDetailSource = readFileSync(
+  join(
+    __dirname,
+    '../../features/dashboard/components/overview/announcement-detail-dialog.tsx'
+  ),
+  'utf8'
+)
 
-test('classic system notice uses shared MarkdownRenderer instead of marked HTML injection', () => {
+test('system notice and announcements use shared RichContent rendering', () => {
   assert.match(
-    noticeModalSource,
-    /import MarkdownRenderer from '\.\.\/common\/markdown\/MarkdownRenderer';/,
-  );
-  assert.match(noticeModalSource, /<MarkdownRenderer[\s\S]*content=\{noticeContent\}/);
-  assert.doesNotMatch(noticeModalSource, /marked\.parse/);
-  assert.doesNotMatch(noticeModalSource, /dangerouslySetInnerHTML/);
-});
+    notificationPopoverSource,
+    /import\('@\/components\/rich-content'\)[\s\S]*module\.RichContent/
+  )
+  assert.match(
+    notificationPopoverSource,
+    /<RichContent breaks content=\{notice\} \/>/
+  )
+  assert.match(
+    notificationPopoverSource,
+    /<RichContent breaks content=\{item\.content \|\| ''\} \/>/
+  )
+  assert.doesNotMatch(notificationPopoverSource, /marked\.parse/)
+  assert.doesNotMatch(notificationPopoverSource, /dangerouslySetInnerHTML/)
+})
 
-test('classic announcements panel uses shared MarkdownRenderer instead of marked HTML injection', () => {
+test('announcement details use shared RichContent rendering', () => {
   assert.match(
-    announcementsPanelSource,
-    /import MarkdownRenderer from '\.\.\/common\/markdown\/MarkdownRenderer';/,
-  );
+    announcementDetailSource,
+    /import \{ RichContent \} from '@\/components\/rich-content'/
+  )
   assert.match(
-    announcementsPanelSource,
-    /<MarkdownRenderer[\s\S]*content=\{item\.content \|\| ''\}/,
-  );
-  assert.doesNotMatch(announcementsPanelSource, /marked\.parse/);
-  assert.doesNotMatch(announcementsPanelSource, /dangerouslySetInnerHTML/);
-});
+    announcementDetailSource,
+    /<RichContent breaks content=\{announcement\.content\} \/>/
+  )
+  assert.doesNotMatch(announcementDetailSource, /marked\.parse/)
+  assert.doesNotMatch(announcementDetailSource, /dangerouslySetInnerHTML/)
+})

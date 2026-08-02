@@ -204,7 +204,7 @@ func GetSalesLogs(salesUserID int, logType int, startTimestamp int64, endTimesta
 	if err = tx.Order("logs.id desc").Limit(num).Offset(startIdx).Find(&logs).Error; err != nil {
 		return nil, 0, err
 	}
-	formatUserLogs(logs, startIdx)
+	formatUserLogs(logs, startIdx, false)
 	return logs, total, nil
 }
 
