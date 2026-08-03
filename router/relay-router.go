@@ -70,18 +70,25 @@ func SetRelayRouter(router *gin.Engine) {
 	relayV1Router.Use(middleware.RouteTag("relay"))
 	relayV1Router.Use(middleware.SystemPerformanceCheck())
 	relayV1Router.Use(middleware.TokenAuth())
-	relayV1Router.Use(middleware.ModelRequestRateLimit())
 	{
-		// WebSocket 路由（统一到 Relay）
+		// Realtime 语音 WebSocket 路由
 		wsRouter := relayV1Router.Group("")
+		wsRouter.Use(middleware.ModelRequestRateLimit())
 		wsRouter.Use(middleware.Distribute())
 		wsRouter.GET("/realtime", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatOpenAIRealtime)
 		})
 	}
 	{
+		// 非语音 Responses WebSocket：模型来自首个 response.create，不能在握手前使用 Distribute。
+		responsesWsRouter := relayV1Router.Group("")
+		responsesWsRouter.Use(middleware.ResponsesWebSocketPreflight())
+		responsesWsRouter.GET("/responses", controller.ResponsesWebSocket)
+	}
+	{
 		// http router
 		httpRouter := relayV1Router.Group("")
+		httpRouter.Use(middleware.ModelRequestRateLimit())
 		httpRouter.Use(middleware.Distribute())
 
 		// claude related routes

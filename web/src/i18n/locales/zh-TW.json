@@ -2045,6 +2045,8 @@
     "Force a syntactically valid JSON response": "強制返回語法合法的 JSON",
     "Force AUTH LOGIN": "強制 AUTH LOGIN",
     "Force Format": "強制格式化",
+    "Supports WebSockets": "支援 WebSockets",
+    "Enable non-voice Responses WebSocket requests for this OpenAI channel": "允許此 OpenAI 渠道承接非語音 Responses WebSocket 請求",
     "Force format response to OpenAI standard (OpenAI channel only)": "強制將回應格式化為 OpenAI 標準（僅限 OpenAI 渠道）",
     "Force JSON object or schema-conforming output": "強制輸出 JSON 物件或符合 Schema 的結果",
     "Force SMTP authentication using AUTH LOGIN method": "強制使用 AUTH LOGIN 方法進行 SMTP 認證",

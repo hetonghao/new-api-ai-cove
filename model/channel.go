@@ -964,6 +964,10 @@ func (channel *Channel) ValidateSettings() error {
 			return err
 		}
 	}
+	if channel.Type != constant.ChannelTypeOpenAI && channelOtherSettings.SupportsWebSockets {
+		channelOtherSettings.SupportsWebSockets = false
+		channel.SetOtherSettings(*channelOtherSettings)
+	}
 	if channel.Type == constant.ChannelTypeAdvancedCustom {
 		if channelOtherSettings.AdvancedCustom == nil {
 			return fmt.Errorf("advanced_custom is required")
@@ -1018,6 +1022,9 @@ func (channel *Channel) GetOtherSettings() dto.ChannelOtherSettings {
 }
 
 func (channel *Channel) SetOtherSettings(setting dto.ChannelOtherSettings) {
+	if channel.Type != constant.ChannelTypeOpenAI {
+		setting.SupportsWebSockets = false
+	}
 	settingBytes, err := common.Marshal(setting)
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to marshal setting: channel_id=%d, error=%v", channel.Id, err))

@@ -153,27 +153,33 @@ func Distribute() func(c *gin.Context) {
 }
 
 func validateTokenModelAccess(c *gin.Context, modelName string) bool {
+	if err := CheckTokenModelAccess(c, modelName); err != nil {
+		abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
+		return false
+	}
+	return true
+}
+
+func CheckTokenModelAccess(c *gin.Context, modelName string) error {
 	if !common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled) {
-		return true
+		return nil
 	}
 	value, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
 	if !ok {
-		abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenNoModelAccess))
-		return false
+		return errors.New(i18n.T(c, i18n.MsgDistributorTokenNoModelAccess))
 	}
 	tokenModelLimit, ok := value.(map[string]bool)
 	if !ok {
 		tokenModelLimit = map[string]bool{}
 	}
 	if _, ok := tokenModelLimit[modelName]; ok {
-		return true
+		return nil
 	}
 	matchName := ratio_setting.FormatMatchingModelName(modelName)
 	if _, ok := tokenModelLimit[matchName]; ok {
-		return true
+		return nil
 	}
-	abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelName}))
-	return false
+	return errors.New(i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelName}))
 }
 
 // channelSupportsRequestPath reports whether a channel can serve the request path.

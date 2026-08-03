@@ -2107,6 +2107,8 @@
     "Force a syntactically valid JSON response": "Force a syntactically valid JSON response",
     "Force AUTH LOGIN": "Force AUTH LOGIN",
     "Force Format": "Force Format",
+    "Supports WebSockets": "Supports WebSockets",
+    "Enable non-voice Responses WebSocket requests for this OpenAI channel": "Enable non-voice Responses WebSocket requests for this OpenAI channel",
     "Force format response to OpenAI standard (OpenAI channel only)": "Force format response to OpenAI standard (OpenAI channel only)",
     "Force JSON object or schema-conforming output": "Force JSON object or schema-conforming output",
     "Force SMTP authentication using AUTH LOGIN method": "Force SMTP authentication using AUTH LOGIN method",

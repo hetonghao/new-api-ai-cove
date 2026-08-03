@@ -10,6 +10,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestToWebSocketURL_converts_supported_schemes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "http", input: "http://example.com/v1/responses?x=1", want: "ws://example.com/v1/responses?x=1"},
+		{name: "https", input: "https://example.com/v1/responses", want: "wss://example.com/v1/responses"},
+		{name: "ws", input: "ws://example.com/v1/responses", want: "ws://example.com/v1/responses"},
+		{name: "wss", input: "wss://example.com/v1/responses", want: "wss://example.com/v1/responses"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := toWebSocketURL(test.input)
+			require.NoError(t, err)
+			require.Equal(t, test.want, got)
+		})
+	}
+}
+
+func TestToWebSocketURL_rejects_unsupported_scheme(t *testing.T) {
+	t.Parallel()
+
+	_, err := toWebSocketURL("ftp://example.com/v1/responses")
+	require.ErrorContains(t, err, "unsupported websocket url scheme")
+}
+
 func TestProcessHeaderOverride_ChannelTestSkipsPassthroughRules(t *testing.T) {
 	t.Parallel()
 

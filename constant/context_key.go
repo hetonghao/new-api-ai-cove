@@ -69,6 +69,13 @@ const (
 	ContextKeyLanguage ContextKey = "language"
 	ContextKeyIsStream ContextKey = "is_stream"
 
+	ContextKeyRelayTransport             ContextKey = "relay_transport"
+	ContextKeyWebSocketUpstreamConnectMs ContextKey = "websocket_upstream_connect_ms"
+	ContextKeyWebSocketFirstEventMs      ContextKey = "websocket_first_event_ms"
+	ContextKeyWebSocketFirstOutputMs     ContextKey = "websocket_first_output_ms"
+	ContextKeyWebSocketCompleteMs        ContextKey = "websocket_complete_ms"
+	ContextKeyWebSocketCloseReason       ContextKey = "websocket_close_reason"
+
 	// ContextKeyAuditLogged marks that the current request has already recorded
 	// a manage/operation audit log inside the handler. When set, the admin-audit
 	// fallback in authHelper (finishAdminAudit) skips its record to avoid

@@ -68,3 +68,17 @@ func (l *InMemoryRateLimiter) Request(key string, maxRequestNum int, duration in
 	}
 	return true
 }
+
+// CanRequest checks the current window without consuming a request slot.
+func (l *InMemoryRateLimiter) CanRequest(key string, maxRequestNum int, duration int64) bool {
+	if maxRequestNum <= 0 {
+		return true
+	}
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	queue, ok := l.store[key]
+	if !ok || len(*queue) < maxRequestNum {
+		return true
+	}
+	return time.Now().Unix()-(*queue)[0] >= duration
+}

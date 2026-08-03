@@ -111,10 +111,10 @@ func SyncChannelCache(frequency int) {
 	}
 }
 
-func GetRandomSatisfiedChannel(group string, model string, retry int, requestPath string) (*Channel, error) {
+func GetRandomSatisfiedChannel(group string, model string, retry int, requestPath string, requireWebSockets bool, excludedChannelIDs map[int]bool) (*Channel, error) {
 	// if memory cache is disabled, get channel directly from database
 	if !common.MemoryCacheEnabled {
-		return GetChannel(group, model, retry, requestPath)
+		return GetChannel(group, model, retry, requestPath, requireWebSockets, excludedChannelIDs)
 	}
 
 	channelSyncLock.RLock()
@@ -122,11 +122,15 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 
 	// First, try to find channels with the exact model name.
 	channels := filterChannelsByRequestPathAndModel(group2model2channels[group][model], requestPath, model)
+	channels = filterChannelsByWebSocketCapability(channels, requireWebSockets)
+	channels = filterExcludedChannels(channels, excludedChannelIDs)
 
 	// If no channels found, try to find channels with the normalized model name.
 	if len(channels) == 0 {
 		normalizedModel := ratio_setting.FormatMatchingModelName(model)
 		channels = filterChannelsByRequestPathAndModel(group2model2channels[group][normalizedModel], requestPath, model)
+		channels = filterChannelsByWebSocketCapability(channels, requireWebSockets)
+		channels = filterExcludedChannels(channels, excludedChannelIDs)
 	}
 
 	if len(channels) == 0 {
@@ -206,6 +210,64 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 	}
 	// return null if no channel is not found
 	return nil, errors.New("channel not found")
+}
+
+func filterExcludedChannels(channels []int, excluded map[int]bool) []int {
+	if len(excluded) == 0 || len(channels) == 0 {
+		return channels
+	}
+	filtered := make([]int, 0, len(channels))
+	for _, channelID := range channels {
+		if !excluded[channelID] {
+			filtered = append(filtered, channelID)
+		}
+	}
+	return filtered
+}
+
+func filterChannelsByWebSocketCapability(channels []int, required bool) []int {
+	if !required || len(channels) == 0 {
+		return channels
+	}
+	filtered := make([]int, 0, len(channels))
+	for _, channelID := range channels {
+		channel, ok := channelsIDM[channelID]
+		if ok && channel.Type == constant.ChannelTypeOpenAI && channel.GetOtherSettings().SupportsWebSockets {
+			filtered = append(filtered, channelID)
+		}
+	}
+	return filtered
+}
+
+func ChannelSupportsResponsesWebSocket(channel *Channel) bool {
+	return channel != nil &&
+		channel.Status == common.ChannelStatusEnabled &&
+		channel.Type == constant.ChannelTypeOpenAI &&
+		channel.GetOtherSettings().SupportsWebSockets
+}
+
+func HasEnabledResponsesWebSocketChannel() (bool, error) {
+	if common.MemoryCacheEnabled {
+		channelSyncLock.RLock()
+		defer channelSyncLock.RUnlock()
+		for _, channel := range channelsIDM {
+			if ChannelSupportsResponsesWebSocket(channel) {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+
+	var channels []Channel
+	if err := DB.Where("status = ? AND type = ?", common.ChannelStatusEnabled, constant.ChannelTypeOpenAI).Find(&channels).Error; err != nil {
+		return false, err
+	}
+	for i := range channels {
+		if ChannelSupportsResponsesWebSocket(&channels[i]) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // filterChannelsByRequestPathAndModel restricts candidates by request path and

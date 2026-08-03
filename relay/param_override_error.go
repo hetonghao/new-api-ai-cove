@@ -6,6 +6,10 @@ import (
 )
 
 func newAPIErrorFromParamOverride(err error) *types.NewAPIError {
+	return NewAPIErrorFromParamOverride(err)
+}
+
+func NewAPIErrorFromParamOverride(err error) *types.NewAPIError {
 	if fixedErr, ok := relaycommon.AsParamOverrideReturnError(err); ok {
 		return relaycommon.NewAPIErrorFromParamOverride(fixedErr)
 	}

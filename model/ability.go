@@ -105,7 +105,10 @@ func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
 	return channelQuery, nil
 }
 
-func GetChannel(group string, model string, retry int, requestPath string) (*Channel, error) {
+func GetChannel(group string, model string, retry int, requestPath string, requireWebSockets bool, excludedChannelIDs map[int]bool) (*Channel, error) {
+	if requireWebSockets {
+		return getWebSocketChannel(group, model, retry, requestPath, excludedChannelIDs)
+	}
 	var abilities []Ability
 
 	var err error = nil
@@ -144,6 +147,92 @@ func GetChannel(group string, model string, retry int, requestPath string) (*Cha
 	}
 	err = DB.First(&channel, "id = ?", channel.Id).Error
 	return &channel, err
+}
+
+func getWebSocketChannel(group string, model string, retry int, requestPath string, excludedChannelIDs map[int]bool) (*Channel, error) {
+	var abilities []Ability
+	if err := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).
+		Order("priority DESC, weight DESC").Find(&abilities).Error; err != nil {
+		return nil, err
+	}
+	abilities = filterAbilitiesByRequestPathAndModel(abilities, requestPath, model)
+	abilities = filterAbilitiesByWebSocketCapability(abilities, excludedChannelIDs)
+	if len(abilities) == 0 {
+		return nil, nil
+	}
+
+	priorities := make([]int64, 0)
+	seen := make(map[int64]struct{})
+	for _, ability := range abilities {
+		priority := lo.FromPtrOr(ability.Priority, int64(0))
+		if _, ok := seen[priority]; ok {
+			continue
+		}
+		seen[priority] = struct{}{}
+		priorities = append(priorities, priority)
+	}
+	if retry >= len(priorities) {
+		retry = len(priorities) - 1
+	}
+	targetPriority := priorities[retry]
+	var eligible []Ability
+	for _, ability := range abilities {
+		if lo.FromPtrOr(ability.Priority, int64(0)) == targetPriority {
+			eligible = append(eligible, ability)
+		}
+	}
+
+	weightSum := 0
+	for _, ability := range eligible {
+		weightSum += int(ability.Weight) + 10
+	}
+	weight := common.GetRandomInt(weightSum)
+	channelID := eligible[len(eligible)-1].ChannelId
+	for _, ability := range eligible {
+		weight -= int(ability.Weight) + 10
+		if weight <= 0 {
+			channelID = ability.ChannelId
+			break
+		}
+	}
+	var channel Channel
+	if err := DB.First(&channel, "id = ?", channelID).Error; err != nil {
+		return nil, err
+	}
+	return &channel, nil
+}
+
+func filterAbilitiesByWebSocketCapability(abilities []Ability, excludedChannelIDs map[int]bool) []Ability {
+	if len(abilities) == 0 {
+		return abilities
+	}
+	channelIDs := make([]int, 0, len(abilities))
+	for _, ability := range abilities {
+		if excludedChannelIDs[ability.ChannelId] {
+			continue
+		}
+		channelIDs = append(channelIDs, ability.ChannelId)
+	}
+	var channels []Channel
+	if err := DB.Where("id IN ? AND type = ? AND status = ?", channelIDs, constant.ChannelTypeOpenAI, common.ChannelStatusEnabled).Find(&channels).Error; err != nil {
+		return nil
+	}
+	enabled := make(map[int]struct{}, len(channels))
+	for _, channel := range channels {
+		if channel.GetOtherSettings().SupportsWebSockets {
+			enabled[channel.Id] = struct{}{}
+		}
+	}
+	filtered := make([]Ability, 0, len(abilities))
+	for _, ability := range abilities {
+		if excludedChannelIDs[ability.ChannelId] {
+			continue
+		}
+		if _, ok := enabled[ability.ChannelId]; ok {
+			filtered = append(filtered, ability)
+		}
+	}
+	return filtered
 }
 
 // filterAbilitiesByRequestPathAndModel restricts candidates by request path and

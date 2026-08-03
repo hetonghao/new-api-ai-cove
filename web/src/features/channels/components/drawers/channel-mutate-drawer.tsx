@@ -4094,30 +4094,56 @@ export function ChannelMutateDrawer({
                           >
                             <div className='divide-border space-y-0 divide-y border-y'>
                               {currentType === 1 && (
-                                <FormField
-                                  control={form.control}
-                                  name='force_format'
-                                  render={({ field }) => (
-                                    <FormItem className='flex items-center justify-between px-4 py-3'>
-                                      <div className='space-y-0.5'>
-                                        <FormLabel>
-                                          {t('Force Format')}
-                                        </FormLabel>
-                                        <FormDescription>
-                                          {t(
-                                            'Force format response to OpenAI standard (OpenAI channel only)'
-                                          )}
-                                        </FormDescription>
-                                      </div>
-                                      <FormControl>
-                                        <Switch
-                                          checked={field.value}
-                                          onCheckedChange={field.onChange}
-                                        />
-                                      </FormControl>
-                                    </FormItem>
-                                  )}
-                                />
+                                <>
+                                  <FormField
+                                    control={form.control}
+                                    name='supports_websockets'
+                                    render={({ field }) => (
+                                      <FormItem className='flex items-center justify-between px-4 py-3'>
+                                        <div className='space-y-0.5'>
+                                          <FormLabel>
+                                            {t('Supports WebSockets')}
+                                          </FormLabel>
+                                          <FormDescription>
+                                            {t(
+                                              'Enable non-voice Responses WebSocket requests for this OpenAI channel'
+                                            )}
+                                          </FormDescription>
+                                        </div>
+                                        <FormControl>
+                                          <Switch
+                                            checked={field.value}
+                                            onCheckedChange={field.onChange}
+                                          />
+                                        </FormControl>
+                                      </FormItem>
+                                    )}
+                                  />
+                                  <FormField
+                                    control={form.control}
+                                    name='force_format'
+                                    render={({ field }) => (
+                                      <FormItem className='flex items-center justify-between px-4 py-3'>
+                                        <div className='space-y-0.5'>
+                                          <FormLabel>
+                                            {t('Force Format')}
+                                          </FormLabel>
+                                          <FormDescription>
+                                            {t(
+                                              'Force format response to OpenAI standard (OpenAI channel only)'
+                                            )}
+                                          </FormDescription>
+                                        </div>
+                                        <FormControl>
+                                          <Switch
+                                            checked={field.value}
+                                            onCheckedChange={field.onChange}
+                                          />
+                                        </FormControl>
+                                      </FormItem>
+                                    )}
+                                  />
+                                </>
                               )}
 
                               <FormField
@@ -4259,9 +4285,7 @@ export function ChannelMutateDrawer({
                                         <SelectValue />
                                       </SelectTrigger>
                                     </FormControl>
-                                    <SelectContent
-                                      alignItemWithTrigger={false}
-                                    >
+                                    <SelectContent alignItemWithTrigger={false}>
                                       <SelectGroup>
                                         <SelectItem value='auto'>
                                           {t('Auto')}

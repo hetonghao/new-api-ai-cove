@@ -2045,6 +2045,8 @@
     "Force a syntactically valid JSON response": "Buộc phản hồi JSON hợp lệ về cú pháp",
     "Force AUTH LOGIN": "Bắt buộc AUTH LOGIN",
     "Force Format": "Buộc định dạng",
+    "Supports WebSockets": "Hỗ trợ WebSockets",
+    "Enable non-voice Responses WebSocket requests for this OpenAI channel": "Cho phép kênh OpenAI này xử lý yêu cầu Responses WebSocket không phải giọng nói",
     "Force format response to OpenAI standard (OpenAI channel only)": "Buộc định dạng phản hồi theo tiêu chuẩn OpenAI (chỉ kênh OpenAI)",
     "Force JSON object or schema-conforming output": "Bắt buộc xuất JSON hoặc theo schema",
     "Force SMTP authentication using AUTH LOGIN method": "Bắt buộc xác thực SMTP sử dụng phương thức AUTH LOGIN",

@@ -625,7 +625,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 		info.RelayMode == relayconstant.RelayModeAudioTranslation ||
 		(info.RelayMode == relayconstant.RelayModeImagesEdits && !isJSONRequest(c)) {
 		return channel.DoFormRequest(a, c, info, requestBody)
-	} else if info.RelayMode == relayconstant.RelayModeRealtime {
+	} else if info.RelayMode == relayconstant.RelayModeRealtime || info.IsResponsesWebSocket {
 		return channel.DoWssRequest(a, c, info, requestBody)
 	} else {
 		return channel.DoApiRequest(a, c, info, requestBody)

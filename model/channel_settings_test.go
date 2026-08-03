@@ -41,6 +41,38 @@ func TestChannelValidateSettingsRejectsInvalidHTTPTransport(t *testing.T) {
 	}
 }
 
+func TestChannelWebSocketCapabilityIsOpenAIOnly(t *testing.T) {
+	tests := []struct {
+		name        string
+		channelType int
+		enabled     bool
+		want        bool
+	}{
+		{name: "missing defaults off", channelType: constant.ChannelTypeOpenAI},
+		{name: "OpenAI persists enabled", channelType: constant.ChannelTypeOpenAI, enabled: true, want: true},
+		{name: "non OpenAI clears enabled", channelType: constant.ChannelTypeAnthropic, enabled: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			channel := &Channel{Type: tt.channelType}
+			channel.SetOtherSettings(dto.ChannelOtherSettings{SupportsWebSockets: tt.enabled})
+
+			assert.Equal(t, tt.want, channel.GetOtherSettings().SupportsWebSockets)
+		})
+	}
+}
+
+func TestChannelValidateSettingsClearsStaleWebSocketCapabilityAfterTypeChange(t *testing.T) {
+	channel := &Channel{
+		Type:          constant.ChannelTypeAnthropic,
+		OtherSettings: `{"supports_websockets":true}`,
+	}
+
+	require.NoError(t, channel.ValidateSettings())
+	assert.False(t, channel.GetOtherSettings().SupportsWebSockets)
+}
+
 func TestAdvancedCustomChannelRequiresModelListRouteOnlyWhenUpdateChecksEnabled(t *testing.T) {
 	inferenceRoute := dto.AdvancedCustomRoute{
 		IncomingPath: "/v1/chat/completions",

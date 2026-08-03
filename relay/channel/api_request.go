@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -23,6 +25,7 @@ import (
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"golang.org/x/net/proxy"
 )
 
 // applyUpstreamContentLength populates req.ContentLength when the upstream
@@ -45,7 +48,7 @@ func applyUpstreamContentLength(req *http.Request, info *common.RelayInfo) {
 func SetupApiRequestHeader(info *common.RelayInfo, c *gin.Context, req *http.Header) {
 	if info.RelayMode == constant.RelayModeAudioTranscription || info.RelayMode == constant.RelayModeAudioTranslation {
 		// multipart/form-data
-	} else if info.RelayMode == constant.RelayModeRealtime {
+	} else if info.RelayMode == constant.RelayModeRealtime || info.IsResponsesWebSocket {
 		// websocket
 	} else {
 		req.Set("Content-Type", c.Request.Header.Get("Content-Type"))
@@ -371,6 +374,10 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	if err != nil {
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
+	fullRequestURL, err = toWebSocketURL(fullRequestURL)
+	if err != nil {
+		return nil, err
+	}
 	targetHeader := http.Header{}
 	err = a.SetupRequestHeader(c, &targetHeader, info)
 	if err != nil {
@@ -386,14 +393,85 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		targetHeader.Set(key, value)
 	}
 	targetHeader.Set("Content-Type", c.Request.Header.Get("Content-Type"))
-	targetConn, _, err := websocket.DefaultDialer.Dial(fullRequestURL, targetHeader)
+	if !info.IsResponsesWebSocket {
+		targetConn, _, err := websocket.DefaultDialer.Dial(fullRequestURL, targetHeader)
+		if err != nil {
+			return nil, fmt.Errorf("dial failed to %s: %w", common.SanitizeURLForLog(fullRequestURL), err)
+		}
+		return targetConn, nil
+	}
+	dialer, err := newWebSocketDialer(info.ChannelSetting.Proxy)
 	if err != nil {
+		return nil, fmt.Errorf("new proxy websocket dialer failed: %w", err)
+	}
+	targetConn, response, err := dialer.DialContext(c.Request.Context(), fullRequestURL, targetHeader)
+	if err != nil {
+		if response != nil && response.Body != nil {
+			_ = response.Body.Close()
+		}
 		return nil, fmt.Errorf("dial failed to %s: %w", common.SanitizeURLForLog(fullRequestURL), err)
+	}
+	if response != nil {
+		if upstreamID := response.Header.Get(common2.RequestIdKey); upstreamID != "" {
+			c.Set(common2.UpstreamRequestIdKey, upstreamID)
+		}
 	}
 	// send request body
 	//all, err := io.ReadAll(requestBody)
 	//err = service.WssString(c, targetConn, string(all))
 	return targetConn, nil
+}
+
+func toWebSocketURL(rawURL string) (string, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("parse websocket url failed: %w", err)
+	}
+	switch parsed.Scheme {
+	case "http":
+		parsed.Scheme = "ws"
+	case "https":
+		parsed.Scheme = "wss"
+	case "ws", "wss":
+	default:
+		return "", fmt.Errorf("unsupported websocket url scheme %q", parsed.Scheme)
+	}
+	return parsed.String(), nil
+}
+
+func newWebSocketDialer(rawProxyURL string) (*websocket.Dialer, error) {
+	dialer := *websocket.DefaultDialer
+	if common2.TLSInsecureSkipVerify && common2.InsecureTLSConfig != nil {
+		dialer.TLSClientConfig = common2.InsecureTLSConfig.Clone()
+	}
+
+	trimmedProxyURL := strings.TrimSpace(rawProxyURL)
+	if trimmedProxyURL == "" {
+		return &dialer, nil
+	}
+	parsedProxyURL, _, err := common2.ParseProxyURLRuntime(trimmedProxyURL)
+	if err != nil {
+		return nil, err
+	}
+	switch parsedProxyURL.Scheme {
+	case "http", "https":
+		dialer.Proxy = http.ProxyURL(parsedProxyURL)
+	case "socks5", "socks5h":
+		forwardDialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+		proxyDialer, err := proxy.FromURL(parsedProxyURL, forwardDialer)
+		if err != nil {
+			return nil, err
+		}
+		contextDialer, ok := proxyDialer.(proxy.ContextDialer)
+		if !ok {
+			return nil, fmt.Errorf("SOCKS proxy dialer does not support context cancellation")
+		}
+		dialer.Proxy = nil
+		dialer.NetDialContext = contextDialer.DialContext
+	default:
+		return nil, fmt.Errorf("unsupported proxy scheme")
+	}
+	return &dialer, nil
 }
 
 func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.CancelFunc, <-chan struct{}) {

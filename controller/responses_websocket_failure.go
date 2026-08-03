@@ -1,0 +1,75 @@
+package controller
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
+	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
+	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
+
+	"github.com/bytedance/gopkg/util/gopool"
+	"github.com/gorilla/websocket"
+)
+
+func responsesWebSocketFailureChannel(channel *model.Channel, err error) *model.Channel {
+	if channel == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return nil
+	}
+	var closeErr *websocket.CloseError
+	if errors.As(err, &closeErr) {
+		switch closeErr.Code {
+		case websocket.CloseNoStatusReceived, websocket.CloseAbnormalClosure, websocket.CloseTLSHandshake:
+			return channel
+		default:
+			return nil
+		}
+	}
+	return channel
+}
+
+func failPreparedResponsesWebSocketRequest(state *responsesWebSocketRequestState, channel *model.Channel, apiErr *types.NewAPIError) {
+	if state == nil {
+		return
+	}
+	if apiErr != nil {
+		apiErr = service.NormalizeViolationFeeError(apiErr)
+		service.ChargeViolationFeeIfNeeded(state.ctx, state.info, apiErr)
+		if channel != nil {
+			processChannelError(state.ctx, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(state.ctx, constant.ContextKeyChannelKey), channel.GetAutoBan()), apiErr)
+		} else {
+			if len(state.ctx.GetStringSlice("use_channel")) == 0 {
+				logger.LogError(state.ctx, fmt.Sprintf("relay error before channel selection (status code: %d): %s", apiErr.StatusCode, common.LocalLogPreview(apiErr.Error())))
+			}
+			recordRelayErrorLog(state.ctx, apiErr)
+		}
+	}
+	if state.info != nil && state.info.Billing != nil {
+		state.info.Billing.Refund(state.ctx)
+	}
+	common.CleanupBodyStorage(state.ctx)
+	gopool.Go(func() {
+		perfmetrics.RecordRelaySample(state.info, false, 0)
+	})
+}
+
+func failResponsesWebSocketRequest(state *responsesWebSocketRequestState, channel *model.Channel, reason string) {
+	if state == nil {
+		return
+	}
+	apiErr := types.NewError(errors.New(reason), types.ErrorCodeDoRequestFailed)
+	failPreparedResponsesWebSocketRequest(state, channel, apiErr)
+}
+
+func asResponsesWebSocketAPIError(err error) *types.NewAPIError {
+	var apiErr *types.NewAPIError
+	if errors.As(err, &apiErr) && apiErr != nil {
+		return apiErr
+	}
+	return types.NewError(err, types.ErrorCodeBadResponse)
+}

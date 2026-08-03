@@ -115,7 +115,30 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	appendBillingInfo(relayInfo, other)
 	appendParamOverrideInfo(relayInfo, other)
 	appendStreamStatus(relayInfo, other)
+	AppendRelayTransportLogInfo(ctx, other)
 	return other
+}
+
+func AppendRelayTransportLogInfo(ctx *gin.Context, other map[string]interface{}) {
+	if ctx == nil || other == nil {
+		return
+	}
+	if transport := common.GetContextKeyString(ctx, constant.ContextKeyRelayTransport); transport != "" {
+		other["transport"] = transport
+	}
+	for key, outputKey := range map[constant.ContextKey]string{
+		constant.ContextKeyWebSocketUpstreamConnectMs: "websocket_upstream_connect_ms",
+		constant.ContextKeyWebSocketFirstEventMs:      "websocket_first_event_ms",
+		constant.ContextKeyWebSocketFirstOutputMs:     "websocket_first_output_ms",
+		constant.ContextKeyWebSocketCompleteMs:        "websocket_complete_ms",
+	} {
+		if value, ok := common.GetContextKey(ctx, key); ok {
+			other[outputKey] = value
+		}
+	}
+	if reason := common.GetContextKeyString(ctx, constant.ContextKeyWebSocketCloseReason); reason != "" {
+		other["websocket_close_reason"] = reason
+	}
 }
 
 func appendParamOverrideInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {

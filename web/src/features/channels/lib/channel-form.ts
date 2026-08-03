@@ -262,6 +262,7 @@ export const channelFormSchema = z
     system_prompt: z.string().optional(),
     system_prompt_override: z.boolean().optional(),
     // Type-specific settings (stored in settings JSON)
+    supports_websockets: z.boolean().optional(), // OpenAI only
     is_enterprise_account: z.boolean().optional(), // OpenRouter specific
     vertex_key_type: z.enum(['json', 'api_key']).optional(), // Vertex AI specific
     aws_key_type: z.enum(['ak_sk', 'api_key']).optional(), // AWS specific
@@ -436,6 +437,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   system_prompt: '',
   system_prompt_override: false,
   // Type-specific settings
+  supports_websockets: false,
   is_enterprise_account: false,
   vertex_key_type: 'json',
   aws_key_type: 'ak_sk',
@@ -490,8 +492,7 @@ export function transformChannelToFormDefaults(
         thinking_to_content: parsed.thinking_to_content || false,
         proxy: parsed.proxy || '',
         http_protocol: protocol,
-        http2_connection_shards:
-          protocol === HTTP_PROTOCOL_HTTP1 ? 1 : shards,
+        http2_connection_shards: protocol === HTTP_PROTOCOL_HTTP1 ? 1 : shards,
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
         system_prompt: parsed.system_prompt || '',
         system_prompt_override: parsed.system_prompt_override || false,
@@ -504,6 +505,7 @@ export function transformChannelToFormDefaults(
 
   // Parse type-specific settings from settings field
   let vertexKeyType: 'json' | 'api_key' = 'json'
+  let supportsWebSockets = false
   let azureResponsesVersion = ''
   let isEnterpriseAccount = false
   let awsKeyType: 'ak_sk' | 'api_key' = 'ak_sk'
@@ -524,6 +526,7 @@ export function transformChannelToFormDefaults(
   if (channel.settings) {
     try {
       const parsed = JSON.parse(channel.settings)
+      supportsWebSockets = parsed.supports_websockets === true
       vertexKeyType = parsed.vertex_key_type || 'json'
       azureResponsesVersion = parsed.azure_responses_version || ''
       isEnterpriseAccount = parsed.openrouter_enterprise === true
@@ -545,8 +548,7 @@ export function transformChannelToFormDefaults(
       )
         ? parsed.upstream_model_update_ignored_models.join(',')
         : ''
-      channelStatusNotifyEnabled =
-        parsed.channel_status_notify_enabled === true
+      channelStatusNotifyEnabled = parsed.channel_status_notify_enabled === true
       if (parsed.advanced_custom) {
         advancedCustom = stringifyAdvancedCustomConfig(parsed.advanced_custom)
       }
@@ -585,6 +587,7 @@ export function transformChannelToFormDefaults(
     // Channel extra settings
     ...extraSettings,
     // Type-specific settings
+    supports_websockets: supportsWebSockets,
     is_enterprise_account: isEnterpriseAccount,
     vertex_key_type: vertexKeyType,
     azure_responses_version: azureResponsesVersion,
@@ -648,6 +651,12 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
       // eslint-disable-next-line no-console
       console.error('Failed to parse existing settings:', error)
     }
+  }
+
+  if (formData.type === 1) {
+    settingsObj.supports_websockets = formData.supports_websockets === true
+  } else if ('supports_websockets' in settingsObj) {
+    delete settingsObj.supports_websockets
   }
 
   // Add vertex_key_type for Vertex AI channels (type 41)

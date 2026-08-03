@@ -102,6 +102,7 @@ type RelayInfo struct {
 	RequestHeaders         map[string]string
 	ShouldIncludeUsage     bool
 	DisablePing            bool // 是否禁止向下游发送自定义 Ping
+	IsResponsesWebSocket   bool // 非语音 Responses WebSocket；与 Realtime 音频模式分离
 	ClientWs               *websocket.Conn
 	TargetWs               *websocket.Conn
 	InputAudioFormat       string
