@@ -105,3 +105,20 @@ func TestTokenAuthSystemManagedTokenRejectsDifferentChannel(t *testing.T) {
 	// Then
 	assert.Equal(t, http.StatusForbidden, response.Code)
 }
+
+func TestTokenAuthPreservesAuthorizationForPrivateWebSocketSubprotocol(t *testing.T) {
+	// Given
+	router := setupRiskInternalAuthTest(t)
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	request.RemoteAddr = "127.0.0.1:4567"
+	request.Header.Set("Authorization", "Bearer sk-riskinternalkey-1")
+	request.Header.Set("Sec-WebSocket-Protocol", "ai-cove-zstd.v1")
+	request.Header.Set("X-Forwarded-For", "127.0.0.1")
+	response := httptest.NewRecorder()
+
+	// When
+	router.ServeHTTP(response, request)
+
+	// Then
+	assert.Equal(t, http.StatusNoContent, response.Code)
+}
