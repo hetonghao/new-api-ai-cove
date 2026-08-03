@@ -28,22 +28,29 @@ type responsesWebSocketFrame struct {
 	controlType int
 }
 
-func configureResponsesWebSocketReader(conn *websocket.Conn, frames chan<- responsesWebSocketFrame, done <-chan struct{}) {
+func configureResponsesWebSocketReader(conn *websocket.Conn, frames chan<- responsesWebSocketFrame, done <-chan struct{}, codec *responsesWebSocketPrivateCodec) {
 	maxMB := constant.MaxRequestBodyMB
 	if maxMB <= 0 {
 		maxMB = 128
 	}
-	conn.SetReadLimit(int64(maxMB) << 20)
+	readLimit := int64(maxMB) << 20
+	if codec != nil {
+		readLimit = min(readLimit, responsesWebSocketPrivateMaxBytes) + responsesWebSocketPrivateHeaderSize
+	}
+	conn.SetReadLimit(readLimit)
 	conn.SetPingHandler(func(data string) error {
 		return enqueueResponsesWebSocketFrame(frames, responsesWebSocketFrame{controlType: websocket.PongMessage, payload: []byte(data)}, done)
 	})
 	conn.SetCloseHandler(func(int, string) error { return nil })
 }
 
-func readResponsesWebSocketFrames(conn *websocket.Conn, frames chan<- responsesWebSocketFrame, done <-chan struct{}) {
+func readResponsesWebSocketFrames(conn *websocket.Conn, frames chan<- responsesWebSocketFrame, done <-chan struct{}, codec *responsesWebSocketPrivateCodec) {
 	defer close(frames)
 	for {
 		messageType, payload, err := conn.ReadMessage()
+		if err == nil && codec != nil {
+			messageType, payload, err = codec.Decode(messageType, payload)
+		}
 		frame := responsesWebSocketFrame{messageType: messageType, payload: payload, err: err}
 		if enqueueResponsesWebSocketFrame(frames, frame, done) != nil || err != nil {
 			return
@@ -70,6 +77,17 @@ func writeResponsesWebSocketMessage(conn *websocket.Conn, messageType int, paylo
 	return conn.WriteMessage(messageType, payload)
 }
 
+func writeResponsesWebSocketClientMessage(conn *websocket.Conn, codec *responsesWebSocketPrivateCodec, messageType int, payload []byte) error {
+	if codec == nil {
+		return writeResponsesWebSocketMessage(conn, messageType, payload)
+	}
+	wireType, wirePayload, err := codec.Encode(messageType, payload)
+	if err != nil {
+		return err
+	}
+	return writeResponsesWebSocketMessage(conn, wireType, wirePayload)
+}
+
 func writeResponsesWebSocketControl(conn *websocket.Conn, messageType int, payload []byte) error {
 	if conn == nil {
 		return errors.New("websocket connection is nil")
@@ -77,7 +95,7 @@ func writeResponsesWebSocketControl(conn *websocket.Conn, messageType int, paylo
 	return conn.WriteControl(messageType, payload, time.Now().Add(responsesWebSocketWriteTimeout))
 }
 
-func writeResponsesWebSocketError(conn *websocket.Conn, c *gin.Context, apiErr *types.NewAPIError) error {
+func writeResponsesWebSocketError(conn *websocket.Conn, codec *responsesWebSocketPrivateCodec, c *gin.Context, apiErr *types.NewAPIError) error {
 	if apiErr == nil {
 		return nil
 	}
@@ -91,7 +109,7 @@ func writeResponsesWebSocketError(conn *websocket.Conn, c *gin.Context, apiErr *
 	if err != nil {
 		return err
 	}
-	return writeResponsesWebSocketMessage(conn, websocket.TextMessage, payload)
+	return writeResponsesWebSocketClientMessage(conn, codec, websocket.TextMessage, payload)
 }
 
 func writeResponsesWebSocketClose(conn *websocket.Conn, code int, reason string) error {

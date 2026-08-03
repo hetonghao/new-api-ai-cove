@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -24,32 +25,46 @@ var responsesWebSocketUpgrader = websocket.Upgrader{
 	ReadBufferSize:    4096,
 	WriteBufferSize:   4096,
 	EnableCompression: true,
+	Subprotocols:      []string{responsesWebSocketPrivateSubprotocol},
 	CheckOrigin: func(*http.Request) bool {
 		return true
 	},
 }
 
 func ResponsesWebSocket(c *gin.Context) {
-	clientConn, err := responsesWebSocketUpgrader.Upgrade(c.Writer, c.Request, nil)
+	upgrader := responsesWebSocketUpgrader
+	if slices.Contains(websocket.Subprotocols(c.Request), responsesWebSocketPrivateSubprotocol) {
+		upgrader.EnableCompression = false
+	}
+	clientConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return
 	}
 	defer clientConn.Close()
 
-	if err := runResponsesWebSocketSession(c, clientConn); err != nil {
+	var clientCodec *responsesWebSocketPrivateCodec
+	if clientConn.Subprotocol() == responsesWebSocketPrivateSubprotocol {
+		clientCodec, err = newResponsesWebSocketPrivateCodec()
+		if err != nil {
+			_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInternalServerErr, "private websocket codec unavailable")
+			return
+		}
+	}
+
+	if err := runResponsesWebSocketSession(c, clientConn, clientCodec); err != nil {
 		logger.LogError(c, fmt.Sprintf("responses websocket session ended: %s", common.LocalLogPreview(err.Error())))
 	}
 }
 
-func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Conn) error {
+func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Conn, clientCodec *responsesWebSocketPrivateCodec) error {
 	connectionStarted := time.Now()
 	sessionCtx, cancel := context.WithCancel(baseCtx.Request.Context())
 	defer cancel()
 
 	clientFrames := make(chan responsesWebSocketFrame, responsesWebSocketQueueSize)
-	configureResponsesWebSocketReader(clientConn, clientFrames, sessionCtx.Done())
+	configureResponsesWebSocketReader(clientConn, clientFrames, sessionCtx.Done(), clientCodec)
 	gopool.Go(func() {
-		readResponsesWebSocketFrames(clientConn, clientFrames, sessionCtx.Done())
+		readResponsesWebSocketFrames(clientConn, clientFrames, sessionCtx.Done(), clientCodec)
 	})
 
 	var (
@@ -83,6 +98,10 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				continue
 			}
 			if frame.err != nil {
+				var protocolErr *responsesWebSocketPrivateProtocolError
+				if errors.As(frame.err, &protocolErr) {
+					_ = writeResponsesWebSocketClose(clientConn, protocolErr.CloseCode(), protocolErr.Error())
+				}
 				propagateResponsesWebSocketClose(upstreamConn, frame.err)
 				if isNormalResponsesWebSocketClose(frame.err) {
 					return nil
@@ -91,7 +110,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			}
 			if frame.messageType != websocket.TextMessage {
 				apiErr := types.NewErrorWithStatusCode(errors.New("Responses WebSocket 仅接受 JSON 文本事件"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
-				_ = writeResponsesWebSocketError(clientConn, baseCtx, apiErr)
+				_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, apiErr)
 				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseUnsupportedData, apiErr.Error())
 				return apiErr
 			}
@@ -99,7 +118,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			eventType, err := responsesWebSocketEventType(frame.payload)
 			if err != nil {
 				apiErr := types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
-				_ = writeResponsesWebSocketError(clientConn, baseCtx, apiErr)
+				_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, apiErr)
 				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInvalidFramePayloadData, apiErr.Error())
 				return apiErr
 			}
@@ -107,7 +126,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			if eventType == "response.create" {
 				if active != nil {
 					apiErr := types.NewErrorWithStatusCode(errors.New("上一条 response.create 尚未结束，不支持并发创建"), types.ErrorCodeInvalidRequest, http.StatusConflict, types.ErrOptionWithSkipRetry())
-					if err := writeResponsesWebSocketError(clientConn, active.ctx, apiErr); err != nil {
+					if err := writeResponsesWebSocketError(clientConn, clientCodec, active.ctx, apiErr); err != nil {
 						return err
 					}
 					continue
@@ -132,7 +151,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					if state != nil && state.ctx != nil {
 						errorCtx = state.ctx
 					}
-					_ = writeResponsesWebSocketError(clientConn, errorCtx, apiErr)
+					_ = writeResponsesWebSocketError(clientConn, clientCodec, errorCtx, apiErr)
 					_ = writeResponsesWebSocketClose(clientConn, websocket.CloseTryAgainLater, apiErr.Error())
 					return err
 				}
@@ -142,7 +161,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, "upstream write failed")
 					failResponsesWebSocketRequest(active, pinnedChannel, "upstream write failed")
 					active = nil
-					_ = writeResponsesWebSocketError(clientConn, state.ctx, types.NewError(err, types.ErrorCodeDoRequestFailed))
+					_ = writeResponsesWebSocketError(clientConn, clientCodec, state.ctx, types.NewError(err, types.ErrorCodeDoRequestFailed))
 					_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, "upstream write failed")
 					return err
 				}
@@ -150,9 +169,9 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 
 				if upstreamFrames == nil {
 					frames := make(chan responsesWebSocketFrame, responsesWebSocketQueueSize)
-					configureResponsesWebSocketReader(upstreamConn, frames, sessionCtx.Done())
+					configureResponsesWebSocketReader(upstreamConn, frames, sessionCtx.Done(), nil)
 					gopool.Go(func() {
-						readResponsesWebSocketFrames(upstreamConn, frames, sessionCtx.Done())
+						readResponsesWebSocketFrames(upstreamConn, frames, sessionCtx.Done(), nil)
 					})
 					upstreamFrames = frames
 				}
@@ -161,13 +180,13 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 
 			if upstreamConn == nil {
 				apiErr := types.NewErrorWithStatusCode(errors.New("首个 WebSocket 事件必须是 response.create"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
-				_ = writeResponsesWebSocketError(clientConn, baseCtx, apiErr)
+				_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, apiErr)
 				_ = writeResponsesWebSocketClose(clientConn, websocket.ClosePolicyViolation, apiErr.Error())
 				return apiErr
 			}
 			if active == nil {
 				apiErr := types.NewErrorWithStatusCode(errors.New("当前没有活动的 response.create，请先创建响应"), types.ErrorCodeInvalidRequest, http.StatusConflict, types.ErrOptionWithSkipRetry())
-				if err := writeResponsesWebSocketError(clientConn, baseCtx, apiErr); err != nil {
+				if err := writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, apiErr); err != nil {
 					return err
 				}
 				continue
@@ -196,7 +215,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					active = nil
 				}
 				if !isNormalResponsesWebSocketClose(frame.err) {
-					_ = writeResponsesWebSocketError(clientConn, baseCtx, types.NewError(errors.New("upstream websocket disconnected"), types.ErrorCodeDoRequestFailed))
+					_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, types.NewError(errors.New("upstream websocket disconnected"), types.ErrorCodeDoRequestFailed))
 				}
 				propagateResponsesWebSocketClose(clientConn, frame.err)
 				if isNormalResponsesWebSocketClose(frame.err) {
@@ -218,7 +237,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, "invalid upstream event")
 					failResponsesWebSocketRequest(active, pinnedChannel, "invalid upstream event")
 					active = nil
-					_ = writeResponsesWebSocketError(clientConn, baseCtx, types.NewError(observeErr, types.ErrorCodeBadResponseBody))
+					_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, types.NewError(observeErr, types.ErrorCodeBadResponseBody))
 					_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInvalidFramePayloadData, "invalid upstream event")
 					return observeErr
 				}
@@ -234,7 +253,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				}
 				active = nil
 			}
-			if err := writeResponsesWebSocketMessage(clientConn, frame.messageType, frame.payload); err != nil {
+			if err := writeResponsesWebSocketClientMessage(clientConn, clientCodec, frame.messageType, frame.payload); err != nil {
 				return err
 			}
 		}

@@ -3,13 +3,11 @@ package controller
 import (
 	"context"
 	"errors"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/model"
-	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -50,15 +48,11 @@ func TestResponsesWebSocketValidationPayload_rejects_non_string_model(t *testing
 }
 
 func TestResponsesWebSocket_rejects_non_create_first_event_after_upgrade(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.GET("/v1/responses", ResponsesWebSocket)
-	server := httptest.NewServer(router)
-	defer server.Close()
+	webSocketURL, done := newResponsesWebSocketProtocolTestServer(t)
 
-	client, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/v1/responses", nil)
+	client, _, err := websocket.DefaultDialer.Dial(webSocketURL, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer closeResponsesWebSocketProtocolTestClient(t, client, done)
 
 	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.cancel"}`)))
 	_, payload, err := client.ReadMessage()
@@ -73,16 +67,12 @@ func TestResponsesWebSocket_rejects_non_create_first_event_after_upgrade(t *test
 }
 
 func TestResponsesWebSocket_negotiates_permessage_deflate_with_client(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.GET("/v1/responses", ResponsesWebSocket)
-	server := httptest.NewServer(router)
-	defer server.Close()
+	webSocketURL, done := newResponsesWebSocketProtocolTestServer(t)
 
 	dialer := websocket.Dialer{EnableCompression: true}
-	client, response, err := dialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/v1/responses", nil)
+	client, response, err := dialer.Dial(webSocketURL, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer closeResponsesWebSocketProtocolTestClient(t, client, done)
 
 	require.Contains(t, response.Header.Get("Sec-WebSocket-Extensions"), "permessage-deflate")
 }

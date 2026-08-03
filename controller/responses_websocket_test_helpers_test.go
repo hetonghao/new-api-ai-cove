@@ -171,10 +171,14 @@ func newResponsesWebSocketTestUpstream(t *testing.T, serve func(*websocket.Conn)
 }
 
 func dialResponsesWebSocketTestClient(t *testing.T) *websocket.Conn {
-	return dialResponsesWebSocketTestClientWithContext(t, nil)
+	return dialResponsesWebSocketTestClientWithContextAndSubprotocol(t, nil, "")
 }
 
 func dialResponsesWebSocketTestClientWithContext(t *testing.T, customize func(*gin.Context)) *websocket.Conn {
+	return dialResponsesWebSocketTestClientWithContextAndSubprotocol(t, customize, "")
+}
+
+func dialResponsesWebSocketTestClientWithContextAndSubprotocol(t *testing.T, customize func(*gin.Context), subprotocol string) *websocket.Conn {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
@@ -200,10 +204,39 @@ func dialResponsesWebSocketTestClientWithContext(t *testing.T, customize func(*g
 	t.Cleanup(server.Close)
 
 	dialer := websocket.Dialer{EnableCompression: true}
+	if subprotocol != "" {
+		dialer.Subprotocols = []string{subprotocol}
+	}
 	client, _, err := dialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/v1/responses", nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = client.Close() })
 	return client
+}
+
+func newResponsesWebSocketProtocolTestServer(t *testing.T) (string, <-chan struct{}) {
+	t.Helper()
+
+	gin.SetMode(gin.TestMode)
+	done := make(chan struct{})
+	router := gin.New()
+	router.GET("/v1/responses", func(c *gin.Context) {
+		ResponsesWebSocket(c)
+		close(done)
+	})
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+	return "ws" + strings.TrimPrefix(server.URL, "http") + "/v1/responses", done
+}
+
+func closeResponsesWebSocketProtocolTestClient(t *testing.T, client *websocket.Conn, done <-chan struct{}) {
+	t.Helper()
+
+	_ = client.Close()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for websocket handler shutdown")
+	}
 }
 
 func readResponsesWebSocketTestEvent(t *testing.T, conn *websocket.Conn) []byte {
