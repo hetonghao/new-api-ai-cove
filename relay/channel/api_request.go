@@ -441,6 +441,7 @@ func toWebSocketURL(rawURL string) (string, error) {
 
 func newWebSocketDialer(rawProxyURL string) (*websocket.Dialer, error) {
 	dialer := *websocket.DefaultDialer
+	dialer.EnableCompression = true
 	if common2.TLSInsecureSkipVerify && common2.InsecureTLSConfig != nil {
 		dialer.TLSClientConfig = common2.InsecureTLSConfig.Clone()
 	}

@@ -72,6 +72,21 @@ func TestResponsesWebSocket_rejects_non_create_first_event_after_upgrade(t *test
 	require.Equal(t, websocket.ClosePolicyViolation, closeErr.Code)
 }
 
+func TestResponsesWebSocket_negotiates_permessage_deflate_with_client(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/v1/responses", ResponsesWebSocket)
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	dialer := websocket.Dialer{EnableCompression: true}
+	client, response, err := dialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/v1/responses", nil)
+	require.NoError(t, err)
+	defer client.Close()
+
+	require.Contains(t, response.Header.Get("Sec-WebSocket-Extensions"), "permessage-deflate")
+}
+
 func TestTruncateResponsesWebSocketCloseReason_preserves_utf8_byte_limit(t *testing.T) {
 	t.Parallel()
 

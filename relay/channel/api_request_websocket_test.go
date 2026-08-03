@@ -55,3 +55,42 @@ func TestDoWssRequestRealtimeIgnoresChannelProxyConfiguration(t *testing.T) {
 	require.NoError(t, conn.Close())
 	require.True(t, strings.HasPrefix(info.ChannelBaseUrl, "ws://"))
 }
+
+func TestDoWssRequestResponsesRequestsPerMessageDeflate(t *testing.T) {
+	requestHeaders := make(chan http.Header, 1)
+	upgrader := websocket.Upgrader{
+		EnableCompression: true,
+		CheckOrigin:       func(*http.Request) bool { return true },
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestHeaders <- r.Header.Clone()
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Errorf("upgrade websocket: %v", err)
+			return
+		}
+		_ = conn.Close()
+	}))
+	defer server.Close()
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	info := &relaycommon.RelayInfo{
+		RelayMode:            relayconstant.RelayModeResponses,
+		RelayFormat:          types.RelayFormatOpenAIResponses,
+		RequestURLPath:       "/v1/responses",
+		IsResponsesWebSocket: true,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:       constant.ChannelTypeOpenAI,
+			ChannelBaseUrl:    server.URL,
+			ApiKey:            "test-key",
+			UpstreamModelName: "gpt-4o-mini",
+		},
+	}
+
+	conn, err := channel.DoWssRequest(&openai.Adaptor{}, ctx, info, nil)
+	require.NoError(t, err)
+	require.NoError(t, conn.Close())
+	require.Contains(t, (<-requestHeaders).Get("Sec-WebSocket-Extensions"), "permessage-deflate")
+}

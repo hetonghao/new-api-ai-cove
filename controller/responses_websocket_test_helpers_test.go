@@ -152,7 +152,10 @@ func newResponsesWebSocketTestUpstream(t *testing.T, serve func(*websocket.Conn)
 	t.Helper()
 
 	upstream := &responsesWebSocketTestUpstream{}
-	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	upgrader := websocket.Upgrader{
+		EnableCompression: true,
+		CheckOrigin:       func(*http.Request) bool { return true },
+	}
 	upstream.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -196,7 +199,8 @@ func dialResponsesWebSocketTestClientWithContext(t *testing.T, customize func(*g
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 
-	client, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/v1/responses", nil)
+	dialer := websocket.Dialer{EnableCompression: true}
+	client, _, err := dialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/v1/responses", nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = client.Close() })
 	return client
