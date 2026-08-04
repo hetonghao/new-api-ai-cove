@@ -4333,7 +4333,7 @@
     "stream": "Поток",
     "Stream": "Поток",
     "From Turbo": "Из Turbo",
-    "WebSocket acceleration channel.": "Канал ускорения WebSocket.",
+    "WebSocket acceleration channel": "Канал ускорения WebSocket",
     "Stream Mode": "Потоковый режим",
     "Stream Status": "Статус потока",
     "Stream tokens incrementally as they are generated": "Передавать токены по мере их генерации",

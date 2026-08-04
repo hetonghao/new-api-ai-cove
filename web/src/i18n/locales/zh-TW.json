@@ -4332,7 +4332,7 @@
     "stream": "流",
     "Stream": "流",
     "From Turbo": "來自 Turbo",
-    "WebSocket acceleration channel.": "WebSocket 加速通道。",
+    "WebSocket acceleration channel": "WebSocket 加速通道",
     "Stream Mode": "串流模式",
     "Stream Status": "流狀態",
     "Stream tokens incrementally as they are generated": "在生成過程中按 token 逐步串流返回",

@@ -4333,7 +4333,7 @@
     "stream": "dòng",
     "Stream": "Luồng",
     "From Turbo": "Từ Turbo",
-    "WebSocket acceleration channel.": "Kênh tăng tốc WebSocket.",
+    "WebSocket acceleration channel": "Kênh tăng tốc WebSocket",
     "Stream Mode": "Chế độ streaming",
     "Stream Status": "Trạng thái luồng",
     "Stream tokens incrementally as they are generated": "Truyền dần token khi được tạo",

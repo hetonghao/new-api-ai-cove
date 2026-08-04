@@ -175,13 +175,13 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
             <button
               type='button'
               className='border-info/25 bg-info/10 text-info hover:bg-info/15 focus-visible:ring-info/50 inline-flex h-4 cursor-default items-center rounded border px-1 font-mono text-[9px] font-semibold tracking-wide transition-colors focus-visible:ring-2 focus-visible:outline-none'
-              aria-label={t('WebSocket acceleration channel.')}
+              aria-label={t('WebSocket acceleration channel')}
             >
               WS
             </button>
           }
         />
-        <TooltipContent>{t('WebSocket acceleration channel.')}</TooltipContent>
+        <TooltipContent>{t('WebSocket acceleration channel')}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   ) : null
