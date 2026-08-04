@@ -36,6 +36,7 @@ import {
   LOG_TYPE_ALL_VALUE,
   LOG_TYPE_ENUM,
 } from '../constants'
+import type { UsageLog } from '../data/schema'
 import { useColumnsByCategory } from '../lib/columns'
 import { parseLogOther } from '../lib/format'
 import { fetchLogsByCategory } from '../lib/utils'
@@ -53,6 +54,35 @@ const logTypeRowTint: Record<number, string> = {
 // Warning tint for logs where a quota conversion saturated (admin-only marker).
 // Takes precedence over the per-type tint since it flags a billing anomaly.
 const quotaSaturationRowTint = 'bg-amber-50/60 dark:bg-amber-950/25'
+
+// PROTOTYPE: ?variant=A previews the finalized WS + Turbo treatment locally.
+const PROTOTYPE_SOURCE_MARKER_LOG: UsageLog = {
+  id: -1,
+  user_id: 1,
+  created_at: Math.floor(Date.now() / 1000),
+  type: LOG_TYPE_ENUM.CONSUME,
+  content: '',
+  username: 'turbo-preview',
+  token_name: 'sk-preview',
+  model_name: 'gpt-5.2',
+  quota: 1860,
+  prompt_tokens: 1832,
+  completion_tokens: 742,
+  use_time: 12.4,
+  is_stream: true,
+  channel: 1,
+  channel_name: 'OpenAI',
+  token_id: 1,
+  group: 'default',
+  ip: '',
+  other: JSON.stringify({
+    transport: 'websocket',
+    client_source: 'turbo',
+    frt: 620,
+  }),
+  request_id: 'prototype-turbo-ws',
+  upstream_request_id: '',
+}
 
 function getColumnVisibilityStorageKey(
   logCategory: LogCategory,
@@ -171,7 +201,15 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     },
   })
 
-  const logs = data?.items || []
+  const fetchedLogs = data?.items || []
+  const showPrototypePreview =
+    import.meta.env.DEV &&
+    logCategory === 'common' &&
+    searchParams.variant === 'A' &&
+    fetchedLogs.length === 0
+  const logs = showPrototypePreview
+    ? [PROTOTYPE_SOURCE_MARKER_LOG]
+    : fetchedLogs
   const columns = useColumnsByCategory(logCategory, canUseAdminControls)
   const isLoadingData = isLoading || (isFetching && !data)
 
@@ -189,7 +227,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     onColumnFiltersChange,
     manualPagination: true,
     manualFiltering: true,
-    totalCount: data?.total || 0,
+    totalCount: showPrototypePreview ? 1 : data?.total || 0,
     ensurePageInRange,
   })
 

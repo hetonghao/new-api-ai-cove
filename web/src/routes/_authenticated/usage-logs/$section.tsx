@@ -48,6 +48,7 @@ const usageLogsSearchSchema = z.object({
   upstreamRequestId: z.string().optional().catch(''),
   startTime: z.number().optional(),
   endTime: z.number().optional(),
+  variant: z.literal('A').optional(),
 })
 
 export const Route = createFileRoute('/_authenticated/usage-logs/$section')({
