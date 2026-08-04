@@ -107,8 +107,19 @@ func (c *responsesWebSocketPrivateCodec) Encode(messageType int, payload []byte)
 }
 
 func (c *responsesWebSocketPrivateCodec) Decode(messageType int, envelope []byte) (int, []byte, error) {
+	return c.decode(messageType, envelope, responsesWebSocketPrivateMaxBytes)
+}
+
+func (c *responsesWebSocketPrivateCodec) DecodeWithMaxBytes(messageType int, envelope []byte, maxBytes int) (int, []byte, error) {
+	return c.decode(messageType, envelope, maxBytes)
+}
+
+func (c *responsesWebSocketPrivateCodec) decode(messageType int, envelope []byte, maxBytes int) (int, []byte, error) {
 	if messageType != websocket.BinaryMessage {
 		return 0, nil, newResponsesWebSocketPrivateProtocolError(websocket.CloseProtocolError, "private application message must be binary", nil)
+	}
+	if maxBytes <= 0 || len(envelope) > maxBytes {
+		return 0, nil, newResponsesWebSocketPrivateProtocolError(websocket.CloseMessageTooBig, "private message exceeds configured limit", nil)
 	}
 	if len(envelope) < responsesWebSocketPrivateHeaderSize {
 		return 0, nil, newResponsesWebSocketPrivateProtocolError(websocket.CloseProtocolError, "private message header is incomplete", nil)
@@ -123,8 +134,8 @@ func (c *responsesWebSocketPrivateCodec) Decode(messageType int, envelope []byte
 
 	originalLength := uint64(binary.BigEndian.Uint32(envelope[6:10]))
 	wirePayload := envelope[responsesWebSocketPrivateHeaderSize:]
-	if originalLength > responsesWebSocketPrivateMaxBytes || len(wirePayload) > responsesWebSocketPrivateMaxBytes {
-		return 0, nil, newResponsesWebSocketPrivateProtocolError(websocket.CloseMessageTooBig, "private message exceeds 128 MiB", nil)
+	if originalLength > uint64(maxBytes) || len(wirePayload) > maxBytes {
+		return 0, nil, newResponsesWebSocketPrivateProtocolError(websocket.CloseMessageTooBig, "private message exceeds configured limit", nil)
 	}
 
 	var payload []byte
