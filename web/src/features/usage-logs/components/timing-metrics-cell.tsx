@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { CircleAlert } from 'lucide-react'
+import { CircleAlert, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -151,6 +151,8 @@ export function TimingMetricsCell(props: TimingMetricsCellProps) {
 
 interface StreamTpsCellProps {
   isStream: boolean
+  isWebSocket?: boolean
+  isTurbo?: boolean
   tokensPerSecond?: number | null
   streamStatus?: LogOtherData['stream_status']
   className?: string
@@ -165,6 +167,42 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
       ? `${Math.round(props.tokensPerSecond)} t/s`
       : '—'
   const streamLabel = props.isStream ? t('Stream') : t('Non-stream')
+  const webSocketMarker = props.isWebSocket ? (
+    <TooltipProvider delay={150}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type='button'
+              className='border-info/25 bg-info/10 text-info hover:bg-info/15 focus-visible:ring-info/50 inline-flex h-4 cursor-default items-center rounded border px-1 font-mono text-[9px] font-semibold tracking-wide transition-colors focus-visible:ring-2 focus-visible:outline-none'
+              aria-label={t('WebSocket acceleration channel.')}
+            >
+              WS
+            </button>
+          }
+        />
+        <TooltipContent>{t('WebSocket acceleration channel.')}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  ) : null
+  const turboMarker = props.isTurbo ? (
+    <TooltipProvider delay={150}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type='button'
+              className='text-success hover:bg-success/15 focus-visible:ring-success/50 inline-flex size-4 cursor-default items-center justify-center rounded-full transition-transform duration-200 hover:scale-110 focus-visible:ring-2 focus-visible:outline-none'
+              aria-label={t('From Turbo')}
+            >
+              <Zap className='fill-success/20 size-3' aria-hidden='true' />
+            </button>
+          }
+        />
+        <TooltipContent>{t('From Turbo')}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  ) : null
 
   return (
     <div
@@ -180,6 +218,8 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
         )}
       >
         {streamLabel}
+        {webSocketMarker}
+        {turboMarker}
         {showStreamError && (
           <TooltipProvider>
             <Tooltip>

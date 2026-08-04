@@ -1,6 +1,7 @@
 package service
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -31,4 +32,15 @@ func TestAppendRelayTransportLogInfo_appends_websocket_lifecycle_fields(t *testi
 		"websocket_complete_ms":         int64(45),
 		"websocket_close_reason":        "upstream disconnected",
 	}, other)
+}
+
+func TestAppendRelayTransportLogInfo_appends_turbo_client_source(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(nil)
+	ctx.Request = &http.Request{Header: http.Header{"X-Ai-Cove-Client": []string{"turbo"}}}
+	other := map[string]interface{}{}
+
+	AppendRelayTransportLogInfo(ctx, other)
+
+	require.Equal(t, "turbo", other["client_source"])
 }

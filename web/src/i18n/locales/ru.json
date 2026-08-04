@@ -4332,6 +4332,8 @@
     "Stored value is not echoed back for security": "В целях безопасности сохранённое значение не отображается",
     "stream": "Поток",
     "Stream": "Поток",
+    "From Turbo": "Из Turbo",
+    "WebSocket acceleration channel.": "Канал ускорения WebSocket.",
     "Stream Mode": "Потоковый режим",
     "Stream Status": "Статус потока",
     "Stream tokens incrementally as they are generated": "Передавать токены по мере их генерации",

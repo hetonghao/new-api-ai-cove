@@ -4332,6 +4332,8 @@
     "Stored value is not echoed back for security": "Par sécurité, la valeur enregistrée n'est pas affichée",
     "stream": "Flux",
     "Stream": "Flux",
+    "From Turbo": "Depuis Turbo",
+    "WebSocket acceleration channel.": "Canal d’accélération WebSocket.",
     "Stream Mode": "Mode streaming",
     "Stream Status": "Statut du flux",
     "Stream tokens incrementally as they are generated": "Diffuser les jetons au fur et à mesure de leur génération",

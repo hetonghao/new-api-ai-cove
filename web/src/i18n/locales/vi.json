@@ -4332,6 +4332,8 @@
     "Stored value is not echoed back for security": "Vì bảo mật, giá trị đã lưu không được hiển thị lại",
     "stream": "dòng",
     "Stream": "Luồng",
+    "From Turbo": "Từ Turbo",
+    "WebSocket acceleration channel.": "Kênh tăng tốc WebSocket.",
     "Stream Mode": "Chế độ streaming",
     "Stream Status": "Trạng thái luồng",
     "Stream tokens incrementally as they are generated": "Truyền dần token khi được tạo",

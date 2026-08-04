@@ -4463,6 +4463,8 @@
     "Stored value is not echoed back for security": "Stored value is not echoed back for security",
     "stream": "stream",
     "Stream": "Stream",
+    "From Turbo": "From Turbo",
+    "WebSocket acceleration channel.": "WebSocket acceleration channel.",
     "Stream Mode": "Stream Mode",
     "Stream Status": "Stream Status",
     "Stream tokens incrementally as they are generated": "Stream tokens incrementally as they are generated",

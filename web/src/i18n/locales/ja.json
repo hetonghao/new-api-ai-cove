@@ -4332,6 +4332,8 @@
     "Stored value is not echoed back for security": "セキュリティのため、保存済みの値は表示されません",
     "stream": "ストリーム",
     "Stream": "ストリーム",
+    "From Turbo": "Turbo から",
+    "WebSocket acceleration channel.": "WebSocket 高速化チャネル。",
     "Stream Mode": "ストリーミングモード",
     "Stream Status": "ストリーム状態",
     "Stream tokens incrementally as they are generated": "トークンを生成と同時にストリーミング",
