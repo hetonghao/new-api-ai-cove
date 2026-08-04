@@ -26,6 +26,15 @@ func TestResponsesWebSocket_drains_idle_and_new_sessions_with_service_restart(t 
 	require.Equal(t, websocket.CloseServiceRestart, readResponsesWebSocketTestClose(t, newClient).Code)
 }
 
+func TestResponsesWebSocket_drain_rejects_queued_create_when_idle(t *testing.T) {
+	state := newResponsesWebSocketDrainState()
+	state.draining.Store(true)
+
+	require.True(t, state.shouldRejectNewResponse(nil, "response.create"))
+	require.False(t, state.shouldRejectNewResponse(&responsesWebSocketRequestState{}, "response.create"))
+	require.False(t, state.shouldRejectNewResponse(nil, "response.cancel"))
+}
+
 func TestResponsesWebSocket_drains_active_session_after_terminal_frame(t *testing.T) {
 	db := setupResponsesWebSocketHandlerTest(t)
 	requestReceived := make(chan struct{})

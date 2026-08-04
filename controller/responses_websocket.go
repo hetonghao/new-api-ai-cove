@@ -140,6 +140,10 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInvalidFramePayloadData, apiErr.Error())
 				return apiErr
 			}
+			if drainState.shouldRejectNewResponse(active, eventType) {
+				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
+				return nil
+			}
 			if draining && (active == nil || eventType != "response.cancel") {
 				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
 				return nil

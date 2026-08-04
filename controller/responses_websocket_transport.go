@@ -32,6 +32,10 @@ func newResponsesWebSocketDrainState() *responsesWebSocketDrainState {
 	return &responsesWebSocketDrainState{notify: make(chan struct{})}
 }
 
+func (state *responsesWebSocketDrainState) shouldRejectNewResponse(active *responsesWebSocketRequestState, eventType string) bool {
+	return active == nil && eventType == "response.create" && state.draining.Load()
+}
+
 var responsesWebSocketDrain atomic.Pointer[responsesWebSocketDrainState]
 
 func init() {
