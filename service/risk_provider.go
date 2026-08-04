@@ -26,6 +26,8 @@ const (
 	RiskReviewUnsafe RiskReviewStatus = "unsafe"
 )
 
+var ErrRiskProviderRateLimited = errors.New("risk provider rate limited")
+
 type RiskReviewUsage struct {
 	PromptTokens     int     `json:"prompt_tokens"`
 	CompletionTokens int     `json:"completion_tokens"`
@@ -180,6 +182,9 @@ func reviewCloudflareRiskContent(ctx context.Context, provider *model.RiskProvid
 			return RiskReviewResult{}, newRiskProviderError(cause, "Cloudflare daily Neurons limit exhausted")
 		}
 		cause := fmt.Errorf("Cloudflare risk provider returned HTTP %d", response.StatusCode)
+		if response.StatusCode == http.StatusTooManyRequests {
+			cause = fmt.Errorf("%w: %w", ErrRiskProviderRateLimited, cause)
+		}
 		return RiskReviewResult{}, newRiskProviderError(cause, fmt.Sprintf("Cloudflare returned HTTP %d", response.StatusCode))
 	}
 

@@ -151,7 +151,7 @@ func TestReviewRiskContentWithBudgetChargesEstimateWhenUsageIsMissing(t *testing
 	assert.True(t, snapshot.Exhausted)
 }
 
-func TestReviewRiskContentWithBudgetReleasesReservationOnProviderFailure(t *testing.T) {
+func TestReviewRiskContentWithBudgetAccountsForProviderFailure(t *testing.T) {
 	useRiskModerationMiniRedis(t)
 	originalSecret := common.CryptoSecret
 	common.CryptoSecret = "risk-provider-budget-failure-test-secret"
@@ -160,17 +160,21 @@ func TestReviewRiskContentWithBudgetReleasesReservationOnProviderFailure(t *test
 	t.Cleanup(func() { httpClient = originalHTTPClient })
 
 	tests := []struct {
-		name      string
-		transport riskProviderRoundTripFunc
+		name        string
+		transport   riskProviderRoundTripFunc
+		wantUsed    int64
+		rateLimited bool
 	}{
 		{
-			name: "network failure",
+			name:     "network failure",
+			wantUsed: EstimateCloudflareNeurons("x"),
 			transport: func(*http.Request) (*http.Response, error) {
 				return nil, errors.New("network unavailable")
 			},
 		},
 		{
-			name: "http failure",
+			name:     "http failure",
+			wantUsed: EstimateCloudflareNeurons("x"),
 			transport: func(*http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusBadGateway,
@@ -179,7 +183,26 @@ func TestReviewRiskContentWithBudgetReleasesReservationOnProviderFailure(t *test
 			},
 		},
 		{
-			name: "invalid moderation response",
+			name:        "generic http 429",
+			wantUsed:    0,
+			rateLimited: true,
+			transport: func(*http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusTooManyRequests,
+					Body:       io.NopCloser(strings.NewReader(`{"error":"rate limit"}`)),
+				}, nil
+			},
+		},
+		{
+			name:     "request timeout",
+			wantUsed: EstimateCloudflareNeurons("x"),
+			transport: func(*http.Request) (*http.Response, error) {
+				return nil, context.DeadlineExceeded
+			},
+		},
+		{
+			name:     "invalid moderation response",
+			wantUsed: EstimateCloudflareNeurons("x"),
 			transport: func(*http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusOK,
@@ -203,9 +226,12 @@ func TestReviewRiskContentWithBudgetReleasesReservationOnProviderFailure(t *test
 			require.Error(t, err)
 			snapshot, snapshotErr := GetRiskProviderBudgetSnapshot(context.Background(), provider)
 			require.NoError(t, snapshotErr)
-			assert.Zero(t, snapshot.Used)
+			assert.Equal(t, tt.wantUsed, snapshot.Used)
 			assert.Zero(t, snapshot.Reserved)
 			assert.False(t, snapshot.Exhausted)
+			if tt.rateLimited {
+				require.ErrorIs(t, err, ErrRiskProviderRateLimited)
+			}
 		})
 	}
 }

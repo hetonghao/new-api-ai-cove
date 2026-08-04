@@ -238,9 +238,15 @@ func ReviewRiskContentWithBudget(ctx context.Context, provider *model.RiskProvid
 		}
 		return result, reviewErr
 	}
-	if reviewErr != nil {
+	if errors.Is(reviewErr, ErrRiskProviderRateLimited) {
 		if releaseErr := riskProviderNeuronsBudgetService.Settle(context.WithoutCancel(ctx), provider, reservation, 0); releaseErr != nil {
-			common.SysLog("failed to release risk provider Neurons reservation: " + releaseErr.Error())
+			common.SysLog("failed to release risk provider Neurons reservation after rate limit: " + releaseErr.Error())
+		}
+		return result, reviewErr
+	}
+	if reviewErr != nil {
+		if settleErr := riskProviderNeuronsBudgetService.Settle(context.WithoutCancel(ctx), provider, reservation, reservation.Estimated); settleErr != nil {
+			common.SysLog("failed to settle risk provider Neurons after provider error: " + settleErr.Error())
 		}
 		return result, reviewErr
 	}
