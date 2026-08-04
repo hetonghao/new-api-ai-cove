@@ -41,6 +41,7 @@ type responsesWebSocketTestUpstream struct {
 
 func setupResponsesWebSocketHandlerTest(t *testing.T) *gorm.DB {
 	t.Helper()
+	resetResponsesWebSocketDrainForTest()
 
 	previousDB := model.DB
 	previousLogDB := model.LOG_DB
@@ -111,9 +112,14 @@ func setupResponsesWebSocketHandlerTest(t *testing.T) *gorm.DB {
 		setting.ModelRequestRateLimitSuccessCount = previousModelRequestRateLimitSuccessCount
 		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(previousGroupRatios))
 		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(previousModelRatios))
+		resetResponsesWebSocketDrainForTest()
 	})
 
 	return db
+}
+
+func resetResponsesWebSocketDrainForTest() {
+	responsesWebSocketDrain.Store(newResponsesWebSocketDrainState())
 }
 
 func insertResponsesWebSocketTestChannel(t *testing.T, db *gorm.DB, spec responsesWebSocketTestChannel) {
@@ -246,6 +252,15 @@ func readResponsesWebSocketTestEvent(t *testing.T, conn *websocket.Conn) []byte 
 	require.NoError(t, err)
 	require.Equal(t, websocket.TextMessage, messageType)
 	return payload
+}
+
+func readResponsesWebSocketTestClose(t *testing.T, conn *websocket.Conn) *websocket.CloseError {
+	t.Helper()
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(5*time.Second)))
+	_, _, err := conn.ReadMessage()
+	var closeErr *websocket.CloseError
+	require.ErrorAs(t, err, &closeErr)
+	return closeErr
 }
 
 func closeResponsesWebSocketTestClient(conn *websocket.Conn) {

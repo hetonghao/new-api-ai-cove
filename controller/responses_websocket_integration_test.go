@@ -13,6 +13,90 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func TestResponsesWebSocket_drains_idle_and_new_sessions_with_service_restart(t *testing.T) {
+	db := setupResponsesWebSocketHandlerTest(t)
+	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 300, baseURL: "http://127.0.0.1:1", priority: 0})
+	client := dialResponsesWebSocketTestClient(t)
+
+	BeginResponsesWebSocketDrain()
+	require.Equal(t, websocket.CloseServiceRestart, readResponsesWebSocketTestClose(t, client).Code)
+
+	newClient := dialResponsesWebSocketTestClient(t)
+	require.Equal(t, websocket.CloseServiceRestart, readResponsesWebSocketTestClose(t, newClient).Code)
+}
+
+func TestResponsesWebSocket_drains_active_session_after_terminal_frame(t *testing.T) {
+	db := setupResponsesWebSocketHandlerTest(t)
+	requestReceived := make(chan struct{})
+	release := make(chan struct{})
+	upstream := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			t.Errorf("read upstream request: %v", err)
+			return
+		}
+		close(requestReceived)
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.created","response":{"id":"resp-drain"}}`)); err != nil {
+			t.Errorf("write response.created: %v", err)
+			return
+		}
+		<-release
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.completed","response":{"status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`)); err != nil {
+			t.Errorf("write response.completed: %v", err)
+		}
+	})
+	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 301, baseURL: upstream.server.URL, priority: 0})
+	client := dialResponsesWebSocketTestClient(t)
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"gpt-4o-mini","input":[]}`)))
+	require.Equal(t, "response.created", gjson.GetBytes(readResponsesWebSocketTestEvent(t, client), "type").String())
+	select {
+	case <-requestReceived:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for upstream request")
+	}
+
+	BeginResponsesWebSocketDrain()
+	close(release)
+	require.Equal(t, "response.completed", gjson.GetBytes(readResponsesWebSocketTestEvent(t, client), "type").String())
+	require.Equal(t, websocket.CloseServiceRestart, readResponsesWebSocketTestClose(t, client).Code)
+}
+
+func TestResponsesWebSocket_drains_cancelled_active_session_after_cancel_event(t *testing.T) {
+	db := setupResponsesWebSocketHandlerTest(t)
+	requestReceived := make(chan struct{})
+	upstream := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			t.Errorf("read upstream create: %v", err)
+			return
+		}
+		close(requestReceived)
+		_, payload, err := conn.ReadMessage()
+		if err != nil {
+			t.Errorf("read upstream cancel: %v", err)
+			return
+		}
+		if gjson.GetBytes(payload, "type").String() != "response.cancel" {
+			t.Errorf("unexpected upstream event: %s", payload)
+			return
+		}
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.cancelled","response":{"status":"cancelled"}}`)); err != nil {
+			t.Errorf("write response.cancelled: %v", err)
+		}
+	})
+	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 302, baseURL: upstream.server.URL, priority: 0})
+	client := dialResponsesWebSocketTestClient(t)
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"gpt-4o-mini","input":[]}`)))
+	select {
+	case <-requestReceived:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for upstream request")
+	}
+
+	BeginResponsesWebSocketDrain()
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.cancel"}`)))
+	require.Equal(t, "response.cancelled", gjson.GetBytes(readResponsesWebSocketTestEvent(t, client), "type").String())
+	require.Equal(t, websocket.CloseServiceRestart, readResponsesWebSocketTestClose(t, client).Code)
+}
+
 func TestResponsesWebSocket_forwards_two_sequential_creates_on_one_upstream_connection(t *testing.T) {
 	db := setupResponsesWebSocketHandlerTest(t)
 	upstreamRequests := make(chan []byte, 2)

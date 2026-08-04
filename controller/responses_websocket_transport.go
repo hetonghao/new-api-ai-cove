@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -19,7 +20,32 @@ const (
 	responsesWebSocketQueueSize    = 8
 	responsesWebSocketWriteTimeout = 30 * time.Second
 	responsesWebSocketCloseMax     = 123
+	responsesWebSocketDrainReason  = "service restarting"
 )
+
+type responsesWebSocketDrainState struct {
+	draining atomic.Bool
+	notify   chan struct{}
+}
+
+func newResponsesWebSocketDrainState() *responsesWebSocketDrainState {
+	return &responsesWebSocketDrainState{notify: make(chan struct{})}
+}
+
+var responsesWebSocketDrain atomic.Pointer[responsesWebSocketDrainState]
+
+func init() {
+	responsesWebSocketDrain.Store(newResponsesWebSocketDrainState())
+}
+
+// BeginResponsesWebSocketDrain stops new sessions while allowing active ones
+// to forward their terminal event before closing with Service Restart.
+func BeginResponsesWebSocketDrain() {
+	state := responsesWebSocketDrain.Load()
+	if state.draining.CompareAndSwap(false, true) {
+		close(state.notify)
+	}
+}
 
 type responsesWebSocketFrame struct {
 	messageType int

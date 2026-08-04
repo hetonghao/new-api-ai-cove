@@ -219,9 +219,19 @@ func main() {
 
 	common.LogStartupSuccess(startTime, port)
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	sig := <-quit
+	quit := make(chan os.Signal, 2)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
+	defer signal.Stop(quit)
+	var sig os.Signal
+	for {
+		sig = <-quit
+		if sig == syscall.SIGUSR1 {
+			controller.BeginResponsesWebSocketDrain()
+			common.SysLog("received SIGUSR1, draining Responses WebSocket sessions")
+			continue
+		}
+		break
+	}
 	common.SysLog(fmt.Sprintf("received signal: %v, shutting down...", sig))
 
 	// SSE streams may run for minutes; give them time to finish before forced exit

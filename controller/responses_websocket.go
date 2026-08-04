@@ -60,6 +60,13 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 	connectionStarted := time.Now()
 	sessionCtx, cancel := context.WithCancel(baseCtx.Request.Context())
 	defer cancel()
+	drainState := responsesWebSocketDrain.Load()
+	drainCh := drainState.notify
+	draining := drainState.draining.Load()
+	if draining {
+		_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
+		return nil
+	}
 
 	clientFrames := make(chan responsesWebSocketFrame, responsesWebSocketQueueSize)
 	configureResponsesWebSocketReader(clientConn, clientFrames, sessionCtx.Done(), clientCodec)
@@ -87,8 +94,19 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 
 	for {
 		select {
+		case <-drainCh:
+			drainCh = nil
+			draining = true
+			if active == nil {
+				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
+				return nil
+			}
 		case frame, ok := <-clientFrames:
 			if !ok {
+				return nil
+			}
+			if draining && active == nil {
+				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
 				return nil
 			}
 			if frame.controlType == websocket.PongMessage {
@@ -121,6 +139,10 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, apiErr)
 				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInvalidFramePayloadData, apiErr.Error())
 				return apiErr
+			}
+			if draining && (active == nil || eventType != "response.cancel") {
+				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
+				return nil
 			}
 
 			if eventType == "response.create" {
@@ -202,6 +224,10 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			if !ok {
 				return errors.New("upstream websocket closed")
 			}
+			if draining && active == nil {
+				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
+				return nil
+			}
 			if frame.controlType == websocket.PongMessage {
 				if err := writeResponsesWebSocketControl(upstreamConn, websocket.PongMessage, frame.payload); err != nil {
 					return err
@@ -225,6 +251,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			}
 
 			terminal := false
+			terminalActive := false
 			var usage *dto.Usage
 			if active != nil {
 				if !active.info.HasSendResponse() {
@@ -233,6 +260,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				}
 				var observeErr error
 				terminal, usage, observeErr = active.tracker.Observe(frame.payload)
+				terminalActive = terminal
 				if observeErr != nil {
 					common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, "invalid upstream event")
 					failResponsesWebSocketRequest(active, pinnedChannel, "invalid upstream event")
@@ -255,6 +283,10 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			}
 			if err := writeResponsesWebSocketClientMessage(clientConn, clientCodec, frame.messageType, frame.payload); err != nil {
 				return err
+			}
+			if terminalActive && draining {
+				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
+				return nil
 			}
 		}
 	}
