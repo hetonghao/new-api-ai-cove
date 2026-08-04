@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gorilla/websocket"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -31,17 +32,17 @@ func TestResponsesWebSocket_drains_active_session_after_terminal_frame(t *testin
 	release := make(chan struct{})
 	upstream := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
 		if _, _, err := conn.ReadMessage(); err != nil {
-			t.Errorf("read upstream request: %v", err)
+			assert.NoError(t, err, "read upstream request")
 			return
 		}
 		close(requestReceived)
 		if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.created","response":{"id":"resp-drain"}}`)); err != nil {
-			t.Errorf("write response.created: %v", err)
+			assert.NoError(t, err, "write response.created")
 			return
 		}
 		<-release
 		if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.completed","response":{"status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`)); err != nil {
-			t.Errorf("write response.completed: %v", err)
+			assert.NoError(t, err, "write response.completed")
 		}
 	})
 	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 301, baseURL: upstream.server.URL, priority: 0})
@@ -51,7 +52,7 @@ func TestResponsesWebSocket_drains_active_session_after_terminal_frame(t *testin
 	select {
 	case <-requestReceived:
 	case <-time.After(5 * time.Second):
-		t.Fatal("timeout waiting for upstream request")
+		require.FailNow(t, "timeout waiting for upstream request")
 	}
 
 	BeginResponsesWebSocketDrain()
@@ -65,21 +66,20 @@ func TestResponsesWebSocket_drains_cancelled_active_session_after_cancel_event(t
 	requestReceived := make(chan struct{})
 	upstream := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
 		if _, _, err := conn.ReadMessage(); err != nil {
-			t.Errorf("read upstream create: %v", err)
+			assert.NoError(t, err, "read upstream create")
 			return
 		}
 		close(requestReceived)
 		_, payload, err := conn.ReadMessage()
 		if err != nil {
-			t.Errorf("read upstream cancel: %v", err)
+			assert.NoError(t, err, "read upstream cancel")
 			return
 		}
-		if gjson.GetBytes(payload, "type").String() != "response.cancel" {
-			t.Errorf("unexpected upstream event: %s", payload)
+		if !assert.Equal(t, "response.cancel", gjson.GetBytes(payload, "type").String(), "unexpected upstream event: %s", payload) {
 			return
 		}
 		if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.cancelled","response":{"status":"cancelled"}}`)); err != nil {
-			t.Errorf("write response.cancelled: %v", err)
+			assert.NoError(t, err, "write response.cancelled")
 		}
 	})
 	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 302, baseURL: upstream.server.URL, priority: 0})
@@ -88,7 +88,7 @@ func TestResponsesWebSocket_drains_cancelled_active_session_after_cancel_event(t
 	select {
 	case <-requestReceived:
 	case <-time.After(5 * time.Second):
-		t.Fatal("timeout waiting for upstream request")
+		require.FailNow(t, "timeout waiting for upstream request")
 	}
 
 	BeginResponsesWebSocketDrain()
