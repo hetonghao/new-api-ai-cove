@@ -160,21 +160,26 @@ func TestReviewRiskContentWithBudgetAccountsForProviderFailure(t *testing.T) {
 	t.Cleanup(func() { httpClient = originalHTTPClient })
 
 	tests := []struct {
-		name        string
-		transport   riskProviderRoundTripFunc
-		wantUsed    int64
-		rateLimited bool
+		name          string
+		transport     riskProviderRoundTripFunc
+		wantUsed      int64
+		wantNeurons   float64
+		wantExhausted bool
+		rateLimited   bool
+		dailyQuota    bool
 	}{
 		{
-			name:     "network failure",
-			wantUsed: EstimateCloudflareNeurons("x"),
+			name:        "network failure",
+			wantUsed:    EstimateCloudflareNeurons("x"),
+			wantNeurons: float64(EstimateCloudflareNeurons("x")),
 			transport: func(*http.Request) (*http.Response, error) {
 				return nil, errors.New("network unavailable")
 			},
 		},
 		{
-			name:     "http failure",
-			wantUsed: EstimateCloudflareNeurons("x"),
+			name:        "http failure",
+			wantUsed:    EstimateCloudflareNeurons("x"),
+			wantNeurons: float64(EstimateCloudflareNeurons("x")),
 			transport: func(*http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusBadGateway,
@@ -185,6 +190,7 @@ func TestReviewRiskContentWithBudgetAccountsForProviderFailure(t *testing.T) {
 		{
 			name:        "generic http 429",
 			wantUsed:    0,
+			wantNeurons: 0,
 			rateLimited: true,
 			transport: func(*http.Request) (*http.Response, error) {
 				return &http.Response{
@@ -194,15 +200,29 @@ func TestReviewRiskContentWithBudgetAccountsForProviderFailure(t *testing.T) {
 			},
 		},
 		{
-			name:     "request timeout",
-			wantUsed: EstimateCloudflareNeurons("x"),
+			name:          "daily Neurons quota",
+			wantNeurons:   0,
+			wantExhausted: true,
+			dailyQuota:    true,
+			transport: func(*http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusTooManyRequests,
+					Body:       io.NopCloser(strings.NewReader(`{"error":"daily neurons quota exceeded"}`)),
+				}, nil
+			},
+		},
+		{
+			name:        "request timeout",
+			wantUsed:    EstimateCloudflareNeurons("x"),
+			wantNeurons: float64(EstimateCloudflareNeurons("x")),
 			transport: func(*http.Request) (*http.Response, error) {
 				return nil, context.DeadlineExceeded
 			},
 		},
 		{
-			name:     "invalid moderation response",
-			wantUsed: EstimateCloudflareNeurons("x"),
+			name:        "invalid moderation response",
+			wantUsed:    EstimateCloudflareNeurons("x"),
+			wantNeurons: float64(EstimateCloudflareNeurons("x")),
 			transport: func(*http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusOK,
@@ -222,15 +242,20 @@ func TestReviewRiskContentWithBudgetAccountsForProviderFailure(t *testing.T) {
 			provider.DailyNeuronsLimit = 100
 			provider.DailyResetTime = "08:00"
 
-			_, err := ReviewRiskContentWithBudget(context.Background(), provider, "x")
+			result, err := ReviewRiskContentWithBudget(context.Background(), provider, "x")
 			require.Error(t, err)
 			snapshot, snapshotErr := GetRiskProviderBudgetSnapshot(context.Background(), provider)
 			require.NoError(t, snapshotErr)
 			assert.Equal(t, tt.wantUsed, snapshot.Used)
+			assert.Equal(t, tt.wantNeurons, result.Usage.Neurons)
 			assert.Zero(t, snapshot.Reserved)
-			assert.False(t, snapshot.Exhausted)
+			assert.Equal(t, tt.wantExhausted, snapshot.Exhausted)
 			if tt.rateLimited {
 				require.ErrorIs(t, err, ErrRiskProviderRateLimited)
+			}
+			if tt.dailyQuota {
+				require.ErrorIs(t, err, ErrRiskProviderDailyNeuronsResponse)
+				require.ErrorIs(t, err, ErrRiskProviderDailyNeuronsExhausted)
 			}
 		})
 	}

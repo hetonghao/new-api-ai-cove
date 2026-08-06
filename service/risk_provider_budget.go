@@ -245,6 +245,7 @@ func ReviewRiskContentWithBudget(ctx context.Context, provider *model.RiskProvid
 		return result, reviewErr
 	}
 	if reviewErr != nil {
+		result.Usage.Neurons += float64(reservation.Estimated)
 		if settleErr := riskProviderNeuronsBudgetService.Settle(context.WithoutCancel(ctx), provider, reservation, reservation.Estimated); settleErr != nil {
 			common.SysLog("failed to settle risk provider Neurons after provider error: " + settleErr.Error())
 		}
