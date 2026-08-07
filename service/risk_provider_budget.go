@@ -27,10 +27,11 @@ var reserveRiskProviderNeuronsScript = redis.NewScript(`
 local current_window = redis.call("HGET", KEYS[1], "window")
 if current_window ~= ARGV[1] then
   local exhausted = redis.call("HGET", KEYS[1], "exhausted")
-  if current_window and exhausted == "1" and tonumber(ARGV[2]) < tonumber(ARGV[3]) then
+  local reset_hold = redis.call("HGET", KEYS[1], "reset_hold")
+  if current_window and (exhausted == "1" or reset_hold == "1") and tonumber(ARGV[2]) < tonumber(ARGV[3]) then
     return -2
   end
-  redis.call("HSET", KEYS[1], "window", ARGV[1], "used", "0", "reserved", "0", "exhausted", "0")
+  redis.call("HSET", KEYS[1], "window", ARGV[1], "used", "0", "reserved", "0", "exhausted", "0", "reset_hold", "0")
 end
 if redis.call("HGET", KEYS[1], "exhausted") == "1" then
   return 0
@@ -40,7 +41,7 @@ local reserved = tonumber(redis.call("HGET", KEYS[1], "reserved") or "0")
 local estimate = tonumber(ARGV[4])
 local limit = tonumber(ARGV[5])
 if used + reserved + estimate > limit then
-  redis.call("HSET", KEYS[1], "exhausted", "1")
+  redis.call("HSET", KEYS[1], "reset_hold", "1")
   redis.call("EXPIRE", KEYS[1], 172800)
   return 0
 end
@@ -63,7 +64,7 @@ local available = math.max(0, limit - used - reserved)
 local applied = math.min(actual, available)
 redis.call("HSET", KEYS[1], "reserved", reserved, "used", used + applied)
 if actual > applied or used + applied + reserved >= limit then
-	redis.call("HSET", KEYS[1], "exhausted", "1")
+  redis.call("HSET", KEYS[1], "exhausted", "1", "reset_hold", "0")
 end
 redis.call("EXPIRE", KEYS[1], 172800)
 if actual > applied then
@@ -78,7 +79,7 @@ if redis.call("HGET", KEYS[1], "window") ~= ARGV[1] then
 end
 local reserved = tonumber(redis.call("HGET", KEYS[1], "reserved") or "0")
 local estimate = tonumber(ARGV[2])
-redis.call("HSET", KEYS[1], "reserved", math.max(0, reserved - estimate), "exhausted", "1")
+redis.call("HSET", KEYS[1], "reserved", math.max(0, reserved - estimate), "exhausted", "1", "reset_hold", "0")
 redis.call("EXPIRE", KEYS[1], 172800)
 return 1
 `)

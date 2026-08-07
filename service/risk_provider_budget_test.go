@@ -44,6 +44,29 @@ func TestRiskProviderNeuronsBudget_reservesAtomicallyAndWaitsFiveMinutesAfterRes
 	assert.NotNil(t, common.RDB)
 }
 
+func TestRiskProviderNeuronsBudget_keepsStatusNormalWhenEstimateCannotFitBelowDailyLimit(t *testing.T) {
+	// Given
+	useRiskModerationMiniRedis(t)
+	provider := &model.RiskProvider{Id: 47, ProviderType: model.RiskProviderCloudflare, DailyNeuronsLimit: 10, DailyResetTime: "08:00"}
+	budget := newRiskProviderNeuronsBudget(func() time.Time {
+		return time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	})
+	reservation, err := budget.Reserve(context.Background(), provider, 9)
+	require.NoError(t, err)
+	require.NoError(t, budget.Settle(context.Background(), provider, reservation, 9))
+
+	// When
+	_, err = budget.Reserve(context.Background(), provider, 2)
+	state, stateErr := budget.State(context.Background(), provider)
+
+	// Then
+	require.ErrorIs(t, err, ErrRiskProviderDailyNeuronsExhausted)
+	require.NoError(t, stateErr)
+	assert.Equal(t, int64(9), state.Used)
+	assert.Zero(t, state.Reserved)
+	assert.False(t, state.Exhausted)
+}
+
 func TestRiskProviderNeuronsBudget_requiresSharedRedis(t *testing.T) {
 	// Given
 	originalEnabled, originalClient := common.RedisEnabled, common.RDB
