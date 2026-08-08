@@ -335,12 +335,14 @@ func toRiskProviderResponse(ctx context.Context, provider *model.RiskProvider) R
 	}
 	if provider.ProviderType == model.RiskProviderCloudflare {
 		if snapshot, err := service.GetRiskProviderBudgetSnapshot(ctx, provider); err == nil {
+			dailyExhausted := snapshot.Exhausted || snapshot.ResetHold
 			response.DailyNeuronsUsed = snapshot.Used
 			response.DailyNeuronsReserved = snapshot.Reserved
 			response.DailyNeuronsRemaining = maxInt64(dailyLimit-snapshot.Used-snapshot.Reserved, 0)
 			response.DailyNeuronsResetAt = &snapshot.ReadyAt
-			if snapshot.Exhausted {
+			if dailyExhausted {
 				response.CurrentStatus = service.RiskProviderStatusDailyExhausted
+				response.DailyNeuronsRemaining = 0
 			}
 		}
 	}

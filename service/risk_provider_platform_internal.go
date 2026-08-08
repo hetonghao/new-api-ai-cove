@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,8 @@ import (
 
 const platformInternalRiskPromptSemantics = "platform-internal-json-verdict-v1"
 
+const platformInternalRiskResponseFormatJSON = `{"type":"json_schema","json_schema":{"name":"risk_verdict","strict":true,"schema":{"type":"object","properties":{"verdict":{"type":"string","enum":["safe","unsafe"]},"categories":{"type":"array","items":{"type":"string"}}},"required":["verdict","categories"],"additionalProperties":false}}}`
+
 var platformInternalRiskHTTPClient = func() *http.Client {
 	transport := newRelayHTTPTransport()
 	transport.Proxy = nil
@@ -31,11 +34,12 @@ var platformInternalRiskHTTPClient = func() *http.Client {
 }()
 
 type platformInternalRiskRequest struct {
-	Model       string                  `json:"model"`
-	Messages    []cloudflareRiskMessage `json:"messages"`
-	MaxTokens   int                     `json:"max_tokens"`
-	Temperature int                     `json:"temperature"`
-	Stream      bool                    `json:"stream"`
+	Model          string                  `json:"model"`
+	Messages       []cloudflareRiskMessage `json:"messages"`
+	MaxTokens      int                     `json:"max_tokens"`
+	Temperature    int                     `json:"temperature"`
+	Stream         bool                    `json:"stream"`
+	ResponseFormat json.RawMessage         `json:"response_format"`
 }
 
 type platformInternalRiskResponse struct {
@@ -62,6 +66,7 @@ func reviewPlatformInternalRiskContent(ctx context.Context, provider *model.Risk
 			{Role: "user", Content: content},
 		},
 		MaxTokens: 64, Temperature: 0, Stream: false,
+		ResponseFormat: json.RawMessage(platformInternalRiskResponseFormatJSON),
 	})
 	if err != nil {
 		return RiskReviewResult{}, newRiskProviderError(err, "Platform internal model request could not be encoded")

@@ -7,26 +7,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParsePlatformInternalRiskResultRejectsUppercaseVerdict(t *testing.T) {
+func TestParsePlatformInternalRiskResultNormalizesUppercaseVerdict(t *testing.T) {
 	// Given
 	content := `{"verdict":"SAFE","categories":[]}`
 
 	// When
-	_, err := parsePlatformInternalRiskResult(content)
+	result, err := parsePlatformInternalRiskResult(content)
 
 	// Then
-	require.Error(t, err)
+	require.NoError(t, err)
+	assert.Equal(t, RiskReviewSafe, result.Status)
 }
 
-func TestParsePlatformInternalRiskResultRejectsPaddedVerdict(t *testing.T) {
+func TestParsePlatformInternalRiskResultNormalizesPaddedVerdict(t *testing.T) {
 	// Given
 	content := `{"verdict":" safe ","categories":[]}`
 
 	// When
-	_, err := parsePlatformInternalRiskResult(content)
+	result, err := parsePlatformInternalRiskResult(content)
 
 	// Then
-	require.Error(t, err)
+	require.NoError(t, err)
+	assert.Equal(t, RiskReviewSafe, result.Status)
 }
 
 func TestParsePlatformInternalRiskResultAcceptsFencedJSON(t *testing.T) {

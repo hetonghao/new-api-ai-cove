@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -79,9 +80,25 @@ func TestReviewRiskContentMapsPlatformInternalChatCompletion(t *testing.T) {
 		assert.Equal(t, "Bearer sk-"+token.Key+"-"+strconv.Itoa(provider.ChannelID), request.Header.Get("Authorization"))
 		body, err := io.ReadAll(request.Body)
 		require.NoError(t, err)
-		assert.Contains(t, string(body), `"stream":false`)
-		assert.Contains(t, string(body), `"temperature":0`)
-		assert.Contains(t, string(body), "connection test")
+		var requestBody struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+			Stream         bool `json:"stream"`
+			Temperature    int  `json:"temperature"`
+			ResponseFormat struct {
+				Type       string          `json:"type"`
+				JSONSchema json.RawMessage `json:"json_schema"`
+			} `json:"response_format"`
+		}
+		require.NoError(t, json.Unmarshal(body, &requestBody))
+		assert.False(t, requestBody.Stream)
+		assert.Zero(t, requestBody.Temperature)
+		require.Len(t, requestBody.Messages, 2)
+		assert.Equal(t, "connection test", requestBody.Messages[1].Content)
+		assert.Equal(t, "json_schema", requestBody.ResponseFormat.Type)
+		assert.JSONEq(t, `{"name":"risk_verdict","strict":true,"schema":{"type":"object","properties":{"verdict":{"type":"string","enum":["safe","unsafe"]},"categories":{"type":"array","items":{"type":"string"}}},"required":["verdict","categories"],"additionalProperties":false}}`, string(requestBody.ResponseFormat.JSONSchema))
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Header:     http.Header{"Content-Type": []string{"application/json"}},

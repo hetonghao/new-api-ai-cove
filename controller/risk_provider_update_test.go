@@ -119,6 +119,44 @@ func TestListRiskProvidersReportsDailyExhaustionWhenProviderIsDisabled(t *testin
 	assert.Equal(t, service.RiskProviderStatusDailyExhausted, providers[0].CurrentStatus)
 }
 
+func TestListRiskProvidersReportsDailyExhaustionWhenReservationCannotFit(t *testing.T) {
+	setupRiskProviderControllerTest(t)
+	location := time.FixedZone("UTC+8", 8*60*60)
+	now := time.Now().UTC().In(location)
+	resetAt := now.Add(-time.Hour)
+	ciphertext, err := common.EncryptCredential("cf-secret-token")
+	require.NoError(t, err)
+	provider := &model.RiskProvider{
+		Name: "Cloudflare held", ProviderType: model.RiskProviderCloudflare,
+		AccountID: "0123456789abcdef0123456789abcdef", Model: "@cf/meta/llama-guard-3-8b",
+		CredentialEncrypted: ciphertext, DailyNeuronsLimit: 10000, DailyResetTime: resetAt.Format("15:04"),
+	}
+	require.NoError(t, model.CreateRiskProvider(provider))
+	require.NoError(t, model.MarkRiskProviderValidated(provider.Id))
+	require.NoError(t, model.ActivateRiskProvider(provider.Id))
+
+	reset := time.Date(resetAt.Year(), resetAt.Month(), resetAt.Day(), resetAt.Hour(), resetAt.Minute(), 0, 0, location)
+	key := fmt.Sprintf("new-api:risk-neurons-budget:v1:%d", provider.Id)
+	require.NoError(t, common.RDB.HSet(context.Background(), key, map[string]any{
+		"window":     reset.UTC().Format("20060102T150405Z"),
+		"used":       "9800",
+		"reserved":   "0",
+		"exhausted":  "0",
+		"reset_hold": "1",
+	}).Err())
+
+	response := callRiskProviderHandler(t, riskProviderTestCall{
+		Method: http.MethodGet, Target: "/api/risk/providers/", Handler: ListRiskProviders,
+	})
+	require.True(t, response.Success, response.Message)
+	var providers []RiskProviderResponse
+	require.NoError(t, common.Unmarshal(response.Data, &providers))
+	require.Len(t, providers, 1)
+	assert.True(t, providers[0].Active)
+	assert.Equal(t, service.RiskProviderStatusDailyExhausted, providers[0].CurrentStatus)
+	assert.Zero(t, providers[0].DailyNeuronsRemaining)
+}
+
 func TestUpdateRiskProviderRevokesValidationWhenConnectionChanges(t *testing.T) {
 	tests := []struct {
 		name   string

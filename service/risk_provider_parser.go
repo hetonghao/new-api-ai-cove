@@ -44,6 +44,7 @@ func parsePlatformInternalRiskJSONObject(candidate string) (RiskReviewResult, er
 	if err := common.Unmarshal(raw.Verdict, &verdict); err != nil {
 		return RiskReviewResult{}, errInvalidPlatformInternalRiskVerdict
 	}
+	verdict = strings.ToLower(strings.TrimSpace(verdict))
 	if err := common.Unmarshal(raw.Categories, &categories); err != nil || categories == nil {
 		return RiskReviewResult{}, errInvalidPlatformInternalRiskVerdict
 	}

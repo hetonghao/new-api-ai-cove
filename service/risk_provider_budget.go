@@ -36,6 +36,9 @@ end
 if redis.call("HGET", KEYS[1], "exhausted") == "1" then
   return 0
 end
+if redis.call("HGET", KEYS[1], "reset_hold") == "1" then
+  return 0
+end
 local used = tonumber(redis.call("HGET", KEYS[1], "used") or "0")
 local reserved = tonumber(redis.call("HGET", KEYS[1], "reserved") or "0")
 local estimate = tonumber(ARGV[4])
@@ -95,6 +98,7 @@ type riskProviderNeuronsBudgetState struct {
 	Used      int64
 	Reserved  int64
 	Exhausted bool
+	ResetHold bool
 	ReadyAt   time.Time
 }
 
@@ -192,14 +196,18 @@ func (b *riskProviderNeuronsBudget) State(ctx context.Context, provider *model.R
 		return riskProviderNeuronsBudgetState{}, fmt.Errorf("%w: load risk provider Neurons budget: %v", ErrRiskProviderBudgetUnavailable, getErr)
 	}
 	if values["window"] != window {
-		if values["exhausted"] == "1" && now.Before(readyAt) {
-			return riskProviderNeuronsBudgetState{Window: values["window"], Exhausted: true, ReadyAt: readyAt}, nil
+		if (values["exhausted"] == "1" || values["reset_hold"] == "1") && now.Before(readyAt) {
+			return riskProviderNeuronsBudgetState{
+				Window: values["window"], Exhausted: values["exhausted"] == "1",
+				ResetHold: values["reset_hold"] == "1", ReadyAt: readyAt,
+			}, nil
 		}
 		return riskProviderNeuronsBudgetState{Window: window, ReadyAt: readyAt}, nil
 	}
 	return riskProviderNeuronsBudgetState{
 		Window: values["window"], Used: parseInt64(values["used"]),
-		Reserved: parseInt64(values["reserved"]), Exhausted: values["exhausted"] == "1", ReadyAt: readyAt,
+		Reserved: parseInt64(values["reserved"]), Exhausted: values["exhausted"] == "1",
+		ResetHold: values["reset_hold"] == "1", ReadyAt: readyAt,
 	}, nil
 }
 
@@ -275,6 +283,7 @@ type RiskProviderBudgetSnapshot struct {
 	Used      int64
 	Reserved  int64
 	Exhausted bool
+	ResetHold bool
 	ReadyAt   time.Time
 }
 
@@ -283,5 +292,8 @@ func GetRiskProviderBudgetSnapshot(ctx context.Context, provider *model.RiskProv
 	if err != nil {
 		return RiskProviderBudgetSnapshot{}, err
 	}
-	return RiskProviderBudgetSnapshot{Used: state.Used, Reserved: state.Reserved, Exhausted: state.Exhausted, ReadyAt: state.ReadyAt}, nil
+	return RiskProviderBudgetSnapshot{
+		Used: state.Used, Reserved: state.Reserved, Exhausted: state.Exhausted,
+		ResetHold: state.ResetHold, ReadyAt: state.ReadyAt,
+	}, nil
 }
