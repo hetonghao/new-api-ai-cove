@@ -214,12 +214,12 @@ func filterAbilitiesByWebSocketCapability(abilities []Ability, excludedChannelID
 		channelIDs = append(channelIDs, ability.ChannelId)
 	}
 	var channels []Channel
-	if err := DB.Where("id IN ? AND type = ? AND status = ?", channelIDs, constant.ChannelTypeOpenAI, common.ChannelStatusEnabled).Find(&channels).Error; err != nil {
+	if err := DB.Where("id IN ? AND status = ?", channelIDs, common.ChannelStatusEnabled).Find(&channels).Error; err != nil {
 		return nil
 	}
 	enabled := make(map[int]struct{}, len(channels))
 	for _, channel := range channels {
-		if channel.GetOtherSettings().SupportsWebSockets {
+		if isResponsesWebSocketChannelType(channel.Type) && channel.GetOtherSettings().SupportsWebSockets {
 			enabled[channel.Id] = struct{}{}
 		}
 	}

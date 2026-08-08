@@ -57,6 +57,35 @@ func TestGetRandomSatisfiedChannelExcludesDisabledWebSocketChannelWithStaleAbili
 	}
 }
 
+func TestGetRandomSatisfiedChannelSupportsAllResponsesWebSocketChannelTypes(t *testing.T) {
+	tests := []struct {
+		name        string
+		channelType int
+	}{
+		{name: "OpenAI", channelType: constant.ChannelTypeOpenAI},
+		{name: "Codex", channelType: constant.ChannelTypeCodex},
+		{name: "Advanced Custom", channelType: constant.ChannelTypeAdvancedCustom},
+		{name: "Sub2API", channelType: constant.ChannelTypeSub2API},
+		{name: "New API", channelType: constant.ChannelTypeNewAPI},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetPricingEndpointTestTables(t)
+			insertWebSocketSelectionChannel(t, 405, tt.channelType, true)
+			InitChannelCache()
+
+			for _, memoryCacheEnabled := range []bool{true, false} {
+				common.MemoryCacheEnabled = memoryCacheEnabled
+				channel, err := GetRandomSatisfiedChannel("default", "gpt-5.4", 0, "/v1/responses", true, nil)
+				require.NoError(t, err)
+				require.NotNil(t, channel)
+				require.Equal(t, 405, channel.Id)
+			}
+		})
+	}
+}
+
 func insertWebSocketSelectionChannel(t *testing.T, id int, channelType int, supportsWebSockets bool) {
 	t.Helper()
 	channel := &Channel{
@@ -70,7 +99,17 @@ func insertWebSocketSelectionChannel(t *testing.T, id int, channelType int, supp
 		Priority: common.GetPointer(int64(0)),
 		Weight:   common.GetPointer(uint(100)),
 	}
-	channel.SetOtherSettings(dto.ChannelOtherSettings{SupportsWebSockets: supportsWebSockets})
+	otherSettings := dto.ChannelOtherSettings{SupportsWebSockets: supportsWebSockets}
+	if channelType == constant.ChannelTypeAdvancedCustom {
+		otherSettings.AdvancedCustom = &dto.AdvancedCustomConfig{
+			Routes: []dto.AdvancedCustomRoute{{
+				IncomingPath: "/v1/responses",
+				UpstreamPath: "/v1/responses",
+				Converter:    "none",
+			}},
+		}
+	}
+	channel.SetOtherSettings(otherSettings)
 	require.NoError(t, DB.Create(channel).Error)
 	require.NoError(t, DB.Create(&Ability{
 		Group:     "default",

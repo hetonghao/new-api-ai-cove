@@ -23,6 +23,7 @@ import {
   CHANNEL_STATUS,
   ERROR_MESSAGES,
   MODEL_FETCHABLE_TYPES,
+  RESPONSES_WEBSOCKET_CHANNEL_TYPES,
 } from '../constants'
 import type { Channel } from '../types'
 import {
@@ -262,7 +263,7 @@ export const channelFormSchema = z
     system_prompt: z.string().optional(),
     system_prompt_override: z.boolean().optional(),
     // Type-specific settings (stored in settings JSON)
-    supports_websockets: z.boolean().optional(), // OpenAI only
+    supports_websockets: z.boolean().optional(), // Responses WebSocket channels
     is_enterprise_account: z.boolean().optional(), // OpenRouter specific
     vertex_key_type: z.enum(['json', 'api_key']).optional(), // Vertex AI specific
     aws_key_type: z.enum(['ak_sk', 'api_key']).optional(), // AWS specific
@@ -653,7 +654,7 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     }
   }
 
-  if (formData.type === 1) {
+  if (RESPONSES_WEBSOCKET_CHANNEL_TYPES.has(formData.type)) {
     settingsObj.supports_websockets = formData.supports_websockets === true
   } else if ('supports_websockets' in settingsObj) {
     delete settingsObj.supports_websockets

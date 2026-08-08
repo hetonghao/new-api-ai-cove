@@ -23,6 +23,14 @@ For commercial licensing, please contact support@quantumnous.com
 
 export const CHANNEL_TYPE_NEW_API = 60
 
+export const RESPONSES_WEBSOCKET_CHANNEL_TYPES: ReadonlySet<number> = new Set([
+  1,
+  57,
+  58,
+  59,
+  CHANNEL_TYPE_NEW_API,
+])
+
 export const CHANNEL_TYPES = {
   0: 'Unknown',
   1: 'OpenAI',

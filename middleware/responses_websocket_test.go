@@ -74,21 +74,36 @@ func TestResponsesWebSocketPreflight_returns_400_for_invalid_specific_channel(t 
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
 }
 
-func TestResponsesWebSocketPreflight_accepts_supported_openai_channel(t *testing.T) {
-	db := setupResponsesWebSocketPreflightTestDB(t)
-	channel := model.Channel{
-		Id:     7,
-		Name:   "OpenAI WebSocket",
-		Type:   constant.ChannelTypeOpenAI,
-		Status: common.ChannelStatusEnabled,
-		Key:    "test-key",
+func TestResponsesWebSocketPreflight_accepts_supported_responses_websocket_channels(t *testing.T) {
+	tests := []struct {
+		name        string
+		channelType int
+	}{
+		{name: "OpenAI", channelType: constant.ChannelTypeOpenAI},
+		{name: "Codex", channelType: constant.ChannelTypeCodex},
+		{name: "Advanced Custom", channelType: constant.ChannelTypeAdvancedCustom},
+		{name: "Sub2API", channelType: constant.ChannelTypeSub2API},
+		{name: "New API", channelType: constant.ChannelTypeNewAPI},
 	}
-	channel.SetOtherSettings(dto.ChannelOtherSettings{SupportsWebSockets: true})
-	require.NoError(t, db.Create(&channel).Error)
 
-	recorder := runResponsesWebSocketPreflight(t, channel.Id)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupResponsesWebSocketPreflightTestDB(t)
+			channel := model.Channel{
+				Id:     7,
+				Name:   tt.name + " WebSocket",
+				Type:   tt.channelType,
+				Status: common.ChannelStatusEnabled,
+				Key:    "test-key",
+			}
+			channel.SetOtherSettings(dto.ChannelOtherSettings{SupportsWebSockets: true})
+			require.NoError(t, db.Create(&channel).Error)
 
-	require.Equal(t, http.StatusNoContent, recorder.Code)
+			recorder := runResponsesWebSocketPreflight(t, nil)
+
+			require.Equal(t, http.StatusNoContent, recorder.Code)
+		})
+	}
 }
 
 func TestResponsesWebSocketPreflight_returns_426_for_unsupported_specific_channel(t *testing.T) {

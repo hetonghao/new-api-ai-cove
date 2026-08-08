@@ -41,7 +41,7 @@ func TestChannelValidateSettingsRejectsInvalidHTTPTransport(t *testing.T) {
 	}
 }
 
-func TestChannelWebSocketCapabilityIsOpenAIOnly(t *testing.T) {
+func TestChannelWebSocketCapabilitySupportsResponsesChannelTypes(t *testing.T) {
 	tests := []struct {
 		name        string
 		channelType int
@@ -50,6 +50,10 @@ func TestChannelWebSocketCapabilityIsOpenAIOnly(t *testing.T) {
 	}{
 		{name: "missing defaults off", channelType: constant.ChannelTypeOpenAI},
 		{name: "OpenAI persists enabled", channelType: constant.ChannelTypeOpenAI, enabled: true, want: true},
+		{name: "Codex persists enabled", channelType: constant.ChannelTypeCodex, enabled: true, want: true},
+		{name: "Advanced Custom persists enabled", channelType: constant.ChannelTypeAdvancedCustom, enabled: true, want: true},
+		{name: "Sub2API persists enabled", channelType: constant.ChannelTypeSub2API, enabled: true, want: true},
+		{name: "New API persists enabled", channelType: constant.ChannelTypeNewAPI, enabled: true, want: true},
 		{name: "non OpenAI clears enabled", channelType: constant.ChannelTypeAnthropic, enabled: true},
 	}
 

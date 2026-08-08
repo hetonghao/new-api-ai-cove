@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
+import { RESPONSES_WEBSOCKET_CHANNEL_TYPES } from '../../constants'
 import { channelSchema } from '../../types'
 import {
   CHANNEL_FORM_DEFAULT_VALUES,
@@ -52,19 +53,21 @@ describe('Responses WebSocket channel settings', () => {
     )
   })
 
-  test('serializes the capability only for OpenAI channels', () => {
-    const openAI = transformFormDataToCreatePayload({
-      ...CHANNEL_FORM_DEFAULT_VALUES,
-      name: 'OpenAI',
-      type: 1,
-      key: 'test-key',
-      models: 'gpt-5.4',
-      supports_websockets: true,
-    })
-    assert.equal(
-      JSON.parse(String(openAI.channel.settings)).supports_websockets,
-      true
-    )
+  test('serializes the capability for all Responses WebSocket channel types', () => {
+    for (const type of RESPONSES_WEBSOCKET_CHANNEL_TYPES) {
+      const channel = transformFormDataToCreatePayload({
+        ...CHANNEL_FORM_DEFAULT_VALUES,
+        name: `channel-${type}`,
+        type,
+        key: 'test-key',
+        models: 'gpt-5.4',
+        supports_websockets: true,
+      })
+      assert.equal(
+        JSON.parse(String(channel.channel.settings)).supports_websockets,
+        true
+      )
+    }
 
     const nonOpenAI = transformFormDataToCreatePayload({
       ...CHANNEL_FORM_DEFAULT_VALUES,

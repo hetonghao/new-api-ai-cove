@@ -145,6 +145,7 @@ import {
   FIELD_DESCRIPTIONS,
   FIELD_PLACEHOLDERS,
   MODEL_FETCHABLE_TYPES,
+  RESPONSES_WEBSOCKET_CHANNEL_TYPES,
 } from '../../constants'
 import { useChannelMutateForm } from '../../hooks/use-channel-mutate-form'
 import {
@@ -4093,7 +4094,9 @@ export function ChannelMutateDrawer({
                             className='space-y-4 disabled:opacity-60'
                           >
                             <div className='divide-border space-y-0 divide-y border-y'>
-                              {currentType === 1 && (
+                              {RESPONSES_WEBSOCKET_CHANNEL_TYPES.has(
+                                currentType
+                              ) && (
                                 <>
                                   <FormField
                                     control={form.control}
@@ -4106,7 +4109,7 @@ export function ChannelMutateDrawer({
                                           </FormLabel>
                                           <FormDescription>
                                             {t(
-                                              'Enable non-voice Responses WebSocket requests for this OpenAI channel'
+                                              'Enable non-voice Responses WebSocket requests for this channel'
                                             )}
                                           </FormDescription>
                                         </div>
@@ -4119,30 +4122,32 @@ export function ChannelMutateDrawer({
                                       </FormItem>
                                     )}
                                   />
-                                  <FormField
-                                    control={form.control}
-                                    name='force_format'
-                                    render={({ field }) => (
-                                      <FormItem className='flex items-center justify-between px-4 py-3'>
-                                        <div className='space-y-0.5'>
-                                          <FormLabel>
-                                            {t('Force Format')}
-                                          </FormLabel>
-                                          <FormDescription>
-                                            {t(
-                                              'Force format response to OpenAI standard (OpenAI channel only)'
-                                            )}
-                                          </FormDescription>
-                                        </div>
-                                        <FormControl>
-                                          <Switch
-                                            checked={field.value}
-                                            onCheckedChange={field.onChange}
-                                          />
-                                        </FormControl>
-                                      </FormItem>
-                                    )}
-                                  />
+                                  {currentType === 1 && (
+                                    <FormField
+                                      control={form.control}
+                                      name='force_format'
+                                      render={({ field }) => (
+                                        <FormItem className='flex items-center justify-between px-4 py-3'>
+                                          <div className='space-y-0.5'>
+                                            <FormLabel>
+                                              {t('Force Format')}
+                                            </FormLabel>
+                                            <FormDescription>
+                                              {t(
+                                                'Force format response to OpenAI standard (OpenAI channel only)'
+                                              )}
+                                            </FormDescription>
+                                          </div>
+                                          <FormControl>
+                                            <Switch
+                                              checked={field.value}
+                                              onCheckedChange={field.onChange}
+                                            />
+                                          </FormControl>
+                                        </FormItem>
+                                      )}
+                                    />
+                                  )}
                                 </>
                               )}
 

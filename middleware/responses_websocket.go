@@ -40,7 +40,7 @@ func ResponsesWebSocketPreflight() gin.HandlerFunc {
 			return
 		}
 		if !hasChannel {
-			abortWithOpenAiMessage(c, http.StatusUpgradeRequired, "当前没有启用非语音 Responses WebSocket 的 OpenAI 渠道", types.ErrorCode("websocket_not_supported"))
+			abortWithOpenAiMessage(c, http.StatusUpgradeRequired, "当前没有启用非语音 Responses WebSocket 渠道", types.ErrorCode("websocket_not_supported"))
 			return
 		}
 		c.Next()

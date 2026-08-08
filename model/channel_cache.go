@@ -225,6 +225,19 @@ func filterExcludedChannels(channels []int, excluded map[int]bool) []int {
 	return filtered
 }
 
+func isResponsesWebSocketChannelType(channelType int) bool {
+	switch channelType {
+	case constant.ChannelTypeOpenAI,
+		constant.ChannelTypeCodex,
+		constant.ChannelTypeAdvancedCustom,
+		constant.ChannelTypeSub2API,
+		constant.ChannelTypeNewAPI:
+		return true
+	default:
+		return false
+	}
+}
+
 func filterChannelsByWebSocketCapability(channels []int, required bool) []int {
 	if !required || len(channels) == 0 {
 		return channels
@@ -232,7 +245,7 @@ func filterChannelsByWebSocketCapability(channels []int, required bool) []int {
 	filtered := make([]int, 0, len(channels))
 	for _, channelID := range channels {
 		channel, ok := channelsIDM[channelID]
-		if ok && channel.Type == constant.ChannelTypeOpenAI && channel.GetOtherSettings().SupportsWebSockets {
+		if ok && isResponsesWebSocketChannelType(channel.Type) && channel.GetOtherSettings().SupportsWebSockets {
 			filtered = append(filtered, channelID)
 		}
 	}
@@ -242,7 +255,7 @@ func filterChannelsByWebSocketCapability(channels []int, required bool) []int {
 func ChannelSupportsResponsesWebSocket(channel *Channel) bool {
 	return channel != nil &&
 		channel.Status == common.ChannelStatusEnabled &&
-		channel.Type == constant.ChannelTypeOpenAI &&
+		isResponsesWebSocketChannelType(channel.Type) &&
 		channel.GetOtherSettings().SupportsWebSockets
 }
 
@@ -259,7 +272,7 @@ func HasEnabledResponsesWebSocketChannel() (bool, error) {
 	}
 
 	var channels []Channel
-	if err := DB.Where("status = ? AND type = ?", common.ChannelStatusEnabled, constant.ChannelTypeOpenAI).Find(&channels).Error; err != nil {
+	if err := DB.Where("status = ?", common.ChannelStatusEnabled).Find(&channels).Error; err != nil {
 		return false, err
 	}
 	for i := range channels {

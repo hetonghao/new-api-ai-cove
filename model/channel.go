@@ -964,7 +964,7 @@ func (channel *Channel) ValidateSettings() error {
 			return err
 		}
 	}
-	if channel.Type != constant.ChannelTypeOpenAI && channelOtherSettings.SupportsWebSockets {
+	if !isResponsesWebSocketChannelType(channel.Type) && channelOtherSettings.SupportsWebSockets {
 		channelOtherSettings.SupportsWebSockets = false
 		channel.SetOtherSettings(*channelOtherSettings)
 	}
@@ -1022,7 +1022,7 @@ func (channel *Channel) GetOtherSettings() dto.ChannelOtherSettings {
 }
 
 func (channel *Channel) SetOtherSettings(setting dto.ChannelOtherSettings) {
-	if channel.Type != constant.ChannelTypeOpenAI {
+	if !isResponsesWebSocketChannelType(channel.Type) {
 		setting.SupportsWebSockets = false
 	}
 	settingBytes, err := common.Marshal(setting)
