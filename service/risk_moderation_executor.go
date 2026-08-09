@@ -241,22 +241,22 @@ func (e *RiskModerationExecutor) executeProviderReview(
 	input RiskModerationInput,
 	providerCalled *atomic.Bool,
 ) (RiskReviewResult, []RiskReviewChunkAudit, error) {
-	providerCtx, cancel := context.WithTimeout(ctx, time.Duration(input.Provider.TimeoutMs)*time.Millisecond)
-	defer cancel()
 	review := func(reviewCtx context.Context, content string) (RiskReviewResult, error) {
-		if err := reviewCtx.Err(); err != nil {
+		providerCtx, cancel := context.WithTimeout(reviewCtx, time.Duration(input.Provider.TimeoutMs)*time.Millisecond)
+		defer cancel()
+		if err := providerCtx.Err(); err != nil {
 			return RiskReviewResult{}, err
 		}
 		wasCalled := providerCalled.Load()
 		providerCalled.Store(true)
-		result, err := e.reviewer(reviewCtx, input.Provider, content)
+		result, err := e.reviewer(providerCtx, input.Provider, content)
 		if isRiskProviderLocalBudgetUnavailable(err) && !wasCalled {
 			providerCalled.Store(false)
 		}
 		return result, err
 	}
 	if input.ReviewMode == model.RiskReviewSelective {
-		result, err := review(providerCtx, input.Content)
+		result, err := review(ctx, input.Content)
 		if err != nil {
 			return result, nil, fmt.Errorf("%w: %w", ErrRiskModerationProvider, err)
 		}
@@ -266,7 +266,7 @@ func (e *RiskModerationExecutor) executeProviderReview(
 		return result, nil, nil
 	}
 
-	full, err := ReviewFullRiskText(providerCtx, input.Content, input.FullReviewChunkRunes, review)
+	full, err := ReviewFullRiskText(ctx, input.Content, input.FullReviewChunkRunes, review)
 	if err != nil {
 		return RiskReviewResult{}, nil, err
 	}

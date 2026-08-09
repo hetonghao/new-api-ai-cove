@@ -68,3 +68,34 @@ func TestRiskModerationExecutor_Execute_classifiesCallerDeadline(t *testing.T) {
 	assert.Equal(t, riskObservationCallerCanceled, code)
 	assert.Equal(t, "Risk moderation request was canceled", detail)
 }
+
+func TestRiskModerationExecutor_Execute_continuesFullReviewAfterOneChunkTimesOut(t *testing.T) {
+	// Given
+	provider := riskModerationProviderForTest()
+	provider.TimeoutMs = 1
+	reviewCalls := 0
+	executor := newRiskModerationExecutor(riskModerationExecutorDeps{
+		Cache: newRiskReviewCacheService(newFakeRiskReviewCacheStore(), "deadline-test-secret"),
+		Reviewer: func(ctx context.Context, _ *model.RiskProvider, _ string) (RiskReviewResult, error) {
+			reviewCalls++
+			if reviewCalls == 1 {
+				<-ctx.Done()
+				return RiskReviewResult{}, ctx.Err()
+			}
+			return RiskReviewResult{Status: RiskReviewSafe}, nil
+		},
+	})
+
+	// When
+	outcome, err := executor.Execute(context.Background(), RiskModerationInput{
+		Provider: provider, Content: "abcdef", ReviewMode: model.RiskReviewFull, FullReviewChunkRunes: 2,
+	})
+
+	// Then
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Len(t, outcome.Chunks, 3)
+	assert.Equal(t, 3, reviewCalls)
+	assert.Equal(t, RiskReviewError, outcome.Chunks[0].Status)
+	assert.Equal(t, RiskReviewSafe, outcome.Chunks[1].Status)
+	assert.Equal(t, RiskReviewSafe, outcome.Chunks[2].Status)
+}

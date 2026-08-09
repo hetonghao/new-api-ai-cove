@@ -296,29 +296,3 @@ func TestRiskModerationExecutor_Execute_usesCloudflareFullReviewChunkDefault(t *
 	assert.Equal(t, RiskReviewSafe, outcome.Result.Status)
 	assert.Equal(t, 1, calls)
 }
-
-func TestRiskModerationExecutor_Execute_reusesOneProviderDeadlineAcrossChunks(t *testing.T) {
-	// Given
-	store := newFakeRiskReviewCacheStore()
-	cache := newRiskReviewCacheService(store, "deadline-test-secret")
-	provider := riskModerationProviderForTest()
-	var deadlines []time.Time
-	reviewer := func(ctx context.Context, _ *model.RiskProvider, _ string) (RiskReviewResult, error) {
-		deadline, ok := ctx.Deadline()
-		require.True(t, ok)
-		deadlines = append(deadlines, deadline)
-		return RiskReviewResult{Status: RiskReviewSafe}, nil
-	}
-	executor := newRiskModerationExecutor(riskModerationExecutorDeps{Cache: cache, Reviewer: reviewer, Now: time.Now})
-
-	// When
-	_, err := executor.Execute(context.Background(), RiskModerationInput{
-		Provider: provider, Content: "abcdef", ReviewMode: model.RiskReviewFull, FullReviewChunkRunes: 2,
-	})
-
-	// Then
-	require.NoError(t, err)
-	require.Len(t, deadlines, 3)
-	assert.Equal(t, deadlines[0], deadlines[1])
-	assert.Equal(t, deadlines[0], deadlines[2])
-}
