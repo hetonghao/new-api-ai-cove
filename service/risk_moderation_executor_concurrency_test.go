@@ -73,7 +73,7 @@ func TestRiskModerationExecutor_Execute_coalescesSameKeyFullReview(t *testing.T)
 	assert.EqualValues(t, 3, calls.Load())
 }
 
-func TestRiskModerationExecutor_Execute_inflightFollowerUsesOwnTotalBudget(t *testing.T) {
+func TestRiskModerationExecutor_Execute_inflightFollowerUsesCallerDeadline(t *testing.T) {
 	// Given
 	cache := newRiskReviewCacheService(newFakeRiskReviewCacheStore(), "follower-budget-test-secret")
 	providerStarted := make(chan struct{})
@@ -89,7 +89,9 @@ func TestRiskModerationExecutor_Execute_inflightFollowerUsesOwnTotalBudget(t *te
 	leaderProvider := riskModerationProviderForTest()
 	leaderProvider.TimeoutMs = 500
 	followerProvider := riskModerationProviderForTest()
-	followerProvider.TimeoutMs = 40
+	followerProvider.TimeoutMs = 500
+	followerCtx, cancelFollower := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancelFollower()
 	leaderResult := make(chan error, 1)
 	go func() {
 		_, err := executor.Execute(context.Background(), RiskModerationInput{
@@ -104,7 +106,7 @@ func TestRiskModerationExecutor_Execute_inflightFollowerUsesOwnTotalBudget(t *te
 	}
 	followerResult := make(chan response, 1)
 	go func() {
-		outcome, err := executor.Execute(context.Background(), RiskModerationInput{
+		outcome, err := executor.Execute(followerCtx, RiskModerationInput{
 			Provider: followerProvider, Content: "same", ReviewMode: model.RiskReviewSelective,
 		})
 		followerResult <- response{outcome: outcome, err: err}
@@ -116,7 +118,7 @@ func TestRiskModerationExecutor_Execute_inflightFollowerUsesOwnTotalBudget(t *te
 	case follower = <-followerResult:
 	case <-time.After(150 * time.Millisecond):
 		close(releaseProvider)
-		require.FailNow(t, "inflight follower exceeded its configured total budget")
+		require.FailNow(t, "inflight follower ignored its caller deadline")
 	}
 	close(releaseProvider)
 	leaderErr := <-leaderResult

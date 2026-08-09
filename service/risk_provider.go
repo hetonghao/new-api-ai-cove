@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 )
 
@@ -91,9 +93,12 @@ func RiskObservationErrorInfo(err error) (string, string) {
 	}
 	code := riskObservationProviderError
 	detail := "Risk provider request failed"
-	if errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, ErrRiskModerationCallerCanceled) {
+		code = riskObservationCallerCanceled
+		detail = "Risk moderation request was canceled"
+	} else if errors.Is(err, context.DeadlineExceeded) {
 		code = riskObservationTimeout
-		detail = "Cloudflare request timed out"
+		detail = "Risk provider request timed out"
 	} else if errors.Is(err, ErrRiskModerationCircuitOpen) {
 		code = riskObservationCircuitOpen
 		detail = "Risk moderation circuit is open; provider was not called"
@@ -108,7 +113,7 @@ func RiskObservationErrorInfo(err error) (string, string) {
 		detail = "No risk provider is currently available"
 	}
 	var providerErr *riskProviderError
-	if errors.As(err, &providerErr) && providerErr.detail != "" {
+	if errors.As(err, &providerErr) && providerErr.detail != "" && !errors.Is(err, ErrRiskModerationCallerCanceled) {
 		detail = providerErr.detail
 	}
 	return code, detail
@@ -155,6 +160,8 @@ func reviewCloudflareRiskContent(ctx context.Context, provider *model.RiskProvid
 	timeout := time.Duration(provider.TimeoutMs) * time.Millisecond
 	requestCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	requestTrace := &cloudflareRequestTrace{startedAt: time.Now()}
+	requestCtx = httptrace.WithClientTrace(requestCtx, requestTrace.clientTrace())
 	request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, requestURL, bytes.NewReader(body))
 	if err != nil {
 		return RiskReviewResult{}, newRiskProviderError(err, "Cloudflare request could not be created")
@@ -171,6 +178,7 @@ func reviewCloudflareRiskContent(ctx context.Context, provider *model.RiskProvid
 		detail := "Cloudflare network request failed"
 		if errors.Is(err, context.DeadlineExceeded) {
 			detail = "Cloudflare request timed out"
+			logger.LogWarn(ctx, requestTrace.timeoutMessage(provider, len([]rune(content))))
 		}
 		return RiskReviewResult{}, newRiskProviderError(err, detail)
 	}

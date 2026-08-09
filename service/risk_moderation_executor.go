@@ -18,6 +18,7 @@ const (
 
 var (
 	ErrInvalidRiskModerationInput        = errors.New("invalid risk moderation input")
+	ErrRiskModerationCallerCanceled      = errors.New("risk moderation caller canceled")
 	ErrRiskModerationProvider            = errors.New("risk moderation provider failed")
 	ErrRiskModerationNoAvailableProvider = errors.New("no available risk moderation provider")
 )
@@ -100,13 +101,9 @@ func (e *RiskModerationExecutor) Execute(ctx context.Context, input RiskModerati
 	if providersErr != nil {
 		return RiskModerationOutcome{}, providersErr
 	}
-	maxTimeout := 0
 	for _, provider := range providers {
 		if provider.TimeoutMs <= 0 || provider.FailureThreshold <= 0 || provider.CooldownSeconds <= 0 {
 			return RiskModerationOutcome{}, ErrInvalidRiskModerationInput
-		}
-		if provider.TimeoutMs > maxTimeout {
-			maxTimeout = provider.TimeoutMs
 		}
 	}
 	policyInput := input
@@ -122,13 +119,10 @@ func (e *RiskModerationExecutor) Execute(ctx context.Context, input RiskModerati
 	}
 	resolvedInput := input
 	resolvedInput.FullReviewChunkRunes = chunkLimit
-	startedAt := time.Now()
-	reviewCtx, cancel := context.WithDeadline(ctx, startedAt.Add(time.Duration(maxTimeout)*time.Millisecond))
-	defer cancel()
 	var providerCalled atomic.Bool
 	var providerResult atomic.Pointer[RiskReviewResult]
 	var providerChunks atomic.Pointer[[]RiskReviewChunkAudit]
-	cacheOutcome, reviewErr := e.cache.Review(reviewCtx, RiskReviewCacheInput{
+	cacheOutcome, reviewErr := e.cache.Review(ctx, RiskReviewCacheInput{
 		Content: input.Content, PolicyVersion: policyVersion,
 	}, func(reviewParent context.Context) (RiskReviewResult, error) {
 		circuitUnavailable := false
@@ -159,24 +153,16 @@ func (e *RiskModerationExecutor) Execute(ctx context.Context, input RiskModerati
 					e.circuit.Abandon(context.Background(), permit)
 					return RiskReviewResult{}, err
 				}
-				providerCtx, providerCancel := context.WithDeadline(reviewParent, startedAt.Add(time.Duration(provider.TimeoutMs)*time.Millisecond))
-				if err := providerCtx.Err(); err != nil {
-					providerCancel()
-					e.circuit.Abandon(context.Background(), permit)
-					return RiskReviewResult{}, err
-				}
-				advanced, advanceErr := cursor.advance(providerCtx)
+				advanced, advanceErr := cursor.advance(reviewParent)
 				if advanceErr != nil {
-					providerCancel()
 					e.circuit.Abandon(context.Background(), permit)
-					if err := providerCtx.Err(); err != nil {
+					if err := reviewParent.Err(); err != nil {
 						return RiskReviewResult{}, err
 					}
 					cursor = riskModerationProviderCursor{}
 					continue
 				}
 				if !advanced {
-					providerCancel()
 					e.circuit.Abandon(context.Background(), permit)
 					cursor, cursorErr = loadRiskModerationProviderCursor(reviewParent, policyVersion, tier.priority, len(tier.providers))
 					if cursorErr != nil {
@@ -187,8 +173,7 @@ func (e *RiskModerationExecutor) Execute(ctx context.Context, input RiskModerati
 				selectedInput := resolvedInput
 				selectedInput.Provider = provider
 				selectedInput.Providers = nil
-				result, chunks, providerErr := e.executeProviderReview(providerCtx, selectedInput, &providerCalled)
-				providerCancel()
+				result, chunks, providerErr := e.executeProviderReview(reviewParent, selectedInput, &providerCalled)
 				called := providerCalled.Load()
 				if called {
 					result = riskReviewResultWithProvider(result, provider)
@@ -221,6 +206,9 @@ func (e *RiskModerationExecutor) Execute(ctx context.Context, input RiskModerati
 		}
 		return RiskReviewResult{}, ErrRiskModerationNoAvailableProvider
 	})
+	if reviewErr != nil && ctx.Err() != nil {
+		reviewErr = fmt.Errorf("%w: %w", ErrRiskModerationCallerCanceled, reviewErr)
+	}
 	called := providerCalled.Load()
 	source := cacheOutcome.Source
 	if source == RiskReviewSourceProvider && !called {
@@ -253,6 +241,8 @@ func (e *RiskModerationExecutor) executeProviderReview(
 	input RiskModerationInput,
 	providerCalled *atomic.Bool,
 ) (RiskReviewResult, []RiskReviewChunkAudit, error) {
+	providerCtx, cancel := context.WithTimeout(ctx, time.Duration(input.Provider.TimeoutMs)*time.Millisecond)
+	defer cancel()
 	review := func(reviewCtx context.Context, content string) (RiskReviewResult, error) {
 		if err := reviewCtx.Err(); err != nil {
 			return RiskReviewResult{}, err
@@ -266,7 +256,7 @@ func (e *RiskModerationExecutor) executeProviderReview(
 		return result, err
 	}
 	if input.ReviewMode == model.RiskReviewSelective {
-		result, err := review(ctx, input.Content)
+		result, err := review(providerCtx, input.Content)
 		if err != nil {
 			return result, nil, fmt.Errorf("%w: %w", ErrRiskModerationProvider, err)
 		}
@@ -276,7 +266,7 @@ func (e *RiskModerationExecutor) executeProviderReview(
 		return result, nil, nil
 	}
 
-	full, err := ReviewFullRiskText(ctx, input.Content, input.FullReviewChunkRunes, review)
+	full, err := ReviewFullRiskText(providerCtx, input.Content, input.FullReviewChunkRunes, review)
 	if err != nil {
 		return RiskReviewResult{}, nil, err
 	}

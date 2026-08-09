@@ -24,6 +24,7 @@ const (
 	riskObservationPolicyError         = "policy_error"
 	riskObservationRulesError          = "rules_error"
 	riskObservationTimeout             = "timeout"
+	riskObservationCallerCanceled      = "caller_canceled"
 	riskObservationProviderError       = "provider_error"
 	riskObservationProviderConfigError = "provider_config_error"
 	riskObservationCircuitOpen         = "circuit_open"

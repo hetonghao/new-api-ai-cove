@@ -2,18 +2,23 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/http/httptrace"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -267,6 +272,13 @@ func TestReviewRiskContent_returnsSafeProviderErrorDetails(t *testing.T) {
 			},
 			wantCode: riskObservationTimeout, wantDetail: "Cloudflare request timed out", wantCause: context.DeadlineExceeded,
 		},
+		{
+			name: "caller canceled",
+			transport: func(*http.Request) (*http.Response, error) {
+				return nil, context.Canceled
+			},
+			wantCode: riskObservationProviderError, wantDetail: "Cloudflare network request failed", wantCause: context.Canceled,
+		},
 	}
 
 	for _, test := range tests {
@@ -292,4 +304,58 @@ func TestReviewRiskContent_returnsSafeProviderErrorDetails(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReviewRiskContent_logsCloudflareTimeoutTrace(t *testing.T) {
+	// Given
+	originalSecret := common.CryptoSecret
+	common.CryptoSecret = "risk-provider-trace-test-key"
+	t.Cleanup(func() { common.CryptoSecret = originalSecret })
+	provider := riskProviderTestProvider(t)
+	provider.Id = 42
+	privateText := "private moderation text"
+	originalHTTPClient := httpClient
+	httpClient = &http.Client{Transport: riskProviderRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		trace := httptrace.ContextClientTrace(request.Context())
+		require.NotNil(t, trace)
+		trace.GetConn("api.cloudflare.com:443")
+		trace.DNSStart(httptrace.DNSStartInfo{Host: "api.cloudflare.com"})
+		trace.DNSDone(httptrace.DNSDoneInfo{Addrs: []net.IPAddr{{IP: net.ParseIP("192.0.2.1")}}})
+		trace.ConnectStart("tcp", "192.0.2.1:443")
+		trace.ConnectDone("tcp", "192.0.2.1:443", nil)
+		trace.TLSHandshakeStart()
+		trace.TLSHandshakeDone(tls.ConnectionState{}, nil)
+		trace.GotConn(httptrace.GotConnInfo{Reused: true})
+		trace.WroteRequest(httptrace.WroteRequestInfo{})
+		return nil, context.DeadlineExceeded
+	})}
+	t.Cleanup(func() { httpClient = originalHTTPClient })
+	var logBuffer bytes.Buffer
+	common.LogWriterMu.Lock()
+	originalErrorWriter := gin.DefaultErrorWriter
+	gin.DefaultErrorWriter = &logBuffer
+	common.LogWriterMu.Unlock()
+	t.Cleanup(func() {
+		common.LogWriterMu.Lock()
+		gin.DefaultErrorWriter = originalErrorWriter
+		common.LogWriterMu.Unlock()
+	})
+
+	// When
+	_, err := ReviewRiskContent(context.Background(), provider, privateText)
+
+	// Then
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	logOutput := logBuffer.String()
+	require.Contains(t, logOutput, "risk provider timeout: provider_type=cloudflare provider_id=42 timeout_ms=800 content_runes=23")
+	require.Contains(t, logOutput, "get_conn_ms=")
+	require.Contains(t, logOutput, "got_conn_ms=")
+	require.Contains(t, logOutput, "dns_ms=")
+	require.Contains(t, logOutput, "connect_ms=")
+	require.Contains(t, logOutput, "tls_ms=")
+	require.Contains(t, logOutput, "wrote_request_ms=")
+	require.Contains(t, logOutput, "first_response_byte_ms=-1")
+	require.NotContains(t, logOutput, provider.AccountID)
+	require.NotContains(t, logOutput, "cf-token")
+	require.NotContains(t, logOutput, privateText)
 }

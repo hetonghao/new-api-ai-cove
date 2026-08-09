@@ -19,7 +19,8 @@ func TestProcessRiskObservationForRelay_fails_open_for_safe_provider_error_and_o
 		wantErrorDetail string
 	}{
 		{name: "safe", outcome: RiskModerationOutcome{Result: RiskReviewResult{Status: RiskReviewSafe}, Source: RiskReviewSourceProvider, ProviderCalled: true}, wantResult: RiskObservationSafe},
-		{name: "timeout", outcome: RiskModerationOutcome{Source: RiskReviewSourceProvider, ProviderCalled: true}, executeErr: context.DeadlineExceeded, wantResult: RiskObservationError, wantErrorCode: riskObservationTimeout, wantErrorDetail: "Cloudflare request timed out"},
+		{name: "timeout", outcome: RiskModerationOutcome{Source: RiskReviewSourceProvider, ProviderCalled: true}, executeErr: context.DeadlineExceeded, wantResult: RiskObservationError, wantErrorCode: riskObservationTimeout, wantErrorDetail: "Risk provider request timed out"},
+		{name: "caller canceled", outcome: RiskModerationOutcome{Source: RiskReviewSourceProvider, ProviderCalled: true}, executeErr: errors.Join(ErrRiskModerationCallerCanceled, context.Canceled), wantResult: RiskObservationError, wantErrorCode: riskObservationCallerCanceled, wantErrorDetail: "Risk moderation request was canceled"},
 		{name: "provider error", outcome: RiskModerationOutcome{Source: RiskReviewSourceProvider, ProviderCalled: true}, executeErr: ErrRiskModerationProvider, wantResult: RiskObservationError, wantErrorCode: riskObservationProviderError, wantErrorDetail: "Risk provider request failed"},
 		{name: "open circuit", outcome: RiskModerationOutcome{Source: RiskReviewSourceProvider}, executeErr: ErrRiskModerationCircuitOpen, wantResult: RiskObservationError, wantErrorCode: riskObservationCircuitOpen, wantErrorDetail: "Risk moderation circuit is open; provider was not called"},
 	}
@@ -67,6 +68,7 @@ func TestRiskObservationErrorMapping_matches_typed_executor_errors(t *testing.T)
 	}{
 		{err: ErrRiskModerationCircuitOpen, want: riskObservationCircuitOpen},
 		{err: context.DeadlineExceeded, want: riskObservationTimeout},
+		{err: errors.Join(ErrRiskModerationCallerCanceled, context.Canceled), want: riskObservationCallerCanceled},
 		{err: errors.Join(errors.New("wrapped"), ErrRiskModerationProvider), want: riskObservationProviderError},
 	}
 	for _, test := range tests {
