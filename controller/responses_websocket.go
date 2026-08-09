@@ -239,11 +239,13 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				continue
 			}
 			if frame.err != nil {
-				if active != nil {
-					common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, "upstream disconnected")
-					failResponsesWebSocketRequest(active, responsesWebSocketFailureChannel(pinnedChannel, frame.err), "upstream disconnected")
-					active = nil
+				if active == nil {
+					propagateResponsesWebSocketClose(clientConn, frame.err)
+					return nil
 				}
+				common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, "upstream disconnected")
+				failResponsesWebSocketRequest(active, responsesWebSocketFailureChannel(pinnedChannel, frame.err), "upstream disconnected")
+				active = nil
 				if !isNormalResponsesWebSocketClose(frame.err) {
 					_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, types.NewError(errors.New("upstream websocket disconnected"), types.ErrorCodeDoRequestFailed))
 				}
