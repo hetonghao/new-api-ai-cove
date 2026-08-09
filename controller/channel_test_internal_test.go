@@ -329,10 +329,16 @@ func TestBuildAutomaticChannelTestRequestCapsOutputTokens(t *testing.T) {
 	require.EqualValues(t, 1, *chatReq.MaxCompletionTokens)
 
 	geminiReq := buildTestRequest("gemini-2.5-flash", string(constant.EndpointTypeGemini), channel, false, true)
-	geminiChatReq, ok := geminiReq.(*dto.GeneralOpenAIRequest)
+	geminiChatReq, ok := geminiReq.(*dto.GeminiChatRequest)
 	require.True(t, ok)
-	require.NotNil(t, geminiChatReq.MaxTokens)
-	require.EqualValues(t, 1, *geminiChatReq.MaxTokens)
+	require.NotNil(t, geminiChatReq.GenerationConfig.MaxOutputTokens)
+	require.EqualValues(t, 1, *geminiChatReq.GenerationConfig.MaxOutputTokens)
+
+	claudeReq := buildTestRequest("claude-sonnet-4-20250514", string(constant.EndpointTypeAnthropic), channel, false, true)
+	claudeChatReq, ok := claudeReq.(*dto.ClaudeRequest)
+	require.True(t, ok)
+	require.NotNil(t, claudeChatReq.MaxTokens)
+	require.EqualValues(t, 1, *claudeChatReq.MaxTokens)
 
 	responsesReq := buildTestRequest("gpt-5-mini", string(constant.EndpointTypeOpenAIResponse), channel, false, true)
 	oaiResponsesReq, ok := responsesReq.(*dto.OpenAIResponsesRequest)
