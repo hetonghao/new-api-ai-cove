@@ -20,7 +20,10 @@ import { Link } from '@tanstack/react-router'
 import { ArrowRight, Download } from 'lucide-react'
 import { Trans, useTranslation } from 'react-i18next'
 
-import { getDesktopDownloadTarget } from '../../lib/desktop-download'
+import {
+  getDesktopDownloadTarget,
+  getTurboDesktopDownloadTarget,
+} from '../../lib/desktop-download'
 import { HeroFloatingLines } from '../hero-floating-lines'
 import { HeroTerminalDemo } from '../hero-terminal-demo'
 
@@ -33,6 +36,9 @@ export function Hero(props: HeroProps) {
   const { t } = useTranslation()
   const [oneApiSitePrefix, oneApiSiteSuffix] = t('One API site').split('API')
   const desktopDownload = getDesktopDownloadTarget()
+  const turboDownload = getTurboDesktopDownloadTarget()
+  const desktopPlatformLabel =
+    desktopDownload.platform === 'windows' ? 'Windows' : 'macOS'
 
   return (
     <section className='home-shell home-hero' aria-labelledby='home-hero-title'>
@@ -80,23 +86,64 @@ export function Hero(props: HeroProps) {
               </Link>
             </>
           )}
-          <a
-            className='home-btn'
-            data-download-platform={desktopDownload.platform}
-            data-testid='home-desktop-download'
-            download
-            href={desktopDownload.href}
-            aria-label={t(desktopDownload.ariaLabelKey)}
+        </div>
+        <div className='home-extension-apps'>
+          <div className='home-extension-apps-label'>
+            <span>{t('Extension apps by AI Cove')}</span>
+          </div>
+          <div
+            className='home-extension-app-actions'
+            role='group'
+            aria-label={t('Extension apps by AI Cove')}
           >
-            <img
-              alt=''
-              aria-hidden='true'
-              className='home-desktop-download-icon'
-              src='/desgin-logo.png'
-            />
-            {t(desktopDownload.labelKey)}
-            <Download aria-hidden='true' className='home-btn-arrow' />
-          </a>
+            <a
+              className='home-btn home-extension-app-button'
+              data-download-platform={desktopDownload.platform}
+              data-testid='home-desktop-download'
+              download
+              href={desktopDownload.href}
+              aria-label={t(desktopDownload.ariaLabelKey)}
+            >
+              <span aria-hidden='true' className='home-extension-app-icon'>
+                <img
+                  alt=''
+                  className='home-desktop-download-icon'
+                  src='/desgin-logo.png'
+                />
+              </span>
+              <span className='home-extension-app-copy'>
+                <strong>AI Cove Design</strong>
+                <span>
+                  {t('Create AI images on canvas')} · {desktopPlatformLabel}
+                </span>
+              </span>
+              <Download aria-hidden='true' className='home-btn-arrow' />
+            </a>
+            <a
+              className='home-btn home-extension-app-button'
+              data-download-platform={turboDownload.platform}
+              data-testid='home-turbo-download'
+              download
+              href={turboDownload.href}
+              aria-label={t(turboDownload.ariaLabelKey)}
+            >
+              <span aria-hidden='true' className='home-extension-app-icon'>
+                <img
+                  alt=''
+                  className='home-desktop-download-icon'
+                  src='/turbo-icon.png'
+                />
+              </span>
+              <span className='home-extension-app-copy'>
+                <strong>AI Cove Turbo</strong>
+                <span>
+                  {t('OpenAI model acceleration engine')} ·{' '}
+                  {desktopPlatformLabel}
+                </span>
+              </span>
+              <Download aria-hidden='true' className='home-btn-arrow' />
+            </a>
+          </div>
         </div>
       </div>
       <div

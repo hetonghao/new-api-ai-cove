@@ -3,9 +3,11 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+
 import {
   detectDesktopDownloadPlatform,
   getDesktopDownloadTarget,
+  getTurboDesktopDownloadTarget,
   withDesktopDownloadVersion,
 } from './desktop-download.ts'
 
@@ -13,7 +15,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const localeRoot = path.resolve(__dirname, '../../../i18n/locales')
 
 function readLocale(locale: string) {
-  const data = JSON.parse(readFileSync(path.join(localeRoot, locale), 'utf8')) as {
+  const data = JSON.parse(
+    readFileSync(path.join(localeRoot, locale), 'utf8')
+  ) as {
     translation: Record<string, string>
   }
 
@@ -72,6 +76,24 @@ test('builds the macOS desktop download target by default', () => {
   })
 })
 
+test('builds stable Turbo download targets for macOS and Windows', () => {
+  assert.deepEqual(getTurboDesktopDownloadTarget({}), {
+    platform: 'macos',
+    href: '/downloads/turbo/ai-cove-turbo-macos.dmg',
+    labelKey: 'Download AI Cove Turbo macOS desktop app',
+    ariaLabelKey: 'Download AI Cove Turbo for macOS',
+  })
+  assert.deepEqual(
+    getTurboDesktopDownloadTarget({ userAgentDataPlatform: 'Windows' }),
+    {
+      platform: 'windows',
+      href: '/downloads/turbo/ai-cove-turbo-windows.exe',
+      labelKey: 'Download AI Cove Turbo Windows desktop app',
+      ariaLabelKey: 'Download AI Cove Turbo for Windows',
+    }
+  )
+})
+
 test('adds the desktop release version to download URLs', () => {
   assert.equal(
     withDesktopDownloadVersion(
@@ -93,4 +115,28 @@ test('maps desktop download labels to the requested Chinese copy', () => {
     zh['Download AI Cove Design Windows desktop app'],
     '下载 AI Cove Design Windows 桌面版'
   )
+})
+
+test('maps Turbo download aria labels and removes the release placeholder', () => {
+  const en = readLocale('en.json')
+  const zh = readLocale('zh.json')
+
+  assert.equal(
+    en['Download AI Cove Turbo for macOS'],
+    'Download AI Cove Turbo macOS desktop app'
+  )
+  assert.equal(
+    en['Download AI Cove Turbo for Windows'],
+    'Download AI Cove Turbo Windows desktop app'
+  )
+  assert.equal(
+    zh['Download AI Cove Turbo for macOS'],
+    '下载 AI Cove Turbo macOS 桌面版'
+  )
+  assert.equal(
+    zh['Download AI Cove Turbo for Windows'],
+    '下载 AI Cove Turbo Windows 桌面版'
+  )
+  assert.equal('Preparing release' in en, false)
+  assert.equal('Preparing release' in zh, false)
 })

@@ -15,6 +15,8 @@ export type DesktopDownloadTarget = {
 
 const MACOS_DOWNLOAD_HREF = '/downloads/ai-cove-design-desktop-macos.dmg'
 const WINDOWS_DOWNLOAD_HREF = '/downloads/ai-cove-design-desktop-windows.exe'
+const TURBO_MACOS_DOWNLOAD_HREF = '/downloads/turbo/ai-cove-turbo-macos.dmg'
+const TURBO_WINDOWS_DOWNLOAD_HREF = '/downloads/turbo/ai-cove-turbo-windows.exe'
 
 function getDesktopDownloadVersion() {
   if (typeof __AI_COVE_DESIGN_DESKTOP_DOWNLOAD_VERSION__ !== 'string') {
@@ -88,5 +90,27 @@ export function getDesktopDownloadTarget(
     href: withDesktopDownloadVersion(MACOS_DOWNLOAD_HREF),
     labelKey: 'Download AI Cove Design macOS desktop app',
     ariaLabelKey: 'Download AI Cove Design for macOS',
+  }
+}
+
+export function getTurboDesktopDownloadTarget(
+  environment?: DesktopDownloadEnvironment
+): DesktopDownloadTarget {
+  const platform = detectDesktopDownloadPlatform(environment)
+
+  if (platform === 'windows') {
+    return {
+      platform,
+      href: TURBO_WINDOWS_DOWNLOAD_HREF,
+      labelKey: 'Download AI Cove Turbo Windows desktop app',
+      ariaLabelKey: 'Download AI Cove Turbo for Windows',
+    }
+  }
+
+  return {
+    platform,
+    href: TURBO_MACOS_DOWNLOAD_HREF,
+    labelKey: 'Download AI Cove Turbo macOS desktop app',
+    ariaLabelKey: 'Download AI Cove Turbo for macOS',
   }
 }

@@ -652,8 +652,8 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .ai-cove-landing-header .public-header-brand > div {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 0;
   box-shadow: none;
 }
@@ -1180,6 +1180,67 @@ For commercial licensing, please contact support@quantumnous.com
   margin-top: 30px;
 }
 
+.home-extension-apps {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.home-extension-apps-label {
+  display: flex;
+  align-items: center;
+  width: min(680px, 100%);
+  gap: 12px;
+  color: var(--home-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.home-extension-apps-label::before,
+.home-extension-apps-label::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: var(--home-line);
+}
+
+.home-extension-app-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(680px, 100%);
+  gap: 12px;
+}
+
+.home-extension-app-actions .home-btn {
+  width: 100%;
+}
+
+.home-extension-app-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  text-align: start;
+}
+
+.home-extension-app-copy strong {
+  color: var(--home-ink-soft);
+  font-size: 13px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.home-extension-app-copy span {
+  color: var(--home-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.home-extension-app-button .home-btn-arrow {
+  margin-inline-start: auto;
+}
+
 .home-btn {
   min-height: 44px;
   display: inline-flex;
@@ -1201,7 +1262,25 @@ For commercial licensing, please contact support@quantumnous.com
     border-color 180ms var(--home-ease);
 }
 
+.home-extension-app-button {
+  min-height: 52px;
+  justify-content: flex-start;
+  gap: 12px;
+  overflow: hidden;
+  padding: 0 10px 0 0;
+}
+
+.home-extension-app-icon {
+  align-self: stretch;
+  display: grid;
+  flex: 0 0 52px;
+  place-items: center;
+  border-inline-end: 1px solid var(--home-line);
+  background: var(--home-paper-tint);
+}
+
 .home-actions .home-btn:nth-child(2),
+.home-extension-app-actions .home-btn:nth-child(2),
 .home-cta-panel .home-btn:nth-child(2),
 .ai-cove-landing-header
   + .public-header-mobile-overlay
@@ -1235,11 +1314,11 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .home-desktop-download-icon {
-  width: 20px;
-  height: 20px;
+  width: 44px;
+  height: 44px;
   flex: 0 0 auto;
-  border-radius: 6px;
-  object-fit: cover;
+  border-radius: 8px;
+  object-fit: contain;
 }
 
 .home-btn:hover .home-btn-arrow,
@@ -3735,6 +3814,10 @@ For commercial licensing, please contact support@quantumnous.com
   .home-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .home-extension-app-actions {
+    grid-template-columns: 1fr;
   }
 
   .home-btn {
