@@ -3,58 +3,21 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
-	"slices"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 
-	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/tidwall/gjson"
 )
-
-var responsesWebSocketUpgrader = websocket.Upgrader{
-	ReadBufferSize:    4096,
-	WriteBufferSize:   4096,
-	EnableCompression: true,
-	Subprotocols:      []string{responsesWebSocketPrivateSubprotocol},
-	CheckOrigin: func(*http.Request) bool {
-		return true
-	},
-}
-
-func ResponsesWebSocket(c *gin.Context) {
-	upgrader := responsesWebSocketUpgrader
-	if slices.Contains(websocket.Subprotocols(c.Request), responsesWebSocketPrivateSubprotocol) {
-		upgrader.EnableCompression = false
-	}
-	clientConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-	if err != nil {
-		return
-	}
-	defer clientConn.Close()
-
-	var clientCodec *responsesWebSocketPrivateCodec
-	if clientConn.Subprotocol() == responsesWebSocketPrivateSubprotocol {
-		clientCodec, err = newResponsesWebSocketPrivateCodec()
-		if err != nil {
-			_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInternalServerErr, "private websocket codec unavailable")
-			return
-		}
-	}
-
-	if err := runResponsesWebSocketSession(c, clientConn, clientCodec); err != nil {
-		logger.LogError(c, fmt.Sprintf("responses websocket session ended: %s", common.LocalLogPreview(err.Error())))
-	}
-}
 
 func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Conn, clientCodec *responsesWebSocketPrivateCodec) error {
 	connectionStarted := time.Now()
@@ -68,11 +31,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 		return nil
 	}
 
-	clientFrames := make(chan responsesWebSocketFrame, responsesWebSocketQueueSize)
-	configureResponsesWebSocketReader(clientConn, clientFrames, sessionCtx.Done(), clientCodec)
-	gopool.Go(func() {
-		readResponsesWebSocketFrames(clientConn, clientFrames, sessionCtx.Done(), clientCodec)
-	})
+	clientFrames := startResponsesWebSocketReader(clientConn, sessionCtx.Done(), clientCodec)
 
 	var (
 		upstreamConn   *websocket.Conn
@@ -83,14 +42,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 		active         *responsesWebSocketRequestState
 	)
 
-	defer func() {
-		if active != nil {
-			failResponsesWebSocketRequest(active, nil, "session closed before terminal response")
-		}
-		if upstreamConn != nil {
-			_ = upstreamConn.Close()
-		}
-	}()
+	defer cleanupResponsesWebSocketSession(&active, &upstreamConn)
 
 	for {
 		select {
@@ -158,6 +110,26 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					continue
 				}
 
+				// The upstream pins model, channel, and response state per connection.
+				// A stateless model switch can rebuild before submission; a stateful one
+				// must ask Codex to resend the complete context.
+				explicitModel := strings.TrimSpace(gjson.GetBytes(frame.payload, "model").String())
+				previousResponseID := strings.TrimSpace(gjson.GetBytes(frame.payload, "previous_response_id").String())
+				if upstreamConn != nil && explicitModel != "" && explicitModel != sessionModel {
+					if previousResponseID != "" {
+						if err := writeResponsesWebSocketStateMissing(clientConn, clientCodec, baseCtx); err != nil {
+							return err
+						}
+						continue
+					}
+					_ = upstreamConn.Close()
+					upstreamConn = nil
+					upstreamFrames = nil
+					pinnedCtx = nil
+					pinnedChannel = nil
+					sessionModel = ""
+				}
+
 				var outgoing []byte
 				var state *responsesWebSocketRequestState
 				if upstreamConn == nil {
@@ -194,12 +166,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				common.CleanupBodyStorage(state.ctx)
 
 				if upstreamFrames == nil {
-					frames := make(chan responsesWebSocketFrame, responsesWebSocketQueueSize)
-					configureResponsesWebSocketReader(upstreamConn, frames, sessionCtx.Done(), nil)
-					gopool.Go(func() {
-						readResponsesWebSocketFrames(upstreamConn, frames, sessionCtx.Done(), nil)
-					})
-					upstreamFrames = frames
+					upstreamFrames = startResponsesWebSocketReader(upstreamConn, sessionCtx.Done(), nil)
 				}
 				continue
 			}

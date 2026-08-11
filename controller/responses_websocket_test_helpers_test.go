@@ -32,6 +32,7 @@ type responsesWebSocketTestChannel struct {
 	baseURL  string
 	group    string
 	priority int64
+	models   []string
 }
 
 type responsesWebSocketTestUpstream struct {
@@ -130,6 +131,10 @@ func insertResponsesWebSocketTestChannel(t *testing.T, db *gorm.DB, spec respons
 		group = "default"
 	}
 	weight := uint(100)
+	models := spec.models
+	if len(models) == 0 {
+		models = []string{responsesWebSocketTestModel}
+	}
 	channel := model.Channel{
 		Id:       spec.id,
 		Type:     constant.ChannelTypeOpenAI,
@@ -138,20 +143,22 @@ func insertResponsesWebSocketTestChannel(t *testing.T, db *gorm.DB, spec respons
 		Name:     "responses websocket test",
 		Weight:   &weight,
 		BaseURL:  &spec.baseURL,
-		Models:   responsesWebSocketTestModel,
+		Models:   strings.Join(models, ","),
 		Group:    group,
 		Priority: &spec.priority,
 	}
 	channel.SetOtherSettings(dto.ChannelOtherSettings{SupportsWebSockets: true})
 	require.NoError(t, db.Create(&channel).Error)
-	require.NoError(t, db.Create(&model.Ability{
-		Group:     group,
-		Model:     responsesWebSocketTestModel,
-		ChannelId: spec.id,
-		Enabled:   true,
-		Priority:  &spec.priority,
-		Weight:    100,
-	}).Error)
+	for _, modelName := range models {
+		require.NoError(t, db.Create(&model.Ability{
+			Group:     group,
+			Model:     modelName,
+			ChannelId: spec.id,
+			Enabled:   true,
+			Priority:  &spec.priority,
+			Weight:    100,
+		}).Error)
+	}
 }
 
 func newResponsesWebSocketTestUpstream(t *testing.T, serve func(*websocket.Conn)) *responsesWebSocketTestUpstream {

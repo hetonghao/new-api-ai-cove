@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
+	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
@@ -88,6 +90,25 @@ func readResponsesWebSocketFrames(conn *websocket.Conn, frames chan<- responsesW
 	}
 }
 
+func startResponsesWebSocketReader(conn *websocket.Conn, done <-chan struct{}, codec *responsesWebSocketPrivateCodec) <-chan responsesWebSocketFrame {
+	frames := make(chan responsesWebSocketFrame, responsesWebSocketQueueSize)
+	configureResponsesWebSocketReader(conn, frames, done, codec)
+	readerConn := conn
+	gopool.Go(func() {
+		readResponsesWebSocketFrames(readerConn, frames, done, codec)
+	})
+	return frames
+}
+
+func cleanupResponsesWebSocketSession(active **responsesWebSocketRequestState, upstream **websocket.Conn) {
+	if *active != nil {
+		failResponsesWebSocketRequest(*active, nil, "session closed before terminal response")
+	}
+	if *upstream != nil {
+		_ = (*upstream).Close()
+	}
+}
+
 func enqueueResponsesWebSocketFrame(frames chan<- responsesWebSocketFrame, frame responsesWebSocketFrame, done <-chan struct{}) error {
 	select {
 	case frames <- frame:
@@ -129,13 +150,28 @@ func writeResponsesWebSocketError(conn *websocket.Conn, codec *responsesWebSocke
 	if apiErr == nil {
 		return nil
 	}
-	openAIError := apiErr.ToOpenAIError()
+	return writeResponsesWebSocketErrorEvent(conn, codec, c, apiErr.ToOpenAIError(), 0)
+}
+
+func writeResponsesWebSocketStateMissing(conn *websocket.Conn, codec *responsesWebSocketPrivateCodec, c *gin.Context) error {
+	return writeResponsesWebSocketErrorEvent(conn, codec, c, types.OpenAIError{
+		Message: "Previous response is not available on this websocket",
+		Type:    "invalid_request",
+		Code:    "previous_response_not_found",
+	}, http.StatusConflict)
+}
+
+func writeResponsesWebSocketErrorEvent(conn *websocket.Conn, codec *responsesWebSocketPrivateCodec, c *gin.Context, openAIError types.OpenAIError, status int) error {
 	requestID := ""
 	if c != nil {
 		requestID = c.GetString(common.RequestIdKey)
 	}
 	openAIError.Message = common.MessageWithRequestId(openAIError.Message, requestID)
-	payload, err := common.Marshal(gin.H{"type": "error", "error": openAIError})
+	event := gin.H{"type": "error", "error": openAIError}
+	if status != 0 {
+		event["status"] = status
+	}
+	payload, err := common.Marshal(event)
 	if err != nil {
 		return err
 	}
