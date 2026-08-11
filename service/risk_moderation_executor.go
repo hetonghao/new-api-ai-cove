@@ -132,9 +132,10 @@ func (e *RiskModerationExecutor) Execute(ctx context.Context, input RiskModerati
 			if cursorErr != nil {
 				cursor = riskModerationProviderCursor{}
 			}
+			startIndex := cursor.index(len(tier.providers))
 			tried := 0
 			for tried < len(tier.providers) {
-				provider := tier.providers[(cursor.index(len(tier.providers))+tried)%len(tier.providers)]
+				provider := tier.providers[(startIndex+tried)%len(tier.providers)]
 				permit, allowErr := e.circuit.Allow(
 					reviewParent,
 					riskModerationProviderCircuitKey(provider),

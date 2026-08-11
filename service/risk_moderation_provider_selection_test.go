@@ -209,6 +209,48 @@ func TestRiskModerationExecutor_Execute_degradesOnlyAfterHighestPriorityIsUnavai
 	assert.Equal(t, 3, third.Result.ProviderID)
 }
 
+func TestRiskModerationExecutor_Execute_checksEveryProviderInTierBeforeDegrading(t *testing.T) {
+	// Given
+	server := useRiskModerationMiniRedis(t)
+	providers := make([]*model.RiskProvider, 0, 11)
+	for id := 1; id <= 10; id++ {
+		provider := riskModerationProviderForTest()
+		provider.Id = id
+		provider.Priority = 1
+		providers = append(providers, provider)
+	}
+	internal := riskModerationProviderForTest()
+	internal.Id = 11
+	internal.ProviderType = model.RiskProviderPlatformInternal
+	providers = append(providers, internal)
+	input := RiskModerationInput{
+		Providers: providers, Content: "text", ReviewMode: model.RiskReviewSelective,
+	}
+	policyVersion, err := RiskModerationPolicyVersion(input)
+	require.NoError(t, err)
+	require.NoError(t, server.Set(riskModerationRoundRobinNamespace+":"+policyVersion+":1", "9"))
+	selected := make([]int, 0, 2)
+	executor := newRiskModerationExecutor(riskModerationExecutorDeps{
+		Cache: newRiskReviewCacheService(newFakeRiskReviewCacheStore(), "priority-complete-tier"),
+		Reviewer: func(_ context.Context, provider *model.RiskProvider, _ string) (RiskReviewResult, error) {
+			selected = append(selected, provider.Id)
+			if provider.ProviderType == model.RiskProviderCloudflare && provider.Id%2 == 0 {
+				return RiskReviewResult{}, ErrRiskProviderDailyNeuronsExhausted
+			}
+			return RiskReviewResult{Status: RiskReviewSafe}, nil
+		},
+		Now: time.Now,
+	})
+
+	// When
+	outcome, executeErr := executor.Execute(context.Background(), input)
+
+	// Then
+	require.NoError(t, executeErr)
+	assert.Equal(t, []int{10, 1}, selected)
+	assert.Equal(t, 1, outcome.Result.ProviderID)
+}
+
 func TestRiskModerationExecutor_Execute_reusesCacheAcrossProvidersWithoutProviderMetadata(t *testing.T) {
 	// Given
 	useRiskModerationMiniRedis(t)
