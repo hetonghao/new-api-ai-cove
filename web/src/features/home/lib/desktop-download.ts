@@ -15,8 +15,10 @@ export type DesktopDownloadTarget = {
 
 const MACOS_DOWNLOAD_HREF = '/downloads/ai-cove-design-desktop-macos.dmg'
 const WINDOWS_DOWNLOAD_HREF = '/downloads/ai-cove-design-desktop-windows.exe'
-const TURBO_MACOS_DOWNLOAD_HREF = '/downloads/turbo/ai-cove-turbo-macos.dmg'
-const TURBO_WINDOWS_DOWNLOAD_HREF = '/downloads/turbo/ai-cove-turbo-windows.exe'
+const TURBO_MACOS_DOWNLOAD_HREF =
+  '/downloads/turbo/ai-cove-turbo-macos.dmg?v=0.1.0-beta.1-build.5'
+const TURBO_WINDOWS_DOWNLOAD_HREF =
+  '/downloads/turbo/ai-cove-turbo-windows.exe?v=0.1.0-beta.1-build.5'
 
 function getDesktopDownloadVersion() {
   if (typeof __AI_COVE_DESIGN_DESKTOP_DOWNLOAD_VERSION__ !== 'string') {
