@@ -124,6 +124,16 @@ export function RiskRecordChunkList(props: {
             <div className='mt-1.5'>
               <RiskRecordCategoryList values={chunk.categories} />
             </div>
+            {chunk.summary && (
+              <div className='mt-2 min-w-0 space-y-1'>
+                <p className='text-muted-foreground text-xs'>
+                  {t('Redacted detection content')}
+                </p>
+                <pre className='font-sans text-xs leading-relaxed break-words whitespace-pre-wrap'>
+                  {chunk.summary}
+                </pre>
+              </div>
+            )}
             <dl className='mt-2 grid min-w-0 grid-cols-2 gap-2 text-xs sm:grid-cols-3 xl:grid-cols-5'>
               <div>
                 <dt className='text-muted-foreground'>{t('Latency')}</dt>

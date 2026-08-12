@@ -69,10 +69,10 @@ func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 			wantChunkNeurons: 6,
 			event: RiskObservationEvent{
 				RequestID: "req-provider", ChannelID: 12, UserID: 34,
-				ProviderID: 21, ProviderName: "Cloudflare", ProviderType: model.RiskProviderCloudflare, Result: RiskObservationSafe,
+				ProviderID: 21, ProviderName: "Cloudflare", ProviderType: model.RiskProviderCloudflare, Result: RiskObservationUnsafe,
 				Source: RiskObservationSourceProvider, ProviderCalled: true,
 				Chunks: []RiskReviewChunkAudit{{
-					Index: 0, Status: RiskReviewSafe, Categories: []string{"clean"}, LatencyMS: 17,
+					Index: 0, Status: RiskReviewUnsafe, Categories: []string{"S3"}, Summary: "脱敏违规摘要", LatencyMS: 17,
 					Usage: RiskReviewUsage{PromptTokens: 3, CompletionTokens: 1, TotalTokens: 4, Neurons: 5.625},
 				}},
 				ObservedAt: time.Date(2026, time.July, 25, 12, 32, 0, 0, time.UTC),
@@ -140,6 +140,7 @@ func TestRiskObservationModelSink_persists_event_contract(t *testing.T) {
 				assert.Equal(t, test.event.Chunks[0].Index, record.Chunks[0].Index)
 				assert.Equal(t, model.RiskRecordResult(test.event.Chunks[0].Status), record.Chunks[0].Result)
 				assert.Equal(t, test.event.Chunks[0].Categories, record.Chunks[0].Categories)
+				assert.Equal(t, test.event.Chunks[0].Summary, record.Chunks[0].Summary)
 				assert.Equal(t, test.event.Chunks[0].LatencyMS, record.Chunks[0].LatencyMS)
 				assert.Equal(t, test.event.Chunks[0].Usage.TotalTokens, record.Chunks[0].TotalTokens)
 				assert.Equal(t, test.wantChunkNeurons, record.Chunks[0].Neurons)

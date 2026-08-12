@@ -70,6 +70,8 @@ await i18n.use(initReactI18next).init({
         Unsafe: 'Unsafe',
         Yes: 'Yes',
         'Non-blocking category match': 'Non-blocking category match',
+        'Redacted detection content': 'Redacted detection content',
+        'Cloud call': 'Cloud call',
         '{{count}} tokens': '{{count}} tokens',
       },
     },
@@ -210,6 +212,45 @@ describe('risk record details button presentation', () => {
     const matchRow = matchLabel.parentElement
     assert.ok(matchRow)
     assert.ok(within(matchRow).getByText('Yes'))
+  })
+
+  test('shows the unsafe chunk number and redacted summary', () => {
+    renderDetailsButton({
+      ...BASE_RECORD,
+      result: 'unsafe',
+      chunks: [
+        {
+          index: 0,
+          result: 'safe',
+          summary: '',
+          categories: [],
+          latency_ms: 10,
+          prompt_tokens: 2,
+          completion_tokens: 0,
+          total_tokens: 2,
+          neurons: 1,
+        },
+        {
+          index: 1,
+          result: 'unsafe',
+          summary: 'redacted violation summary',
+          categories: ['S3'],
+          latency_ms: 12,
+          prompt_tokens: 2,
+          completion_tokens: 0,
+          total_tokens: 2,
+          neurons: 1,
+        },
+      ],
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '12 tokens' }))
+    const recordDialog = screen.getByRole('dialog', {
+      name: 'Risk record details',
+    })
+
+    assert.ok(within(recordDialog).getByText('Cloud call #2'))
+    assert.ok(within(recordDialog).getByText('redacted violation summary'))
   })
 
   for (const providerType of ['', 'future_provider']) {

@@ -43,3 +43,13 @@ func TestBuildRiskRecordContentMetadata_masksSensitivePreviewWithoutTruncating(t
 	assert.NotContains(t, metadata.Preview, "api_key:abc")
 	assert.Len(t, metadata.ContentHash, 64)
 }
+
+func TestBuildRiskRecordChunkSummary_masksAndTruncatesUnsafeChunk(t *testing.T) {
+	content := "api_key:secret 192.168.1.1 " + strings.Repeat("违", 600)
+
+	summary := BuildRiskRecordChunkSummary(content)
+
+	assert.Len(t, []rune(summary), 500)
+	assert.NotContains(t, summary, "api_key:secret")
+	assert.NotContains(t, summary, "192.168.1.1")
+}

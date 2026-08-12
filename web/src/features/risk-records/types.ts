@@ -28,6 +28,7 @@ export const riskRecordChunkSchema = z
     index: z.number().int().nonnegative(),
     result: riskRecordResultSchema,
     categories: z.array(z.string()).readonly(),
+    summary: z.string().default(''),
     latency_ms: z.number().int().nonnegative(),
     prompt_tokens: z.number().int().nonnegative(),
     completion_tokens: z.number().int().nonnegative(),

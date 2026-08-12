@@ -44,6 +44,7 @@ type RiskReviewChunkAudit struct {
 	Index      int
 	Status     RiskReviewStatus
 	Categories []string
+	Summary    string
 	LatencyMS  int64
 	Usage      RiskReviewUsage
 }
@@ -277,7 +278,7 @@ func (e *RiskModerationExecutor) executeProviderReview(
 		chunks = append(chunks, RiskReviewChunkAudit{
 			Index: chunk.Index, Status: chunk.Status,
 			Categories: append([]string(nil), chunk.Categories...),
-			LatencyMS:  chunk.LatencyMS, Usage: chunk.Usage,
+			Summary:    chunk.Summary, LatencyMS: chunk.LatencyMS, Usage: chunk.Usage,
 		})
 	}
 	if full.Status != RiskReviewError {

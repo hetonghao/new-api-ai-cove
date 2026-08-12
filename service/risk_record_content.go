@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 )
 
 const riskRecordContentHMACDomain = "ai-cove:risk-record-content-hmac:v1"
@@ -25,4 +26,12 @@ func BuildRiskRecordContentMetadata(content string) RiskRecordContentMetadata {
 		Preview:     preview,
 		ContentHash: common.GenerateHMACWithKey(key, normalized),
 	}
+}
+
+func BuildRiskRecordChunkSummary(content string) string {
+	summary := []rune(common.MaskSensitiveInfo(strings.TrimSpace(content)))
+	if len(summary) > model.RiskRecordChunkSummaryMaxRunes {
+		summary = summary[:model.RiskRecordChunkSummaryMaxRunes]
+	}
+	return string(summary)
 }

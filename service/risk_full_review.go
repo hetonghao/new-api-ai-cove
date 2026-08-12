@@ -19,6 +19,7 @@ type FullRiskReviewChunkResult struct {
 	Index      int
 	Status     RiskReviewStatus
 	Categories []string
+	Summary    string
 	LatencyMS  int64
 	Usage      RiskReviewUsage
 	Err        error
@@ -96,6 +97,9 @@ func ReviewFullRiskText(
 				chunkResult.Err = fmt.Errorf("%w: %q", ErrInvalidFullReviewStatus, review.Status)
 				errorFound = true
 			}
+		}
+		if chunkResult.Status == RiskReviewUnsafe {
+			chunkResult.Summary = BuildRiskRecordChunkSummary(chunk)
 		}
 
 		result.Usage.PromptTokens += chunkResult.Usage.PromptTokens

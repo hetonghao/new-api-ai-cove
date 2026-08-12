@@ -73,6 +73,7 @@ const VALID_CHUNKS = [
   {
     index: 0,
     result: 'safe',
+    summary: '',
     categories: ['clean'],
     latency_ms: 41,
     prompt_tokens: 11,
@@ -83,6 +84,7 @@ const VALID_CHUNKS = [
   {
     index: 1,
     result: 'unsafe',
+    summary: 'redacted violation summary',
     categories: ['violence', 'threat'],
     latency_ms: 52,
     prompt_tokens: 17,
@@ -245,6 +247,24 @@ describe('risk record behavior', () => {
     assert.equal(result.success, true)
     if (result.success) {
       assert.deepEqual(result.data.items[0]?.chunks, [])
+    }
+  })
+
+  it('defaults historical missing chunk summaries to empty text', () => {
+    const chunks = VALID_CHUNKS.map(({ summary: _summary, ...chunk }) => chunk)
+    const result = riskRecordPageSchema.safeParse({
+      items: [{ ...VALID_RECORD, chunks }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    })
+
+    assert.equal(result.success, true)
+    if (result.success) {
+      assert.deepEqual(
+        result.data.items[0]?.chunks.map((chunk) => chunk.summary),
+        ['', '']
+      )
     }
   })
 

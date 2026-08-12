@@ -177,6 +177,13 @@ func TestRecordRiskObservation_appliesConfiguredContentSaveScope(t *testing.T) {
 			input := validRiskRecordInput(test.result)
 			input.Preview = "masked preview"
 			input.ContentHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+			if test.result == RiskRecordResultUnsafe {
+				input.Source = RiskRecordSourceProvider
+				input.ProviderCalled = true
+				input.Chunks = []RiskRecordChunk{{
+					Index: 0, Result: RiskRecordResultUnsafe, Summary: "masked chunk summary",
+				}}
+			}
 
 			// When
 			require.NoError(t, RecordRiskObservation(context.Background(), input))
@@ -187,9 +194,16 @@ func TestRecordRiskObservation_appliesConfiguredContentSaveScope(t *testing.T) {
 			if test.wantContent {
 				assert.Equal(t, input.Preview, record.Preview)
 				assert.Equal(t, input.ContentHash, record.ContentHash)
+				if test.result == RiskRecordResultUnsafe {
+					require.Len(t, record.Chunks, 1)
+					assert.Equal(t, "masked chunk summary", record.Chunks[0].Summary)
+				}
 			} else {
 				assert.Empty(t, record.Preview)
 				assert.Empty(t, record.ContentHash)
+				for _, chunk := range record.Chunks {
+					assert.Empty(t, chunk.Summary)
+				}
 			}
 		})
 	}

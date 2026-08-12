@@ -123,6 +123,16 @@ func TestRecordRiskObservation_rejectsInvalidMetadata(t *testing.T) {
 			input.ProviderCalled = true
 			input.Chunks = []RiskRecordChunk{{Index: 0, Result: RiskRecordResultSafe, TotalTokens: -1}}
 		}},
+		{name: "summary on safe chunk", mutate: func(input *RiskRecordInput) {
+			input.Source = RiskRecordSourceProvider
+			input.ProviderCalled = true
+			input.Chunks = []RiskRecordChunk{{Index: 0, Result: RiskRecordResultSafe, Summary: "unexpected"}}
+		}},
+		{name: "oversized unsafe chunk summary", mutate: func(input *RiskRecordInput) {
+			input.Source = RiskRecordSourceProvider
+			input.ProviderCalled = true
+			input.Chunks = []RiskRecordChunk{{Index: 0, Result: RiskRecordResultUnsafe, Summary: strings.Repeat("违", 501)}}
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -213,7 +223,7 @@ func TestRecordRiskObservation_persistsFullReviewChunkAudit(t *testing.T) {
 		},
 		{
 			Index: 1, Result: RiskRecordResultUnsafe, Categories: []string{"S1"}, LatencyMS: 34,
-			PromptTokens: 6, CompletionTokens: 2, TotalTokens: 8, Neurons: 9,
+			PromptTokens: 6, CompletionTokens: 2, TotalTokens: 8, Neurons: 9, Summary: "脱敏违规摘要",
 		},
 	}
 

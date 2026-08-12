@@ -2,10 +2,13 @@ package model
 
 import "strings"
 
+const RiskRecordChunkSummaryMaxRunes = 500
+
 type RiskRecordChunk struct {
 	Index            int              `json:"index"`
 	Result           RiskRecordResult `json:"result"`
 	Categories       []string         `json:"categories"`
+	Summary          string           `json:"summary"`
 	LatencyMS        int64            `json:"latency_ms"`
 	PromptTokens     int              `json:"prompt_tokens"`
 	CompletionTokens int              `json:"completion_tokens"`
@@ -23,12 +26,18 @@ func normalizeRiskRecordChunks(
 	}
 	chunks := make([]RiskRecordChunk, 0, len(input))
 	for index, chunk := range input {
+		chunk.Summary = strings.TrimSpace(chunk.Summary)
 		if chunk.Index != index || chunk.LatencyMS < 0 || chunk.PromptTokens < 0 ||
-			chunk.CompletionTokens < 0 || chunk.TotalTokens < 0 || chunk.Neurons < 0 {
+			chunk.CompletionTokens < 0 || chunk.TotalTokens < 0 || chunk.Neurons < 0 ||
+			len([]rune(chunk.Summary)) > RiskRecordChunkSummaryMaxRunes {
 			return nil, ErrInvalidRiskRecord
 		}
 		switch chunk.Result {
-		case RiskRecordResultSafe, RiskRecordResultUnsafe, RiskRecordResultError:
+		case RiskRecordResultUnsafe:
+		case RiskRecordResultSafe, RiskRecordResultError:
+			if chunk.Summary != "" {
+				return nil, ErrInvalidRiskRecord
+			}
 		default:
 			return nil, ErrInvalidRiskRecord
 		}

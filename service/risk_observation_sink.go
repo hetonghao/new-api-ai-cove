@@ -26,7 +26,7 @@ func (riskObservationModelSink) RecordRiskObservation(ctx context.Context, event
 		}
 		chunks = append(chunks, model.RiskRecordChunk{
 			Index: chunk.Index, Result: model.RiskRecordResult(chunk.Status),
-			Categories: append([]string(nil), chunk.Categories...), LatencyMS: chunk.LatencyMS,
+			Categories: append([]string(nil), chunk.Categories...), Summary: chunk.Summary, LatencyMS: chunk.LatencyMS,
 			PromptTokens: chunk.Usage.PromptTokens, CompletionTokens: chunk.Usage.CompletionTokens,
 			TotalTokens: chunk.Usage.TotalTokens, Neurons: chunkNeurons,
 		})

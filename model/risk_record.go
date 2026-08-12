@@ -153,15 +153,24 @@ func RecordRiskProviderValidation(ctx context.Context, input RiskRecordInput) er
 func applyRiskRecordContentGovernance(record *RiskRecord, governance RiskRecordGovernance) {
 	if governance.ContentSaveScope == RiskContentSaveAll ||
 		(governance.ContentSaveScope == RiskContentSaveUnsafe && record.Result == RiskRecordResultUnsafe) {
-		previewRunes := []rune(record.Preview)
 		previewChars := governance.PreviewCharsForResult(record.Result)
+		previewRunes := []rune(record.Preview)
 		if len(previewRunes) > previewChars {
 			record.Preview = string(previewRunes[:previewChars])
+		}
+		for index := range record.Chunks {
+			summaryRunes := []rune(record.Chunks[index].Summary)
+			if len(summaryRunes) > previewChars {
+				record.Chunks[index].Summary = string(summaryRunes[:previewChars])
+			}
 		}
 		return
 	}
 	record.Preview = ""
 	record.ContentHash = ""
+	for index := range record.Chunks {
+		record.Chunks[index].Summary = ""
+	}
 }
 
 func ListRiskRecords(ctx context.Context, offset int, limit int) ([]*RiskRecord, int64, error) {

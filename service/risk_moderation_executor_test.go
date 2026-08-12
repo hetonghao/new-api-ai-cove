@@ -248,9 +248,12 @@ func TestRiskModerationExecutor_Execute_cachesFinalFullReviewAggregate(t *testin
 	assert.Equal(t, 3, calls)
 }
 
-func TestRiskModerationExecutor_Execute_exposesChunkAuditWithoutChunkText(t *testing.T) {
+func TestRiskModerationExecutor_Execute_exposesOnlyUnsafeChunkRedactedSummary(t *testing.T) {
 	// Given
-	reviewer := func(context.Context, *model.RiskProvider, string) (RiskReviewResult, error) {
+	reviewer := func(_ context.Context, _ *model.RiskProvider, chunk string) (RiskReviewResult, error) {
+		if chunk == "api_key:secret" {
+			return RiskReviewResult{Status: RiskReviewUnsafe, Categories: []string{"S3"}}, nil
+		}
 		return RiskReviewResult{Status: RiskReviewSafe}, nil
 	}
 	executor := newRiskModerationExecutor(riskModerationExecutorDeps{
@@ -261,17 +264,19 @@ func TestRiskModerationExecutor_Execute_exposesChunkAuditWithoutChunkText(t *tes
 
 	// When
 	outcome, err := executor.Execute(context.Background(), RiskModerationInput{
-		Provider: riskModerationProviderForTest(), Content: "private-oneprivate-two",
-		ReviewMode: model.RiskReviewFull, FullReviewChunkRunes: 11,
+		Provider: riskModerationProviderForTest(), Content: "safe..........api_key:secret",
+		ReviewMode: model.RiskReviewFull, FullReviewChunkRunes: 14,
 	})
 
 	// Then
 	require.NoError(t, err)
 	require.Len(t, outcome.Chunks, 2)
+	assert.Empty(t, outcome.Chunks[0].Summary)
+	assert.NotEmpty(t, outcome.Chunks[1].Summary)
+	assert.NotContains(t, outcome.Chunks[1].Summary, "secret")
 	encoded, err := common.Marshal(outcome.Chunks)
 	require.NoError(t, err)
-	assert.NotContains(t, string(encoded), "private-one")
-	assert.NotContains(t, string(encoded), "private-two")
+	assert.NotContains(t, string(encoded), "api_key:secret")
 }
 
 func TestRiskModerationExecutor_Execute_usesCloudflareFullReviewChunkDefault(t *testing.T) {
