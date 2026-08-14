@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"slices"
@@ -27,22 +29,33 @@ func ResponsesWebSocket(c *gin.Context) {
 	if slices.Contains(websocket.Subprotocols(c.Request), responsesWebSocketPrivateSubprotocol) {
 		upgrader.EnableCompression = false
 	}
-	clientConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	traceBytes := make([]byte, 16)
+	if _, err := rand.Read(traceBytes); err != nil {
+		logger.LogError(c, fmt.Sprintf("responses websocket trace generation failed: %s", err.Error()))
+		return
+	}
+	responseHeader := http.Header{}
+	responseHeader.Set(common.ResponsesWebSocketTraceHeader, hex.EncodeToString(traceBytes))
+	clientConn, err := upgrader.Upgrade(c.Writer, c.Request, responseHeader)
 	if err != nil {
 		return
 	}
 	defer clientConn.Close()
+	observability := newResponsesWebSocketObservability(responseHeader.Get(common.ResponsesWebSocketTraceHeader))
 
 	var clientCodec *responsesWebSocketPrivateCodec
 	if clientConn.Subprotocol() == responsesWebSocketPrivateSubprotocol {
 		clientCodec, err = newResponsesWebSocketPrivateCodec()
 		if err != nil {
 			_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInternalServerErr, "private websocket codec unavailable")
+			observability.markFailure("private_codec_unavailable")
+			observability.markCleanup()
+			observability.log(c, "cleanup")
 			return
 		}
 	}
 
-	if err := runResponsesWebSocketSession(c, clientConn, clientCodec); err != nil {
+	if err := runResponsesWebSocketSession(c, clientConn, clientCodec, observability); err != nil {
 		logger.LogError(c, fmt.Sprintf("responses websocket session ended: %s", common.LocalLogPreview(err.Error())))
 	}
 }

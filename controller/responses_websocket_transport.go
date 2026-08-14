@@ -60,7 +60,7 @@ type responsesWebSocketFrame struct {
 	controlType int
 }
 
-func configureResponsesWebSocketReader(conn *websocket.Conn, frames chan<- responsesWebSocketFrame, done <-chan struct{}, codec *responsesWebSocketPrivateCodec) {
+func configureResponsesWebSocketReader(conn *websocket.Conn, frames chan<- responsesWebSocketFrame, done <-chan struct{}, codec *responsesWebSocketPrivateCodec, queue *responsesWebSocketQueueStats) {
 	maxMB := constant.MaxRequestBodyMB
 	if maxMB <= 0 {
 		maxMB = 128
@@ -71,31 +71,38 @@ func configureResponsesWebSocketReader(conn *websocket.Conn, frames chan<- respo
 	}
 	conn.SetReadLimit(readLimit)
 	conn.SetPingHandler(func(data string) error {
-		return enqueueResponsesWebSocketFrame(frames, responsesWebSocketFrame{controlType: websocket.PongMessage, payload: []byte(data)}, done)
+		return enqueueResponsesWebSocketFrame(frames, responsesWebSocketFrame{controlType: websocket.PongMessage, payload: []byte(data)}, done, queue)
 	})
 	conn.SetCloseHandler(func(int, string) error { return nil })
 }
 
-func readResponsesWebSocketFrames(conn *websocket.Conn, frames chan<- responsesWebSocketFrame, done <-chan struct{}, codec *responsesWebSocketPrivateCodec) {
+func readResponsesWebSocketFrames(conn *websocket.Conn, frames chan<- responsesWebSocketFrame, done <-chan struct{}, codec *responsesWebSocketPrivateCodec, observability *responsesWebSocketObservability, upstream bool, queue *responsesWebSocketQueueStats) {
 	defer close(frames)
 	for {
 		messageType, payload, err := conn.ReadMessage()
 		if err == nil && codec != nil {
 			messageType, payload, err = codec.Decode(messageType, payload)
 		}
+		if err == nil && upstream && observability != nil {
+			observability.markApplicationRx()
+		}
 		frame := responsesWebSocketFrame{messageType: messageType, payload: payload, err: err}
-		if enqueueResponsesWebSocketFrame(frames, frame, done) != nil || err != nil {
+		if enqueueResponsesWebSocketFrame(frames, frame, done, queue) != nil || err != nil {
 			return
 		}
 	}
 }
 
-func startResponsesWebSocketReader(conn *websocket.Conn, done <-chan struct{}, codec *responsesWebSocketPrivateCodec) <-chan responsesWebSocketFrame {
+func startResponsesWebSocketReader(conn *websocket.Conn, done <-chan struct{}, codec *responsesWebSocketPrivateCodec, observability *responsesWebSocketObservability, upstream bool) <-chan responsesWebSocketFrame {
 	frames := make(chan responsesWebSocketFrame, responsesWebSocketQueueSize)
-	configureResponsesWebSocketReader(conn, frames, done, codec)
+	var queue *responsesWebSocketQueueStats
+	if upstream && observability != nil {
+		queue = observability.upstreamQueueStats()
+	}
+	configureResponsesWebSocketReader(conn, frames, done, codec, queue)
 	readerConn := conn
 	gopool.Go(func() {
-		readResponsesWebSocketFrames(readerConn, frames, done, codec)
+		readResponsesWebSocketFrames(readerConn, frames, done, codec, observability, upstream, queue)
 	})
 	return frames
 }
@@ -109,13 +116,29 @@ func cleanupResponsesWebSocketSession(active **responsesWebSocketRequestState, u
 	}
 }
 
-func enqueueResponsesWebSocketFrame(frames chan<- responsesWebSocketFrame, frame responsesWebSocketFrame, done <-chan struct{}) error {
-	select {
-	case frames <- frame:
-		return nil
-	case <-done:
-		return context.Canceled
+func enqueueResponsesWebSocketFrame(frames chan<- responsesWebSocketFrame, frame responsesWebSocketFrame, done <-chan struct{}, queue *responsesWebSocketQueueStats) error {
+	return enqueueResponsesWebSocketFrameWithSender(frame, queue, func() bool {
+		select {
+		case frames <- frame:
+			return true
+		case <-done:
+			return false
+		}
+	})
+}
+
+func enqueueResponsesWebSocketFrameWithSender(frame responsesWebSocketFrame, queue *responsesWebSocketQueueStats, send func() bool) error {
+	payloadBytes := len(frame.payload)
+	if queue != nil {
+		queue.enqueue(payloadBytes)
 	}
+	if send() {
+		return nil
+	}
+	if queue != nil {
+		queue.dequeue(payloadBytes)
+	}
+	return context.Canceled
 }
 
 func writeResponsesWebSocketMessage(conn *websocket.Conn, messageType int, payload []byte) error {

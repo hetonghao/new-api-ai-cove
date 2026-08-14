@@ -2,6 +2,7 @@ package channel
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -398,6 +399,7 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	for key, value := range headerOverride {
 		targetHeader.Set(key, value)
 	}
+	targetHeader.Del(common2.ResponsesWebSocketTraceHeader)
 	targetHeader.Set("Content-Type", c.Request.Header.Get("Content-Type"))
 	if !info.IsResponsesWebSocket {
 		targetConn, _, err := websocket.DefaultDialer.Dial(fullRequestURL, targetHeader)
@@ -418,6 +420,12 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, fmt.Errorf("dial failed to %s: %w", common.SanitizeURLForLog(fullRequestURL), err)
 	}
 	if response != nil {
+		if upstreamTrace := response.Header.Get(common2.ResponsesWebSocketTraceHeader); len(upstreamTrace) == 32 {
+			decodedTrace, decodeErr := hex.DecodeString(upstreamTrace)
+			if decodeErr == nil && hex.EncodeToString(decodedTrace) == upstreamTrace {
+				c.Set(common2.ResponsesWebSocketUpstreamTraceKey, upstreamTrace)
+			}
+		}
 		if upstreamID := response.Header.Get(common2.RequestIdKey); upstreamID != "" {
 			c.Set(common2.UpstreamRequestIdKey, upstreamID)
 		}

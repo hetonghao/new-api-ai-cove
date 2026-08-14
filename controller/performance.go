@@ -33,7 +33,10 @@ type PerformanceStats struct {
 // MemoryStats 内存统计
 type MemoryStats struct {
 	// 已分配内存（字节）
-	Alloc uint64 `json:"alloc"`
+	Alloc        uint64 `json:"alloc"`
+	HeapAlloc    uint64 `json:"heap_alloc"`
+	HeapIdle     uint64 `json:"heap_idle"`
+	HeapReleased uint64 `json:"heap_released"`
 	// 总分配内存（字节）
 	TotalAlloc uint64 `json:"total_alloc"`
 	// 系统内存（字节）
@@ -123,6 +126,9 @@ func GetPerformanceStats(c *gin.Context) {
 		CacheStats: cacheStats,
 		MemoryStats: MemoryStats{
 			Alloc:        memStats.Alloc,
+			HeapAlloc:    memStats.HeapAlloc,
+			HeapIdle:     memStats.HeapIdle,
+			HeapReleased: memStats.HeapReleased,
 			TotalAlloc:   memStats.TotalAlloc,
 			Sys:          memStats.Sys,
 			NumGC:        memStats.NumGC,

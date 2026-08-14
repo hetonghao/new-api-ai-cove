@@ -19,20 +19,11 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Conn, clientCodec *responsesWebSocketPrivateCodec) error {
+func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Conn, clientCodec *responsesWebSocketPrivateCodec, observability *responsesWebSocketObservability) error {
+	baseCtx.Set(responsesWebSocketObservabilityKey, observability)
 	connectionStarted := time.Now()
 	sessionCtx, cancel := context.WithCancel(baseCtx.Request.Context())
 	defer cancel()
-	drainState := responsesWebSocketDrain.Load()
-	drainCh := drainState.notify
-	draining := drainState.draining.Load()
-	if draining {
-		_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
-		return nil
-	}
-
-	clientFrames := startResponsesWebSocketReader(clientConn, sessionCtx.Done(), clientCodec)
-
 	var (
 		upstreamConn   *websocket.Conn
 		upstreamFrames <-chan responsesWebSocketFrame
@@ -41,8 +32,21 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 		sessionModel   string
 		active         *responsesWebSocketRequestState
 	)
+	defer func() {
+		cleanupResponsesWebSocketSession(&active, &upstreamConn)
+		observability.markCleanup()
+		observability.log(baseCtx, "cleanup")
+	}()
 
-	defer cleanupResponsesWebSocketSession(&active, &upstreamConn)
+	drainState := responsesWebSocketDrain.Load()
+	drainCh := drainState.notify
+	draining := drainState.draining.Load()
+	if draining {
+		_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
+		return nil
+	}
+
+	clientFrames := startResponsesWebSocketReader(clientConn, sessionCtx.Done(), clientCodec, observability, false)
 
 	for {
 		select {
@@ -129,6 +133,8 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					pinnedChannel = nil
 					sessionModel = ""
 				}
+				observability.acceptResponseCreate()
+				observability.log(baseCtx, "response_create_accepted")
 
 				var outgoing []byte
 				var state *responsesWebSocketRequestState
@@ -136,6 +142,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					var connectMs int64
 					state, outgoing, upstreamConn, pinnedChannel, connectMs, err = prepareFirstResponsesWebSocketRequest(baseCtx, frame.payload, connectionStarted)
 					if err == nil {
+						observability.upstreamDial(common.GetContextKeyString(state.ctx, common.ResponsesWebSocketUpstreamTraceKey))
 						pinnedCtx = state.ctx
 						sessionModel = state.info.OriginModelName
 						common.SetContextKey(state.ctx, constant.ContextKeyWebSocketUpstreamConnectMs, connectMs)
@@ -144,6 +151,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					state, outgoing, err = preparePinnedResponsesWebSocketRequest(pinnedCtx, frame.payload, sessionModel, pinnedChannel)
 				}
 				if err != nil {
+					observability.markFailure("response_create_prepare_failed")
 					apiErr := asResponsesWebSocketAPIError(err)
 					errorCtx := baseCtx
 					if state != nil && state.ctx != nil {
@@ -163,10 +171,12 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, "upstream write failed")
 					return err
 				}
+				observability.commitUpstreamRequest()
+				observability.log(baseCtx, "response_create_committed")
 				common.CleanupBodyStorage(state.ctx)
 
 				if upstreamFrames == nil {
-					upstreamFrames = startResponsesWebSocketReader(upstreamConn, sessionCtx.Done(), nil)
+					upstreamFrames = startResponsesWebSocketReader(upstreamConn, sessionCtx.Done(), nil, observability, true)
 				}
 				continue
 			}
@@ -193,8 +203,10 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 
 		case frame, ok := <-upstreamFrames:
 			if !ok {
+				observability.markFailure("upstream_websocket_closed")
 				return errors.New("upstream websocket closed")
 			}
+			observability.upstreamQueue.dequeue(len(frame.payload))
 			if draining && active == nil {
 				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
 				return nil
@@ -207,9 +219,11 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			}
 			if frame.err != nil {
 				if active == nil {
+					observability.markFailure("upstream_disconnected")
 					propagateResponsesWebSocketClose(clientConn, frame.err)
 					return nil
 				}
+				observability.markFailure("upstream_disconnected")
 				common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, "upstream disconnected")
 				failResponsesWebSocketRequest(active, responsesWebSocketFailureChannel(pinnedChannel, frame.err), "upstream disconnected")
 				active = nil
@@ -244,6 +258,8 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				}
 			}
 			if terminal && active != nil {
+				observability.markTerminal()
+				observability.log(baseCtx, "response_terminal_seen")
 				common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCompleteMs, time.Since(active.info.StartTime).Milliseconds())
 				service.PostTextConsumeQuota(active.ctx, active.info, usage, nil)
 				if active.tracker.Succeeded() {

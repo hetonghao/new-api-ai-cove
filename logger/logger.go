@@ -72,8 +72,8 @@ func SetupLogger() {
 	}
 }
 
-func LogInfo(ctx context.Context, msg string) {
-	logHelper(ctx, loggerINFO, msg)
+func LogInfo(ctx context.Context, msg string, fields ...map[string]any) {
+	logHelper(ctx, loggerINFO, msg, fields...)
 }
 
 func LogWarn(ctx context.Context, msg string) {
@@ -93,7 +93,7 @@ func LogDebug(ctx context.Context, msg string, args ...any) {
 	}
 }
 
-func logHelper(ctx context.Context, level string, msg string) {
+func logHelper(ctx context.Context, level string, msg string, fields ...map[string]any) {
 	var id any = "SYSTEM"
 	if ctx != nil {
 		if requestID := ctx.Value(common.RequestIdKey); requestID != nil {
@@ -106,7 +106,16 @@ func logHelper(ctx context.Context, level string, msg string) {
 	if level == loggerINFO {
 		writer = gin.DefaultWriter
 	}
-	_, _ = fmt.Fprintf(writer, "[%s] %v | %s | %s \n", level, now.Format("2006/01/02 - 15:04:05"), id, msg)
+	fieldSuffix := ""
+	if len(fields) > 0 {
+		encodedFields, err := common.Marshal(fields[0])
+		if err != nil {
+			fieldSuffix = ` | fields={"serialization_error":true}`
+		} else {
+			fieldSuffix = " | fields=" + string(encodedFields)
+		}
+	}
+	_, _ = fmt.Fprintf(writer, "[%s] %v | %s | %s%s \n", level, now.Format("2006/01/02 - 15:04:05"), id, msg, fieldSuffix)
 	common.LogWriterMu.RUnlock()
 	logCount++ // we don't need accurate count, so no lock here
 	if logCount > maxLogCount && !setupLogWorking {

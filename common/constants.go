@@ -171,8 +171,10 @@ var GeminiSafetySetting string
 var CohereSafetySetting string
 
 const (
-	RequestIdKey         = "X-Oneapi-Request-Id"
-	UpstreamRequestIdKey = "X-Upstream-Request-Id"
+	RequestIdKey                       = "X-Oneapi-Request-Id"
+	UpstreamRequestIdKey               = "X-Upstream-Request-Id"
+	ResponsesWebSocketTraceHeader      = "X-AI-Cove-WS-Trace"
+	ResponsesWebSocketUpstreamTraceKey = "responses_websocket_upstream_trace"
 )
 
 const (

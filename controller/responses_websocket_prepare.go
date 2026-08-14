@@ -27,11 +27,12 @@ import (
 )
 
 type responsesWebSocketRequestState struct {
-	ctx         *gin.Context
-	info        *relaycommon.RelayInfo
-	pricingMeta *types.TokenCountMeta
-	tracker     *openai.ResponsesWebSocketUsageTracker
-	rateLimit   *middleware.ModelRequestRateLimitTicket
+	ctx           *gin.Context
+	info          *relaycommon.RelayInfo
+	pricingMeta   *types.TokenCountMeta
+	tracker       *openai.ResponsesWebSocketUsageTracker
+	rateLimit     *middleware.ModelRequestRateLimitTicket
+	observability *responsesWebSocketObservability
 }
 
 func prepareResponsesWebSocketRequest(baseCtx *gin.Context, payload []byte, inheritedModel string) (*responsesWebSocketRequestState, *dto.OpenAIResponsesRequest, error) {
@@ -48,8 +49,11 @@ func prepareResponsesWebSocketRequest(baseCtx *gin.Context, payload []byte, inhe
 		}
 	}
 	requestCtx := newResponsesWebSocketRequestContext(baseCtx, requestPayload, modelName)
+	observabilityValue, _ := baseCtx.Get(responsesWebSocketObservabilityKey)
+	observability, _ := observabilityValue.(*responsesWebSocketObservability)
 	state := &responsesWebSocketRequestState{
-		ctx: requestCtx,
+		ctx:           requestCtx,
+		observability: observability,
 		info: &relaycommon.RelayInfo{
 			OriginModelName: modelName,
 			UsingGroup:      common.GetContextKeyString(requestCtx, constant.ContextKeyUsingGroup),

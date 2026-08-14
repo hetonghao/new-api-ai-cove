@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -75,6 +76,32 @@ func TestResponsesWebSocket_negotiates_permessage_deflate_with_client(t *testing
 	defer closeResponsesWebSocketProtocolTestClient(t, client, done)
 
 	require.Contains(t, response.Header.Get("Sec-WebSocket-Extensions"), "permessage-deflate")
+}
+
+func TestResponsesWebSocket_returns_server_trace_only_in_upgrade_response(t *testing.T) {
+	webSocketURL, done := newResponsesWebSocketProtocolTestServer(t)
+	dialer := websocket.Dialer{}
+	client, response, err := dialer.Dial(webSocketURL, http.Header{
+		"X-AI-Cove-WS-Trace": []string{"client-controlled"},
+	})
+	require.NoError(t, err)
+	trace := response.Header.Get("X-AI-Cove-WS-Trace")
+	require.NotEmpty(t, trace)
+	require.Regexp(t, `^[0-9a-f]{32}$`, trace)
+	require.NotEqual(t, "client-controlled", trace)
+	closeResponsesWebSocketProtocolTestClient(t, client, done)
+
+	secondURL, secondDone := newResponsesWebSocketProtocolTestServer(t)
+	secondClient, secondResponse, err := dialer.Dial(secondURL, http.Header{
+		"X-AI-Cove-WS-Trace": []string{"another-client-value"},
+	})
+	require.NoError(t, err)
+	secondTrace := secondResponse.Header.Get("X-AI-Cove-WS-Trace")
+	require.NotEmpty(t, secondTrace)
+	require.Regexp(t, `^[0-9a-f]{32}$`, secondTrace)
+	require.NotEqual(t, "another-client-value", secondTrace)
+	require.NotEqual(t, trace, secondTrace)
+	closeResponsesWebSocketProtocolTestClient(t, secondClient, secondDone)
 }
 
 func TestTruncateResponsesWebSocketCloseReason_preserves_utf8_byte_limit(t *testing.T) {
