@@ -58,6 +58,12 @@ function getCurrentStatusVariant(provider: RiskProvider) {
 export function RiskProviderCard(props: RiskProviderCardProps) {
   const { t } = useTranslation()
   const provider = props.provider
+  let providerTypeLabel = 'Cloudflare Workers AI'
+  if (provider.provider_type === 'openai') {
+    providerTypeLabel = 'OpenAI Moderation'
+  } else if (provider.provider_type === 'platform_internal') {
+    providerTypeLabel = t('Platform internal model')
+  }
 
   return (
     <Card className='border-border/60 min-w-0 gap-0 border py-0 ring-0'>
@@ -67,11 +73,7 @@ export function RiskProviderCard(props: RiskProviderCardProps) {
             <CardTitle className='truncate text-base'>
               {provider.name}
             </CardTitle>
-            <p className='text-muted-foreground text-xs'>
-              {provider.provider_type === 'platform_internal'
-                ? t('Platform internal model')
-                : 'Cloudflare Workers AI'}
-            </p>
+            <p className='text-muted-foreground text-xs'>{providerTypeLabel}</p>
           </div>
           <div className='flex flex-wrap gap-1.5'>
             <Badge variant={provider.validated_at ? 'secondary' : 'outline'}>
@@ -112,7 +114,7 @@ export function RiskProviderCard(props: RiskProviderCardProps) {
               {provider.model}
             </dd>
           </div>
-          {provider.provider_type === 'platform_internal' ? (
+          {provider.provider_type === 'platform_internal' && (
             <div className='min-w-0'>
               <dt className='text-muted-foreground text-xs'>
                 {t('Platform channel')}
@@ -121,7 +123,19 @@ export function RiskProviderCard(props: RiskProviderCardProps) {
                 #{provider.channel_id}
               </dd>
             </div>
-          ) : (
+          )}
+          {provider.provider_type === 'openai' && (
+            <div className='min-w-0'>
+              <dt className='text-muted-foreground text-xs'>{t('Base URL')}</dt>
+              <dd
+                className='truncate font-mono text-xs'
+                title={provider.base_url}
+              >
+                {provider.base_url}
+              </dd>
+            </div>
+          )}
+          {provider.provider_type === 'cloudflare' && (
             <div className='min-w-0'>
               <dt className='text-muted-foreground text-xs'>
                 {t('Account ID')}
@@ -148,7 +162,11 @@ export function RiskProviderCard(props: RiskProviderCardProps) {
             <dt className='text-muted-foreground text-xs'>
               {t('Daily reset time')}
             </dt>
-            <dd className='tabular-nums'>{provider.daily_reset_time} UTC+8</dd>
+            <dd className='tabular-nums'>
+              {provider.provider_type === 'cloudflare'
+                ? `${provider.daily_reset_time} UTC+8`
+                : t('Not applicable')}
+            </dd>
           </div>
           <div>
             <dt className='text-muted-foreground text-xs'>

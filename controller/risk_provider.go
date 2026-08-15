@@ -23,6 +23,7 @@ type RiskProviderResponse struct {
 	AccountID             string                 `json:"account_id"`
 	ChannelID             int                    `json:"channel_id"`
 	Model                 string                 `json:"model"`
+	BaseURL               string                 `json:"base_url,omitempty"`
 	HasCredential         bool                   `json:"has_credential"`
 	SystemManaged         bool                   `json:"system_managed"`
 	TimeoutMs             int                    `json:"timeout_ms"`
@@ -44,10 +45,11 @@ type RiskProviderResponse struct {
 
 type riskProviderRequest struct {
 	Name              string                 `json:"name" binding:"required"`
-	ProviderType      model.RiskProviderType `json:"provider_type" binding:"required,oneof=cloudflare platform_internal"`
+	ProviderType      model.RiskProviderType `json:"provider_type" binding:"required,oneof=cloudflare openai platform_internal"`
 	AccountID         string                 `json:"account_id"`
 	ChannelID         int                    `json:"channel_id"`
-	Model             string                 `json:"model" binding:"required"`
+	Model             string                 `json:"model"`
+	BaseURL           string                 `json:"base_url"`
 	Credential        string                 `json:"credential"`
 	TimeoutMs         int                    `json:"timeout_ms" binding:"omitempty,gte=1,lte=60000"`
 	FailureThreshold  int                    `json:"failure_threshold" binding:"omitempty,gte=1,lte=100"`
@@ -62,6 +64,11 @@ type riskProviderValidationRequest struct {
 }
 
 const riskProviderValidationDefaultText = "AI Cove provider connection test"
+
+const (
+	defaultOpenAIRiskProviderModel   = "omni-moderation-latest"
+	defaultOpenAIRiskProviderBaseURL = "https://api.openai.com/v1"
+)
 
 func ListRiskProviders(c *gin.Context) {
 	providers, err := model.GetRiskProviders()
@@ -79,12 +86,20 @@ func ListRiskProviders(c *gin.Context) {
 func CreateRiskProvider(c *gin.Context) {
 	var request riskProviderRequest
 	if err := c.ShouldBindJSON(&request); err != nil ||
-		(request.ProviderType == model.RiskProviderCloudflare && request.Credential == "") {
+		(request.ProviderType != model.RiskProviderPlatformInternal && request.Credential == "") {
 		common.ApiErrorMsg(c, "无效的供应商配置")
 		return
 	}
+	if request.ProviderType == model.RiskProviderOpenAI {
+		if strings.TrimSpace(request.Model) == "" {
+			request.Model = defaultOpenAIRiskProviderModel
+		}
+		if strings.TrimSpace(request.BaseURL) == "" {
+			request.BaseURL = defaultOpenAIRiskProviderBaseURL
+		}
+	}
 	ciphertext := ""
-	if request.ProviderType == model.RiskProviderCloudflare {
+	if request.ProviderType != model.RiskProviderPlatformInternal {
 		var err error
 		ciphertext, err = common.EncryptCredential(request.Credential)
 		if err != nil {
@@ -94,7 +109,7 @@ func CreateRiskProvider(c *gin.Context) {
 	}
 	provider := &model.RiskProvider{
 		Name: request.Name, ProviderType: request.ProviderType, AccountID: request.AccountID,
-		ChannelID: request.ChannelID, Model: request.Model,
+		ChannelID: request.ChannelID, Model: request.Model, BaseURL: request.BaseURL,
 		CredentialEncrypted: ciphertext, TimeoutMs: request.TimeoutMs, FailureThreshold: request.FailureThreshold,
 		CooldownSeconds: request.CooldownSeconds,
 		Priority:        request.Priority, DailyNeuronsLimit: request.DailyNeuronsLimit, DailyResetTime: request.DailyResetTime,
@@ -130,18 +145,22 @@ func UpdateRiskProvider(c *gin.Context) {
 	if provider.ProviderType == model.RiskProviderPlatformInternal && request.ProviderType == model.RiskProviderPlatformInternal {
 		connectionChanged = connectionChanged || provider.ChannelID != request.ChannelID
 	}
+	if provider.ProviderType == model.RiskProviderOpenAI && request.ProviderType == model.RiskProviderOpenAI {
+		connectionChanged = connectionChanged || provider.BaseURL != strings.TrimRight(strings.TrimSpace(request.BaseURL), "/") || request.Credential != ""
+	}
 	provider.Name = request.Name
 	provider.ProviderType = request.ProviderType
 	provider.AccountID = request.AccountID
 	provider.ChannelID = request.ChannelID
 	provider.Model = request.Model
+	provider.BaseURL = request.BaseURL
 	provider.TimeoutMs = request.TimeoutMs
 	provider.FailureThreshold = request.FailureThreshold
 	provider.CooldownSeconds = request.CooldownSeconds
 	provider.Priority = request.Priority
 	provider.DailyNeuronsLimit = request.DailyNeuronsLimit
 	provider.DailyResetTime = request.DailyResetTime
-	if request.ProviderType == model.RiskProviderCloudflare && request.Credential != "" {
+	if request.ProviderType != model.RiskProviderPlatformInternal && request.Credential != "" {
 		provider.CredentialEncrypted, err = common.EncryptCredential(request.Credential)
 		if err != nil {
 			common.ApiError(c, err)
@@ -321,7 +340,7 @@ func toRiskProviderResponse(ctx context.Context, provider *model.RiskProvider) R
 		dailyResetTime = model.DefaultRiskProviderDailyResetTime
 	}
 	response := RiskProviderResponse{
-		Id: provider.Id, Name: provider.Name, ProviderType: provider.ProviderType, Model: provider.Model,
+		Id: provider.Id, Name: provider.Name, ProviderType: provider.ProviderType, Model: provider.Model, BaseURL: provider.BaseURL,
 		AccountID: accountID, ChannelID: provider.ChannelID, HasCredential: provider.CredentialEncrypted != "",
 		SystemManaged:    provider.ProviderType == model.RiskProviderPlatformInternal && provider.InternalTokenID > 0,
 		TimeoutMs:        provider.TimeoutMs,

@@ -16,6 +16,7 @@ type RiskProviderType string
 
 const (
 	RiskProviderCloudflare       RiskProviderType = "cloudflare"
+	RiskProviderOpenAI           RiskProviderType = "openai"
 	RiskProviderPlatformInternal RiskProviderType = "platform_internal"
 )
 
@@ -139,6 +140,17 @@ func normalizeRiskProvider(provider *RiskProvider) error {
 		if provider.Name == "" || provider.Model == "" || provider.CredentialEncrypted == "" {
 			return errors.New("risk provider name, account ID, model, and credential are required")
 		}
+	case RiskProviderOpenAI:
+		baseURL, err := normalizeOpenAIRiskProviderBaseURL(provider.BaseURL)
+		if err != nil {
+			return err
+		}
+		provider.AccountID = ""
+		provider.ChannelID = 0
+		provider.BaseURL = baseURL
+		if provider.Name == "" || provider.Model == "" || provider.CredentialEncrypted == "" {
+			return errors.New("risk provider name, base URL, model, and credential are required")
+		}
 	case RiskProviderPlatformInternal:
 		provider.AccountID = ""
 		provider.BaseURL = ""
@@ -174,6 +186,15 @@ func normalizeRiskProvider(provider *RiskProvider) error {
 		return err
 	}
 	return nil
+}
+
+func normalizeOpenAIRiskProviderBaseURL(value string) (string, error) {
+	value = strings.TrimRight(strings.TrimSpace(value), "/")
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", errors.New("OpenAI risk provider base URL must be an absolute HTTP(S) URL without user info, query, or fragment")
+	}
+	return value, nil
 }
 
 func ParseRiskProviderDailyResetTime(value string) (int, error) {

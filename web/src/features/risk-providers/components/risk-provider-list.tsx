@@ -97,6 +97,17 @@ function currentStatusVariant(
   return 'secondary' as const
 }
 
+function providerTypeLabel(
+  provider: RiskProvider,
+  t: (key: string) => string
+): string {
+  if (provider.provider_type === 'openai') return 'OpenAI Moderation'
+  if (provider.provider_type === 'platform_internal') {
+    return t('Platform internal model')
+  }
+  return 'Cloudflare Workers AI'
+}
+
 function ProviderActions(props: {
   readonly provider: RiskProvider
   readonly pendingAction: RiskProviderPendingAction | null
@@ -157,9 +168,7 @@ export function RiskProviderList(props: RiskProviderListProps): ReactElement {
           <div className='max-w-full min-w-0 overflow-hidden'>
             <div className='font-medium'>{row.original.name}</div>
             <div className='text-muted-foreground mt-0.5 truncate text-xs'>
-              {row.original.provider_type === 'cloudflare'
-                ? 'Cloudflare Workers AI'
-                : t('Platform internal model')}
+              {providerTypeLabel(row.original, t)}
             </div>
             <div
               className='text-muted-foreground truncate font-mono text-xs lg:hidden'

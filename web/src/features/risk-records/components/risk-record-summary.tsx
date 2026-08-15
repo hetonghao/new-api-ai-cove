@@ -363,6 +363,9 @@ export function RiskRecordProviderSummary(props: {
     case 'cloudflare':
       providerTypeLabel = 'Cloudflare Workers AI'
       break
+    case 'openai':
+      providerTypeLabel = 'OpenAI Moderation'
+      break
     case 'platform_internal':
       providerTypeLabel = t('Platform internal model')
       break

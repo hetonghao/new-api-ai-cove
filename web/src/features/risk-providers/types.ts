@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-export type RiskProviderType = 'cloudflare' | 'platform_internal'
+export type RiskProviderType = 'cloudflare' | 'openai' | 'platform_internal'
 
 export type RiskProvider = {
   readonly id: number
@@ -25,6 +25,7 @@ export type RiskProvider = {
   readonly account_id: string
   readonly channel_id: number
   readonly model: string
+  readonly base_url?: string
   readonly has_credential: boolean
   readonly system_managed: boolean
   readonly timeout_ms: number
@@ -50,6 +51,7 @@ export type RiskProviderFormValues = {
   readonly account_id: string
   readonly channel_id: number | null
   readonly model: string
+  readonly base_url: string
   readonly credential: string
   readonly timeout_ms: number
   readonly failure_threshold: number
@@ -65,13 +67,14 @@ export type RiskProviderPayload = {
   readonly account_id?: string
   readonly channel_id?: number
   readonly model: string
+  readonly base_url?: string
   readonly credential?: string
   readonly timeout_ms: number
   readonly failure_threshold: number
   readonly cooldown_seconds: number
   readonly priority: number
-  readonly daily_neurons_limit: number
-  readonly daily_reset_time: string
+  readonly daily_neurons_limit?: number
+  readonly daily_reset_time?: string
 }
 
 export type RiskProviderValidation = {

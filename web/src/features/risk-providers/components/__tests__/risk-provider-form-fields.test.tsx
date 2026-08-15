@@ -64,7 +64,7 @@ after(() => {
 })
 
 function TestForm(props: {
-  readonly providerType: 'cloudflare' | 'platform_internal'
+  readonly providerType: 'cloudflare' | 'openai' | 'platform_internal'
 }) {
   const form = useForm<RiskProviderFormValues>({
     defaultValues: {
@@ -87,7 +87,9 @@ function TestForm(props: {
   )
 }
 
-function openAdvanced(providerType: 'cloudflare' | 'platform_internal'): void {
+function openAdvanced(
+  providerType: 'cloudflare' | 'openai' | 'platform_internal'
+): void {
   render(<TestForm providerType={providerType} />)
   fireEvent.click(screen.getByRole('button', { name: /Advanced/ }))
 }
@@ -106,4 +108,34 @@ test('keeps Cloudflare quota fields visible for Cloudflare providers', () => {
 
   assert.ok(screen.getByLabelText('Daily Neurons limit'))
   assert.ok(screen.getByLabelText('Daily reset time (UTC+8)'))
+})
+
+test('shows only OpenAI connection fields and shared advanced settings', () => {
+  openAdvanced('openai')
+
+  assert.ok(screen.getByLabelText('Base URL'))
+  assert.ok(screen.getByLabelText('API Key'))
+  assert.equal(screen.queryByLabelText('Account ID'), null)
+  assert.equal(screen.queryByLabelText('Platform channel'), null)
+  assert.equal(screen.queryByLabelText('Daily Neurons limit'), null)
+  assert.equal(screen.queryByLabelText('Daily reset time (UTC+8)'), null)
+  assert.ok(screen.getByLabelText('Priority'))
+  assert.ok(screen.getByLabelText('Review timeout (ms)'))
+})
+
+test('applies OpenAI defaults when the provider type changes', () => {
+  render(<TestForm providerType='cloudflare' />)
+
+  fireEvent.change(screen.getByLabelText('Provider type'), {
+    target: { value: 'openai' },
+  })
+
+  assert.equal(
+    (screen.getByLabelText('Base URL') as HTMLInputElement).value,
+    'https://api.openai.com/v1'
+  )
+  assert.equal(
+    (screen.getByLabelText('Model') as HTMLInputElement).value,
+    'omni-moderation-latest'
+  )
 })

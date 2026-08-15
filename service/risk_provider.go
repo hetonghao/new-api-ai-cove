@@ -127,6 +127,8 @@ func ReviewRiskContent(ctx context.Context, provider *model.RiskProvider, conten
 	switch provider.ProviderType {
 	case model.RiskProviderCloudflare:
 		return reviewCloudflareRiskContent(ctx, provider, content)
+	case model.RiskProviderOpenAI:
+		return reviewOpenAIRiskContent(ctx, provider, content)
 	case model.RiskProviderPlatformInternal:
 		return reviewPlatformInternalRiskContent(ctx, provider, content)
 	default:

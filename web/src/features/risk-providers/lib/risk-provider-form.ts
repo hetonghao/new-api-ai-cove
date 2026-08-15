@@ -41,6 +41,7 @@ export const RISK_PROVIDER_DEFAULT_VALUES: RiskProviderFormValues = {
   account_id: '',
   channel_id: null,
   model: '@cf/meta/llama-guard-3-8b',
+  base_url: '',
   credential: '',
   timeout_ms: 800,
   failure_threshold: 5,
@@ -68,10 +69,11 @@ export function getRiskProviderFormSchema(
   return z
     .object({
       name: z.string().trim().min(1, t('Please enter a name')),
-      provider_type: z.enum(['cloudflare', 'platform_internal']),
+      provider_type: z.enum(['cloudflare', 'openai', 'platform_internal']),
       account_id: z.string(),
       channel_id: z.number().int().positive().nullable(),
       model: z.string().trim().min(1, t('Please enter a model')),
+      base_url: z.string(),
       credential: z.string(),
       timeout_ms: z
         .number()
@@ -106,7 +108,7 @@ export function getRiskProviderFormSchema(
         })
       }
       if (
-        values.provider_type === 'cloudflare' &&
+        values.provider_type !== 'platform_internal' &&
         credentialRequired &&
         values.credential.trim().length === 0
       ) {
@@ -115,6 +117,26 @@ export function getRiskProviderFormSchema(
           path: ['credential'],
           message: t('Please enter a credential'),
         })
+      }
+      if (values.provider_type === 'openai') {
+        try {
+          const baseURL = new URL(values.base_url.trim())
+          if (
+            !['http:', 'https:'].includes(baseURL.protocol) ||
+            baseURL.username ||
+            baseURL.password ||
+            baseURL.search ||
+            baseURL.hash
+          ) {
+            throw new Error('invalid OpenAI base URL')
+          }
+        } catch {
+          context.addIssue({
+            code: 'custom',
+            path: ['base_url'],
+            message: t('Please enter a valid OpenAI Base URL'),
+          })
+        }
       }
       if (
         values.provider_type === 'platform_internal' &&
@@ -138,6 +160,7 @@ export function providerToFormValues(
     account_id: provider.account_id,
     channel_id: provider.channel_id || null,
     model: provider.model,
+    base_url: provider.base_url ?? '',
     credential: '',
     timeout_ms: provider.timeout_ms,
     failure_threshold: provider.failure_threshold,
@@ -159,19 +182,28 @@ export function formValuesToPayload(
     failure_threshold: values.failure_threshold,
     cooldown_seconds: values.cooldown_seconds,
     priority: values.priority,
-    daily_neurons_limit: values.daily_neurons_limit,
-    daily_reset_time: values.daily_reset_time,
   }
   if (values.provider_type === 'platform_internal') {
     return {
       ...commonPayload,
       channel_id: values.channel_id ?? undefined,
+      daily_neurons_limit: values.daily_neurons_limit,
+      daily_reset_time: values.daily_reset_time,
     }
   }
   const credential = values.credential.trim()
+  if (values.provider_type === 'openai') {
+    const payload = {
+      ...commonPayload,
+      base_url: values.base_url.trim().replace(/\/+$/, ''),
+    }
+    return credential ? { ...payload, credential } : payload
+  }
   const payload = {
     ...commonPayload,
     account_id: values.account_id.trim().toLowerCase(),
+    daily_neurons_limit: values.daily_neurons_limit,
+    daily_reset_time: values.daily_reset_time,
   }
   return credential ? { ...payload, credential } : payload
 }

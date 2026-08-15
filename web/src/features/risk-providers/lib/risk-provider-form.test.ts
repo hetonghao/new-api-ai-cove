@@ -33,6 +33,7 @@ const formValues: RiskProviderFormValues = {
   name: 'Cloudflare primary',
   provider_type: 'cloudflare',
   model: '@cf/meta/llama-guard-3-8b',
+  base_url: '',
   account_id: '0123456789abcdef0123456789abcdef',
   channel_id: null,
   credential: '',
@@ -166,5 +167,31 @@ describe('risk provider form behavior', () => {
     if (!result.success) {
       assert.deepEqual(result.error.issues[0]?.path, ['channel_id'])
     }
+  })
+
+  test('OpenAI provider submits its API root without Cloudflare fields', () => {
+    const openAIValues: RiskProviderFormValues = {
+      ...formValues,
+      provider_type: 'openai',
+      account_id: '',
+      base_url: 'https://api.openai.com/v1',
+      model: 'omni-moderation-latest',
+      credential: 'openai-token',
+    }
+
+    const result = getRiskProviderFormSchema(t, true).safeParse(openAIValues)
+
+    assert.equal(result.success, true)
+    assert.deepEqual(formValuesToPayload(openAIValues), {
+      name: 'Cloudflare primary',
+      provider_type: 'openai',
+      base_url: 'https://api.openai.com/v1',
+      model: 'omni-moderation-latest',
+      credential: 'openai-token',
+      timeout_ms: 800,
+      failure_threshold: 5,
+      cooldown_seconds: 30,
+      priority: 10,
+    })
   })
 })

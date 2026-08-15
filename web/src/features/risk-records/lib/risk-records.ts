@@ -41,6 +41,7 @@ const RISK_RECORD_FILTER_SOURCES = [
 const RISK_RECORD_FILTER_PROVIDER_TYPES = [
   '',
   'cloudflare',
+  'openai',
   'platform_internal',
 ] as const
 
@@ -133,6 +134,19 @@ export const RISK_RECORD_CATEGORY_CODES = [
   'S12',
   'S13',
   'S14',
+  'harassment',
+  'harassment/threatening',
+  'hate',
+  'hate/threatening',
+  'illicit',
+  'illicit/violent',
+  'self-harm',
+  'self-harm/intent',
+  'self-harm/instructions',
+  'sexual',
+  'sexual/minors',
+  'violence',
+  'violence/graphic',
 ] as const
 
 const RISK_RECORD_CATEGORY_LABELS: Readonly<Record<string, string>> = {
@@ -150,6 +164,19 @@ const RISK_RECORD_CATEGORY_LABELS: Readonly<Record<string, string>> = {
   S12: 'Sexual content',
   S13: 'Election misinformation',
   S14: 'Code interpreter abuse',
+  harassment: 'Harassment',
+  'harassment/threatening': 'Threatening harassment',
+  hate: 'Hate',
+  'hate/threatening': 'Threatening hate',
+  illicit: 'Illicit activity',
+  'illicit/violent': 'Violent illicit activity',
+  'self-harm': 'Self-harm',
+  'self-harm/intent': 'Self-harm intent',
+  'self-harm/instructions': 'Self-harm instructions',
+  sexual: 'Sexual content',
+  'sexual/minors': 'Sexual content involving minors',
+  violence: 'Violence',
+  'violence/graphic': 'Graphic violence',
 }
 
 const RISK_RECORD_RESULT_FILTER_LABELS: Readonly<Record<string, string>> = {
@@ -175,7 +202,10 @@ export function getRiskRecordSourceLabel(source: string) {
 }
 
 export function getRiskRecordCategoryLabel(category: string) {
-  return RISK_RECORD_CATEGORY_LABELS[category.toUpperCase()]
+  return (
+    RISK_RECORD_CATEGORY_LABELS[category] ??
+    RISK_RECORD_CATEGORY_LABELS[category.toUpperCase()]
+  )
 }
 
 export function getRiskRecordResultFilterLabel(result: string) {

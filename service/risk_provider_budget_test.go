@@ -171,6 +171,40 @@ func TestEstimateCloudflareNeuronsUsesConservativeUTF8Size(t *testing.T) {
 	assert.Greater(t, unicode, ascii)
 }
 
+func TestReviewRiskContentWithBudgetBypassesNeuronsBudgetForOpenAI(t *testing.T) {
+	originalSecret := common.CryptoSecret
+	common.CryptoSecret = "openai-budget-bypass-test-key"
+	t.Cleanup(func() { common.CryptoSecret = originalSecret })
+	ciphertext, err := common.EncryptCredential("openai-token")
+	require.NoError(t, err)
+	provider := &model.RiskProvider{
+		Id: 71, Name: "OpenAI moderation", ProviderType: model.RiskProviderOpenAI,
+		Model: "omni-moderation-latest", BaseURL: "https://api.openai.com/v1",
+		CredentialEncrypted: ciphertext, TimeoutMs: 800,
+	}
+	originalEnabled, originalClient := common.RedisEnabled, common.RDB
+	common.RedisEnabled = false
+	common.RDB = nil
+	t.Cleanup(func() {
+		common.RedisEnabled = originalEnabled
+		common.RDB = originalClient
+	})
+	originalHTTPClient := httpClient
+	httpClient = &http.Client{Transport: riskProviderRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"results":[{"flagged":false,"categories":{}}]}`)),
+		}, nil
+	})}
+	t.Cleanup(func() { httpClient = originalHTTPClient })
+
+	result, reviewErr := ReviewRiskContentWithBudget(context.Background(), provider, "safe text")
+
+	require.NoError(t, reviewErr)
+	assert.Equal(t, RiskReviewSafe, result.Status)
+	assert.Equal(t, RiskReviewUsage{}, result.Usage)
+}
+
 func TestReviewRiskContentWithBudgetChargesEstimateWhenUsageIsMissing(t *testing.T) {
 	useRiskModerationMiniRedis(t)
 	originalSecret := common.CryptoSecret
