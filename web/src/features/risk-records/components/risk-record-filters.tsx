@@ -149,6 +149,9 @@ export function RiskRecordFiltersForm(props: RiskRecordFiltersProps) {
               <NativeSelectOption value='cloudflare'>
                 Cloudflare Workers AI
               </NativeSelectOption>
+              <NativeSelectOption value='openai'>
+                OpenAI Moderation
+              </NativeSelectOption>
               <NativeSelectOption value='platform_internal'>
                 {t('Platform internal model')}
               </NativeSelectOption>

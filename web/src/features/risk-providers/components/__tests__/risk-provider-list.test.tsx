@@ -105,11 +105,11 @@ after(() => {
   domWindow.close()
 })
 
-function renderProviderList(): void {
+function renderProviderList(provider: RiskProvider = PROVIDER): void {
   render(
     <I18nextProvider i18n={i18n}>
       <RiskProviderList
-        providers={[PROVIDER]}
+        providers={[provider]}
         isLoading={false}
         error={null}
         pendingProviderId={null}
@@ -168,6 +168,21 @@ test('switches views while keeping enabled and current status distinct', () => {
   assert.ok(screen.getByText('@cf/meta/llama-guard-3-8b'))
   assert.ok(screen.getByText('Normal'))
   assert.ok(screen.getByText('Enabled'))
+})
+
+test('labels OpenAI providers without showing a Neurons quota', () => {
+  setViewport(1280)
+  renderProviderList({
+    ...PROVIDER,
+    name: 'OpenAI moderation',
+    provider_type: 'openai',
+    account_id: '',
+    base_url: 'https://api.openai.com/v1',
+    model: 'omni-moderation-latest',
+  })
+
+  assert.ok(screen.getByText('OpenAI Moderation'))
+  assert.ok(screen.getByText('Not applicable'))
 })
 
 test('keeps provider card edges inside clipped risk-center content', () => {

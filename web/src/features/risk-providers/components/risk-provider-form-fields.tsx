@@ -53,6 +53,7 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
   const form = useFormContext<RiskProviderFormValues>()
   const errors = form.formState.errors
   const providerType = form.watch('provider_type')
+  const providerTypeField = form.register('provider_type')
   const [advancedOpen, setAdvancedOpen] = useState(false)
 
   return (
@@ -75,10 +76,34 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
           id='risk-provider-type'
           className='w-full'
           aria-invalid={Boolean(errors.provider_type)}
-          {...form.register('provider_type')}
+          {...providerTypeField}
+          onChange={(event) => {
+            providerTypeField.onChange(event)
+            const nextType = event.target.value
+            form.setValue('account_id', '', { shouldDirty: true })
+            form.setValue('channel_id', null, { shouldDirty: true })
+            if (nextType === 'openai') {
+              form.setValue('model', 'omni-moderation-latest', {
+                shouldDirty: true,
+              })
+              form.setValue('base_url', 'https://api.openai.com/v1', {
+                shouldDirty: true,
+              })
+            } else {
+              form.setValue('base_url', '', { shouldDirty: true })
+              form.setValue(
+                'model',
+                nextType === 'cloudflare' ? '@cf/meta/llama-guard-3-8b' : '',
+                { shouldDirty: true }
+              )
+            }
+          }}
         >
           <NativeSelectOption value='cloudflare'>
             Cloudflare Workers AI
+          </NativeSelectOption>
+          <NativeSelectOption value='openai'>
+            OpenAI Moderation
           </NativeSelectOption>
           <NativeSelectOption value='platform_internal'>
             {t('Platform internal model')}
@@ -86,7 +111,7 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
         </NativeSelect>
         <FieldError errors={[errors.provider_type]} />
       </Field>
-      {providerType === 'cloudflare' ? (
+      {providerType === 'cloudflare' && (
         <Field
           className='sm:col-span-2'
           data-invalid={Boolean(errors.account_id)}
@@ -103,7 +128,27 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
           />
           <FieldError errors={[errors.account_id]} />
         </Field>
-      ) : (
+      )}
+      {providerType === 'openai' && (
+        <Field
+          className='sm:col-span-2'
+          data-invalid={Boolean(errors.base_url)}
+        >
+          <FieldLabel htmlFor='risk-provider-base-url'>
+            {t('Base URL')}
+          </FieldLabel>
+          <Input
+            id='risk-provider-base-url'
+            type='url'
+            autoComplete='url'
+            aria-invalid={Boolean(errors.base_url)}
+            placeholder='https://api.openai.com/v1'
+            {...form.register('base_url')}
+          />
+          <FieldError errors={[errors.base_url]} />
+        </Field>
+      )}
+      {providerType === 'platform_internal' && (
         <Field
           className='sm:col-span-2'
           data-invalid={Boolean(errors.channel_id)}
@@ -140,13 +185,13 @@ export function RiskProviderFormFields(props: RiskProviderFormFieldsProps) {
         </Field>
       )}
       <RiskProviderModelField channels={props.channels} />
-      {providerType === 'cloudflare' ? (
+      {providerType !== 'platform_internal' ? (
         <Field
           className='sm:col-span-2'
           data-invalid={Boolean(errors.credential)}
         >
           <FieldLabel htmlFor='risk-provider-credential'>
-            {t('Credential')}
+            {providerType === 'openai' ? t('API Key') : t('Credential')}
           </FieldLabel>
           <Input
             id='risk-provider-credential'

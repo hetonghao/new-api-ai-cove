@@ -79,6 +79,32 @@ func TestRiskModerationExecutor_Execute_usesSelectedProviderTimeout(t *testing.T
 	assert.LessOrEqual(t, remaining, 80*time.Millisecond)
 }
 
+func TestRiskModerationExecutor_Execute_selectsOpenAIFromProviderPool(t *testing.T) {
+	useRiskModerationMiniRedis(t)
+	providers := riskModerationProviderPoolForTest()[:2]
+	providers[0].ProviderType = model.RiskProviderOpenAI
+	providers[0].AccountID = ""
+	providers[0].BaseURL = "https://api.openai.com/v1"
+	providers[0].Model = "omni-moderation-latest"
+	var selectedType model.RiskProviderType
+	executor := newRiskModerationExecutor(riskModerationExecutorDeps{
+		Cache: newRiskReviewCacheService(newFakeRiskReviewCacheStore(), "select-openai"),
+		Reviewer: func(_ context.Context, provider *model.RiskProvider, _ string) (RiskReviewResult, error) {
+			selectedType = provider.ProviderType
+			return RiskReviewResult{Status: RiskReviewSafe}, nil
+		},
+		Now: time.Now,
+	})
+
+	outcome, err := executor.Execute(context.Background(), RiskModerationInput{
+		Providers: providers, Content: "openai content", ReviewMode: model.RiskReviewSelective,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, model.RiskProviderOpenAI, selectedType)
+	assert.Equal(t, model.RiskProviderOpenAI, outcome.Result.ProviderType)
+}
+
 func TestRiskModerationExecutor_Execute_circuitOpenDoesNotAdvanceProviderPool(t *testing.T) {
 	// Given
 	useRiskModerationMiniRedis(t)

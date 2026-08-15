@@ -200,7 +200,7 @@ func newRiskRecord(input RiskRecordInput) (RiskRecord, error) {
 		return RiskRecord{}, ErrInvalidRiskRecord
 	}
 	switch input.ProviderType {
-	case "", RiskProviderCloudflare, RiskProviderPlatformInternal:
+	case "", RiskProviderCloudflare, RiskProviderOpenAI, RiskProviderPlatformInternal:
 	default:
 		return RiskRecord{}, ErrInvalidRiskRecord
 	}

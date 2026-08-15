@@ -116,12 +116,12 @@ export function RiskProviderFormDialog(props: RiskProviderFormDialogProps) {
             {props.provider ? t('Edit provider') : t('Add provider')}
           </DialogTitle>
           <DialogDescription>
-            {providerType === 'cloudflare'
+            {providerType === 'platform_internal'
               ? t(
-                  'Credentials are encrypted by the server and are never returned to this page.'
+                  'Internal review calls this New API instance through 127.0.0.1.'
                 )
               : t(
-                  'Internal review calls this New API instance through 127.0.0.1.'
+                  'Credentials are encrypted by the server and are never returned to this page.'
                 )}
           </DialogDescription>
         </DialogHeader>

@@ -535,6 +535,20 @@ export const STATIC_I18N_KEYS = [
   'Batch detection failed',
   'Batch detection complete: {{channels}} channels, {{add}} to add, {{remove}} to remove, {{fails}} failed',
 
+  'Harassment',
+  'Threatening harassment',
+  'Hate',
+  'Threatening hate',
+  'Illicit activity',
+  'Violent illicit activity',
+  'Self-harm',
+  'Self-harm intent',
+  'Self-harm instructions',
+  'Sexual content',
+  'Sexual content involving minors',
+  'Violence',
+  'Graphic violence',
+
   // Advanced Custom model discovery
   'Only one OpenAI Models route is allowed',
   'OpenAI Models route does not support client model rules',

@@ -75,6 +75,26 @@ func TestRiskModerationPolicyVersion_changesWithVerdictSemanticsOnly(t *testing.
 	assert.NotContains(t, version, string(base.Provider.ProviderType))
 }
 
+func TestRiskModerationPolicyVersion_keepsOpenAICacheProviderIndependent(t *testing.T) {
+	cloudflare := RiskModerationInput{
+		Provider: riskModerationProviderForTest(), Content: "text",
+		ReviewMode: model.RiskReviewFull, FullReviewChunkRunes: 2048,
+	}
+	openAI := cloudflare
+	openAI.Provider = riskModerationProviderForTest()
+	openAI.Provider.ProviderType = model.RiskProviderOpenAI
+	openAI.Provider.AccountID = ""
+	openAI.Provider.Model = "omni-moderation-latest"
+	openAI.Provider.BaseURL = "https://api.openai.com/v1"
+
+	cloudflareVersion, cloudflareErr := RiskModerationPolicyVersion(cloudflare)
+	openAIVersion, openAIErr := RiskModerationPolicyVersion(openAI)
+
+	require.NoError(t, cloudflareErr)
+	require.NoError(t, openAIErr)
+	assert.Equal(t, cloudflareVersion, openAIVersion)
+}
+
 func TestRiskModerationPolicyVersion_usesCloudflareFullReviewChunkDefault(t *testing.T) {
 	// Given
 	defaultInput := RiskModerationInput{

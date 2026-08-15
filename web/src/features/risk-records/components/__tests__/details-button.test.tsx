@@ -269,6 +269,17 @@ describe('risk record details button presentation', () => {
     })
   }
 
+  test('shows OpenAI as the saved provider type', () => {
+    renderDetailsButton({ ...BASE_RECORD, provider_type: 'openai' })
+
+    fireEvent.click(screen.getByRole('button', { name: '12 tokens' }))
+
+    const recordDialog = screen.getByRole('dialog', {
+      name: 'Risk record details',
+    })
+    assert.ok(within(recordDialog).getByText('OpenAI Moderation'))
+  })
+
   test('opens a separate dialog with the saved provider error detail', () => {
     // Given a failed risk record with a sanitized provider diagnostic
     renderDetailsButton({

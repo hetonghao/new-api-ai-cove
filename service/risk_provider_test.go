@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/http/httptrace"
 	"strconv"
 	"strings"
@@ -206,6 +207,133 @@ func TestReviewRiskContentMapsCloudflareResponses(t *testing.T) {
 			if tt.wantNeurons != 0 {
 				assert.InDelta(t, tt.wantNeurons, result.Usage.Neurons, 1e-12)
 			}
+		})
+	}
+}
+
+func TestReviewRiskContentMapsOpenAIModerationResponse(t *testing.T) {
+	originalSecret := common.CryptoSecret
+	common.CryptoSecret = "openai-risk-provider-test-key"
+	t.Cleanup(func() { common.CryptoSecret = originalSecret })
+	ciphertext, err := common.EncryptCredential("openai-token")
+	require.NoError(t, err)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assert.Equal(t, http.MethodPost, request.Method)
+		assert.Equal(t, "/v1/moderations", request.URL.Path)
+		assert.Equal(t, "Bearer openai-token", request.Header.Get("Authorization"))
+		assert.Equal(t, "application/json", request.Header.Get("Content-Type"))
+		var requestBody struct {
+			Model string `json:"model"`
+			Input string `json:"input"`
+		}
+		if !assert.NoError(t, common.DecodeJson(request.Body, &requestBody)) {
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		assert.Equal(t, "omni-moderation-latest", requestBody.Model)
+		assert.Equal(t, "connection test", requestBody.Input)
+		writer.Header().Set("Content-Type", "application/json")
+		_, err := io.WriteString(writer, `{"id":"modr-1","model":"omni-moderation-latest","results":[{"flagged":true,"categories":{"violence":true,"sexual/minors":true,"illicit":null},"category_scores":{"sexual/minors":0.99}}]}`)
+		assert.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+	provider := &model.RiskProvider{
+		ProviderType:        model.RiskProviderOpenAI,
+		Model:               "omni-moderation-latest",
+		BaseURL:             server.URL + "/v1",
+		CredentialEncrypted: ciphertext,
+		TimeoutMs:           800,
+	}
+
+	result, err := ReviewRiskContent(context.Background(), provider, "connection test")
+	require.NoError(t, err)
+	assert.Equal(t, RiskReviewUnsafe, result.Status)
+	assert.Equal(t, []string{"sexual/minors", "violence"}, result.Categories)
+	assert.Equal(t, RiskReviewUsage{}, result.Usage)
+}
+
+func TestReviewRiskContentHandlesOpenAIModerationResponseBoundaries(t *testing.T) {
+	originalSecret := common.CryptoSecret
+	common.CryptoSecret = "openai-risk-provider-boundary-test-key"
+	t.Cleanup(func() { common.CryptoSecret = originalSecret })
+	ciphertext, err := common.EncryptCredential("openai-token")
+	require.NoError(t, err)
+	provider := &model.RiskProvider{
+		ProviderType:        model.RiskProviderOpenAI,
+		Model:               "omni-moderation-latest",
+		BaseURL:             "https://api.openai.com/v1",
+		CredentialEncrypted: ciphertext,
+		TimeoutMs:           800,
+	}
+	originalHTTPClient := httpClient
+	t.Cleanup(func() { httpClient = originalHTTPClient })
+
+	tests := []struct {
+		name           string
+		statusCode     int
+		body           string
+		wantStatus     RiskReviewStatus
+		wantCategories []string
+		transportErr   error
+		wantCause      error
+		wantError      bool
+		wantRateLimit  bool
+	}{
+		{
+			name: "safe verdict ignores inconsistent categories", statusCode: http.StatusOK,
+			body:       `{"results":[{"flagged":false,"categories":{"sexual":true}}]}`,
+			wantStatus: RiskReviewSafe,
+		},
+		{
+			name: "unsafe verdict remains unsafe without categories", statusCode: http.StatusOK,
+			body:       `{"results":[{"flagged":true,"categories":{}}]}`,
+			wantStatus: RiskReviewUnsafe,
+		},
+		{name: "missing results", statusCode: http.StatusOK, body: `{"results":[]}`, wantError: true},
+		{name: "missing flagged", statusCode: http.StatusOK, body: `{"results":[{"categories":{}}]}`, wantError: true},
+		{name: "invalid JSON", statusCode: http.StatusOK, body: `{"results":`, wantError: true},
+		{name: "unauthorized", statusCode: http.StatusUnauthorized, body: `{"error":"invalid token"}`, wantError: true},
+		{name: "forbidden", statusCode: http.StatusForbidden, body: `{"error":"forbidden"}`, wantError: true},
+		{name: "rate limited", statusCode: http.StatusTooManyRequests, body: `{"error":{"message":"rate limited"}}`, wantError: true, wantRateLimit: true},
+		{name: "network error", transportErr: errors.New("network unavailable"), wantError: true},
+		{name: "timeout", transportErr: context.DeadlineExceeded, wantCause: context.DeadlineExceeded, wantError: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			httpClient = &http.Client{Transport: riskProviderRoundTripFunc(func(*http.Request) (*http.Response, error) {
+				if test.transportErr != nil {
+					return nil, test.transportErr
+				}
+				return &http.Response{
+					StatusCode: test.statusCode,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(test.body)),
+				}, nil
+			})}
+
+			result, reviewErr := ReviewRiskContent(context.Background(), provider, "connection test")
+			if test.wantError {
+				require.Error(t, reviewErr)
+				if test.wantCause != nil {
+					require.ErrorIs(t, reviewErr, test.wantCause)
+				}
+				assert.Equal(t, test.wantRateLimit, errors.Is(reviewErr, ErrRiskProviderRateLimited))
+				assert.False(t, errors.Is(reviewErr, ErrRiskProviderDailyNeuronsExhausted))
+				_, detail := RiskObservationErrorInfo(reviewErr)
+				assert.NotContains(t, detail, "openai-token")
+				assert.NotContains(t, detail, provider.BaseURL)
+				assert.NotContains(t, detail, "connection test")
+				return
+			}
+			require.NoError(t, reviewErr)
+			assert.Equal(t, test.wantStatus, result.Status)
+			if len(test.wantCategories) == 0 {
+				assert.Empty(t, result.Categories)
+			} else {
+				assert.Equal(t, test.wantCategories, result.Categories)
+			}
+			assert.Equal(t, RiskReviewUsage{}, result.Usage)
 		})
 	}
 }

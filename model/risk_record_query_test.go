@@ -32,7 +32,7 @@ func TestQueryRiskRecords_filtersByTimeChannelUserResultSourceAndProvider(t *tes
 	inputs[1].UserID = 99
 	inputs[1].ProviderID = 77
 	inputs[1].ProviderName = "Matched"
-	inputs[1].ProviderType = RiskProviderPlatformInternal
+	inputs[1].ProviderType = RiskProviderOpenAI
 	inputs[1].Source = RiskRecordSourceProvider
 	inputs[1].ProviderCalled = true
 	inputs[2].RequestID = "req-after"
@@ -47,7 +47,7 @@ func TestQueryRiskRecords_filtersByTimeChannelUserResultSourceAndProvider(t *tes
 		Offset: 0, Limit: 20,
 		StartTimestamp: baseTime.Unix(), EndTimestamp: baseTime.Unix(),
 		ChannelID: 88, Username: "alice", ProviderID: &providerID,
-		ProviderType: RiskProviderPlatformInternal,
+		ProviderType: RiskProviderOpenAI,
 		Result:       RiskRecordResultUnsafe, Source: RiskRecordSourceProvider,
 	})
 

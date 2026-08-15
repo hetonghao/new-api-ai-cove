@@ -112,7 +112,7 @@ func validateRiskRecordQuery(filter RiskRecordQuery) error {
 		return ErrInvalidRiskRecordPage
 	}
 	switch filter.ProviderType {
-	case "", RiskProviderCloudflare, RiskProviderPlatformInternal:
+	case "", RiskProviderCloudflare, RiskProviderOpenAI, RiskProviderPlatformInternal:
 	default:
 		return ErrInvalidRiskRecordPage
 	}

@@ -13,7 +13,6 @@ import (
 )
 
 const (
-	riskModerationPromptSemantics         = "cloudflare-user-message-max16-temp0-v1"
 	riskModerationClassificationSemantics = "safe-unsafe-error-unsafe-first-v1"
 	riskModerationRoundRobinNamespace     = "new-api:risk-moderation-round-robin:v1"
 	riskModerationCircuitNamespace        = "new-api:risk-moderation-circuit:v1"
@@ -47,36 +46,16 @@ func RiskModerationPolicyVersion(input RiskModerationInput) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	providers, err := riskModerationPolicyProviders(input)
-	if err != nil {
+	if _, err := riskModerationPolicyProviders(input); err != nil {
 		return "", err
 	}
-	promptSemantics := make([]string, 0, len(providers))
-	seenSemantics := make(map[string]struct{}, len(providers))
-	for _, provider := range providers {
-		semantics, ok := map[model.RiskProviderType]string{
-			model.RiskProviderCloudflare:       riskModerationPromptSemantics,
-			model.RiskProviderPlatformInternal: platformInternalRiskPromptSemantics,
-		}[provider.ProviderType]
-		if !ok {
-			return "", fmt.Errorf("%w: provider type", ErrInvalidRiskModerationInput)
-		}
-		if _, exists := seenSemantics[semantics]; exists {
-			continue
-		}
-		seenSemantics[semantics] = struct{}{}
-		promptSemantics = append(promptSemantics, semantics)
-	}
-	sort.Strings(promptSemantics)
 	material, err := common.Marshal(struct {
 		ReviewMode              model.RiskReviewMode `json:"review_mode"`
 		ChunkLimit              int                  `json:"chunk_limit"`
-		PromptSemantics         []string             `json:"prompt_semantics"`
 		ClassificationSemantics string               `json:"classification_semantics"`
 	}{
 		ReviewMode:              input.ReviewMode,
 		ChunkLimit:              chunkLimit,
-		PromptSemantics:         promptSemantics,
 		ClassificationSemantics: riskModerationClassificationSemantics,
 	})
 	if err != nil {

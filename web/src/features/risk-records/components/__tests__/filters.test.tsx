@@ -113,4 +113,20 @@ describe('risk record filters presentation', () => {
       assert.equal(submitted?.provider_type, 'platform_internal')
     })
   })
+
+  test('shows and submits the OpenAI provider type', async () => {
+    let submitted: { readonly provider_type?: string } | undefined
+    renderFilters(false, (filters) => {
+      submitted = filters
+    })
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Provider type' }), {
+      target: { value: 'openai' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+
+    await waitFor(() => {
+      assert.equal(submitted?.provider_type, 'openai')
+    })
+  })
 })

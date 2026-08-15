@@ -143,7 +143,7 @@ export type RiskRecordFilterDraft = {
   readonly user_id?: string
   readonly username: string
   readonly provider_id: string
-  readonly provider_type: '' | 'cloudflare' | 'platform_internal'
+  readonly provider_type: '' | 'cloudflare' | 'openai' | 'platform_internal'
   readonly result: string
   readonly source: string
 }
@@ -155,7 +155,7 @@ export type RiskRecordFilters = {
   readonly user_id?: number
   readonly username?: string
   readonly provider_id?: number
-  readonly provider_type?: 'cloudflare' | 'platform_internal'
+  readonly provider_type?: 'cloudflare' | 'openai' | 'platform_internal'
   readonly result?: string
   readonly source?: string
 }

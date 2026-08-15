@@ -60,6 +60,45 @@ func TestRiskProviderAPIWorkflowKeepsCredentialsMasked(t *testing.T) {
 	require.True(t, deleted.Success, deleted.Message)
 }
 
+func TestRiskProviderAPIWorkflowCreatesOpenAIProvider(t *testing.T) {
+	setupRiskProviderControllerTest(t)
+
+	response := callRiskProviderHandler(t, riskProviderTestCall{
+		Method: http.MethodPost,
+		Target: "/api/risk/providers",
+		Body: map[string]any{
+			"name":          "OpenAI moderation",
+			"provider_type": "openai",
+			"credential":    "openai-secret-token",
+		},
+		Handler: CreateRiskProvider,
+	})
+	require.True(t, response.Success, response.Message)
+	var created struct {
+		ProviderType  model.RiskProviderType `json:"provider_type"`
+		Model         string                 `json:"model"`
+		BaseURL       string                 `json:"base_url"`
+		HasCredential bool                   `json:"has_credential"`
+		AccountID     string                 `json:"account_id"`
+		ChannelID     int                    `json:"channel_id"`
+	}
+	require.NoError(t, common.Unmarshal(response.Data, &created))
+	assert.Equal(t, model.RiskProviderType("openai"), created.ProviderType)
+	assert.Equal(t, "omni-moderation-latest", created.Model)
+	assert.Equal(t, "https://api.openai.com/v1", created.BaseURL)
+	assert.True(t, created.HasCredential)
+	assert.Empty(t, created.AccountID)
+	assert.Zero(t, created.ChannelID)
+	assert.NotContains(t, string(response.Data), "openai-secret-token")
+
+	list := callRiskProviderHandler(t, riskProviderTestCall{
+		Method: http.MethodGet, Target: "/api/risk/providers/", Handler: ListRiskProviders,
+	})
+	require.True(t, list.Success, list.Message)
+	assert.Contains(t, string(list.Data), `"base_url":"https://api.openai.com/v1"`)
+	assert.NotContains(t, string(list.Data), "openai-secret-token")
+}
+
 func TestListRiskProvidersReportsUnusedQuotaWhenProviderIsDisabled(t *testing.T) {
 	setupRiskProviderControllerTest(t)
 	ciphertext, err := common.EncryptCredential("cf-secret-token")
@@ -222,6 +261,61 @@ func TestUpdateRiskProviderRevokesValidationWhenConnectionChanges(t *testing.T) 
 			require.Len(t, providers, 1)
 			assert.Nil(t, providers[0].ValidatedAt)
 			assert.False(t, providers[0].Active)
+		})
+	}
+}
+
+func TestUpdateOpenAIRiskProviderRevokesValidationWhenConnectionChanges(t *testing.T) {
+	tests := []struct {
+		name   string
+		change func(map[string]any)
+	}{
+		{
+			name: "base URL changes",
+			change: func(body map[string]any) {
+				body["base_url"] = "https://moderation-proxy.example.com/v1"
+			},
+		},
+		{
+			name: "new API key is supplied",
+			change: func(body map[string]any) {
+				body["credential"] = "replacement-openai-secret"
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			setupRiskProviderControllerTest(t)
+			ciphertext, err := common.EncryptCredential("original-openai-secret")
+			require.NoError(t, err)
+			provider := &model.RiskProvider{
+				Name: "OpenAI moderation", ProviderType: model.RiskProviderOpenAI,
+				Model: "omni-moderation-latest", BaseURL: "https://api.openai.com/v1",
+				CredentialEncrypted: ciphertext,
+			}
+			require.NoError(t, model.CreateRiskProvider(provider))
+			require.NoError(t, model.MarkRiskProviderValidated(provider.Id))
+			require.NoError(t, model.ActivateRiskProvider(provider.Id))
+
+			body := map[string]any{
+				"name": "OpenAI moderation", "provider_type": "openai",
+				"model": "omni-moderation-latest", "base_url": "https://api.openai.com/v1",
+				"credential": "", "timeout_ms": 800, "failure_threshold": 5, "cooldown_seconds": 30,
+			}
+			test.change(body)
+
+			response := callRiskProviderHandler(t, riskProviderTestCall{
+				Method: http.MethodPut, Target: "/api/risk/providers/1", Body: body,
+				Id: provider.Id, Handler: UpdateRiskProvider,
+			})
+			require.True(t, response.Success, response.Message)
+			var updated RiskProviderResponse
+			require.NoError(t, common.Unmarshal(response.Data, &updated))
+			assert.Nil(t, updated.ValidatedAt)
+			assert.False(t, updated.Active)
+			assert.True(t, updated.HasCredential)
+			assert.NotContains(t, string(response.Data), "openai-secret")
 		})
 	}
 }

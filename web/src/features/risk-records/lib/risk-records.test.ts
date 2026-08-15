@@ -35,6 +35,7 @@ import {
   getRiskRecordSourceFilterLabel,
   getRiskRecordSourceVariant,
   getRiskRecordTotalPages,
+  RISK_RECORD_CATEGORY_CODES,
 } from './risk-records.ts'
 
 const VALID_RECORD = {
@@ -390,6 +391,40 @@ describe('risk record behavior', () => {
     assert.equal(getRiskRecordCategoryLabel('S1'), 'Violent crimes')
     assert.equal(getRiskRecordCategoryLabel('s14'), 'Code interpreter abuse')
     assert.equal(getRiskRecordCategoryLabel('future-category'), undefined)
+  })
+
+  it('maps OpenAI native categories to readable labels', () => {
+    const categories = [
+      'harassment',
+      'harassment/threatening',
+      'hate',
+      'hate/threatening',
+      'illicit',
+      'illicit/violent',
+      'self-harm',
+      'self-harm/intent',
+      'self-harm/instructions',
+      'sexual',
+      'sexual/minors',
+      'violence',
+      'violence/graphic',
+    ]
+    assert.deepEqual(RISK_RECORD_CATEGORY_CODES.slice(14), categories)
+    assert.deepEqual(categories.map(getRiskRecordCategoryLabel), [
+      'Harassment',
+      'Threatening harassment',
+      'Hate',
+      'Threatening hate',
+      'Illicit activity',
+      'Violent illicit activity',
+      'Self-harm',
+      'Self-harm intent',
+      'Self-harm instructions',
+      'Sexual content',
+      'Sexual content involving minors',
+      'Violence',
+      'Graphic violence',
+    ])
   })
 
   it('calculates the final partial page when total is not divisible', () => {
