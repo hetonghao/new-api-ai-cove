@@ -167,6 +167,20 @@ export function parseLogOther(other: string): LogOtherData | null {
   }
 }
 
+export function isTurboWarmupLog(
+  log: UsageLog,
+  other: LogOtherData | null
+): boolean {
+  return (
+    log.is_stream &&
+    (other?.transport === 'websocket' || other?.ws === true) &&
+    other?.client_source === 'turbo' &&
+    log.prompt_tokens > 0 &&
+    log.completion_tokens === 0 &&
+    other?.stream_status?.status !== 'error'
+  )
+}
+
 /**
  * Get time color based on duration (in seconds)
  */
