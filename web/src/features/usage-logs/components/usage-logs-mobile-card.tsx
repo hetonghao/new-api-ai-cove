@@ -302,6 +302,7 @@ function MobileStreamTimingField({ log }: { log: UsageLog }) {
         isStream={log.is_stream}
         isWebSocket={other?.transport === 'websocket' || other?.ws === true}
         isTurbo={other?.client_source === 'turbo'}
+        turboVersion={other?.client_version}
         tokensPerSecond={tokensPerSecond}
         streamStatus={other?.stream_status}
         className='shrink-0'

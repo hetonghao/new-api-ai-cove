@@ -37,10 +37,14 @@ func TestAppendRelayTransportLogInfo_appends_websocket_lifecycle_fields(t *testi
 func TestAppendRelayTransportLogInfo_appends_turbo_client_source(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := gin.CreateTestContext(nil)
-	ctx.Request = &http.Request{Header: http.Header{"X-Ai-Cove-Client": []string{"turbo"}}}
+	ctx.Request = &http.Request{Header: http.Header{
+		"X-Ai-Cove-Client":         []string{"turbo"},
+		"X-Ai-Cove-Client-Version": []string{"mac/0.1.0-beta.4"},
+	}}
 	other := map[string]interface{}{}
 
 	AppendRelayTransportLogInfo(ctx, other)
 
 	require.Equal(t, "turbo", other["client_source"])
+	require.Equal(t, "mac/0.1.0-beta.4", other["client_version"])
 }

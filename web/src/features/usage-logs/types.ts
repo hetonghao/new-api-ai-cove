@@ -164,6 +164,7 @@ export interface LogOtherData {
   request_path?: string
   request_conversion?: string[]
   client_source?: string
+  client_version?: string
   transport?: string
   ws?: boolean
   audio?: boolean

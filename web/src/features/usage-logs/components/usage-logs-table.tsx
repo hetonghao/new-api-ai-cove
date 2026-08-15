@@ -78,6 +78,7 @@ const PROTOTYPE_SOURCE_MARKER_LOG: UsageLog = {
   other: JSON.stringify({
     transport: 'websocket',
     client_source: 'turbo',
+    client_version: 'mac/0.1.0-beta.4',
     frt: 620,
   }),
   request_id: 'prototype-turbo-ws',
