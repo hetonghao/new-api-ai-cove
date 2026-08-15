@@ -40,7 +40,7 @@ import { cn } from '@/lib/utils'
 
 import { LOG_TYPE_ENUM } from '../constants'
 import type { UsageLog } from '../data/schema'
-import { parseLogOther } from '../lib/format'
+import { isTurboWarmupLog, parseLogOther } from '../lib/format'
 import {
   getLogTypeConfig,
   isDisplayableLogType,
@@ -302,6 +302,7 @@ function MobileStreamTimingField({ log }: { log: UsageLog }) {
         isStream={log.is_stream}
         isWebSocket={other?.transport === 'websocket' || other?.ws === true}
         isTurbo={other?.client_source === 'turbo'}
+        isTurboWarmup={isTurboWarmupLog(log, other)}
         turboVersion={other?.client_version}
         tokensPerSecond={tokensPerSecond}
         streamStatus={other?.stream_status}

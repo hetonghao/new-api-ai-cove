@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import {
   dotColorMap,
   textColorMap,
+  StatusBadge,
   type StatusVariant,
 } from '@/components/status-badge'
 import {
@@ -153,6 +154,7 @@ interface StreamTpsCellProps {
   isStream: boolean
   isWebSocket?: boolean
   isTurbo?: boolean
+  isTurboWarmup?: boolean
   turboVersion?: string
   tokensPerSecond?: number | null
   streamStatus?: LogOtherData['stream_status']
@@ -257,8 +259,24 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
           </TooltipProvider>
         )}
       </span>
-      <span className='text-muted-foreground/60 px-0.5 tabular-nums'>
-        {tpsLabel}
+      <span
+        className={cn(
+          'text-muted-foreground/60 tabular-nums',
+          !props.isTurboWarmup && 'px-0.5'
+        )}
+      >
+        {props.isTurboWarmup ? (
+          <StatusBadge
+            label={t('Turbo warm-up request')}
+            variant='success'
+            size='sm'
+            copyable={false}
+            type='badge'
+            className='border-success/30 bg-success/10 border'
+          />
+        ) : (
+          tpsLabel
+        )}
       </span>
     </div>
   )
