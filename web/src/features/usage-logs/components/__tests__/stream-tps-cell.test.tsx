@@ -60,6 +60,7 @@ await i18n.use(initReactI18next).init({
         Stream: '流',
         'WebSocket acceleration channel': 'WebSocket 加速通道',
         'From Turbo': '来自 Turbo',
+        Version: '版本',
       },
     },
   },
@@ -103,6 +104,7 @@ test('流式日志按流、WS、Turbo 的顺序展示可访问标识', async () 
     isStream: true,
     isWebSocket: true,
     isTurbo: true,
+    turboVersion: 'mac/0.1.0-beta.4',
     tokensPerSecond: 20,
   })
 
@@ -110,7 +112,7 @@ test('流式日志按流、WS、Turbo 的顺序展示可访问标识', async () 
     'button[aria-label="WebSocket 加速通道"]'
   )
   const turbo = rendered.container.querySelector<HTMLButtonElement>(
-    'button[aria-label="来自 Turbo"]'
+    'button[aria-label="来自 Turbo / 版本 mac/0.1.0-beta.4"]'
   )
 
   assert.ok(webSocket)

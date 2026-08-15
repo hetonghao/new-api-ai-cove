@@ -153,6 +153,7 @@ interface StreamTpsCellProps {
   isStream: boolean
   isWebSocket?: boolean
   isTurbo?: boolean
+  turboVersion?: string
   tokensPerSecond?: number | null
   streamStatus?: LogOtherData['stream_status']
   className?: string
@@ -167,6 +168,12 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
       ? `${Math.round(props.tokensPerSecond)} t/s`
       : '—'
   const streamLabel = props.isStream ? t('Stream') : t('Non-stream')
+  const turboVersionLabel = props.turboVersion
+    ? `${t('Version')} ${props.turboVersion}`
+    : null
+  const turboAriaLabel = [t('From Turbo'), turboVersionLabel]
+    .filter(Boolean)
+    .join(' / ')
   const webSocketMarker = props.isWebSocket ? (
     <TooltipProvider delay={150}>
       <Tooltip>
@@ -193,13 +200,20 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
             <button
               type='button'
               className='text-success hover:bg-success/15 focus-visible:ring-success/50 inline-flex size-4 cursor-default items-center justify-center rounded-full transition-transform duration-200 hover:scale-110 focus-visible:ring-2 focus-visible:outline-none'
-              aria-label={t('From Turbo')}
+              aria-label={turboAriaLabel}
             >
               <Zap className='fill-success/20 size-3' aria-hidden='true' />
             </button>
           }
         />
-        <TooltipContent>{t('From Turbo')}</TooltipContent>
+        <TooltipContent>
+          <div className='space-y-0.5 text-xs'>
+            <p>{t('From Turbo')}</p>
+            {turboVersionLabel && (
+              <p className='font-mono'>{turboVersionLabel}</p>
+            )}
+          </div>
+        </TooltipContent>
       </Tooltip>
     </TooltipProvider>
   ) : null

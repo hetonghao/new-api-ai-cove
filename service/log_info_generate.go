@@ -125,6 +125,9 @@ func AppendRelayTransportLogInfo(ctx *gin.Context, other map[string]interface{})
 	}
 	if ctx.Request != nil && ctx.GetHeader("X-AI-Cove-Client") == "turbo" {
 		other["client_source"] = "turbo"
+		if version := strings.TrimSpace(ctx.GetHeader("X-AI-Cove-Client-Version")); version != "" {
+			other["client_version"] = version
+		}
 	}
 	if transport := common.GetContextKeyString(ctx, constant.ContextKeyRelayTransport); transport != "" {
 		other["transport"] = transport
