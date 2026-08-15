@@ -134,7 +134,6 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					sessionModel = ""
 				}
 				observability.acceptResponseCreate()
-				observability.log(baseCtx, "response_create_accepted")
 
 				var outgoing []byte
 				var state *responsesWebSocketRequestState
@@ -172,7 +171,6 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					return err
 				}
 				observability.commitUpstreamRequest()
-				observability.log(baseCtx, "response_create_committed")
 				common.CleanupBodyStorage(state.ctx)
 
 				if upstreamFrames == nil {
@@ -259,7 +257,6 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			}
 			if terminal && active != nil {
 				observability.markTerminal()
-				observability.log(baseCtx, "response_terminal_seen")
 				common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCompleteMs, time.Since(active.info.StartTime).Milliseconds())
 				service.PostTextConsumeQuota(active.ctx, active.info, usage, nil)
 				if active.tracker.Succeeded() {
