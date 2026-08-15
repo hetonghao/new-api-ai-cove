@@ -50,9 +50,10 @@ func TestResponsesWebSocketObservabilityUsesStableMessageWithFields(t *testing.T
 
 	observability := newResponsesWebSocketObservability("0123456789abcdef0123456789abcdef")
 	observability.acceptResponseCreate()
-	observability.log(context.Background(), "accepted")
+	observability.markCleanup()
+	observability.log(context.Background(), "cleanup")
 
 	require.Contains(t, output.String(), "| responses websocket observability | fields=")
-	require.Contains(t, output.String(), `"event":"accepted"`)
+	require.Contains(t, output.String(), `"event":"cleanup"`)
 	require.Contains(t, output.String(), `"downstream_trace":"0123456789abcdef0123456789abcdef"`)
 }
