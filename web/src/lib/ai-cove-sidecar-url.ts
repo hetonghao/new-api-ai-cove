@@ -31,7 +31,16 @@ type AiCoveSidecarEnv = {
 type AiCoveSidecarTheme = 'dark' | 'light'
 
 function getEnv(): AiCoveSidecarEnv {
-  return (import.meta.env ?? {}) as AiCoveSidecarEnv
+  return {
+    VITE_AI_COVE_GATEWAY_BASE_URL:
+      import.meta.env && import.meta.env.VITE_AI_COVE_GATEWAY_BASE_URL,
+    VITE_AI_COVE_SIDECAR_BASE_URL:
+      import.meta.env && import.meta.env.VITE_AI_COVE_SIDECAR_BASE_URL,
+    VITE_REACT_APP_SERVER_URL:
+      import.meta.env && import.meta.env.VITE_REACT_APP_SERVER_URL,
+    VITE_REACT_APP_SIDECAR_BASE_URL:
+      import.meta.env && import.meta.env.VITE_REACT_APP_SIDECAR_BASE_URL,
+  }
 }
 
 function getCurrentOrigin(): string {
@@ -140,10 +149,15 @@ export function createAiCoveDesignSidecarUrl(
   theme?: AiCoveSidecarTheme | null
 ): string {
   const url = new URL(AI_COVE_DESIGN_SIDECAR_PATH, getSidecarOrigin())
+  const parentOrigin = getCurrentOrigin()
   const params = new URLSearchParams({
     base_url: getGatewayBaseUrl(),
     ui_mode: 'embedded',
   })
+
+  if (url.origin !== parentOrigin) {
+    params.set('auth_parent_origin', parentOrigin)
+  }
 
   const normalizedUserId = normalizeUserId(userId)
   if (normalizedUserId) {

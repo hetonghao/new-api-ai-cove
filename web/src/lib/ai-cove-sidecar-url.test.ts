@@ -38,6 +38,10 @@ test('createAiCoveDesignSidecarUrl appends the current user id', () => {
 
       assert.equal(url.origin, 'http://127.0.0.1:44174')
       assert.equal(url.searchParams.get('base_url'), 'http://127.0.0.1:38080')
+      assert.equal(
+        url.searchParams.get('auth_parent_origin'),
+        'http://127.0.0.1:38080'
+      )
       assert.equal(url.searchParams.get('ui_mode'), 'embedded')
       assert.equal(url.searchParams.get('user_id'), '42')
     }

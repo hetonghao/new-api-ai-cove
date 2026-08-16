@@ -61,6 +61,7 @@ export default defineConfig(({ envMode }) => {
         index: './src/main.tsx',
       },
       define: {
+        ...env.publicVars,
         __AI_COVE_DESIGN_DESKTOP_DOWNLOAD_VERSION__: JSON.stringify(
           desktopDownloadVersion,
         ),

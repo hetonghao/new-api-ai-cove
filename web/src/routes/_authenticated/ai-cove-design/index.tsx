@@ -16,13 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { useAuthStore } from '@/stores/auth-store'
 import { useTheme } from '@/context/theme-provider'
 import { createAiCoveDesignSidecarUrl } from '@/lib/ai-cove-sidecar-url'
 import { isSidebarModuleEnabled } from '@/lib/nav-modules'
 import { Main } from '@/components/layout'
+
+const HOST_CREDENTIALS_MESSAGE_TYPE = 'ai-cove-design.host-credentials'
+const HOST_READY_MESSAGE_TYPE = 'ai-cove-design.ready'
 
 export const Route = createFileRoute('/_authenticated/ai-cove-design/')({
   beforeLoad: () => {
@@ -35,13 +38,45 @@ export const Route = createFileRoute('/_authenticated/ai-cove-design/')({
 
 function AiCoveDesignPage() {
   const userId = useAuthStore((state) => state.auth.user?.id)
+  const accessToken = useAuthStore((state) => state.auth.accessToken)
   const { resolvedTheme } = useTheme()
   const initialThemeRef = useRef(resolvedTheme)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
   const sidecarUrl = useMemo(
     () =>
       userId ? createAiCoveDesignSidecarUrl(userId, initialThemeRef.current) : '',
     [userId]
   )
+
+  useEffect(() => {
+    if (!accessToken || !userId || !sidecarUrl) return
+
+    const sidecarOrigin = new URL(sidecarUrl).origin
+    if (sidecarOrigin === window.location.origin) return
+
+    const postCredentials = () =>
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: HOST_CREDENTIALS_MESSAGE_TYPE, token: accessToken, userId },
+        sidecarOrigin
+      )
+    const receiveReady = (event: MessageEvent<unknown>) => {
+      if (
+        event.source !== iframeRef.current?.contentWindow ||
+        event.origin !== sidecarOrigin ||
+        typeof event.data !== 'object' ||
+        event.data === null ||
+        !('type' in event.data) ||
+        event.data.type !== HOST_READY_MESSAGE_TYPE
+      ) {
+        return
+      }
+      postCredentials()
+    }
+
+    window.addEventListener('message', receiveReady)
+    postCredentials()
+    return () => window.removeEventListener('message', receiveReady)
+  }, [accessToken, sidecarUrl, userId])
 
   if (!userId) {
     return (
@@ -59,6 +94,7 @@ function AiCoveDesignPage() {
   return (
     <Main className='bg-background p-0'>
       <iframe
+        ref={iframeRef}
         title='AI Cove Design'
         src={sidecarUrl}
         className='bg-background size-full border-0'

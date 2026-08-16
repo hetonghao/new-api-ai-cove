@@ -20,3 +20,18 @@ test('waits for the authenticated user id before loading the AI Cove Design ifra
     'The iframe URL should still be built with the authenticated user id once it is available'
   )
 })
+
+test('hands authenticated host credentials to the cross-origin Design iframe', () => {
+  assert.match(
+    source,
+    /const accessToken = useAuthStore\(\(state\) => state\.auth\.accessToken\)/
+  )
+  assert.match(
+    source,
+    /event\.source !== iframeRef\.current\?\.contentWindow[\s\S]*event\.origin !== sidecarOrigin/
+  )
+  assert.match(
+    source,
+    /postMessage\([\s\S]*type: HOST_CREDENTIALS_MESSAGE_TYPE[\s\S]*token: accessToken[\s\S]*userId[\s\S]*sidecarOrigin/
+  )
+})
