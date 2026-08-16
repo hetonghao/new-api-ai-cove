@@ -66,6 +66,7 @@ Transitive dependencies should be audited before a final external release.
 | backend     | production  | Go        | `gorm.io/gorm`                                        | `v1.25.2`                            | MIT                                                |
 | backend     | production  | Go        | `github.com/expr-lang/expr`                           | `v1.17.8`                            | MIT                                                |
 | web | production | npm | `@base-ui/react` | `1.6.0` | MIT |
+| web | production | source | React Bits Strands | `1320d40a8318ac7d4fe6690c7206ceda8cdd59bd` | MIT + Commons Clause |
 | web | production | npm | `@codemirror/lang-markdown` | `6.5.1` | MIT |
 | web | production | npm | `@codemirror/language` | `6.12.4` | MIT |
 | web | production | npm | `@codemirror/state` | `6.7.1` | MIT |
@@ -143,6 +144,41 @@ Transitive dependencies should be audited before a final external release.
 | electron    | development | npm       | `electron-builder`                                    | `26.7.0`                             | MIT                                                |
 
 ## License Texts
+
+### MIT + Commons Clause
+
+The Strands shader in
+`web/src/features/home/components/sections/home-footer-strands.tsx` is adapted
+from React Bits at commit `1320d40a8318ac7d4fe6690c7206ceda8cdd59bd`.
+
+MIT + Commons Clause License Condition v1.0
+
+Copyright (c) 2026 David Haz
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, and distribute the Software **as part of
+an application, website, or product**, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+#### Commons Clause Restriction
+
+You may use this Software, including for any commercial purpose, **so long as
+you do not sell, sublicense, or redistribute the components themselves-whether
+alone, in a bundle, or as a ported version.**
+
+#### No Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ### Apache-2.0
 

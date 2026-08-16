@@ -82,6 +82,16 @@ Risk Center 实现，以及 Issue #9 已通过的 375 / 768 / 1280 截图。
 - 状态：默认、可复制 hover/active、可选 pulse；记录结果默认不可复制。
 - 可访问性：状态必须同时有文本，不能只靠颜色。
 
+### 首页产品关系模块
+
+- 信息层级固定为 AI Cove 平台、Strands 连接、Design / Turbo 扩展应用；宽屏横向阅读，
+  960px 以下改为纵向阅读，两个扩展应用保持同级。
+- 卡片复用首页既有 `--home-*` 变量；Turbo 橙、紫、青只通过页脚局部 token 暴露，
+  不进入后台主题语义色。
+- Strands 是唯一签名动效。Canvas 只作装饰并隐藏于辅助技术；CSS 静态连接线始终保留，
+  WebGL2 不可用时不影响产品名称和说明。
+- 文案按“能力标签、产品名、一句价值”排列；中文在 375px 下不得拆开短语或留下孤字。
+
 ### 表格与响应式行列表
 
 - 宽屏：共享 `Table` / `StaticDataTable`，表头、分隔线、行 hover、等宽数字。
@@ -107,6 +117,7 @@ Risk Center 实现，以及 Issue #9 已通过的 375 / 768 / 1280 截图。
 - 沿用现有全局交互：按钮 active 缩放、桌面卡片轻微 hover、表格行 120ms 状态变化。
 - Risk Center 信息卡使用 `disableHoverEffect`；记录列表不新增入场动画、图表或装饰动效。
 - 加载使用既有 skeleton shimmer；`prefers-reduced-motion` 下停止动画。
+- 首页 Strands 在减弱动态模式下只绘制静态首帧；页面隐藏时暂停，恢复可见后继续。
 - 每个交互元素必须有可见 focus、disabled 和 active 状态。
 
 ## 7. 深度与表面

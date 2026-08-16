@@ -126,10 +126,22 @@ test('Chinese homepage uses concise copy for narrow sections', () => {
     'Google 开源终端 AI 代理，可用 Gemini 编码、调试并自动化流程。'
   )
   assert.equal(
+    zh['Models, keys, routing, and billing in one gateway.'],
+    '模型、密钥、路由与计费，统一接入。'
+  )
+  assert.equal(
+    zh['Visual creation powered by the same models, keys, and billing.'],
+    '画布创作，共用平台的模\u2060型、密钥与按量计费。'
+  )
+  assert.equal(
     zh[
-      'AI Cove hosts a canvas-based image creation subsystem that is efficient, convenient, cost-effective, and connected to the same model, key, and billing foundation.'
+      'Local acceleration and connection visibility for faster, steadier Codex sessions.'
     ],
-    'AI Cove Design：便捷实惠的画布工具，模\u2060型、Key、计费统一。'
+    '本地加速和连接观测，让 Codex 会话更快、更稳、更透明。'
+  )
+  assert.equal(
+    en['One key · many model providers · usage-based billing'],
+    'One key · many model providers · usage‑based billing'
   )
   assert.equal(
     zh[

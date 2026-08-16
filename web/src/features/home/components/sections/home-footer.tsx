@@ -21,10 +21,71 @@ import { useTranslation } from 'react-i18next'
 
 import { useSystemConfig } from '@/hooks/use-system-config'
 
+import { HomeFooterStrands } from './home-footer-strands'
+
 const AI_COVE_DESIGN_DESCRIPTION =
-  'AI Cove hosts a canvas-based image creation subsystem that is efficient, convenient, cost-effective, and connected to the same model, key, and billing foundation.'
-const FOOTER_PULSE_PATH =
-  'M3 20H30L42 12L52 28L65 6L78 34L92 10L106 24L118 16L130 20H165'
+  'Visual creation powered by the same models, keys, and billing.'
+const COVE_TURBO_DESCRIPTION =
+  'Local acceleration and connection visibility for faster, steadier Codex sessions.'
+const AI_COVE_DESCRIPTION = 'Models, keys, routing, and billing in one gateway.'
+
+function ProductCard({ product }: { product: 'design' | 'turbo' }) {
+  const { t } = useTranslation()
+  const isTurbo = product === 'turbo'
+
+  return (
+    <article
+      className={`home-footer-product-card home-footer-product-card--${product}`}
+    >
+      <img
+        src={isTurbo ? '/turbo-icon.png' : '/desgin-logo.png'}
+        alt=''
+        className='home-footer-product-logo'
+        aria-hidden='true'
+      />
+      <div className='home-footer-product-copy'>
+        <span>{t(isTurbo ? 'Desktop accelerator' : 'Visual workspace')}</span>
+        {isTurbo ? (
+          <strong className='home-footer-product-name home-footer-turbo-wordmark'>
+            Cove <span>Turbo</span>
+          </strong>
+        ) : (
+          <strong
+            className='ai-cove-design-wordmark home-footer-design-wordmark'
+            aria-label='AI  Cove Design'
+          >
+            <span
+              className='ai-cove-design-wordmark__prefix'
+              aria-hidden='true'
+            >
+              AI
+            </span>
+            <span
+              className='ai-cove-design-wordmark__space ai-cove-design-wordmark__space--after-prefix'
+              aria-hidden='true'
+            />
+            <span className='ai-cove-design-wordmark__image' aria-hidden='true'>
+              Cove
+            </span>
+            <span
+              className='ai-cove-design-wordmark__space'
+              aria-hidden='true'
+            />
+            <span
+              className='ai-cove-design-wordmark__canvas'
+              aria-hidden='true'
+            >
+              Design
+            </span>
+          </strong>
+        )}
+        <p>
+          {t(isTurbo ? COVE_TURBO_DESCRIPTION : AI_COVE_DESIGN_DESCRIPTION)}
+        </p>
+      </div>
+    </article>
+  )
+}
 
 export function HomeFooter() {
   const { t } = useTranslation()
@@ -45,73 +106,14 @@ export function HomeFooter() {
                 <strong>{displayName}</strong>
               </span>
             </Link>
-            <p>{t('Powerful API Management Platform')}</p>
+            <p>{t(AI_COVE_DESCRIPTION)}</p>
           </div>
-          <div className='home-footer-system-pulse' aria-hidden='true'>
-            <svg viewBox='0 0 168 40' focusable='false'>
-              <defs>
-                <linearGradient id='home-footer-pulse-gradient' x1='0' x2='1'>
-                  <stop offset='0' stopColor='var(--home-brand-blue)' />
-                  <stop offset='0.58' stopColor='var(--home-muted)' />
-                  <stop offset='1' stopColor='var(--home-brand-orange)' />
-                </linearGradient>
-              </defs>
-              <path
-                className='home-footer-system-pulse-rail'
-                d={FOOTER_PULSE_PATH}
-              />
-              <path
-                className='home-footer-system-pulse-flow'
-                d={FOOTER_PULSE_PATH}
-              />
-            </svg>
+          <div className='home-footer-connection' aria-hidden='true'>
+            <HomeFooterStrands />
           </div>
-          <div className='home-footer-design-card'>
-            <div className='home-footer-design-rail' aria-hidden='true'>
-              <span />
-              <span />
-            </div>
-            <img
-              src='/desgin-logo.png'
-              alt=''
-              className='home-footer-design-logo'
-              aria-hidden='true'
-            />
-            <div className='home-footer-design-copy'>
-              <span>{t('Integrated subsystem')}</span>
-              <strong
-                className='ai-cove-design-wordmark home-footer-design-wordmark'
-                aria-label='AI  Cove Design'
-              >
-                <span
-                  className='ai-cove-design-wordmark__prefix'
-                  aria-hidden='true'
-                >
-                  AI
-                </span>
-                <span
-                  className='ai-cove-design-wordmark__space ai-cove-design-wordmark__space--after-prefix'
-                  aria-hidden='true'
-                />
-                <span
-                  className='ai-cove-design-wordmark__image'
-                  aria-hidden='true'
-                >
-                  Cove
-                </span>
-                <span
-                  className='ai-cove-design-wordmark__space'
-                  aria-hidden='true'
-                />
-                <span
-                  className='ai-cove-design-wordmark__canvas'
-                  aria-hidden='true'
-                >
-                  Design
-                </span>
-              </strong>
-              <p>{t(AI_COVE_DESIGN_DESCRIPTION)}</p>
-            </div>
+          <div className='home-footer-product-stack'>
+            <ProductCard product='design' />
+            <ProductCard product='turbo' />
           </div>
         </div>
         <div className='home-footer-bottom'>
