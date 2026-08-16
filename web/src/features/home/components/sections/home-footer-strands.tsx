@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactElement } from 'react'
 
 // Adapted from AI Cove Turbo's React Bits Strands port. The upstream source
 // is pinned at 1320d40a8318ac7d4fe6690c7206ceda8cdd59bd.
@@ -88,7 +88,7 @@ const COLOR_TOKENS = [
   '--home-turbo-cyan',
 ] as const
 
-function parseColor(value: string) {
+function parseColor(value: string): readonly [number, number, number] {
   const normalized = value.trim().replace('#', '')
   const color = Number.parseInt(normalized, 16)
   if (normalized.length !== 6 || !Number.isFinite(color)) return [1, 1, 1]
@@ -99,7 +99,7 @@ function parseColor(value: string) {
   ]
 }
 
-export function HomeFooterStrands() {
+export function HomeFooterStrands(): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -113,7 +113,7 @@ export function HomeFooterStrands() {
     })
     if (!gl) return
 
-    const compile = (type: number, source: string) => {
+    const compile = (type: number, source: string): WebGLShader | null => {
       const shader = gl.createShader(type)
       if (!shader) return null
       gl.shaderSource(shader, source)
@@ -176,17 +176,17 @@ export function HomeFooterStrands() {
       new Float32Array(palette)
     )
 
-    const draw = (timestamp = 0) => {
+    const draw = (timestamp = 0): void => {
       if (!sized) return
       gl.clear(gl.COLOR_BUFFER_BIT)
       gl.uniform1f(time, timestamp * 0.001)
       gl.drawArrays(gl.TRIANGLES, 0, 3)
     }
-    const stop = () => {
+    const stop = (): void => {
       if (frame) window.cancelAnimationFrame(frame)
       frame = 0
     }
-    const animate = (timestamp: number) => {
+    const animate = (timestamp: number): void => {
       if (document.hidden) {
         frame = 0
         return
@@ -194,13 +194,13 @@ export function HomeFooterStrands() {
       draw(timestamp)
       frame = window.requestAnimationFrame(animate)
     }
-    const restart = () => {
+    const restart = (): void => {
       stop()
       if (!sized || document.hidden) return
       draw()
       if (!reducedMotion.matches) frame = window.requestAnimationFrame(animate)
     }
-    const resize = () => {
+    const resize = (): void => {
       const bounds = canvas.getBoundingClientRect()
       sized = Boolean(bounds.width && bounds.height)
       if (!sized) {

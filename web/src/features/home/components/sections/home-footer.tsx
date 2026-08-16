@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
+import type { ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useSystemConfig } from '@/hooks/use-system-config'
@@ -29,13 +30,17 @@ const COVE_TURBO_DESCRIPTION =
   'Local acceleration and connection visibility for faster, steadier Codex sessions.'
 const AI_COVE_DESCRIPTION = 'Models, keys, routing, and billing in one gateway.'
 
-function ProductCard({ product }: { product: 'design' | 'turbo' }) {
+type ProductCardProps = {
+  readonly product: 'design' | 'turbo'
+}
+
+function ProductCard(props: ProductCardProps): ReactElement {
   const { t } = useTranslation()
-  const isTurbo = product === 'turbo'
+  const isTurbo = props.product === 'turbo'
 
   return (
     <article
-      className={`home-footer-product-card home-footer-product-card--${product}`}
+      className={`home-footer-product-card home-footer-product-card--${props.product}`}
     >
       <img
         src={isTurbo ? '/turbo-icon.png' : '/desgin-logo.png'}
@@ -87,7 +92,7 @@ function ProductCard({ product }: { product: 'design' | 'turbo' }) {
   )
 }
 
-export function HomeFooter() {
+export function HomeFooter(): ReactElement {
   const { t } = useTranslation()
   const { logo } = useSystemConfig()
   const currentYear = new Date().getFullYear()
