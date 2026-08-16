@@ -13,8 +13,10 @@ export type DesktopDownloadTarget = {
   ariaLabelKey: string
 }
 
-const MACOS_DOWNLOAD_HREF = '/downloads/ai-cove-design-desktop-macos.dmg'
-const WINDOWS_DOWNLOAD_HREF = '/downloads/ai-cove-design-desktop-windows.exe'
+const MACOS_DOWNLOAD_HREF =
+  '/downloads/design/ai-cove-design-desktop-macos.dmg'
+const WINDOWS_DOWNLOAD_HREF =
+  '/downloads/design/ai-cove-design-desktop-windows.exe'
 const TURBO_MACOS_DOWNLOAD_HREF =
   'https://ai-cove.com/downloads/turbo/ai-cove-turbo-macos.dmg?channel=stable'
 const TURBO_WINDOWS_DOWNLOAD_HREF =

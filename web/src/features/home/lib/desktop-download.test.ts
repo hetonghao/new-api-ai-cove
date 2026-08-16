@@ -60,7 +60,7 @@ test('builds the Windows desktop download target', () => {
     }),
     {
       platform: 'windows',
-      href: '/downloads/ai-cove-design-desktop-windows.exe',
+      href: '/downloads/design/ai-cove-design-desktop-windows.exe',
       labelKey: 'Download AI Cove Design Windows desktop app',
       ariaLabelKey: 'Download AI Cove Design for Windows',
     }
@@ -70,7 +70,7 @@ test('builds the Windows desktop download target', () => {
 test('builds the macOS desktop download target by default', () => {
   assert.deepEqual(getDesktopDownloadTarget({}), {
     platform: 'macos',
-    href: '/downloads/ai-cove-design-desktop-macos.dmg',
+    href: '/downloads/design/ai-cove-design-desktop-macos.dmg',
     labelKey: 'Download AI Cove Design macOS desktop app',
     ariaLabelKey: 'Download AI Cove Design for macOS',
   })
@@ -97,10 +97,10 @@ test('builds stable Turbo download targets for macOS and Windows', () => {
 test('adds the desktop release version to download URLs', () => {
   assert.equal(
     withDesktopDownloadVersion(
-      '/downloads/ai-cove-design-desktop-macos.dmg',
+      '/downloads/design/ai-cove-design-desktop-macos.dmg',
       '0.2.2'
     ),
-    '/downloads/ai-cove-design-desktop-macos.dmg?v=0.2.2'
+    '/downloads/design/ai-cove-design-desktop-macos.dmg?v=0.2.2'
   )
 })
 
