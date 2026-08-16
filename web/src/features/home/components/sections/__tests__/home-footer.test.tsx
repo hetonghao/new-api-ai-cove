@@ -122,6 +122,9 @@ describe('home footer', () => {
     const rendered = render(<RouterProvider router={router} />)
     const cards = rendered.container.querySelectorAll('article')
     const main = rendered.container.querySelector('.home-footer-main')
+    const platformCopy = rendered.container.querySelector(
+      '.home-footer-platform > p'
+    )
     const copy = rendered.container.querySelector('.home-footer-product-copy p')
     const canvas = rendered.container.querySelector('canvas')
 
@@ -132,6 +135,10 @@ describe('home footer', () => {
     assert.match(cards[1]?.textContent ?? '', /Codex 会话/)
     assert.equal(canvas?.getAttribute('aria-hidden'), 'true')
     assert.equal(main ? getComputedStyle(main).gridTemplateColumns : '', '1fr')
+    assert.equal(
+      platformCopy ? getComputedStyle(platformCopy).fontSize : '',
+      '14px'
+    )
     assert.equal(copy ? getComputedStyle(copy).fontSize : '', '14px')
   })
 })
