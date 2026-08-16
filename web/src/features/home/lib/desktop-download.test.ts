@@ -79,7 +79,7 @@ test('builds the macOS desktop download target by default', () => {
 test('builds stable Turbo download targets for macOS and Windows', () => {
   assert.deepEqual(getTurboDesktopDownloadTarget({}), {
     platform: 'macos',
-    href: '/downloads/turbo/ai-cove-turbo-macos.dmg?v=0.1.0-beta.4',
+    href: 'https://ai-cove.com/downloads/turbo/ai-cove-turbo-macos.dmg',
     labelKey: 'Download AI Cove Turbo macOS desktop app',
     ariaLabelKey: 'Download AI Cove Turbo for macOS',
   })
@@ -87,7 +87,7 @@ test('builds stable Turbo download targets for macOS and Windows', () => {
     getTurboDesktopDownloadTarget({ userAgentDataPlatform: 'Windows' }),
     {
       platform: 'windows',
-      href: '/downloads/turbo/ai-cove-turbo-windows.exe?v=0.1.0-beta.4',
+      href: 'https://ai-cove.com/downloads/turbo/ai-cove-turbo-windows.exe',
       labelKey: 'Download AI Cove Turbo Windows desktop app',
       ariaLabelKey: 'Download AI Cove Turbo for Windows',
     }
