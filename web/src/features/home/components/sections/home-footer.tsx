@@ -37,6 +37,7 @@ type ProductCardProps = {
 function ProductCard(props: ProductCardProps): ReactElement {
   const { t } = useTranslation()
   const isTurbo = props.product === 'turbo'
+  const productSuffix = isTurbo ? 'Turbo' : 'Design'
 
   return (
     <article
@@ -49,41 +50,34 @@ function ProductCard(props: ProductCardProps): ReactElement {
         aria-hidden='true'
       />
       <div className='home-footer-product-copy'>
-        <span>{t(isTurbo ? 'Desktop accelerator' : 'Visual workspace')}</span>
-        {isTurbo ? (
-          <strong className='home-footer-product-name home-footer-turbo-wordmark'>
-            Cove <span>Turbo</span>
-          </strong>
-        ) : (
-          <strong
-            className='ai-cove-design-wordmark home-footer-design-wordmark'
-            aria-label='AI  Cove Design'
+        <span>
+          {t(isTurbo ? 'Model acceleration engine' : 'Canvas image workspace')}
+        </span>
+        <strong
+          className={`ai-cove-design-wordmark home-footer-product-wordmark${isTurbo ? ' home-footer-turbo-wordmark' : ''}`}
+          aria-label={`AI Cove ${productSuffix}`}
+        >
+          <span className='ai-cove-design-wordmark__prefix' aria-hidden='true'>
+            AI
+          </span>
+          <span
+            className='ai-cove-design-wordmark__space ai-cove-design-wordmark__space--after-prefix'
+            aria-hidden='true'
+          />
+          <span
+            className='home-footer-product-wordmark__cove'
+            aria-hidden='true'
           >
-            <span
-              className='ai-cove-design-wordmark__prefix'
-              aria-hidden='true'
-            >
-              AI
-            </span>
-            <span
-              className='ai-cove-design-wordmark__space ai-cove-design-wordmark__space--after-prefix'
-              aria-hidden='true'
-            />
-            <span className='ai-cove-design-wordmark__image' aria-hidden='true'>
-              Cove
-            </span>
-            <span
-              className='ai-cove-design-wordmark__space'
-              aria-hidden='true'
-            />
-            <span
-              className='ai-cove-design-wordmark__canvas'
-              aria-hidden='true'
-            >
-              Design
-            </span>
-          </strong>
-        )}
+            Cove
+          </span>
+          <span className='ai-cove-design-wordmark__space' aria-hidden='true' />
+          <span
+            className='home-footer-product-wordmark__suffix'
+            aria-hidden='true'
+          >
+            {productSuffix}
+          </span>
+        </strong>
         <p>
           {t(isTurbo ? COVE_TURBO_DESCRIPTION : AI_COVE_DESIGN_DESCRIPTION)}
         </p>

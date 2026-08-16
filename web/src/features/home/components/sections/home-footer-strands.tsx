@@ -38,6 +38,7 @@ uniform vec3 uColors[${COLOR_COUNT}];
 out vec4 fragColor;
 
 const float PI = 3.14159265;
+const float VISUAL_SCALE = 0.5;
 
 vec3 samplePalette(float t) {
   float scaled = fract(t) * float(${COLOR_COUNT});
@@ -50,6 +51,7 @@ vec3 samplePalette(float t) {
 void main() {
   vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution) / (uResolution.x / 1.9);
   uv /= 1.875;
+  uv /= VISUAL_SCALE;
 
   float energy = 0.436;
   float envelope = pow(max(cos(uv.x * PI * 1.3), 0.0), 3.0);
@@ -67,7 +69,7 @@ void main() {
     float distanceToStrand = abs(uv.y - wave * amplitude);
     float thickness = (0.001 + 0.05 * energy) * (0.35 + envelope) * 0.7;
     float light = thickness / (distanceToStrand + thickness * 0.45);
-    light *= light;
+    light = pow(light, 2.4);
 
     float hue = strand / float(${STRAND_COUNT}) + uv.x * 0.30 + uTime * 0.04;
     color += samplePalette(hue) * light * envelope;
@@ -77,8 +79,9 @@ void main() {
   color = 1.0 - exp(-color * 2.6);
   float gray = dot(color, vec3(0.2126, 0.7152, 0.0722));
   color = max(mix(vec3(gray), color, 2.0), 0.0);
-  float alpha = clamp(max(max(color.r, color.g), color.b), 0.0, 1.0);
-  fragColor = vec4(color, alpha);
+  float intensity = clamp(max(max(color.r, color.g), color.b), 0.0, 1.0);
+  float fade = smoothstep(0.035, 0.14, intensity);
+  fragColor = vec4(color * fade, intensity * fade);
 }
 `
 

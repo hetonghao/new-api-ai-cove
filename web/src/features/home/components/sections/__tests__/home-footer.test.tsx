@@ -56,12 +56,8 @@ for (const key of domGlobals) {
 }
 
 const { cleanup, render } = await import('@testing-library/react')
-const {
-  createMemoryHistory,
-  createRootRoute,
-  createRouter,
-  RouterProvider,
-} = await import('@tanstack/react-router')
+const { createMemoryHistory, createRootRoute, createRouter, RouterProvider } =
+  await import('@tanstack/react-router')
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
 const { HomeFooter } = await import('../home-footer')
@@ -121,7 +117,19 @@ describe('home footer', () => {
 
     const rendered = render(<RouterProvider router={router} />)
     const cards = rendered.container.querySelectorAll('article')
+    const wordmarks = rendered.container.querySelectorAll(
+      '.home-footer-product-wordmark'
+    )
     const main = rendered.container.querySelector('.home-footer-main')
+    const connection = rendered.container.querySelector(
+      '.home-footer-connection'
+    )
+    const platformName = rendered.container.querySelector(
+      '.home-footer-brand strong'
+    )
+    const designCove = rendered.container.querySelector(
+      '.home-footer-product-wordmark__cove'
+    )
     const platformCopy = rendered.container.querySelector(
       '.home-footer-platform > p'
     )
@@ -129,12 +137,24 @@ describe('home footer', () => {
     const canvas = rendered.container.querySelector('canvas')
 
     assert.equal(cards.length, 2)
-    assert.ok(cards[0]?.querySelector('[aria-label="AI  Cove Design"]'))
-    assert.match(cards[1]?.textContent ?? '', /Cove Turbo/)
+    assert.equal(wordmarks.length, 2)
+    assert.ok(cards[0]?.querySelector('[aria-label="AI Cove Design"]'))
+    assert.ok(cards[1]?.querySelector('[aria-label="AI Cove Turbo"]'))
+    assert.match(cards[0]?.textContent ?? '', /画布作图工作台/)
+    assert.match(cards[1]?.textContent ?? '', /模型的加速引擎/)
     assert.match(cards[0]?.textContent ?? '', /的⁠模型/)
     assert.match(cards[1]?.textContent ?? '', /Codex 会话/)
     assert.equal(canvas?.getAttribute('aria-hidden'), 'true')
     assert.equal(main ? getComputedStyle(main).gridTemplateColumns : '', '1fr')
+    assert.equal(connection ? getComputedStyle(connection).height : '', '126px')
+    assert.equal(
+      wordmarks[0] ? getComputedStyle(wordmarks[0]).fontFamily : '',
+      wordmarks[1] ? getComputedStyle(wordmarks[1]).fontFamily : ''
+    )
+    assert.equal(
+      designCove ? getComputedStyle(designCove).fontFamily : '',
+      platformName ? getComputedStyle(platformName).fontFamily : ''
+    )
     assert.equal(
       platformCopy ? getComputedStyle(platformCopy).fontSize : '',
       '14px'

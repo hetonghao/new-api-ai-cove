@@ -2345,22 +2345,6 @@ For commercial licensing, please contact support@quantumnous.com
   min-width: 0;
 }
 
-.home-footer-connection::before {
-  position: absolute;
-  top: 50%;
-  right: 4%;
-  left: 4%;
-  height: 1px;
-  content: '';
-  background: linear-gradient(
-    90deg,
-    var(--home-brand-orange),
-    var(--home-turbo-violet),
-    var(--home-turbo-cyan)
-  );
-  opacity: 0.16;
-}
-
 .home-footer-strands {
   display: block;
   width: 100%;
@@ -2465,29 +2449,29 @@ For commercial licensing, please contact support@quantumnous.com
   color: color-mix(in oklab, var(--home-turbo-cyan) 70%, var(--home-ink));
 }
 
-.home-footer-design-wordmark,
-.home-footer-product-name {
+.home-footer-product-wordmark {
   display: block;
   margin-top: 7px;
   font-size: 22px;
   line-height: 1;
 }
 
-.home-footer-turbo-wordmark {
+.home-footer-product-wordmark__cove {
   color: var(--home-ink);
   font-family: var(--home-serif);
   font-style: italic;
   font-weight: 400;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.01em;
 }
 
-.home-footer-turbo-wordmark span {
+.home-footer-product-wordmark__suffix {
+  color: #0f5f58;
+  font-size: 1.15em;
+  text-shadow: 0 1px 0 rgba(231, 177, 112, 0.36);
+}
+
+.home-footer-turbo-wordmark .home-footer-product-wordmark__suffix {
   color: color-mix(in oklab, var(--home-turbo-cyan) 72%, var(--home-ink));
-  font-family: var(--home-body);
-  font-size: 0.72em;
-  font-style: normal;
-  font-weight: 800;
-  letter-spacing: -0.055em;
 }
 
 .home-footer-product-copy p {
