@@ -180,7 +180,7 @@ func reviewCloudflareRiskContent(ctx context.Context, provider *model.RiskProvid
 		detail := "Cloudflare network request failed"
 		if errors.Is(err, context.DeadlineExceeded) {
 			detail = "Cloudflare request timed out"
-			logger.LogWarn(ctx, requestTrace.timeoutMessage(provider, len([]rune(content))))
+			logger.LogWarn(ctx, "risk provider timeout", requestTrace.timeoutFields(ctx, provider, len([]rune(content)), err))
 		}
 		return RiskReviewResult{}, newRiskProviderError(err, detail)
 	}

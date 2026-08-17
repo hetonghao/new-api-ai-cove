@@ -76,8 +76,8 @@ func LogInfo(ctx context.Context, msg string, fields ...map[string]any) {
 	logHelper(ctx, loggerINFO, msg, fields...)
 }
 
-func LogWarn(ctx context.Context, msg string) {
-	logHelper(ctx, loggerWarn, msg)
+func LogWarn(ctx context.Context, msg string, fields ...map[string]any) {
+	logHelper(ctx, loggerWarn, msg, fields...)
 }
 
 func LogError(ctx context.Context, msg string) {

@@ -1,12 +1,14 @@
 package service
 
 import (
+	"context"
 	"crypto/tls"
-	"fmt"
+	"errors"
 	"net/http/httptrace"
 	"sync/atomic"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 )
 
@@ -63,22 +65,35 @@ func (t *cloudflareRequestTrace) mark(event *atomic.Int64) {
 	event.CompareAndSwap(0, time.Since(t.startedAt).Milliseconds()+1)
 }
 
-func (t *cloudflareRequestTrace) timeoutMessage(provider *model.RiskProvider, contentRunes int) string {
-	return fmt.Sprintf(
-		"risk provider timeout: provider_type=%s provider_id=%d timeout_ms=%d content_runes=%d elapsed_ms=%d get_conn_ms=%d got_conn_ms=%d dns_ms=%d connect_ms=%d tls_ms=%d wrote_request_ms=%d first_response_byte_ms=%d",
-		provider.ProviderType,
-		provider.Id,
-		provider.TimeoutMs,
-		contentRunes,
-		time.Since(t.startedAt).Milliseconds(),
-		traceOffsetMillis(&t.getConn),
-		traceOffsetMillis(&t.gotConn),
-		traceDurationMillis(&t.dnsStart, &t.dnsDone),
-		traceDurationMillis(&t.connectStart, &t.connectDone),
-		traceDurationMillis(&t.tlsStart, &t.tlsDone),
-		traceOffsetMillis(&t.wroteRequest),
-		traceOffsetMillis(&t.firstResponseByte),
-	)
+func (t *cloudflareRequestTrace) timeoutFields(ctx context.Context, provider *model.RiskProvider, contentRunes int, err error) map[string]any {
+	requestID := ""
+	if ctx != nil {
+		if value := ctx.Value(common.RequestIdKey); value != nil {
+			requestID, _ = value.(string)
+		}
+	}
+	finalError := "provider request failed"
+	if errors.Is(err, context.DeadlineExceeded) {
+		finalError = context.DeadlineExceeded.Error()
+	} else if errors.Is(err, context.Canceled) {
+		finalError = context.Canceled.Error()
+	}
+	return map[string]any{
+		"request_id":             requestID,
+		"provider_type":          provider.ProviderType,
+		"provider_id":            provider.Id,
+		"timeout_ms":             provider.TimeoutMs,
+		"content_runes":          contentRunes,
+		"elapsed_ms":             time.Since(t.startedAt).Milliseconds(),
+		"get_conn_ms":            traceOffsetMillis(&t.getConn),
+		"got_conn_ms":            traceOffsetMillis(&t.gotConn),
+		"dns_ms":                 traceDurationMillis(&t.dnsStart, &t.dnsDone),
+		"connect_ms":             traceDurationMillis(&t.connectStart, &t.connectDone),
+		"tls_ms":                 traceDurationMillis(&t.tlsStart, &t.tlsDone),
+		"wrote_request_ms":       traceOffsetMillis(&t.wroteRequest),
+		"first_response_byte_ms": traceOffsetMillis(&t.firstResponseByte),
+		"final_error":            finalError,
+	}
 }
 
 func traceOffsetMillis(event *atomic.Int64) int64 {

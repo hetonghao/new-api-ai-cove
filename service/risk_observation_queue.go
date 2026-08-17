@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 )
 
@@ -190,6 +191,9 @@ func (queue *RiskObservationQueue) handleItem(ctx context.Context, item riskObse
 	switch item.kind {
 	case riskObservationQueueItemJob:
 		if queue.process != nil {
+			if item.job.RequestID != "" {
+				ctx = context.WithValue(ctx, common.RequestIdKey, item.job.RequestID)
+			}
 			queue.process(ctx, item.job)
 		}
 	case riskObservationQueueItemEvent:

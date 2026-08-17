@@ -5,9 +5,30 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRiskObservationQueue_propagates_request_id_to_process_context(t *testing.T) {
+	// Given
+	requestIDs := make(chan string, 1)
+	queue := NewRiskObservationQueue(context.Background(), RiskObservationQueueConfig{
+		Capacity: 1,
+		Process: func(ctx context.Context, _ RiskObservationJob) {
+			requestID, _ := ctx.Value(common.RequestIdKey).(string)
+			requestIDs <- requestID
+		},
+	})
+	t.Cleanup(func() { queue.Close(context.Background()) })
+
+	// When
+	result := queue.Enqueue(RiskObservationJob{RequestID: "req-queue-timeout"})
+
+	// Then
+	require.Equal(t, RiskObservationEnqueueQueued, result.Outcome)
+	require.Equal(t, "req-queue-timeout", <-requestIDs)
+}
 
 func TestRiskObservationQueue_returns_immediately_when_full(t *testing.T) {
 	// Given

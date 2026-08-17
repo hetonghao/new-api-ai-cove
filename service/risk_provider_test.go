@@ -470,19 +470,32 @@ func TestReviewRiskContent_logsCloudflareTimeoutTrace(t *testing.T) {
 	})
 
 	// When
-	_, err := ReviewRiskContent(context.Background(), provider, privateText)
+	requestContext := context.WithValue(context.Background(), common.RequestIdKey, "req-cloudflare-timeout")
+	_, err := ReviewRiskContent(requestContext, provider, privateText)
 
 	// Then
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	logOutput := logBuffer.String()
-	require.Contains(t, logOutput, "risk provider timeout: provider_type=cloudflare provider_id=42 timeout_ms=800 content_runes=23")
-	require.Contains(t, logOutput, "get_conn_ms=")
-	require.Contains(t, logOutput, "got_conn_ms=")
-	require.Contains(t, logOutput, "dns_ms=")
-	require.Contains(t, logOutput, "connect_ms=")
-	require.Contains(t, logOutput, "tls_ms=")
-	require.Contains(t, logOutput, "wrote_request_ms=")
-	require.Contains(t, logOutput, "first_response_byte_ms=-1")
+	require.Contains(t, logOutput, "risk provider timeout")
+	fieldsStart := strings.Index(logOutput, "fields=")
+	require.GreaterOrEqual(t, fieldsStart, 0)
+	var fields struct {
+		RequestID           string `json:"request_id"`
+		ProviderType        string `json:"provider_type"`
+		ProviderID          int    `json:"provider_id"`
+		TimeoutMS           int    `json:"timeout_ms"`
+		WroteRequestMS      int64  `json:"wrote_request_ms"`
+		FirstResponseByteMS int64  `json:"first_response_byte_ms"`
+		FinalError          string `json:"final_error"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(logOutput[fieldsStart+len("fields="):])), &fields))
+	assert.Equal(t, "req-cloudflare-timeout", fields.RequestID)
+	assert.Equal(t, "cloudflare", fields.ProviderType)
+	assert.Equal(t, 42, fields.ProviderID)
+	assert.Equal(t, 800, fields.TimeoutMS)
+	assert.GreaterOrEqual(t, fields.WroteRequestMS, int64(0))
+	assert.Equal(t, int64(-1), fields.FirstResponseByteMS)
+	assert.Equal(t, "context deadline exceeded", fields.FinalError)
 	require.NotContains(t, logOutput, provider.AccountID)
 	require.NotContains(t, logOutput, "cf-token")
 	require.NotContains(t, logOutput, privateText)
