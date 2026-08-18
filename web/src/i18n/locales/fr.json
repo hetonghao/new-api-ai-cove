@@ -2046,7 +2046,7 @@
     "Force AUTH LOGIN": "Forcer AUTH LOGIN",
     "Force Format": "Forcer le format",
     "Supports WebSockets": "Prendre en charge WebSockets",
-    "Enable non-voice Responses WebSocket requests for this OpenAI channel": "Autoriser ce canal OpenAI à traiter les requêtes Responses WebSocket non vocales",
+    "Enable non-voice Responses WebSocket requests for this channel": "Autoriser ce canal à traiter les requêtes Responses WebSocket non vocales",
     "Force format response to OpenAI standard (OpenAI channel only)": "Forcer la réponse au format standard OpenAI (canal OpenAI uniquement)",
     "Force JSON object or schema-conforming output": "Forcer une sortie JSON ou conforme à un schéma",
     "Force SMTP authentication using AUTH LOGIN method": "Forcer l'authentification SMTP en utilisant la méthode AUTH LOGIN",

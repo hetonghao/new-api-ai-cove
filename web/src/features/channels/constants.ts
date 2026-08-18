@@ -25,6 +25,7 @@ export const CHANNEL_TYPE_NEW_API = 60
 
 export const RESPONSES_WEBSOCKET_CHANNEL_TYPES: ReadonlySet<number> = new Set([
   1,
+  48,
   57,
   58,
   59,

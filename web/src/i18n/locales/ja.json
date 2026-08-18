@@ -2046,7 +2046,7 @@
     "Force AUTH LOGIN": "AUTH LOGINを強制",
     "Force Format": "強制フォーマット",
     "Supports WebSockets": "WebSockets をサポート",
-    "Enable non-voice Responses WebSocket requests for this OpenAI channel": "この OpenAI チャネルで音声以外の Responses WebSocket リクエストを有効にします",
+    "Enable non-voice Responses WebSocket requests for this channel": "このチャネルで音声以外の Responses WebSocket リクエストを有効にします",
     "Force format response to OpenAI standard (OpenAI channel only)": "応答をOpenAI標準に強制フォーマット (OpenAIチャネルのみ)",
     "Force JSON object or schema-conforming output": "JSON オブジェクトまたはスキーマ準拠の出力を強制します",
     "Force SMTP authentication using AUTH LOGIN method": "AUTH LOGIN方式を使用してSMTP認証を強制する",

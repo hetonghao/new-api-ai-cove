@@ -43,6 +43,10 @@ function channelWithSettings(type: number, settings: string) {
 }
 
 describe('Responses WebSocket channel settings', () => {
+  test('includes xAI as a supported channel type', () => {
+    assert.equal(RESPONSES_WEBSOCKET_CHANNEL_TYPES.has(48), true)
+  })
+
   test('defaults to disabled and restores enabled OpenAI settings', () => {
     assert.equal(CHANNEL_FORM_DEFAULT_VALUES.supports_websockets, false)
     assert.equal(

@@ -2046,7 +2046,7 @@
     "Force AUTH LOGIN": "Принудительный AUTH LOGIN",
     "Force Format": "Принудительный формат",
     "Supports WebSockets": "Поддержка WebSockets",
-    "Enable non-voice Responses WebSocket requests for this OpenAI channel": "Разрешить этому каналу OpenAI обрабатывать неголосовые запросы Responses WebSocket",
+    "Enable non-voice Responses WebSocket requests for this channel": "Разрешить этому каналу обрабатывать неголосовые запросы Responses WebSocket",
     "Force format response to OpenAI standard (OpenAI channel only)": "Принудительно форматировать ответ в соответствии со стандартом OpenAI (только для канала OpenAI)",
     "Force JSON object or schema-conforming output": "Принудительно вернуть JSON или соответствующий схеме вывод",
     "Force SMTP authentication using AUTH LOGIN method": "Принудительная аутентификация SMTP с использованием метода AUTH LOGIN",

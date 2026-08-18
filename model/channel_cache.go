@@ -231,7 +231,8 @@ func isResponsesWebSocketChannelType(channelType int) bool {
 		constant.ChannelTypeCodex,
 		constant.ChannelTypeAdvancedCustom,
 		constant.ChannelTypeSub2API,
-		constant.ChannelTypeNewAPI:
+		constant.ChannelTypeNewAPI,
+		constant.ChannelTypeXai:
 		return true
 	default:
 		return false

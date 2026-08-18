@@ -54,6 +54,7 @@ func TestChannelWebSocketCapabilitySupportsResponsesChannelTypes(t *testing.T) {
 		{name: "Advanced Custom persists enabled", channelType: constant.ChannelTypeAdvancedCustom, enabled: true, want: true},
 		{name: "Sub2API persists enabled", channelType: constant.ChannelTypeSub2API, enabled: true, want: true},
 		{name: "New API persists enabled", channelType: constant.ChannelTypeNewAPI, enabled: true, want: true},
+		{name: "xAI persists enabled", channelType: constant.ChannelTypeXai, enabled: true, want: true},
 		{name: "non OpenAI clears enabled", channelType: constant.ChannelTypeAnthropic, enabled: true},
 	}
 

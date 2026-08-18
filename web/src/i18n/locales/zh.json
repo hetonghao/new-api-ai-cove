@@ -2121,7 +2121,7 @@
     "Force AUTH LOGIN": "强制 AUTH LOGIN",
     "Force Format": "强制格式化",
     "Supports WebSockets": "支持 WebSockets",
-    "Enable non-voice Responses WebSocket requests for this OpenAI channel": "允许此 OpenAI 渠道承接非语音 Responses WebSocket 请求",
+    "Enable non-voice Responses WebSocket requests for this channel": "允许此渠道承接非语音 Responses WebSocket 请求",
     "Force format response to OpenAI standard (OpenAI channel only)": "强制将响应格式化为 OpenAI 标准（仅限 OpenAI 渠道）",
     "Force JSON object or schema-conforming output": "强制输出 JSON 对象或符合 Schema 的结果",
     "Force SMTP authentication using AUTH LOGIN method": "强制使用 AUTH LOGIN 方法进行 SMTP 认证",

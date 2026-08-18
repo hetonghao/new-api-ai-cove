@@ -67,6 +67,7 @@ func TestGetRandomSatisfiedChannelSupportsAllResponsesWebSocketChannelTypes(t *t
 		{name: "Advanced Custom", channelType: constant.ChannelTypeAdvancedCustom},
 		{name: "Sub2API", channelType: constant.ChannelTypeSub2API},
 		{name: "New API", channelType: constant.ChannelTypeNewAPI},
+		{name: "xAI", channelType: constant.ChannelTypeXai},
 	}
 
 	for _, tt := range tests {
