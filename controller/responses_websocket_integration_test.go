@@ -1,11 +1,13 @@
 package controller
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gorilla/websocket"
@@ -334,4 +336,31 @@ func TestResponsesWebSocket_records_pre_channel_validation_error(t *testing.T) {
 	require.NotEmpty(t, logs[0].RequestId)
 	require.Equal(t, "websocket", gjson.Get(logs[0].Other, "transport").String())
 	require.Equal(t, "/v1/responses", gjson.Get(logs[0].Other, "request_path").String())
+}
+
+func TestResponsesWebSocket_signals_http_fallback_when_no_websocket_channel_before_submission(t *testing.T) {
+	// Given: the model has an HTTP channel, but no Responses WebSocket channel.
+	db := setupResponsesWebSocketHandlerTest(t)
+	upstream := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
+		_, _, _ = conn.ReadMessage()
+	})
+	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 106, baseURL: upstream.server.URL, priority: 0})
+	var httpOnlyChannel model.Channel
+	require.NoError(t, db.First(&httpOnlyChannel, 106).Error)
+	httpOnlyChannel.SetOtherSettings(dto.ChannelOtherSettings{SupportsWebSockets: false})
+	require.NoError(t, db.Save(&httpOnlyChannel).Error)
+	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 107, baseURL: upstream.server.URL, priority: 0, models: []string{"other-model"}})
+	client := dialResponsesWebSocketTestClient(t)
+
+	// When: the client submits the first response.create.
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"gpt-4o-mini","input":[{"role":"user","content":"hello"}]}`)))
+	errorEvent := readResponsesWebSocketTestEvent(t, client)
+
+	// Then: New API proves the request was not submitted and permits HTTP transport fallback.
+	require.Equal(t, "error", gjson.GetBytes(errorEvent, "type").String())
+	require.Equal(t, "responses_websocket_unavailable", gjson.GetBytes(errorEvent, "error.code").String())
+	require.Equal(t, int64(http.StatusServiceUnavailable), gjson.GetBytes(errorEvent, "status").Int())
+	require.Equal(t, "http", gjson.GetBytes(errorEvent, "transport").String())
+	require.Equal(t, "not_submitted", gjson.GetBytes(errorEvent, "request_state").String())
+	require.Zero(t, upstream.connections.Load())
 }

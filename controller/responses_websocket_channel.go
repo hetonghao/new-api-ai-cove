@@ -225,7 +225,7 @@ func selectResponsesWebSocketChannel(c *gin.Context, info *relaycommon.RelayInfo
 		return nil, types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的 WebSocket 渠道失败: %w", selectedGroup, info.OriginModelName, err), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
 	if selectedChannel == nil {
-		return nil, types.NewError(fmt.Errorf("分组 %s 下模型 %s 没有可用的 WebSocket 渠道", selectedGroup, info.OriginModelName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+		return nil, types.NewErrorWithStatusCode(fmt.Errorf("分组 %s 下模型 %s 没有可用的 WebSocket 渠道", selectedGroup, info.OriginModelName), types.ErrorCodeResponsesWebSocketUnavailable, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
 	}
 	if apiErr := middleware.SetupContextForSelectedChannel(c, selectedChannel, info.OriginModelName); apiErr != nil {
 		return nil, apiErr

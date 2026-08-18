@@ -173,7 +173,11 @@ func writeResponsesWebSocketError(conn *websocket.Conn, codec *responsesWebSocke
 	if apiErr == nil {
 		return nil
 	}
-	return writeResponsesWebSocketErrorEvent(conn, codec, c, apiErr.ToOpenAIError(), 0)
+	status := 0
+	if apiErr.GetErrorCode() == types.ErrorCodeResponsesWebSocketUnavailable {
+		status = apiErr.StatusCode
+	}
+	return writeResponsesWebSocketErrorEvent(conn, codec, c, apiErr.ToOpenAIError(), status)
 }
 
 func writeResponsesWebSocketStateMissing(conn *websocket.Conn, codec *responsesWebSocketPrivateCodec, c *gin.Context) error {
@@ -191,6 +195,10 @@ func writeResponsesWebSocketErrorEvent(conn *websocket.Conn, codec *responsesWeb
 	}
 	openAIError.Message = common.MessageWithRequestId(openAIError.Message, requestID)
 	event := gin.H{"type": "error", "error": openAIError}
+	if openAIError.Code == types.ErrorCodeResponsesWebSocketUnavailable {
+		event["transport"] = "http"
+		event["request_state"] = "not_submitted"
+	}
 	if status != 0 {
 		event["status"] = status
 	}
