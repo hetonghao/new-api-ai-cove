@@ -15,7 +15,7 @@ import (
 func setupRiskRecordCleanupTest(t *testing.T) {
 	t.Helper()
 	truncate(t)
-	require.NoError(t, model.DB.AutoMigrate(&model.RiskRecord{}, &model.RiskRecordGovernance{}))
+	require.NoError(t, model.DB.AutoMigrate(&model.RiskRecord{}, &model.SevereRiskRecord{}, &model.RiskRecordGovernance{}))
 	require.NoError(t, model.DB.Exec("DELETE FROM risk_records").Error)
 	require.NoError(t, model.DB.Exec("DELETE FROM risk_record_governance").Error)
 	t.Cleanup(func() {

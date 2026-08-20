@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 // allow: SIZE_OK -- risk-center page boundary owns the four tabs and their shared query lifecycle.
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -30,6 +30,7 @@ import { RiskPolicySettings } from '@/features/risk-policy/components/risk-polic
 import { RiskRecordGovernanceSettings } from '@/features/risk-records/components/risk-record-governance-settings'
 import { RiskRecordList } from '@/features/risk-records/components/risk-record-list'
 import type { RiskRecordFilters } from '@/features/risk-records/types'
+import { SevereRiskRecordList } from '@/features/severe-risk-records/components/severe-risk-record-list'
 
 import {
   deleteRiskProvider,
@@ -48,7 +49,12 @@ import type { RiskProvider } from './types'
 
 const QUERY_KEY = ['risk', 'providers'] as const
 
-type RiskCenterTab = 'records' | 'providers' | 'configuration' | 'statistics'
+type RiskCenterTab =
+  | 'records'
+  | 'providers'
+  | 'configuration'
+  | 'statistics'
+  | 'severe-records'
 type RiskProviderAction =
   | { readonly kind: 'validate'; readonly text: string }
   | { readonly kind: 'delete' }
@@ -79,6 +85,16 @@ export function RiskProviders() {
   )
   const [pendingAction, setPendingAction] =
     useState<RiskProviderPendingAction | null>(null)
+  const severeRecordsTabRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (activeTab === 'severe-records') {
+      severeRecordsTabRef.current?.scrollIntoView({
+        block: 'nearest',
+        inline: 'nearest',
+      })
+    }
+  }, [activeTab])
 
   const providersQuery = useQuery({
     queryKey: QUERY_KEY,
@@ -182,21 +198,45 @@ export function RiskProviders() {
                 value === 'configuration' ||
                 value === 'records' ||
                 value === 'providers' ||
-                value === 'statistics'
+                value === 'statistics' ||
+                value === 'severe-records'
               ) {
                 setActiveTab(value)
               }
             }}
           >
-            <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
-              <TabsTrigger value='records'>{t('Risk records')}</TabsTrigger>
-              <TabsTrigger value='providers'>
+            <TabsList className='max-w-full flex-nowrap justify-start overflow-x-auto group-data-horizontal/tabs:h-auto'>
+              <TabsTrigger
+                className='shrink-0 px-1 text-xs whitespace-nowrap sm:px-1.5 sm:text-sm'
+                value='records'
+              >
+                {t('Risk records')}
+              </TabsTrigger>
+              <TabsTrigger
+                className='shrink-0 px-1 text-xs whitespace-nowrap sm:px-1.5 sm:text-sm'
+                value='providers'
+              >
                 {t('Cloud review providers')}
               </TabsTrigger>
-              <TabsTrigger value='configuration'>
+              <TabsTrigger
+                className='shrink-0 px-1 text-xs whitespace-nowrap sm:px-1.5 sm:text-sm'
+                value='configuration'
+              >
                 {t('Risk Settings')}
               </TabsTrigger>
-              <TabsTrigger value='statistics'>{t('Statistics')}</TabsTrigger>
+              <TabsTrigger
+                className='shrink-0 px-1 text-xs whitespace-nowrap sm:px-1.5 sm:text-sm'
+                value='statistics'
+              >
+                {t('Statistics')}
+              </TabsTrigger>
+              <TabsTrigger
+                ref={severeRecordsTabRef}
+                className='shrink-0 px-1 text-xs whitespace-nowrap sm:px-1.5 sm:text-sm'
+                value='severe-records'
+              >
+                {t('Severe risk records')}
+              </TabsTrigger>
             </TabsList>
             <TabsContent
               value='providers'
@@ -239,6 +279,12 @@ export function RiskProviders() {
                 providers={providersQuery.data ?? []}
                 initialFilters={recordInitialFilters}
               />
+            </TabsContent>
+            <TabsContent
+              value='severe-records'
+              className='mt-2 min-h-0 min-w-0'
+            >
+              <SevereRiskRecordList />
             </TabsContent>
             <TabsContent
               value='statistics'

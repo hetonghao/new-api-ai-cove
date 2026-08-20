@@ -67,7 +67,9 @@ func failPreparedResponsesWebSocketRequest(state *responsesWebSocketRequestState
 		apiErr = service.NormalizeViolationFeeError(apiErr)
 		service.ChargeViolationFeeIfNeeded(state.ctx, state.info, apiErr)
 		if channel != nil {
-			processChannelError(state.ctx, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(state.ctx, constant.ContextKeyChannelKey), channel.GetAutoBan()), apiErr)
+			channelError := *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(state.ctx, constant.ContextKeyChannelKey), channel.GetAutoBan())
+			service.HandleSevereRiskFromRelay(service.SevereRiskRelayInput{Context: state.ctx, Request: state.info.Request, Channel: channelError, Model: state.info.OriginModelName, UpstreamErr: apiErr, ChannelTest: state.info.IsChannelTest})
+			processChannelError(state.ctx, channelError, apiErr)
 		} else {
 			if len(state.ctx.GetStringSlice("use_channel")) == 0 {
 				logger.LogError(state.ctx, fmt.Sprintf("relay error before channel selection (status code: %d): %s", apiErr.StatusCode, common.LocalLogPreview(apiErr.Error())))

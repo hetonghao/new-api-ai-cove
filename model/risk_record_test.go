@@ -26,9 +26,11 @@ func setupRiskRecordModelTest(t *testing.T) *gorm.DB {
 	DB = db
 	require.NoError(t, db.AutoMigrate(
 		&RiskRecord{},
+		&SevereRiskRecord{},
 		&RiskRecordGovernance{},
 		&Channel{},
 		&User{},
+		&UserSession{},
 		&Token{},
 	))
 	t.Cleanup(func() {

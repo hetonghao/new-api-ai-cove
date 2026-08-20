@@ -14,7 +14,8 @@ const (
 )
 
 type RiskRecordCleanupResult struct {
-	DeletedCount int64 `json:"deleted_count"`
+	DeletedCount       int64 `json:"deleted_count"`
+	SevereDeletedCount int64 `json:"severe_deleted_count"`
 }
 
 type riskRecordCleanupState struct {
@@ -98,6 +99,18 @@ func (h riskRecordCleanupHandler) Run(ctx context.Context, task *model.SystemTas
 			break
 		}
 	}
+	var severeDeletedCount int64
+	for range maxBatches {
+		deleted, deleteErr := model.DeleteExpiredSevereRiskRecordsBatch(ctx, cutoff, batchSize)
+		if deleteErr != nil {
+			failSystemTask(task, runnerID, deleteErr)
+			return
+		}
+		severeDeletedCount += deleted
+		if deleted < int64(batchSize) {
+			break
+		}
+	}
 	if state.Progress < 100 {
 		state.Progress = 100
 		if err := model.UpdateSystemTaskState(task.TaskID, runnerID, state); err != nil {
@@ -105,7 +118,7 @@ func (h riskRecordCleanupHandler) Run(ctx context.Context, task *model.SystemTas
 			return
 		}
 	}
-	result := RiskRecordCleanupResult{DeletedCount: deletedCount}
+	result := RiskRecordCleanupResult{DeletedCount: deletedCount, SevereDeletedCount: severeDeletedCount}
 	if err := model.FinishSystemTask(task.TaskID, runnerID, model.SystemTaskStatusSucceeded, result, ""); err != nil {
 		logSystemTaskLockError(ctx, task, err)
 	}

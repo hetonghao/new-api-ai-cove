@@ -36,14 +36,17 @@ func setupRiskRecordRouterTest(t *testing.T, role int) (*httptest.Server, *http.
 	originalMainType := common.MainDatabaseType()
 	originalLogType := common.LogDatabaseType()
 	originalRedisEnabled := common.RedisEnabled
+	originalLogDB := model.LOG_DB
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB = db
+	model.LOG_DB = db
 	require.NoError(t, db.AutoMigrate(
 		&model.RiskRecord{},
+		&model.SevereRiskRecord{},
 		&model.RiskRecordGovernance{},
 		&model.Channel{},
 		&model.User{},
@@ -64,6 +67,7 @@ func setupRiskRecordRouterTest(t *testing.T, role int) (*httptest.Server, *http.
 	t.Cleanup(func() {
 		server.Close()
 		model.DB = originalDB
+		model.LOG_DB = originalLogDB
 		common.SetDatabaseTypes(originalMainType, originalLogType)
 		common.RedisEnabled = originalRedisEnabled
 		sqlDB, dbErr := db.DB()
@@ -72,6 +76,40 @@ func setupRiskRecordRouterTest(t *testing.T, role int) (*httptest.Server, *http.
 		}
 	})
 	return server, client, accessToken
+}
+
+func TestSevereRiskRecordAPI_listsIndependentRecords(t *testing.T) {
+	// Given
+	server, client, accessToken := setupRiskRecordRouterTest(t, common.RoleRootUser)
+	require.NoError(t, model.DB.Create(&model.SevereRiskRecord{
+		RequestID: "severe-route-request", ChannelID: 37, ChannelName: "channel", UserID: 56,
+		Username: "user@example.com", TokenID: 8, TokenName: "token", Model: "gpt-5.6-sol", Path: "/v1/responses",
+		ErrorCode: "invalid_prompt", ErrorDetail: "Invalid prompt", ContextHash: "hash", ContextEncrypted: "cipher",
+		ChannelScope: model.SevereRiskChannelScopeAll, UserActionStatus: model.SevereRiskActionSuccess,
+		ChannelActionStatus: model.SevereRiskActionSuccess, TriggeredAt: time.Now().UTC(),
+	}).Error)
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/api/risk/severe-records?p=1&page_size=20", nil)
+	require.NoError(t, err)
+	request.Header.Set("Authorization", "Bearer "+accessToken)
+
+	// When
+	response, err := client.Do(request)
+
+	// Then
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	var payload struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Total int                      `json:"total"`
+			Items []model.SevereRiskRecord `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.DecodeJson(response.Body, &payload))
+	require.True(t, payload.Success)
+	require.Equal(t, 1, payload.Data.Total)
+	require.Equal(t, "severe-route-request", payload.Data.Items[0].RequestID)
 }
 
 func TestRiskRecordAPI_returnsRootOnlyPaginatedMetadata(t *testing.T) {

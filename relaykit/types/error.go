@@ -90,14 +90,15 @@ const (
 )
 
 type NewAPIError struct {
-	Err            error
-	RelayError     any
-	skipRetry      bool
-	recordErrorLog *bool
-	errorType      ErrorType
-	errorCode      ErrorCode
-	StatusCode     int
-	Metadata       json.RawMessage
+	Err                   error
+	RelayError            any
+	skipRetry             bool
+	recordErrorLog        *bool
+	errorType             ErrorType
+	errorCode             ErrorCode
+	StatusCode            int
+	Metadata              json.RawMessage
+	upstreamInvalidPrompt bool
 }
 
 // Unwrap enables errors.Is / errors.As to work with NewAPIError by exposing the underlying error.
@@ -120,6 +121,13 @@ func (e *NewAPIError) GetErrorType() ErrorType {
 		return ""
 	}
 	return e.errorType
+}
+
+// IsUpstreamInvalidPrompt only matches the provider's structured policy
+// rejection. The marker is captured before channel status-code remapping, so
+// a local mapping cannot turn another upstream status into a trigger.
+func (e *NewAPIError) IsUpstreamInvalidPrompt() bool {
+	return e != nil && e.upstreamInvalidPrompt
 }
 
 func (e *NewAPIError) Error() string {
@@ -334,6 +342,8 @@ func WithOpenAIError(openAIError OpenAIError, statusCode int, ops ...NewAPIError
 		StatusCode: statusCode,
 		Err:        errors.New(openAIError.Message),
 		errorCode:  ErrorCode(code),
+		upstreamInvalidPrompt: statusCode == http.StatusBadRequest &&
+			code == string(ErrorCode("invalid_prompt")),
 	}
 	// OpenRouter
 	if len(openAIError.Metadata) > 0 {

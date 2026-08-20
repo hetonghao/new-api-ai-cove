@@ -682,6 +682,10 @@ func handlerMultiKeyUpdate(channel *Channel, usingKey string, status int, reason
 			channel.ChannelInfo.MultiKeyStatusList = make(map[int]int)
 		}
 		if status == common.ChannelStatusEnabled {
+			if channel.ChannelInfo.MultiKeyStatusList[keyIndex] == common.ChannelStatusSevereDisabled &&
+				reason != "manual operation" && reason != "manual batch operation" && reason != "manual severe review" {
+				return
+			}
 			delete(channel.ChannelInfo.MultiKeyStatusList, keyIndex)
 		} else {
 			channel.ChannelInfo.MultiKeyStatusList[keyIndex] = status
@@ -696,6 +700,12 @@ func handlerMultiKeyUpdate(channel *Channel, usingKey string, status int, reason
 		}
 		if !hasEnabledMultiKey(keys, channel.ChannelInfo.MultiKeyStatusList) {
 			channel.Status = common.ChannelStatusAutoDisabled
+			for _, keyStatus := range channel.ChannelInfo.MultiKeyStatusList {
+				if keyStatus == common.ChannelStatusSevereDisabled {
+					channel.Status = common.ChannelStatusSevereDisabled
+					break
+				}
+			}
 			info := channel.GetOtherInfo()
 			info["status_reason"] = "All keys are disabled"
 			info["status_time"] = common.GetTimestamp()
@@ -747,6 +757,10 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 			//CacheUpdateChannel(channelCache)
 			//return true
 		} else {
+			if status == common.ChannelStatusEnabled && channelCache.Status == common.ChannelStatusSevereDisabled &&
+				reason != "manual operation" && reason != "manual batch operation" && reason != "manual severe review" {
+				return false
+			}
 			// 如果缓存渠道存在，且状态已是目标状态，直接返回
 			if channelCache.Status == status {
 				return false
@@ -768,6 +782,10 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 	if err != nil {
 		return false
 	} else {
+		if status == common.ChannelStatusEnabled && channel.Status == common.ChannelStatusSevereDisabled &&
+			reason != "manual operation" && reason != "manual batch operation" && reason != "manual severe review" {
+			return false
+		}
 		if channel.Status == status {
 			return false
 		}
@@ -796,11 +814,17 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 }
 
 func EnableChannelByTag(tag string) error {
-	err := DB.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusEnabled).Error
+	var severeCount int64
+	if err := DB.Model(&Channel{}).Where("tag = ? AND status = ?", tag, common.ChannelStatusSevereDisabled).Count(&severeCount).Error; err != nil {
+		return err
+	}
+	err := DB.Model(&Channel{}).Where("tag = ? AND status <> ?", tag, common.ChannelStatusSevereDisabled).Update("status", common.ChannelStatusEnabled).Error
 	if err != nil {
 		return err
 	}
-	err = UpdateAbilityStatusByTag(tag, true)
+	if severeCount == 0 {
+		err = UpdateAbilityStatusByTag(tag, true)
+	}
 	return err
 }
 
