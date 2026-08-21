@@ -36,6 +36,22 @@ type BillingSession struct {
 	mu               sync.Mutex
 }
 
+// RebindRelayInfo keeps one logical billing session authoritative when a safe
+// pre-output capacity retry rebuilds the transport-specific RelayInfo.
+func (s *BillingSession) RebindRelayInfo(info *relaycommon.RelayInfo) {
+	if s == nil || info == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.settled || s.refunded {
+		return
+	}
+	s.relayInfo = info
+	info.Billing = s
+	s.syncRelayInfo()
+}
+
 // Settle 根据实际消耗额度进行结算。
 // 资金来源和令牌额度分两步提交：若资金来源已提交但令牌调整失败，
 // 会标记 fundingSettled 防止 Refund 对已提交的资金来源执行退款。

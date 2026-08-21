@@ -26,20 +26,53 @@ import (
 )
 
 func prepareFirstResponsesWebSocketRequest(baseCtx *gin.Context, payload []byte, connectionStarted time.Time) (*responsesWebSocketRequestState, []byte, *websocket.Conn, *model.Channel, int64, error) {
-	state, request, err := prepareResponsesWebSocketRequest(baseCtx, payload, "")
+	return prepareFirstResponsesWebSocketRequestWithBilling(baseCtx, payload, connectionStarted, nil, nil, nil, nil, nil, 0)
+}
+
+func prepareFirstResponsesWebSocketRequestWithBilling(baseCtx *gin.Context, payload []byte, connectionStarted time.Time, billing relaycommon.BillingSettler, rateLimit *middleware.ModelRequestRateLimitTicket, billingInfo *relaycommon.RelayInfo, retryParam *service.RetryParam, excludedChannelIDs map[int]bool, attemptsUsed int) (*responsesWebSocketRequestState, []byte, *websocket.Conn, *model.Channel, int64, error) {
+	state, request, err := prepareResponsesWebSocketRequestWithInheritedState(baseCtx, payload, "", rateLimit, billingInfo)
 	if err != nil {
 		apiErr := asResponsesWebSocketAPIError(err)
 		failPreparedResponsesWebSocketRequest(state, nil, apiErr)
+		refundResponsesWebSocketBillingIfPending(baseCtx, billing)
 		return state, nil, nil, nil, 0, apiErr
+	}
+	state.info.Billing = billing
+	state.billingReused = billing != nil
+	if retryParam != nil {
+		retryParam.Ctx = state.ctx
 	}
 	common.SetContextKey(state.ctx, constant.ContextKeyWebSocketFirstEventMs, time.Since(connectionStarted).Milliseconds())
 
-	excluded := map[int]bool{}
-	for attempt := 0; attempt <= common.RetryTimes; attempt++ {
-		selectedChannel, selectErr := selectResponsesWebSocketChannel(state.ctx, state.info, excluded)
+	excluded := make(map[int]bool, len(excludedChannelIDs))
+	for channelID, isExcluded := range excludedChannelIDs {
+		if isExcluded {
+			excluded[channelID] = true
+		}
+	}
+	for attempt := 0; attemptsUsed+attempt <= common.RetryTimes; attempt++ {
+		state.logicalAttempts = attemptsUsed + attempt + 1
+		var selectedChannel *model.Channel
+		var selectErr *types.NewAPIError
+		if retryParam != nil {
+			var selectedGroup string
+			selectedChannel, selectedGroup, err = service.CacheGetRandomSatisfiedChannel(retryParam)
+			if err != nil {
+				selectErr = types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的 WebSocket 渠道失败: %w", selectedGroup, state.info.OriginModelName, err), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+			} else if selectedChannel == nil {
+				selectErr = types.NewErrorWithStatusCode(fmt.Errorf("分组 %s 下模型 %s 没有可用的 WebSocket 渠道", selectedGroup, state.info.OriginModelName), types.ErrorCodeResponsesWebSocketUnavailable, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
+			} else if apiErr := middleware.SetupContextForSelectedChannel(state.ctx, selectedChannel, state.info.OriginModelName); apiErr != nil {
+				selectErr = apiErr
+			}
+		} else {
+			selectedChannel, selectErr = selectResponsesWebSocketChannel(state.ctx, state.info, excluded)
+		}
 		if selectErr != nil {
 			failPreparedResponsesWebSocketRequest(state, nil, selectErr)
 			return state, nil, nil, nil, 0, selectErr
+		}
+		if retryParam != nil {
+			retryParam.RecordChannel(selectedChannel)
 		}
 		addUsedChannel(state.ctx, selectedChannel.Id)
 		if billingErr := prepareResponsesWebSocketBilling(state); billingErr != nil {
@@ -85,6 +118,9 @@ func prepareFirstResponsesWebSocketRequest(baseCtx *gin.Context, payload []byte,
 		if !shouldRetry(state.ctx, dialErr, common.RetryTimes-attempt) {
 			failPreparedResponsesWebSocketRequest(state, nil, dialErr)
 			return state, nil, nil, selectedChannel, 0, dialErr
+		}
+		if retryParam != nil {
+			retryParam.IncreaseRetry()
 		}
 	}
 

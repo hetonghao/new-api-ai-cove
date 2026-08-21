@@ -59,7 +59,6 @@ func TestResponsesWebSocket_drains_active_session_after_terminal_frame(t *testin
 	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 301, baseURL: upstream.server.URL, priority: 0})
 	client := dialResponsesWebSocketTestClient(t)
 	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"gpt-4o-mini","input":[]}`)))
-	require.Equal(t, "response.created", gjson.GetBytes(readResponsesWebSocketTestEvent(t, client), "type").String())
 	select {
 	case <-requestReceived:
 	case <-time.After(5 * time.Second):
@@ -68,6 +67,7 @@ func TestResponsesWebSocket_drains_active_session_after_terminal_frame(t *testin
 
 	BeginResponsesWebSocketDrain()
 	close(release)
+	require.Equal(t, "response.created", gjson.GetBytes(readResponsesWebSocketTestEvent(t, client), "type").String())
 	require.Equal(t, "response.completed", gjson.GetBytes(readResponsesWebSocketTestEvent(t, client), "type").String())
 	require.Equal(t, websocket.CloseServiceRestart, readResponsesWebSocketTestClose(t, client).Code)
 }

@@ -37,8 +37,42 @@ import (
 
 const relayRetryCountHeader = "X-AI-Cove-Retry-Count"
 
+const relayAttemptErrorsKey = "relay_attempt_errors"
+const relayAttemptErrorHistoryMax = 32
+
+type relayAttemptErrorRecord struct {
+	err *types.NewAPIError
+}
+
 func setRelayRetryCountHeader(c *gin.Context, retryCount int) {
 	c.Header(relayRetryCountHeader, strconv.Itoa(retryCount))
+}
+
+func recordRelayAttemptError(c *gin.Context, err *types.NewAPIError) {
+	if c == nil || err == nil {
+		return
+	}
+	records, _ := c.Get(relayAttemptErrorsKey)
+	history, _ := records.([]relayAttemptErrorRecord)
+	if len(history) >= relayAttemptErrorHistoryMax {
+		return
+	}
+	history = append(history, relayAttemptErrorRecord{err: err})
+	c.Set(relayAttemptErrorsKey, history)
+}
+
+func preserveCapacityAttemptError(c *gin.Context, err *types.NewAPIError) *types.NewAPIError {
+	if err == nil || string(err.GetErrorCode()) != "auth_unavailable" {
+		return err
+	}
+	records, _ := c.Get(relayAttemptErrorsKey)
+	history, _ := records.([]relayAttemptErrorRecord)
+	for _, record := range history {
+		if record.err != nil && record.err.GetErrorCode() == types.ErrorCodeServerIsOverloaded {
+			return record.err
+		}
+	}
+	return err
 }
 
 func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
@@ -262,6 +296,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
+		recordRelayAttemptError(c, newAPIError)
 
 		channelError := *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan())
 		service.HandleSevereRiskFromRelay(service.SevereRiskRelayInput{Context: c, Request: relayInfo.Request, Channel: channelError, Model: relayInfo.OriginModelName, UpstreamErr: newAPIError, ChannelTest: relayInfo.IsChannelTest})
@@ -271,6 +306,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			break
 		}
 	}
+	newAPIError = preserveCapacityAttemptError(c, newAPIError)
 
 	useChannel := c.GetStringSlice("use_channel")
 	if len(useChannel) > 1 {
@@ -333,12 +369,14 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		if !autoBan {
 			autoBanInt = 0
 		}
-		return &model.Channel{
+		channel := &model.Channel{
 			Id:      c.GetInt("channel_id"),
 			Type:    c.GetInt("channel_type"),
 			Name:    c.GetString("channel_name"),
 			AutoBan: &autoBanInt,
-		}, nil
+		}
+		retryParam.RecordChannel(channel)
+		return channel, nil
 	}
 	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
 	if err != nil {
@@ -354,6 +392,7 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	if newAPIError != nil {
 		return nil, newAPIError
 	}
+	retryParam.RecordChannel(channel)
 	return channel, nil
 }
 
@@ -427,6 +466,23 @@ func recordRelayErrorLog(c *gin.Context, err *types.NewAPIError) {
 		other["channel_type"] = c.GetInt("channel_type")
 		adminInfo := make(map[string]interface{})
 		adminInfo["use_channel"] = c.GetStringSlice("use_channel")
+		if records, ok := c.Get(relayAttemptErrorsKey); ok {
+			if history, ok := records.([]relayAttemptErrorRecord); ok {
+				attemptErrors := make([]map[string]interface{}, 0, len(history))
+				for _, record := range history {
+					if record.err == nil {
+						continue
+					}
+					attemptErrors = append(attemptErrors, map[string]interface{}{
+						"code":   record.err.GetErrorCode(),
+						"status": record.err.StatusCode,
+					})
+				}
+				if len(attemptErrors) > 0 {
+					adminInfo["attempt_errors"] = attemptErrors
+				}
+			}
+		}
 		isMultiKey := common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey)
 		if isMultiKey {
 			adminInfo["is_multi_key"] = true

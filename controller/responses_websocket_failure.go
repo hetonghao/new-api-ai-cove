@@ -10,10 +10,12 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/bytedance/gopkg/util/gopool"
+	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
 
@@ -95,6 +97,27 @@ func failResponsesWebSocketRequest(state *responsesWebSocketRequestState, channe
 	}
 	apiErr := types.NewError(errors.New(reason), types.ErrorCodeDoRequestFailed)
 	failPreparedResponsesWebSocketRequest(state, channel, apiErr)
+}
+
+func recordResponsesWebSocketRetryFailure(state *responsesWebSocketRequestState, channel *model.Channel, apiErr *types.NewAPIError) {
+	if state == nil || state.info == nil || apiErr == nil {
+		return
+	}
+	state.info.LastError = apiErr
+	if channel == nil {
+		recordRelayErrorLog(state.ctx, apiErr)
+		return
+	}
+	channelError := *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(state.ctx, constant.ContextKeyChannelKey), channel.GetAutoBan())
+	service.HandleSevereRiskFromRelay(service.SevereRiskRelayInput{Context: state.ctx, Request: state.info.Request, Channel: channelError, Model: state.info.OriginModelName, UpstreamErr: apiErr, ChannelTest: state.info.IsChannelTest})
+	processChannelError(state.ctx, channelError, apiErr)
+}
+
+func refundResponsesWebSocketBillingIfPending(ctx *gin.Context, billing relaycommon.BillingSettler) {
+	if billing == nil || !billing.NeedsRefund() {
+		return
+	}
+	billing.Refund(ctx)
 }
 
 func asResponsesWebSocketAPIError(err error) *types.NewAPIError {

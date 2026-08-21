@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -17,6 +18,9 @@ type RetryParam struct {
 	RequestPath        string
 	RequireWebSockets  bool
 	ExcludedChannelIDs map[int]bool
+	TriedChannelIDs    map[int]bool
+	LastChannelID      int
+	LastChannelRoute   string
 	Retry              *int
 	resetNextTry       bool
 }
@@ -45,6 +49,127 @@ func (p *RetryParam) IncreaseRetry() {
 
 func (p *RetryParam) ResetRetryNextTry() {
 	p.resetNextTry = true
+}
+
+func (p *RetryParam) RecordChannel(channel *model.Channel) {
+	if channel == nil {
+		return
+	}
+	if p.TriedChannelIDs == nil {
+		p.TriedChannelIDs = make(map[int]bool)
+	}
+	p.TriedChannelIDs[channel.Id] = true
+	p.LastChannelID = channel.Id
+	p.LastChannelRoute = channelRetryRouteKey(channel)
+}
+
+func channelRetryRouteKey(channel *model.Channel) string {
+	if channel == nil {
+		return ""
+	}
+	return strings.TrimRight(strings.TrimSpace(channel.GetBaseURL()), "/")
+}
+
+func orderRetryCandidates(candidates []*model.Channel, lastChannelID int, lastRoute string) []*model.Channel {
+	if len(candidates) == 0 || lastChannelID == 0 {
+		return append([]*model.Channel(nil), candidates...)
+	}
+	ordered := make([]*model.Channel, 0, len(candidates))
+	appendMatching := func(match func(*model.Channel) bool) {
+		for _, candidate := range candidates {
+			if match(candidate) {
+				ordered = append(ordered, candidate)
+			}
+		}
+	}
+	appendMatching(func(candidate *model.Channel) bool {
+		return lastRoute != "" && channelRetryRouteKey(candidate) != lastRoute
+	})
+	appendMatching(func(candidate *model.Channel) bool {
+		return channelRetryRouteKey(candidate) == lastRoute && candidate.Id != lastChannelID
+	})
+	appendMatching(func(candidate *model.Channel) bool {
+		return candidate.Id == lastChannelID
+	})
+	if len(ordered) == len(candidates) {
+		return ordered
+	}
+	seen := make(map[int]bool, len(ordered))
+	for _, candidate := range ordered {
+		seen[candidate.Id] = true
+	}
+	for _, candidate := range candidates {
+		if !seen[candidate.Id] {
+			ordered = append(ordered, candidate)
+		}
+	}
+	return ordered
+}
+
+func retryExcludedChannelIDs(param *RetryParam) map[int]bool {
+	excluded := make(map[int]bool, len(param.ExcludedChannelIDs)+len(param.TriedChannelIDs))
+	for channelID, isExcluded := range param.ExcludedChannelIDs {
+		if isExcluded {
+			excluded[channelID] = true
+		}
+	}
+	for channelID := range param.TriedChannelIDs {
+		excluded[channelID] = true
+	}
+	return excluded
+}
+
+func collectRetryCandidates(param *RetryParam, group string) ([]*model.Channel, error) {
+	excluded := retryExcludedChannelIDs(param)
+	candidates := make([]*model.Channel, 0)
+	seen := make(map[int]bool)
+	for {
+		candidate, err := model.GetRandomSatisfiedChannel(group, param.ModelName, 0, param.RequestPath, param.RequireWebSockets, excluded)
+		if err != nil {
+			return nil, err
+		}
+		if candidate == nil || seen[candidate.Id] {
+			return candidates, nil
+		}
+		seen[candidate.Id] = true
+		excluded[candidate.Id] = true
+		candidates = append(candidates, candidate)
+	}
+}
+
+func selectRetryChannel(param *RetryParam, group string, priorityRetry int) (*model.Channel, error) {
+	if len(param.TriedChannelIDs) == 0 {
+		return model.GetRandomSatisfiedChannel(group, param.ModelName, priorityRetry, param.RequestPath, param.RequireWebSockets, param.ExcludedChannelIDs)
+	}
+	candidates, err := collectRetryCandidates(param, group)
+	if err != nil {
+		return nil, err
+	}
+	if len(candidates) > 0 {
+		ordered := orderRetryCandidates(candidates, param.LastChannelID, param.LastChannelRoute)
+		return ordered[0], nil
+	}
+	// No unused candidate remains. Retry the most recent channel as the last bucket.
+	if param.LastChannelID != 0 {
+		excluded := make(map[int]bool, len(param.ExcludedChannelIDs)+len(param.TriedChannelIDs))
+		for channelID, isExcluded := range param.ExcludedChannelIDs {
+			if isExcluded {
+				excluded[channelID] = true
+			}
+		}
+		for channelID := range param.TriedChannelIDs {
+			if channelID != param.LastChannelID {
+				excluded[channelID] = true
+			}
+		}
+		if !excluded[param.LastChannelID] {
+			lastChannel, err := model.GetRandomSatisfiedChannel(group, param.ModelName, 0, param.RequestPath, param.RequireWebSockets, excluded)
+			if err != nil || lastChannel != nil {
+				return lastChannel, err
+			}
+		}
+	}
+	return model.GetRandomSatisfiedChannel(group, param.ModelName, priorityRetry, param.RequestPath, param.RequireWebSockets, param.ExcludedChannelIDs)
 }
 
 // CacheGetRandomSatisfiedChannel tries to get a random channel that satisfies the requirements.
@@ -117,17 +242,17 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, priorityRetry: %d", autoGroup, priorityRetry)
 
-			channel, _ = model.GetRandomSatisfiedChannel(autoGroup, param.ModelName, priorityRetry, param.RequestPath, param.RequireWebSockets, param.ExcludedChannelIDs)
+			channel, err = selectRetryChannel(param, autoGroup, priorityRetry)
+			if err != nil {
+				return nil, selectGroup, err
+			}
 			if channel == nil {
 				// Current group has no available channel for this model, try next group
 				// 当前分组没有该模型的可用渠道，尝试下一个分组
 				logger.LogDebug(param.Ctx, "No available channel in group %s for model %s at priorityRetry %d, trying next group", autoGroup, param.ModelName, priorityRetry)
 				// 重置状态以尝试下一个分组
 				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, i+1)
-				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupRetryIndex, 0)
-				// Reset retry counter so outer loop can continue for next group
-				// 重置重试计数器，以便外层循环可以为下一个分组继续
-				param.SetRetry(0)
+				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupRetryIndex, param.GetRetry())
 				continue
 			}
 			common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroup, autoGroup)
@@ -143,10 +268,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 				// 本次请求仍使用当前分组，但下次重试将使用下一个分组
 				logger.LogDebug(param.Ctx, "Current group %s retries exhausted (priorityRetry=%d >= RetryTimes=%d), preparing switch to next group for next retry", autoGroup, priorityRetry, common.RetryTimes)
 				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, i+1)
-				// Reset retry counter so outer loop can continue for next group
-				// 重置重试计数器，以便外层循环可以为下一个分组继续
-				param.SetRetry(0)
-				param.ResetRetryNextTry()
+				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupRetryIndex, param.GetRetry())
 			} else {
 				// Stay in current group, save current state
 				// 保持在当前分组，保存当前状态
@@ -155,7 +277,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			break
 		}
 	} else {
-		channel, err = model.GetRandomSatisfiedChannel(param.TokenGroup, param.ModelName, param.GetRetry(), param.RequestPath, param.RequireWebSockets, param.ExcludedChannelIDs)
+		channel, err = selectRetryChannel(param, param.TokenGroup, param.GetRetry())
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}

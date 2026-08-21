@@ -127,3 +127,99 @@ func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(
 	assert.Equal(t, "default", selectedGroup)
 	assert.Equal(t, "default", common.GetContextKeyString(ctx, constant.ContextKeyAutoGroup))
 }
+
+func TestCacheGetRandomSatisfiedChannelPreservesGlobalRetryBudgetOnGroupSwitch(t *testing.T) {
+	db := setupChannelSelectAutoGroupsTest(t)
+	common.RetryTimes = 1
+	const modelName = "auto-group-budget-model"
+	createChannelSelectAutoGroupsChannel(t, db, 2111, "vip", modelName)
+	model.InitChannelCache()
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"default", "vip"})
+	common.SetContextKey(ctx, constant.ContextKeyTokenCrossGroupRetry, true)
+
+	retry := 1
+	param := &RetryParam{
+		Ctx:         ctx,
+		TokenGroup:  "auto",
+		ModelName:   modelName,
+		RequestPath: "/v1/chat/completions",
+		Retry:       &retry,
+	}
+
+	channel, selectedGroup, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	assert.Equal(t, 2111, channel.Id)
+	assert.Equal(t, "vip", selectedGroup)
+	assert.Equal(t, 1, param.GetRetry(), "switching auto groups must not reset the logical retry budget")
+}
+
+func TestRetryCandidateOrderPrefersDifferentRouteBeforeSameRoute(t *testing.T) {
+	baseA := "https://cpa-a.example"
+	baseB := "https://cpa-b.example"
+	candidates := []*model.Channel{
+		{Id: 2201, Type: constant.ChannelTypeNewAPI, BaseURL: &baseA},
+		{Id: 2202, Type: constant.ChannelTypeNewAPI, BaseURL: &baseA},
+		{Id: 2203, Type: constant.ChannelTypeNewAPI, BaseURL: &baseB},
+	}
+
+	ordered := orderRetryCandidates(candidates, 2201, channelRetryRouteKey(candidates[0]))
+	require.Len(t, ordered, 3)
+	assert.Equal(t, 2203, ordered[0].Id)
+	assert.Equal(t, 2202, ordered[1].Id)
+	assert.Equal(t, 2201, ordered[2].Id)
+}
+
+func TestCacheGetRandomSatisfiedChannelRetryPrefersAnotherRouteAndAllowsLastFallback(t *testing.T) {
+	db := setupChannelSelectAutoGroupsTest(t)
+	const modelName = "retry-route-model"
+	createChannelSelectAutoGroupsChannel(t, db, 2301, "default", modelName)
+	createChannelSelectAutoGroupsChannel(t, db, 2302, "default", modelName)
+	createChannelSelectAutoGroupsChannel(t, db, 2303, "default", modelName)
+	baseA := "https://cpa-a.example"
+	baseB := "https://cpa-b.example"
+	require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 2301).Update("base_url", baseA).Error)
+	require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 2302).Update("base_url", baseA).Error)
+	require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 2303).Update("base_url", baseB).Error)
+	model.InitChannelCache()
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	retry := 0
+	param := &RetryParam{
+		Ctx:         ctx,
+		TokenGroup:  "default",
+		ModelName:   modelName,
+		RequestPath: "/v1/chat/completions",
+		Retry:       &retry,
+	}
+	first, _, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, first)
+	param.RecordChannel(first)
+	param.IncreaseRetry()
+
+	second, _, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, second)
+	assert.NotEqual(t, first.Id, second.Id)
+	assert.NotEqual(t, channelRetryRouteKey(first), channelRetryRouteKey(second))
+
+	param.RecordChannel(second)
+	param.IncreaseRetry()
+	third, _, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, third)
+	assert.NotEqual(t, second.Id, third.Id)
+
+	param.RecordChannel(third)
+	param.IncreaseRetry()
+	fourth, _, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, fourth)
+	assert.Equal(t, third.Id, fourth.Id, "same-channel fallback must retry the most recent channel deterministically")
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,12 +26,15 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 	sessionCtx, cancel := context.WithCancel(baseCtx.Request.Context())
 	defer cancel()
 	var (
-		upstreamConn   *websocket.Conn
-		upstreamFrames <-chan responsesWebSocketFrame
-		pinnedCtx      *gin.Context
-		pinnedChannel  *model.Channel
-		sessionModel   string
-		active         *responsesWebSocketRequestState
+		upstreamConn      *websocket.Conn
+		upstreamFrames    <-chan responsesWebSocketFrame
+		pinnedCtx         *gin.Context
+		pinnedChannel     *model.Channel
+		sessionModel      string
+		active            *responsesWebSocketRequestState
+		activePayload     []byte
+		logicalAttempts   int
+		attemptedChannels map[int]bool
 	)
 	defer func() {
 		cleanupResponsesWebSocketSession(&active, &upstreamConn)
@@ -134,6 +138,9 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					sessionModel = ""
 				}
 				observability.acceptResponseCreate()
+				activePayload = append(activePayload[:0], frame.payload...)
+				logicalAttempts = 0
+				attemptedChannels = make(map[int]bool)
 
 				var outgoing []byte
 				var state *responsesWebSocketRequestState
@@ -162,6 +169,12 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				}
 
 				active = state
+				logicalAttempts = state.logicalAttempts
+				for _, rawChannelID := range state.ctx.GetStringSlice("use_channel") {
+					if channelID, parseErr := strconv.Atoi(rawChannelID); parseErr == nil {
+						attemptedChannels[channelID] = true
+					}
+				}
 				if err := writeResponsesWebSocketMessage(upstreamConn, websocket.TextMessage, outgoing); err != nil {
 					common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, "upstream write failed")
 					failResponsesWebSocketRequest(active, pinnedChannel, "upstream write failed")
@@ -192,6 +205,9 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				}
 				continue
 			}
+			if eventType == "response.cancel" {
+				active.cancelRequested = true
+			}
 			if err := writeResponsesWebSocketMessage(upstreamConn, websocket.TextMessage, frame.payload); err != nil {
 				if active != nil {
 					common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, "upstream write failed")
@@ -221,10 +237,113 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					propagateResponsesWebSocketClose(clientConn, frame.err)
 					return nil
 				}
+				capacityCode, capacityRejected := responsesWebSocketCapacityCode(frame.err)
+				if capacityRejected &&
+					!active.applicationOutputSeen &&
+					!active.cancelRequested &&
+					strings.TrimSpace(gjson.GetBytes(activePayload, "previous_response_id").String()) == "" &&
+					!responsesWebSocketHasSpecificChannel(active.ctx) &&
+					logicalAttempts <= common.RetryTimes &&
+					sessionCtx.Err() == nil &&
+					baseCtx.Request.Context().Err() == nil {
+					capacityErr := newResponsesWebSocketCapacityError(capacityCode)
+					recordResponsesWebSocketRetryFailure(active, pinnedChannel, capacityErr)
+					oldState := active
+					oldPayload := append([]byte(nil), activePayload...)
+					oldAttempts := logicalAttempts
+					oldBilling := oldState.info.Billing
+					oldRateLimit := oldState.rateLimit
+					_ = upstreamConn.Close()
+					upstreamConn = nil
+					upstreamFrames = nil
+
+					excludedRetryChannels := make(map[int]bool, len(attemptedChannels)+1)
+					for channelID := range attemptedChannels {
+						excludedRetryChannels[channelID] = true
+					}
+					if pinnedChannel != nil {
+						excludedRetryChannels[pinnedChannel.Id] = true
+					}
+					retryParam := &service.RetryParam{
+						Ctx:                oldState.ctx,
+						TokenGroup:         oldState.info.TokenGroup,
+						ModelName:          oldState.info.OriginModelName,
+						RequestPath:        baseCtx.Request.URL.Path,
+						RequireWebSockets:  true,
+						ExcludedChannelIDs: nil,
+						TriedChannelIDs:    make(map[int]bool, len(attemptedChannels)),
+						Retry:              common.GetPointer(oldAttempts),
+					}
+					for channelID := range attemptedChannels {
+						retryParam.TriedChannelIDs[channelID] = true
+					}
+					if pinnedChannel != nil {
+						retryParam.RecordChannel(pinnedChannel)
+					}
+					retryState, retryOutgoing, retryConn, retryChannel, connectMs, retryErr := prepareFirstResponsesWebSocketRequestWithBilling(baseCtx, oldPayload, connectionStarted, oldBilling, oldRateLimit, oldState.info, retryParam, excludedRetryChannels, oldAttempts)
+					if retryErr == nil {
+						active = retryState
+						logicalAttempts = retryState.logicalAttempts
+						pinnedCtx = retryState.ctx
+						pinnedChannel = retryChannel
+						useChannelHistory := append([]string(nil), oldState.ctx.GetStringSlice("use_channel")...)
+						useChannelHistory = append(useChannelHistory, retryState.ctx.GetStringSlice("use_channel")...)
+						retryState.ctx.Set("use_channel", useChannelHistory)
+						for _, rawChannelID := range retryState.ctx.GetStringSlice("use_channel") {
+							if channelID, parseErr := strconv.Atoi(rawChannelID); parseErr == nil {
+								attemptedChannels[channelID] = true
+							}
+						}
+						sessionModel = retryState.info.OriginModelName
+						upstreamConn = retryConn
+						observability.upstreamDial(common.GetContextKeyString(retryState.ctx, common.ResponsesWebSocketUpstreamTraceKey))
+						common.SetContextKey(retryState.ctx, constant.ContextKeyWebSocketUpstreamConnectMs, connectMs)
+						if err := writeResponsesWebSocketMessage(upstreamConn, websocket.TextMessage, retryOutgoing); err != nil {
+							common.SetContextKey(retryState.ctx, constant.ContextKeyWebSocketCloseReason, "upstream write failed")
+							failResponsesWebSocketRequest(retryState, retryChannel, "upstream write failed")
+							refundResponsesWebSocketBillingIfPending(baseCtx, oldBilling)
+							active = nil
+							activePayload = nil
+							logicalAttempts = 0
+							attemptedChannels = nil
+							_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, capacityErr)
+							_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInternalServerErr, "upstream capacity rejected")
+							return err
+						}
+						observability.commitUpstreamRequest()
+						common.CleanupBodyStorage(retryState.ctx)
+						upstreamFrames = startResponsesWebSocketReader(upstreamConn, sessionCtx.Done(), nil, observability, true)
+						continue
+					}
+
+					active = nil
+					activePayload = nil
+					logicalAttempts = 0
+					attemptedChannels = nil
+					refundResponsesWebSocketBillingIfPending(baseCtx, oldBilling)
+					_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, capacityErr)
+					_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInternalServerErr, "upstream capacity rejected")
+					return retryErr
+				}
+				if capacityRejected && !active.cancelRequested {
+					capacityErr := newResponsesWebSocketCapacityError(capacityCode)
+					common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, "capacity rejected")
+					failPreparedResponsesWebSocketRequest(active, pinnedChannel, capacityErr)
+					active = nil
+					activePayload = nil
+					logicalAttempts = 0
+					attemptedChannels = nil
+					_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, capacityErr)
+					_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInternalServerErr, "upstream capacity rejected")
+					return frame.err
+				}
 				observability.markFailure("upstream_disconnected")
 				common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, "upstream disconnected")
 				failResponsesWebSocketRequest(active, responsesWebSocketFailureChannel(pinnedChannel, frame.err), "upstream disconnected")
 				active = nil
+				activePayload = nil
+				logicalAttempts = 0
+				attemptedChannels = nil
 				if !isNormalResponsesWebSocketClose(frame.err) {
 					_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, types.NewError(errors.New("upstream websocket disconnected"), types.ErrorCodeDoRequestFailed))
 				}
@@ -238,7 +357,20 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			terminal := false
 			terminalActive := false
 			var usage *dto.Usage
+			framesToForward := []responsesWebSocketFrame{{messageType: frame.messageType, payload: frame.payload}}
 			if active != nil {
+				if responsesWebSocketEventAllowsCapacityRetry(frame.payload) && !active.applicationOutputSeen &&
+					len(active.pendingFrames) < responsesWebSocketPendingFrameMax &&
+					active.pendingBytes+len(frame.payload) <= responsesWebSocketPendingBytesMax {
+					active.pendingFrames = append(active.pendingFrames, framesToForward[0])
+					active.pendingBytes += len(frame.payload)
+					framesToForward = nil
+				} else {
+					active.applicationOutputSeen = true
+					framesToForward = append(append([]responsesWebSocketFrame(nil), active.pendingFrames...), framesToForward...)
+					active.pendingFrames = nil
+					active.pendingBytes = 0
+				}
 				if !active.info.HasSendResponse() {
 					active.info.SetFirstResponseTime()
 					common.SetContextKey(active.ctx, constant.ContextKeyWebSocketFirstOutputMs, active.info.FirstResponseTime.Sub(active.info.StartTime).Milliseconds())
@@ -266,9 +398,14 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					service.RecordChannelAffinity(active.ctx, pinnedChannel.Id)
 				}
 				active = nil
+				activePayload = nil
+				logicalAttempts = 0
+				attemptedChannels = nil
 			}
-			if err := writeResponsesWebSocketClientMessage(clientConn, clientCodec, frame.messageType, frame.payload); err != nil {
-				return err
+			for _, frameToForward := range framesToForward {
+				if err := writeResponsesWebSocketClientMessage(clientConn, clientCodec, frameToForward.messageType, frameToForward.payload); err != nil {
+					return err
+				}
 			}
 			if terminalActive && draining {
 				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)

@@ -27,15 +27,25 @@ import (
 )
 
 type responsesWebSocketRequestState struct {
-	ctx           *gin.Context
-	info          *relaycommon.RelayInfo
-	pricingMeta   *types.TokenCountMeta
-	tracker       *openai.ResponsesWebSocketUsageTracker
-	rateLimit     *middleware.ModelRequestRateLimitTicket
-	observability *responsesWebSocketObservability
+	ctx                   *gin.Context
+	info                  *relaycommon.RelayInfo
+	pricingMeta           *types.TokenCountMeta
+	tracker               *openai.ResponsesWebSocketUsageTracker
+	rateLimit             *middleware.ModelRequestRateLimitTicket
+	observability         *responsesWebSocketObservability
+	logicalAttempts       int
+	applicationOutputSeen bool
+	billingReused         bool
+	cancelRequested       bool
+	pendingFrames         []responsesWebSocketFrame
+	pendingBytes          int
 }
 
 func prepareResponsesWebSocketRequest(baseCtx *gin.Context, payload []byte, inheritedModel string) (*responsesWebSocketRequestState, *dto.OpenAIResponsesRequest, error) {
+	return prepareResponsesWebSocketRequestWithInheritedState(baseCtx, payload, inheritedModel, nil, nil)
+}
+
+func prepareResponsesWebSocketRequestWithInheritedState(baseCtx *gin.Context, payload []byte, inheritedModel string, inheritedRateLimit *middleware.ModelRequestRateLimitTicket, inheritedBillingInfo *relaycommon.RelayInfo) (*responsesWebSocketRequestState, *dto.OpenAIResponsesRequest, error) {
 	validationPayload, modelName, validationErr := responsesWebSocketValidationPayload(payload, inheritedModel)
 	requestPayload := validationPayload
 	if validationErr != nil {
@@ -61,7 +71,11 @@ func prepareResponsesWebSocketRequest(baseCtx *gin.Context, payload []byte, inhe
 			IsStream:        true,
 		},
 	}
-	rateLimit, rateLimitErr := middleware.TakeModelRequestRateLimit(requestCtx)
+	rateLimit := inheritedRateLimit
+	var rateLimitErr *types.NewAPIError
+	if rateLimit == nil {
+		rateLimit, rateLimitErr = middleware.TakeModelRequestRateLimit(requestCtx)
+	}
 	state.rateLimit = rateLimit
 	if rateLimitErr != nil {
 		return state, nil, rateLimitErr
@@ -88,6 +102,9 @@ func prepareResponsesWebSocketRequest(baseCtx *gin.Context, payload []byte, inhe
 	info.IsResponsesWebSocket = true
 	info.IsStream = true
 	state.info = info
+	if inheritedBillingInfo != nil {
+		inheritResponsesWebSocketBillingInfo(inheritedBillingInfo, state.info)
+	}
 
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
 	needCountToken := constant.CountToken
@@ -111,6 +128,30 @@ func prepareResponsesWebSocketRequest(baseCtx *gin.Context, payload []byte, inhe
 	return state, request, nil
 }
 
+func inheritResponsesWebSocketBillingInfo(from, to *relaycommon.RelayInfo) {
+	if from == nil || to == nil {
+		return
+	}
+	to.TokenId = from.TokenId
+	to.TokenKey = from.TokenKey
+	to.UserId = from.UserId
+	to.UserQuota = from.UserQuota
+	to.TokenUnlimited = from.TokenUnlimited
+	to.UserSetting = from.UserSetting
+	to.IsPlayground = from.IsPlayground
+	to.ForcePreConsume = from.ForcePreConsume
+	to.RequestId = from.RequestId
+	to.BillingSource = from.BillingSource
+	to.SubscriptionId = from.SubscriptionId
+	to.SubscriptionPreConsumed = from.SubscriptionPreConsumed
+	to.SubscriptionPlanId = from.SubscriptionPlanId
+	to.SubscriptionPlanTitle = from.SubscriptionPlanTitle
+	to.SubscriptionAmountTotal = from.SubscriptionAmountTotal
+	to.SubscriptionAmountUsedAfterPreConsume = from.SubscriptionAmountUsedAfterPreConsume
+	to.FinalPreConsumedQuota = from.FinalPreConsumedQuota
+	to.Billing = from.Billing
+}
+
 func prepareResponsesWebSocketBilling(state *responsesWebSocketRequestState) *types.NewAPIError {
 	priceData, err := helper.ModelPriceHelper(state.ctx, state.info, state.info.GetEstimatePromptTokens(), state.pricingMeta)
 	if err != nil {
@@ -122,6 +163,11 @@ func prepareResponsesWebSocketBilling(state *responsesWebSocketRequestState) *ty
 				return apiErr
 			}
 		} else {
+			if state.billingReused {
+				if billingSession, ok := state.info.Billing.(*service.BillingSession); ok {
+					billingSession.RebindRelayInfo(state.info)
+				}
+			}
 			if err := state.info.Billing.Reserve(priceData.QuotaToPreConsume); err != nil {
 				return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 			}

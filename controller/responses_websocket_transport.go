@@ -224,6 +224,10 @@ func propagateResponsesWebSocketClose(conn *websocket.Conn, err error) {
 	if errors.As(err, &closeErr) {
 		code = closeErr.Code
 		reason = closeErr.Text
+		if closeErr.Code == responsesWebSocketCapacityCloseCode {
+			code = websocket.CloseInternalServerErr
+			reason = "upstream websocket disconnected"
+		}
 	}
 	_ = writeResponsesWebSocketClose(conn, responsesWebSocketCloseCode(code), reason)
 }

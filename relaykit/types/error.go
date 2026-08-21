@@ -51,6 +51,7 @@ const (
 	ErrorCodeDoRequestFailed               ErrorCode = "do_request_failed"
 	ErrorCodeGetChannelFailed              ErrorCode = "get_channel_failed"
 	ErrorCodeResponsesWebSocketUnavailable ErrorCode = "responses_websocket_unavailable"
+	ErrorCodeServerIsOverloaded            ErrorCode = "server_is_overloaded"
 	ErrorCodeGenRelayInfoFailed            ErrorCode = "gen_relay_info_failed"
 
 	// channel error

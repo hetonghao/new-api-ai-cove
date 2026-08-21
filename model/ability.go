@@ -60,14 +60,17 @@ func GetAllEnableAbilities() []Ability {
 	return abilities
 }
 
-func getPriority(group string, model string, retry int) (int, error) {
+func getPriority(group string, model string, retry int, excludedChannelIDs map[int]bool) (int, error) {
+	excludedIDs := channelIDsFromMap(excludedChannelIDs)
 
-	var priorities []int
-	err := DB.Model(&Ability{}).
+	query := DB.Model(&Ability{}).
 		Select("DISTINCT(priority)").
-		Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).
-		Order("priority DESC").              // 按优先级降序排序
-		Pluck("priority", &priorities).Error // Pluck用于将查询的结果直接扫描到一个切片中
+		Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
+	if len(excludedIDs) > 0 {
+		query = query.Where("channel_id NOT IN ?", excludedIDs)
+	}
+	var priorities []int
+	err := query.Order("priority DESC").Pluck("priority", &priorities).Error // 按优先级降序排序
 
 	if err != nil {
 		// 处理错误
@@ -90,15 +93,23 @@ func getPriority(group string, model string, retry int) (int, error) {
 	return priorityToUse, nil
 }
 
-func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
+func getChannelQuery(group string, model string, retry int, excludedChannelIDs map[int]bool) (*gorm.DB, error) {
+	excludedIDs := channelIDsFromMap(excludedChannelIDs)
+	baseQuery := DB.Model(&Ability{}).Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
+	if len(excludedIDs) > 0 {
+		baseQuery = baseQuery.Where("channel_id NOT IN ?", excludedIDs)
+	}
 	maxPrioritySubQuery := DB.Model(&Ability{}).Select("MAX(priority)").Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
-	channelQuery := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = (?)", group, model, true, maxPrioritySubQuery)
+	if len(excludedIDs) > 0 {
+		maxPrioritySubQuery = maxPrioritySubQuery.Where("channel_id NOT IN ?", excludedIDs)
+	}
+	channelQuery := baseQuery.Where("priority = (?)", maxPrioritySubQuery)
 	if retry != 0 {
-		priority, err := getPriority(group, model, retry)
+		priority, err := getPriority(group, model, retry, excludedChannelIDs)
 		if err != nil {
 			return nil, err
 		} else {
-			channelQuery = DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = ?", group, model, true, priority)
+			channelQuery = baseQuery.Where("priority = ?", priority)
 		}
 	}
 
@@ -112,7 +123,7 @@ func GetChannel(group string, model string, retry int, requestPath string, requi
 	var abilities []Ability
 
 	var err error = nil
-	channelQuery, err := getChannelQuery(group, model, retry)
+	channelQuery, err := getChannelQuery(group, model, retry, excludedChannelIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -125,6 +136,7 @@ func GetChannel(group string, model string, retry int, requestPath string, requi
 		return nil, err
 	}
 	abilities = filterAbilitiesByRequestPathAndModel(abilities, requestPath, model)
+	abilities = filterAbilitiesByExcludedChannels(abilities, excludedChannelIDs)
 	channel := Channel{}
 	if len(abilities) > 0 {
 		// Randomly choose one
@@ -147,6 +159,29 @@ func GetChannel(group string, model string, retry int, requestPath string, requi
 	}
 	err = DB.First(&channel, "id = ?", channel.Id).Error
 	return &channel, err
+}
+
+func channelIDsFromMap(channelIDs map[int]bool) []int {
+	ids := make([]int, 0, len(channelIDs))
+	for id, excluded := range channelIDs {
+		if excluded {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func filterAbilitiesByExcludedChannels(abilities []Ability, excludedChannelIDs map[int]bool) []Ability {
+	if len(excludedChannelIDs) == 0 || len(abilities) == 0 {
+		return abilities
+	}
+	filtered := make([]Ability, 0, len(abilities))
+	for _, ability := range abilities {
+		if !excludedChannelIDs[ability.ChannelId] {
+			filtered = append(filtered, ability)
+		}
+	}
+	return filtered
 }
 
 func getWebSocketChannel(group string, model string, retry int, requestPath string, excludedChannelIDs map[int]bool) (*Channel, error) {
