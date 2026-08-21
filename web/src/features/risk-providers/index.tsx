@@ -16,9 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-// allow: SIZE_OK -- risk-center page boundary owns the four tabs and their shared query lifecycle.
+// allow: SIZE_OK -- risk-center page boundary owns the five tabs and their shared query lifecycle.
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -85,17 +85,6 @@ export function RiskProviders() {
   )
   const [pendingAction, setPendingAction] =
     useState<RiskProviderPendingAction | null>(null)
-  const severeRecordsTabRef = useRef<HTMLButtonElement>(null)
-
-  useEffect(() => {
-    if (activeTab === 'severe-records') {
-      severeRecordsTabRef.current?.scrollIntoView({
-        block: 'nearest',
-        inline: 'nearest',
-      })
-    }
-  }, [activeTab])
-
   const providersQuery = useQuery({
     queryKey: QUERY_KEY,
     queryFn: async () => {
@@ -205,7 +194,7 @@ export function RiskProviders() {
               }
             }}
           >
-            <TabsList className='max-w-full flex-nowrap justify-start overflow-x-auto group-data-horizontal/tabs:h-auto'>
+            <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
               <TabsTrigger
                 className='shrink-0 px-1 text-xs whitespace-nowrap sm:px-1.5 sm:text-sm'
                 value='records'
@@ -231,7 +220,6 @@ export function RiskProviders() {
                 {t('Statistics')}
               </TabsTrigger>
               <TabsTrigger
-                ref={severeRecordsTabRef}
                 className='shrink-0 px-1 text-xs whitespace-nowrap sm:px-1.5 sm:text-sm'
                 value='severe-records'
               >
