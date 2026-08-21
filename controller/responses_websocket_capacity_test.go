@@ -96,6 +96,7 @@ func TestResponsesWebSocketRetryPreparationFailureRefundsInheritedBillingOnce(t 
 		nil,
 		nil,
 		0,
+		nil,
 	)
 
 	require.Error(t, err)

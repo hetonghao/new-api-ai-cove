@@ -26,11 +26,16 @@ import (
 )
 
 func prepareFirstResponsesWebSocketRequest(baseCtx *gin.Context, payload []byte, connectionStarted time.Time) (*responsesWebSocketRequestState, []byte, *websocket.Conn, *model.Channel, int64, error) {
-	return prepareFirstResponsesWebSocketRequestWithBilling(baseCtx, payload, connectionStarted, nil, nil, nil, nil, nil, 0)
+	return prepareFirstResponsesWebSocketRequestWithBilling(baseCtx, payload, connectionStarted, nil, nil, nil, nil, nil, 0, nil)
 }
 
-func prepareFirstResponsesWebSocketRequestWithBilling(baseCtx *gin.Context, payload []byte, connectionStarted time.Time, billing relaycommon.BillingSettler, rateLimit *middleware.ModelRequestRateLimitTicket, billingInfo *relaycommon.RelayInfo, retryParam *service.RetryParam, excludedChannelIDs map[int]bool, attemptsUsed int) (*responsesWebSocketRequestState, []byte, *websocket.Conn, *model.Channel, int64, error) {
+func prepareFirstResponsesWebSocketRequestWithBilling(baseCtx *gin.Context, payload []byte, connectionStarted time.Time, billing relaycommon.BillingSettler, rateLimit *middleware.ModelRequestRateLimitTicket, billingInfo *relaycommon.RelayInfo, retryParam *service.RetryParam, excludedChannelIDs map[int]bool, attemptsUsed int, inheritedUseChannelHistory []string) (*responsesWebSocketRequestState, []byte, *websocket.Conn, *model.Channel, int64, error) {
 	state, request, err := prepareResponsesWebSocketRequestWithInheritedState(baseCtx, payload, "", rateLimit, billingInfo)
+	if state != nil && state.ctx != nil && len(inheritedUseChannelHistory) > 0 {
+		history := append([]string(nil), inheritedUseChannelHistory...)
+		history = append(history, state.ctx.GetStringSlice("use_channel")...)
+		state.ctx.Set("use_channel", history)
+	}
 	if err != nil {
 		apiErr := asResponsesWebSocketAPIError(err)
 		failPreparedResponsesWebSocketRequest(state, nil, apiErr)

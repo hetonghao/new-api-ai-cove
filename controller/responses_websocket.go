@@ -280,15 +280,12 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					if pinnedChannel != nil {
 						retryParam.RecordChannel(pinnedChannel)
 					}
-					retryState, retryOutgoing, retryConn, retryChannel, connectMs, retryErr := prepareFirstResponsesWebSocketRequestWithBilling(baseCtx, oldPayload, connectionStarted, oldBilling, oldRateLimit, oldState.info, retryParam, excludedRetryChannels, oldAttempts)
+					retryState, retryOutgoing, retryConn, retryChannel, connectMs, retryErr := prepareFirstResponsesWebSocketRequestWithBilling(baseCtx, oldPayload, connectionStarted, oldBilling, oldRateLimit, oldState.info, retryParam, excludedRetryChannels, oldAttempts, oldState.ctx.GetStringSlice("use_channel"))
 					if retryErr == nil {
 						active = retryState
 						logicalAttempts = retryState.logicalAttempts
 						pinnedCtx = retryState.ctx
 						pinnedChannel = retryChannel
-						useChannelHistory := append([]string(nil), oldState.ctx.GetStringSlice("use_channel")...)
-						useChannelHistory = append(useChannelHistory, retryState.ctx.GetStringSlice("use_channel")...)
-						retryState.ctx.Set("use_channel", useChannelHistory)
 						for _, rawChannelID := range retryState.ctx.GetStringSlice("use_channel") {
 							if channelID, parseErr := strconv.Atoi(rawChannelID); parseErr == nil {
 								attemptedChannels[channelID] = true

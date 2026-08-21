@@ -61,11 +61,19 @@ func TestResponsesWebSocket_retries_another_channel_before_first_event_is_commit
 
 func TestResponsesWebSocket_retries_valid_capacity_sideband_before_output(t *testing.T) {
 	db := setupResponsesWebSocketHandlerTest(t)
+	handshakeSent := make(chan struct{})
+	releaseCapacity := make(chan struct{})
 	primary := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
 		if _, _, err := conn.ReadMessage(); err != nil {
 			t.Errorf("read primary response.create: %v", err)
 			return
 		}
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.created","response":{"output":[],"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}`)); err != nil {
+			t.Errorf("write primary handshake: %v", err)
+			return
+		}
+		close(handshakeSent)
+		<-releaseCapacity
 		_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(responsesWebSocketCapacityCloseCode, responsesWebSocketCapacityCloseReason), time.Now().Add(time.Second))
 	})
 	backup := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
@@ -82,7 +90,18 @@ func TestResponsesWebSocket_retries_valid_capacity_sideband_before_output(t *tes
 	client := dialResponsesWebSocketTestClient(t)
 
 	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"gpt-4o-mini","input":[]}`)))
+	select {
+	case <-handshakeSent:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for primary handshake")
+	}
+	close(releaseCapacity)
 	require.Equal(t, "response.completed", gjson.GetBytes(readResponsesWebSocketTestEvent(t, client), "type").String())
+	client.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	_, _, err := client.ReadMessage()
+	if err == nil {
+		t.Fatal("unexpected duplicate event after capacity retry")
+	}
 	closeResponsesWebSocketTestClient(client)
 	require.Equal(t, int32(1), primary.connections.Load())
 	require.Equal(t, int32(1), backup.connections.Load())
