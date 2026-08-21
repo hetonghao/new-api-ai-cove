@@ -82,8 +82,10 @@ func TestPropagateResponsesWebSocketCapacityCloseMapsToStandardInternalError(t *
 }
 
 func TestResponsesWebSocketEventAllowsCapacityRetryOnlyForEmptyHandshake(t *testing.T) {
-	require.True(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"response.created","response":{"output":[],"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}`)))
+	require.True(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"response.created","response":{"output":[],"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}`)))
+	require.True(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"response.created","response":{"status":"in_progress","output":[],"usage":{"total_tokens":0}}}`)))
 	require.True(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"codex.rate_limits","rate_limits":{}}`)))
+	require.True(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"codex.response.metadata","metadata":{"provider":"codex"}}`)))
 	require.True(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"response.created","response":{"output":[],"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"input_tokens_details":{"cached_tokens":0},"audio_tokens":{"input":0}}}}`)))
 	require.False(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"response.created","response":{"output":[],"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"input_tokens_details":{"cached_tokens":2}}}}`)))
 	require.False(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"response.in_progress","usage":{"reasoning_tokens":1}}`)))
@@ -91,6 +93,39 @@ func TestResponsesWebSocketEventAllowsCapacityRetryOnlyForEmptyHandshake(t *test
 	require.False(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"response.in_progress","response":{"usage":{"input_tokens":1}}}`)))
 	require.False(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"response.output_text.delta","delta":"hello"}`)))
 	require.False(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"unknown.event"}`)))
+}
+
+func TestResponsesWebSocketCapacityRetryFailsClosedForUnknownEnvelopeFields(t *testing.T) {
+	for _, payload := range []string{
+		`{"type":"response.created","response":{"output":[],"server_tool_use":{}}}`,
+		`{"type":"response.in_progress","response":{"output":[],"computer_call":{}}}`,
+		`{"type":"response.created","unknown":0}`,
+		`{"type":"response.created","unknown":null}`,
+		`{"type":"response.created","response":{"future_field":{"value":0}}}`,
+		`{"type":"response.created","response":{"metadata":{"provider":"codex"}}}`,
+		`{"type":"codex.rate_limits","metadata":{"provider":"codex"}}`,
+		`{"type":"codex.response.metadata","rate_limits":{"remaining":0}}`,
+	} {
+		require.False(t, responsesWebSocketEventAllowsCapacityRetry([]byte(payload)), payload)
+	}
+	require.True(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"codex.rate_limits","rate_limits":{"primary":{"remaining":0}}}`)))
+}
+
+func TestResponsesWebSocketApplicationOutputFailsClosedForUnknownEnvelopeFields(t *testing.T) {
+	for _, payload := range []string{
+		`{"type":"response.failed","response":{"status":"failed","server_tool_use":{}}}`,
+		`{"type":"error","computer_call":{}}`,
+		`{"type":"response.failed","unknown":0}`,
+		`{"type":"response.failed","unknown":null}`,
+		`{"type":"response.failed","response":{"future_field":{"value":0}}}`,
+		`{"type":"response.failed","response":{"status":"pending"}}`,
+		`{"type":"response.failed","response":{"metadata":{"provider":"codex"}}}`,
+	} {
+		require.True(t, responsesWebSocketEventHasApplicationOutput([]byte(payload)), payload)
+	}
+	require.False(t, responsesWebSocketEventHasApplicationOutput([]byte(`{"type":"response.failed","response":{"status":"failed"}}`)))
+	require.False(t, responsesWebSocketEventHasApplicationOutput([]byte(`{"type":"codex.response.metadata","metadata":{"provider":"codex"}}`)))
+	require.False(t, responsesWebSocketEventHasApplicationOutput([]byte(`{"type":"codex.rate_limits","rate_limits":{"primary":{"remaining":0}}}`)))
 }
 
 func TestResponsesWebSocketCapacityCodeRejectsNonCloseErrors(t *testing.T) {

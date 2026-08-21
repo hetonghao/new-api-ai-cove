@@ -24,6 +24,11 @@ const (
 	responsesWebSocketPendingBytesMax      = 64 << 10
 )
 
+var (
+	responsesWebSocketEnvelopeFields    = strings.Fields("type sequence_number response rate_limits metadata id object created_at status background error model environment_id output output_text reasoning reasoning_content tool tools tool_calls tool_call function function_call custom_tool_call content item delta audio arguments annotations recipient state usage input_tokens output_tokens total_tokens cached_tokens reasoning_tokens audio_tokens input_tokens_details output_tokens_details audio_tokens_details reasoning_tokens_details input code message param status_code")
+	responsesWebSocketApplicationFields = strings.Fields("output output_text reasoning reasoning_content tool tools tool_calls tool_call function function_call custom_tool_call content item delta audio arguments annotations recipient usage state status status_code")
+)
+
 func responsesWebSocketCapacityCode(err error) (string, bool) {
 	var closeErr *websocket.CloseError
 	if !errors.As(err, &closeErr) || closeErr.Code != responsesWebSocketCapacityCloseCode || len(closeErr.Text) > responsesWebSocketCloseMax || !utf8.ValidString(closeErr.Text) || !strings.HasPrefix(closeErr.Text, responsesWebSocketCapacityReasonPrefix) {
@@ -118,34 +123,8 @@ func responsesWebSocketEventAllowsCapacityRetry(payload []byte) bool {
 	eventType := gjson.GetBytes(payload, "type").String()
 	switch eventType {
 	case "response.created", "response.in_progress", "codex.rate_limits", "codex.response.metadata":
-		for _, path := range []string{
-			"response.output",
-			"response.output_text",
-			"response.reasoning",
-			"response.tool_calls",
-			"response.tool_call",
-			"response.function_call",
-			"response.content",
-			"response.item",
-			"output",
-			"tool",
-			"tool_calls",
-			"function_call",
-			"arguments",
-			"item",
-			"delta",
-			"audio",
-		} {
-			if responsesWebSocketJSONValueNonEmpty(payload, path) {
-				return false
-			}
-		}
-		for _, path := range []string{"response.usage", "usage"} {
-			if responsesWebSocketJSONValueNonZero(gjson.GetBytes(payload, path)) {
-				return false
-			}
-		}
-		return true
+		hasOutput, unknown := responsesWebSocketInspectEnvelope(payload, false)
+		return !hasOutput && !unknown
 	default:
 		return false
 	}
@@ -161,30 +140,98 @@ func responsesWebSocketTerminalErrorEvent(payload []byte) bool {
 }
 
 func responsesWebSocketEventHasApplicationOutput(payload []byte) bool {
-	for _, path := range []string{
-		"response.output",
-		"response.output_text",
-		"response.reasoning",
-		"response.tool_calls",
-		"response.tool_call",
-		"response.content",
-		"response.item",
-		"response.function_call",
-		"output",
-		"tool",
-		"tool_calls",
-		"function_call",
-		"arguments",
-		"item",
-		"delta",
-		"audio",
-	} {
-		if responsesWebSocketJSONValueNonEmpty(payload, path) {
-			return true
+	hasOutput, unknown := responsesWebSocketInspectEnvelope(payload, responsesWebSocketTerminalErrorEvent(payload))
+	return hasOutput || unknown
+}
+
+func responsesWebSocketInspectEnvelope(payload []byte, terminal bool) (bool, bool) {
+	if len(payload) == 0 || !gjson.ValidBytes(payload) {
+		return true, true
+	}
+	root := gjson.ParseBytes(payload)
+	if !root.IsObject() {
+		return true, true
+	}
+	opaqueField := ""
+	switch strings.TrimSpace(gjson.GetBytes(payload, "type").String()) {
+	case "codex.rate_limits":
+		opaqueField = "rate_limits"
+	case "codex.response.metadata":
+		opaqueField = "metadata"
+	}
+	return responsesWebSocketInspectEnvelopeValue(root, "", terminal, opaqueField)
+}
+
+func responsesWebSocketInspectEnvelopeValue(value gjson.Result, field string, terminal bool, opaqueField string) (bool, bool) {
+	field = strings.ToLower(strings.TrimSpace(field))
+	if field != "" {
+		if field == opaqueField {
+			return false, false
+		}
+		if !responsesWebSocketFieldIn(responsesWebSocketEnvelopeFields, field) {
+			return true, true
 		}
 	}
-	for _, path := range []string{"response.usage", "usage"} {
-		if responsesWebSocketJSONValueNonZero(gjson.GetBytes(payload, path)) {
+	if !value.Exists() || value.Type == gjson.Null {
+		return false, false
+	}
+	hasOutput := responsesWebSocketApplicationValue(value, field, terminal)
+	var unknown bool
+	if value.IsObject() {
+		value.ForEach(func(key, child gjson.Result) bool {
+			childOutput, childUnknown := responsesWebSocketInspectEnvelopeValue(child, key.String(), terminal, opaqueField)
+			hasOutput = hasOutput || childOutput
+			unknown = unknown || childUnknown
+			return !unknown
+		})
+	} else if value.IsArray() {
+		for _, child := range value.Array() {
+			childOutput, childUnknown := responsesWebSocketInspectEnvelopeValue(child, field, terminal, opaqueField)
+			hasOutput = hasOutput || childOutput
+			unknown = unknown || childUnknown
+			if unknown {
+				break
+			}
+		}
+	}
+	return hasOutput, unknown
+}
+
+func responsesWebSocketApplicationValue(value gjson.Result, field string, terminal bool) bool {
+	if !responsesWebSocketFieldIn(responsesWebSocketApplicationFields, field) {
+		return false
+	}
+	switch field {
+	case "usage":
+		return responsesWebSocketJSONValueNonZero(value)
+	case "status", "status_code":
+		if terminal {
+			if value.Type == gjson.Number {
+				code := value.Int()
+				return code < http.StatusBadRequest || code > 599
+			}
+			if value.Type == gjson.String {
+				state := strings.ToLower(strings.TrimSpace(value.String()))
+				return state != "failed" && state != "error" && state != "cancelled" && state != "canceled"
+			}
+		} else if value.Type == gjson.String && strings.EqualFold(strings.TrimSpace(value.String()), "in_progress") {
+			return false
+		}
+	case "state":
+		if value.Type == gjson.String {
+			state := strings.ToLower(strings.TrimSpace(value.String()))
+			if terminal {
+				return state != "failed" && state != "error" && state != "cancelled" && state != "canceled"
+			}
+			return state != "" && state != "in_progress"
+		}
+	}
+	return responsesWebSocketJSONValueNonEmptyResult(value)
+}
+
+func responsesWebSocketFieldIn(fields []string, field string) bool {
+	for _, known := range fields {
+		if known == field {
 			return true
 		}
 	}
@@ -229,8 +276,7 @@ func responsesWebSocketJSONValueNonZero(value gjson.Result) bool {
 	}
 }
 
-func responsesWebSocketJSONValueNonEmpty(payload []byte, path string) bool {
-	value := gjson.GetBytes(payload, path)
+func responsesWebSocketJSONValueNonEmptyResult(value gjson.Result) bool {
 	if !value.Exists() {
 		return false
 	}
@@ -242,6 +288,12 @@ func responsesWebSocketJSONValueNonEmpty(payload []byte, path string) bool {
 	}
 	if value.Type == gjson.String {
 		return strings.TrimSpace(value.String()) != ""
+	}
+	if value.Type == gjson.True {
+		return true
+	}
+	if value.Type == gjson.False {
+		return false
 	}
 	return value.Num != 0
 }
