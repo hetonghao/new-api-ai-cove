@@ -35,6 +35,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 		activePayload     []byte
 		logicalAttempts   int
 		attemptedChannels map[int]bool
+		capacityEvidence  string
 	)
 	defer func() {
 		cleanupResponsesWebSocketSession(&active, &upstreamConn)
@@ -141,6 +142,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				activePayload = append(activePayload[:0], frame.payload...)
 				logicalAttempts = 0
 				attemptedChannels = make(map[int]bool)
+				capacityEvidence = ""
 
 				var outgoing []byte
 				var state *responsesWebSocketRequestState
@@ -208,6 +210,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			if eventType == "response.cancel" {
 				active.cancelRequested = true
 			}
+			active.replayDisallowed = true
 			if err := writeResponsesWebSocketMessage(upstreamConn, websocket.TextMessage, frame.payload); err != nil {
 				if active != nil {
 					common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, "upstream write failed")
@@ -237,10 +240,26 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					propagateResponsesWebSocketClose(clientConn, frame.err)
 					return nil
 				}
+				if draining {
+					common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, responsesWebSocketDrainReason)
+					failPreparedResponsesWebSocketRequest(active, pinnedChannel, nil)
+					refundResponsesWebSocketBillingIfPending(baseCtx, active.info.Billing)
+					active = nil
+					activePayload = nil
+					logicalAttempts = 0
+					attemptedChannels = nil
+					capacityEvidence = ""
+					_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
+					return nil
+				}
 				capacityCode, capacityRejected := responsesWebSocketCapacityCode(frame.err)
-				if capacityRejected &&
+				if capacityRejected {
+					capacityEvidence = mergeResponsesWebSocketCapacityCode(capacityEvidence, capacityCode)
+				}
+				if capacityRejected && !draining &&
 					!active.applicationOutputSeen &&
 					!active.cancelRequested &&
+					!active.replayDisallowed &&
 					strings.TrimSpace(gjson.GetBytes(activePayload, "previous_response_id").String()) == "" &&
 					!responsesWebSocketHasSpecificChannel(active.ctx) &&
 					logicalAttempts <= common.RetryTimes &&
@@ -280,7 +299,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					if pinnedChannel != nil {
 						retryParam.RecordChannel(pinnedChannel)
 					}
-					retryState, retryOutgoing, retryConn, retryChannel, connectMs, retryErr := prepareFirstResponsesWebSocketRequestWithBilling(baseCtx, oldPayload, connectionStarted, oldBilling, oldRateLimit, oldState.info, retryParam, excludedRetryChannels, oldAttempts, oldState.ctx.GetStringSlice("use_channel"))
+					retryState, retryOutgoing, retryConn, retryChannel, connectMs, retryErr := prepareFirstResponsesWebSocketRequestWithBilling(baseCtx, oldPayload, connectionStarted, oldBilling, oldRateLimit, oldState.info, retryParam, excludedRetryChannels, oldAttempts, oldState.ctx.GetStringSlice("use_channel"), false)
 					if retryErr == nil {
 						active = retryState
 						logicalAttempts = retryState.logicalAttempts
@@ -303,11 +322,12 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 							activePayload = nil
 							logicalAttempts = 0
 							attemptedChannels = nil
-							_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, capacityErr)
+							_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, newResponsesWebSocketCapacityError(capacityEvidence))
 							_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInternalServerErr, "upstream capacity rejected")
 							return err
 						}
 						observability.commitUpstreamRequest()
+						common.CleanupBodyStorage(oldState.ctx)
 						common.CleanupBodyStorage(retryState.ctx)
 						upstreamFrames = startResponsesWebSocketReader(upstreamConn, sessionCtx.Done(), nil, observability, true)
 						continue
@@ -318,9 +338,11 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					logicalAttempts = 0
 					attemptedChannels = nil
 					refundResponsesWebSocketBillingIfPending(baseCtx, oldBilling)
-					_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, capacityErr)
+					retryAPIError := asResponsesWebSocketAPIError(retryErr)
+					finalErr := responsesWebSocketCapacityFallbackError(capacityEvidence, retryAPIError)
+					_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, finalErr)
 					_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInternalServerErr, "upstream capacity rejected")
-					return retryErr
+					return finalErr
 				}
 				if capacityRejected && !active.cancelRequested {
 					capacityErr := newResponsesWebSocketCapacityError(capacityCode)
@@ -330,19 +352,33 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					activePayload = nil
 					logicalAttempts = 0
 					attemptedChannels = nil
+					capacityEvidence = ""
 					_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, capacityErr)
 					_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInternalServerErr, "upstream capacity rejected")
 					return frame.err
 				}
 				observability.markFailure("upstream_disconnected")
 				common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, "upstream disconnected")
+				finalCapacityCode := ""
+				if !active.applicationOutputSeen && !active.cancelRequested {
+					finalCapacityCode = capacityEvidence
+				}
 				failResponsesWebSocketRequest(active, responsesWebSocketFailureChannel(pinnedChannel, frame.err), "upstream disconnected")
 				active = nil
 				activePayload = nil
 				logicalAttempts = 0
 				attemptedChannels = nil
+				capacityEvidence = ""
+				if finalCapacityCode != "" {
+					capacityErr := newResponsesWebSocketCapacityError(finalCapacityCode)
+					_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, capacityErr)
+					_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInternalServerErr, "upstream capacity rejected")
+					return frame.err
+				}
 				if !isNormalResponsesWebSocketClose(frame.err) {
-					_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, types.NewError(errors.New("upstream websocket disconnected"), types.ErrorCodeDoRequestFailed))
+					fallbackErr := types.NewError(errors.New("upstream websocket disconnected"), types.ErrorCodeDoRequestFailed)
+					finalErr := responsesWebSocketCapacityFallbackError(finalCapacityCode, fallbackErr)
+					_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, finalErr)
 				}
 				propagateResponsesWebSocketClose(clientConn, frame.err)
 				if isNormalResponsesWebSocketClose(frame.err) {
@@ -354,6 +390,20 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			terminal := false
 			terminalActive := false
 			var usage *dto.Usage
+			if active != nil && capacityEvidence != "" && responsesWebSocketTerminalErrorEvent(frame.payload) &&
+				!active.applicationOutputSeen && !active.cancelRequested && !responsesWebSocketEventHasApplicationOutput(frame.payload) {
+				capacityErr := newResponsesWebSocketCapacityError(capacityEvidence)
+				common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, "capacity rejected")
+				failPreparedResponsesWebSocketRequest(active, pinnedChannel, capacityErr)
+				active = nil
+				activePayload = nil
+				logicalAttempts = 0
+				attemptedChannels = nil
+				capacityEvidence = ""
+				_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, capacityErr)
+				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInternalServerErr, "upstream capacity rejected")
+				return nil
+			}
 			framesToForward := []responsesWebSocketFrame{{messageType: frame.messageType, payload: frame.payload}}
 			if active != nil {
 				if responsesWebSocketEventAllowsCapacityRetry(frame.payload) && !active.applicationOutputSeen &&
@@ -398,6 +448,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				activePayload = nil
 				logicalAttempts = 0
 				attemptedChannels = nil
+				capacityEvidence = ""
 			}
 			for _, frameToForward := range framesToForward {
 				if err := writeResponsesWebSocketClientMessage(clientConn, clientCodec, frameToForward.messageType, frameToForward.payload); err != nil {

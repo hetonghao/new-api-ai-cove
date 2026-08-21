@@ -75,6 +75,19 @@ func orderRetryCandidates(candidates []*model.Channel, lastChannelID int, lastRo
 		return append([]*model.Channel(nil), candidates...)
 	}
 	ordered := make([]*model.Channel, 0, len(candidates))
+	if lastRoute == "" {
+		for _, candidate := range candidates {
+			if candidate.Id != lastChannelID {
+				ordered = append(ordered, candidate)
+			}
+		}
+		for _, candidate := range candidates {
+			if candidate.Id == lastChannelID {
+				ordered = append(ordered, candidate)
+			}
+		}
+		return ordered
+	}
 	appendMatching := func(match func(*model.Channel) bool) {
 		for _, candidate := range candidates {
 			if match(candidate) {
@@ -137,7 +150,7 @@ func collectRetryCandidates(param *RetryParam, group string) ([]*model.Channel, 
 	}
 }
 
-func selectRetryChannel(param *RetryParam, group string, priorityRetry int) (*model.Channel, error) {
+func selectRetryChannel(param *RetryParam, group string, priorityRetry int, allowSameChannelFallback bool) (*model.Channel, error) {
 	if len(param.TriedChannelIDs) == 0 {
 		return model.GetRandomSatisfiedChannel(group, param.ModelName, priorityRetry, param.RequestPath, param.RequireWebSockets, param.ExcludedChannelIDs)
 	}
@@ -148,6 +161,9 @@ func selectRetryChannel(param *RetryParam, group string, priorityRetry int) (*mo
 	if len(candidates) > 0 {
 		ordered := orderRetryCandidates(candidates, param.LastChannelID, param.LastChannelRoute)
 		return ordered[0], nil
+	}
+	if !allowSameChannelFallback {
+		return nil, nil
 	}
 	// No unused candidate remains. Retry the most recent channel as the last bucket.
 	if param.LastChannelID != 0 {
@@ -170,6 +186,24 @@ func selectRetryChannel(param *RetryParam, group string, priorityRetry int) (*mo
 		}
 	}
 	return model.GetRandomSatisfiedChannel(group, param.ModelName, priorityRetry, param.RequestPath, param.RequireWebSockets, param.ExcludedChannelIDs)
+}
+
+func selectLastChannelFallbackInGroups(param *RetryParam, groups []string) (*model.Channel, string, error) {
+	if param.LastChannelID == 0 || param.ExcludedChannelIDs[param.LastChannelID] {
+		return nil, "", nil
+	}
+	excluded := retryExcludedChannelIDs(param)
+	delete(excluded, param.LastChannelID)
+	for _, group := range groups {
+		channel, err := model.GetRandomSatisfiedChannel(group, param.ModelName, 0, param.RequestPath, param.RequireWebSockets, excluded)
+		if err != nil {
+			return nil, group, err
+		}
+		if channel != nil && channel.Id == param.LastChannelID {
+			return channel, group, nil
+		}
+	}
+	return nil, "", nil
 }
 
 // CacheGetRandomSatisfiedChannel tries to get a random channel that satisfies the requirements.
@@ -242,7 +276,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, priorityRetry: %d", autoGroup, priorityRetry)
 
-			channel, err = selectRetryChannel(param, autoGroup, priorityRetry)
+			channel, err = selectRetryChannel(param, autoGroup, priorityRetry, !crossGroupRetry)
 			if err != nil {
 				return nil, selectGroup, err
 			}
@@ -276,8 +310,17 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			break
 		}
+		if channel == nil && crossGroupRetry {
+			channel, selectGroup, err = selectLastChannelFallbackInGroups(param, autoGroups)
+			if err != nil {
+				return nil, selectGroup, err
+			}
+			if channel != nil {
+				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroup, selectGroup)
+			}
+		}
 	} else {
-		channel, err = selectRetryChannel(param, param.TokenGroup, param.GetRetry())
+		channel, err = selectRetryChannel(param, param.TokenGroup, param.GetRetry(), true)
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}

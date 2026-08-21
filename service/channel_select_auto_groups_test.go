@@ -158,6 +158,45 @@ func TestCacheGetRandomSatisfiedChannelPreservesGlobalRetryBudgetOnGroupSwitch(t
 	assert.Equal(t, 1, param.GetRetry(), "switching auto groups must not reset the logical retry budget")
 }
 
+func TestCacheGetRandomSatisfiedChannelCrossGroupPrefersNextGroupBeforeSameChannelFallback(t *testing.T) {
+	db := setupChannelSelectAutoGroupsTest(t)
+	common.RetryTimes = 2
+	const modelName = "cross-group-fallback-model"
+	createChannelSelectAutoGroupsChannel(t, db, 2121, "default", modelName)
+	createChannelSelectAutoGroupsChannel(t, db, 2122, "vip", modelName)
+	model.InitChannelCache()
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"default", "vip"})
+	common.SetContextKey(ctx, constant.ContextKeyTokenCrossGroupRetry, true)
+
+	retry := 0
+	param := &RetryParam{Ctx: ctx, TokenGroup: "auto", ModelName: modelName, RequestPath: "/v1/chat/completions", Retry: &retry}
+	first, selectedGroup, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, first)
+	assert.Equal(t, 2121, first.Id)
+	assert.Equal(t, "default", selectedGroup)
+
+	param.RecordChannel(first)
+	param.IncreaseRetry()
+	second, selectedGroup, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, second)
+	assert.Equal(t, 2122, second.Id, "cross-group retry must advance before same-channel fallback")
+	assert.Equal(t, "vip", selectedGroup)
+
+	param.RecordChannel(second)
+	param.IncreaseRetry()
+	third, selectedGroup, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, third)
+	assert.Equal(t, 2122, third.Id, "same-channel fallback is allowed after all groups are exhausted")
+	assert.Equal(t, "vip", selectedGroup)
+}
+
 func TestRetryCandidateOrderPrefersDifferentRouteBeforeSameRoute(t *testing.T) {
 	baseA := "https://cpa-a.example"
 	baseB := "https://cpa-b.example"
@@ -172,6 +211,15 @@ func TestRetryCandidateOrderPrefersDifferentRouteBeforeSameRoute(t *testing.T) {
 	assert.Equal(t, 2203, ordered[0].Id)
 	assert.Equal(t, 2202, ordered[1].Id)
 	assert.Equal(t, 2201, ordered[2].Id)
+}
+
+func TestRetryCandidateOrderKeepsUnknownRouteLastChannelAsFinalFallback(t *testing.T) {
+	candidates := []*model.Channel{{Id: 2211}, {Id: 2212}, {Id: 2213}}
+	ordered := orderRetryCandidates(candidates, 2211, "")
+	require.Len(t, ordered, 3)
+	assert.Equal(t, 2212, ordered[0].Id)
+	assert.Equal(t, 2213, ordered[1].Id)
+	assert.Equal(t, 2211, ordered[2].Id)
 }
 
 func TestCacheGetRandomSatisfiedChannelRetryPrefersAnotherRouteAndAllowsLastFallback(t *testing.T) {

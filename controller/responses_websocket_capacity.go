@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -48,6 +49,62 @@ func newResponsesWebSocketCapacityError(code string) *types.NewAPIError {
 	)
 }
 
+func mergeResponsesWebSocketCapacityCode(current, candidate string) string {
+	if candidate == "" {
+		return current
+	}
+	if current == "" || responsesWebSocketCapacityCodeRank(candidate) > responsesWebSocketCapacityCodeRank(current) {
+		return candidate
+	}
+	return current
+}
+
+func responsesWebSocketCapacityFallbackError(code string, fallback *types.NewAPIError) *types.NewAPIError {
+	if fallback != nil && responsesWebSocketIsClientRequestError(fallback) {
+		return fallback
+	}
+	if code != "" {
+		return newResponsesWebSocketCapacityError(code)
+	}
+	return fallback
+}
+
+func responsesWebSocketIsClientRequestError(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	if err.StatusCode >= 400 && err.StatusCode < 500 {
+		return true
+	}
+	switch err.GetErrorCode() {
+	case types.ErrorCodeInvalidRequest,
+		types.ErrorCodeAccessDenied,
+		types.ErrorCodeReadRequestBodyFailed,
+		types.ErrorCodeBadRequestBody,
+		types.ErrorCodeConvertRequestFailed,
+		types.ErrorCodeSensitiveWordsDetected,
+		types.ErrorCodeContentPolicyViolation,
+		types.ErrorCodeInsufficientUserQuota,
+		types.ErrorCodePreConsumeTokenQuotaFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+func responsesWebSocketCapacityCodeRank(code string) int {
+	switch code {
+	case "server_is_overloaded":
+		return 3
+	case "model_capacity":
+		return 2
+	case "slow_down":
+		return 1
+	default:
+		return 0
+	}
+}
+
 func responsesWebSocketHasSpecificChannel(c *gin.Context) bool {
 	if c == nil {
 		return false
@@ -66,26 +123,106 @@ func responsesWebSocketEventAllowsCapacityRetry(payload []byte) bool {
 			"response.reasoning",
 			"response.tool_calls",
 			"response.tool_call",
+			"response.function_call",
 			"response.content",
 			"response.item",
 			"output",
+			"tool",
+			"tool_calls",
+			"function_call",
+			"arguments",
 			"item",
 			"delta",
+			"audio",
 		} {
 			if responsesWebSocketJSONValueNonEmpty(payload, path) {
 				return false
 			}
 		}
-		for _, path := range []string{
-			"response.usage.input_tokens",
-			"response.usage.output_tokens",
-			"response.usage.total_tokens",
-		} {
-			if gjson.GetBytes(payload, path).Int() > 0 {
+		for _, path := range []string{"response.usage", "usage"} {
+			if responsesWebSocketJSONValueNonZero(gjson.GetBytes(payload, path)) {
 				return false
 			}
 		}
 		return true
+	default:
+		return false
+	}
+}
+
+func responsesWebSocketTerminalErrorEvent(payload []byte) bool {
+	switch gjson.GetBytes(payload, "type").String() {
+	case "response.failed", "response.incomplete", "response.cancelled", "response.canceled", "error":
+		return true
+	default:
+		return false
+	}
+}
+
+func responsesWebSocketEventHasApplicationOutput(payload []byte) bool {
+	for _, path := range []string{
+		"response.output",
+		"response.output_text",
+		"response.reasoning",
+		"response.tool_calls",
+		"response.tool_call",
+		"response.content",
+		"response.item",
+		"response.function_call",
+		"output",
+		"tool",
+		"tool_calls",
+		"function_call",
+		"arguments",
+		"item",
+		"delta",
+		"audio",
+	} {
+		if responsesWebSocketJSONValueNonEmpty(payload, path) {
+			return true
+		}
+	}
+	for _, path := range []string{"response.usage", "usage"} {
+		if responsesWebSocketJSONValueNonZero(gjson.GetBytes(payload, path)) {
+			return true
+		}
+	}
+	return false
+}
+
+func responsesWebSocketJSONValueNonZero(value gjson.Result) bool {
+	if !value.Exists() {
+		return false
+	}
+	if value.IsArray() {
+		for _, item := range value.Array() {
+			if responsesWebSocketJSONValueNonZero(item) {
+				return true
+			}
+		}
+		return false
+	}
+	switch value.Type {
+	case gjson.Number:
+		return value.Num != 0
+	case gjson.String:
+		raw := strings.TrimSpace(value.String())
+		if raw == "" || raw == "0" {
+			return false
+		}
+		parsed, err := strconv.ParseFloat(raw, 64)
+		return err != nil || parsed != 0
+	case gjson.True:
+		return value.Bool()
+	case gjson.False:
+		return false
+	case gjson.JSON:
+		nonZero := false
+		value.ForEach(func(_, item gjson.Result) bool {
+			nonZero = responsesWebSocketJSONValueNonZero(item)
+			return !nonZero
+		})
+		return nonZero
 	default:
 		return false
 	}

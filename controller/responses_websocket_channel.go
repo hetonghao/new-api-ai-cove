@@ -26,10 +26,10 @@ import (
 )
 
 func prepareFirstResponsesWebSocketRequest(baseCtx *gin.Context, payload []byte, connectionStarted time.Time) (*responsesWebSocketRequestState, []byte, *websocket.Conn, *model.Channel, int64, error) {
-	return prepareFirstResponsesWebSocketRequestWithBilling(baseCtx, payload, connectionStarted, nil, nil, nil, nil, nil, 0, nil)
+	return prepareFirstResponsesWebSocketRequestWithBilling(baseCtx, payload, connectionStarted, nil, nil, nil, nil, nil, 0, nil, true)
 }
 
-func prepareFirstResponsesWebSocketRequestWithBilling(baseCtx *gin.Context, payload []byte, connectionStarted time.Time, billing relaycommon.BillingSettler, rateLimit *middleware.ModelRequestRateLimitTicket, billingInfo *relaycommon.RelayInfo, retryParam *service.RetryParam, excludedChannelIDs map[int]bool, attemptsUsed int, inheritedUseChannelHistory []string) (*responsesWebSocketRequestState, []byte, *websocket.Conn, *model.Channel, int64, error) {
+func prepareFirstResponsesWebSocketRequestWithBilling(baseCtx *gin.Context, payload []byte, connectionStarted time.Time, billing relaycommon.BillingSettler, rateLimit *middleware.ModelRequestRateLimitTicket, billingInfo *relaycommon.RelayInfo, retryParam *service.RetryParam, excludedChannelIDs map[int]bool, attemptsUsed int, inheritedUseChannelHistory []string, refundOnFailure bool) (*responsesWebSocketRequestState, []byte, *websocket.Conn, *model.Channel, int64, error) {
 	state, request, err := prepareResponsesWebSocketRequestWithInheritedState(baseCtx, payload, "", rateLimit, billingInfo)
 	if state != nil && state.ctx != nil && len(inheritedUseChannelHistory) > 0 {
 		history := append([]string(nil), inheritedUseChannelHistory...)
@@ -38,8 +38,12 @@ func prepareFirstResponsesWebSocketRequestWithBilling(baseCtx *gin.Context, payl
 	}
 	if err != nil {
 		apiErr := asResponsesWebSocketAPIError(err)
-		failPreparedResponsesWebSocketRequest(state, nil, apiErr)
-		refundResponsesWebSocketBillingIfPending(baseCtx, billing)
+		if refundOnFailure {
+			failPreparedResponsesWebSocketRequest(state, nil, apiErr)
+			refundResponsesWebSocketBillingIfPending(baseCtx, billing)
+		} else {
+			failIntermediateResponsesWebSocketRequest(state, nil, apiErr)
+		}
 		return state, nil, nil, nil, 0, apiErr
 	}
 	state.info.Billing = billing
@@ -73,7 +77,11 @@ func prepareFirstResponsesWebSocketRequestWithBilling(baseCtx *gin.Context, payl
 			selectedChannel, selectErr = selectResponsesWebSocketChannel(state.ctx, state.info, excluded)
 		}
 		if selectErr != nil {
-			failPreparedResponsesWebSocketRequest(state, nil, selectErr)
+			if refundOnFailure {
+				failPreparedResponsesWebSocketRequest(state, nil, selectErr)
+			} else {
+				failIntermediateResponsesWebSocketRequest(state, nil, selectErr)
+			}
 			return state, nil, nil, nil, 0, selectErr
 		}
 		if retryParam != nil {
@@ -81,14 +89,22 @@ func prepareFirstResponsesWebSocketRequestWithBilling(baseCtx *gin.Context, payl
 		}
 		addUsedChannel(state.ctx, selectedChannel.Id)
 		if billingErr := prepareResponsesWebSocketBilling(state); billingErr != nil {
-			failPreparedResponsesWebSocketRequest(state, nil, billingErr)
+			if refundOnFailure {
+				failPreparedResponsesWebSocketRequest(state, nil, billingErr)
+			} else {
+				failIntermediateResponsesWebSocketRequest(state, selectedChannel, billingErr)
+			}
 			return state, nil, nil, selectedChannel, 0, billingErr
 		}
 		state.info.InitChannelMeta(state.ctx)
 
 		outgoing, adaptor, payloadErr := prepareResponsesWebSocketPayload(state.ctx, state.info, request, payload)
 		if payloadErr != nil {
-			failPreparedResponsesWebSocketRequest(state, selectedChannel, payloadErr)
+			if refundOnFailure {
+				failPreparedResponsesWebSocketRequest(state, selectedChannel, payloadErr)
+			} else {
+				failIntermediateResponsesWebSocketRequest(state, selectedChannel, payloadErr)
+			}
 			return state, nil, nil, selectedChannel, 0, payloadErr
 		}
 
@@ -121,7 +137,11 @@ func prepareFirstResponsesWebSocketRequestWithBilling(baseCtx *gin.Context, payl
 			_ = target.Close()
 		}
 		if !shouldRetry(state.ctx, dialErr, common.RetryTimes-attempt) {
-			failPreparedResponsesWebSocketRequest(state, nil, dialErr)
+			if refundOnFailure {
+				failPreparedResponsesWebSocketRequest(state, nil, dialErr)
+			} else {
+				failIntermediateResponsesWebSocketRequest(state, selectedChannel, dialErr)
+			}
 			return state, nil, nil, selectedChannel, 0, dialErr
 		}
 		if retryParam != nil {
@@ -130,7 +150,11 @@ func prepareFirstResponsesWebSocketRequestWithBilling(baseCtx *gin.Context, payl
 	}
 
 	apiErr := types.NewError(errors.New("no available Responses WebSocket channel"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
-	failPreparedResponsesWebSocketRequest(state, nil, apiErr)
+	if refundOnFailure {
+		failPreparedResponsesWebSocketRequest(state, nil, apiErr)
+	} else {
+		failIntermediateResponsesWebSocketRequest(state, nil, apiErr)
+	}
 	return state, nil, nil, nil, 0, apiErr
 }
 

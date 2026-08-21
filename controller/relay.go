@@ -61,18 +61,79 @@ func recordRelayAttemptError(c *gin.Context, err *types.NewAPIError) {
 	c.Set(relayAttemptErrorsKey, history)
 }
 
-func preserveCapacityAttemptError(c *gin.Context, err *types.NewAPIError) *types.NewAPIError {
-	if err == nil || string(err.GetErrorCode()) != "auth_unavailable" {
+func preserveCapacityAttemptError(c *gin.Context, relayFormat types.RelayFormat, err *types.NewAPIError) *types.NewAPIError {
+	if !relayFormatSupportsCapacityEvidence(relayFormat) || err == nil || !relayErrorCanBeReplacedByCapacity(err) {
 		return err
 	}
 	records, _ := c.Get(relayAttemptErrorsKey)
 	history, _ := records.([]relayAttemptErrorRecord)
 	for _, record := range history {
-		if record.err != nil && record.err.GetErrorCode() == types.ErrorCodeServerIsOverloaded {
+		if record.err != nil && isRelayCapacityError(record.err) {
 			return record.err
 		}
 	}
 	return err
+}
+
+func relayFormatSupportsCapacityEvidence(format types.RelayFormat) bool {
+	switch format {
+	case types.RelayFormatOpenAI, types.RelayFormatOpenAIResponses, types.RelayFormatOpenAIResponsesCompaction, types.RelayFormatOpenAIAlphaSearch:
+		return true
+	default:
+		return false
+	}
+}
+
+func isRelayCapacityErrorCode(code types.ErrorCode) bool {
+	switch code {
+	case types.ErrorCodeServerIsOverloaded, types.ErrorCodeModelCapacity, types.ErrorCodeSlowDown:
+		return true
+	default:
+		return false
+	}
+}
+
+func isRelayCapacityError(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	if isRelayCapacityErrorCode(err.GetErrorCode()) {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(err.Error()), "Our servers are currently overloaded")
+}
+
+func relayErrorCanBeReplacedByCapacity(err *types.NewAPIError) bool {
+	if err == nil || relayErrorIsClientRequestError(err) {
+		return false
+	}
+	if err.GetErrorCode() == types.ErrorCodeAuthUnavailable || err.GetErrorCode() == types.ErrorCodeDoRequestFailed || err.GetErrorCode() == types.ErrorCodeGetChannelFailed {
+		return true
+	}
+	return err.StatusCode >= 500 && err.StatusCode <= 599
+}
+
+func relayErrorIsClientRequestError(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	if err.StatusCode >= 400 && err.StatusCode < 500 {
+		return true
+	}
+	switch err.GetErrorCode() {
+	case types.ErrorCodeInvalidRequest,
+		types.ErrorCodeAccessDenied,
+		types.ErrorCodeReadRequestBodyFailed,
+		types.ErrorCodeBadRequestBody,
+		types.ErrorCodeConvertRequestFailed,
+		types.ErrorCodeSensitiveWordsDetected,
+		types.ErrorCodeContentPolicyViolation,
+		types.ErrorCodeInsufficientUserQuota,
+		types.ErrorCodePreConsumeTokenQuotaFailed:
+		return true
+	default:
+		return false
+	}
 }
 
 func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
@@ -306,7 +367,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			break
 		}
 	}
-	newAPIError = preserveCapacityAttemptError(c, newAPIError)
+	newAPIError = preserveCapacityAttemptError(c, relayFormat, newAPIError)
 
 	useChannel := c.GetStringSlice("use_channel")
 	if len(useChannel) > 1 {
@@ -403,13 +464,13 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		return false
 	}
+	if retryTimes <= 0 {
+		return false
+	}
 	if types.IsChannelError(openaiErr) {
 		return true
 	}
 	if types.IsSkipRetryError(openaiErr) {
-		return false
-	}
-	if retryTimes <= 0 {
 		return false
 	}
 	if _, ok := c.Get("specific_channel_id"); ok {

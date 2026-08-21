@@ -120,6 +120,14 @@ func refundResponsesWebSocketBillingIfPending(ctx *gin.Context, billing relaycom
 	billing.Refund(ctx)
 }
 
+func failIntermediateResponsesWebSocketRequest(state *responsesWebSocketRequestState, channel *model.Channel, apiErr *types.NewAPIError) {
+	if state == nil {
+		return
+	}
+	recordResponsesWebSocketRetryFailure(state, channel, apiErr)
+	common.CleanupBodyStorage(state.ctx)
+}
+
 func asResponsesWebSocketAPIError(err error) *types.NewAPIError {
 	var apiErr *types.NewAPIError
 	if errors.As(err, &apiErr) && apiErr != nil {

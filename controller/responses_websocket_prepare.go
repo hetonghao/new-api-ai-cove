@@ -37,6 +37,7 @@ type responsesWebSocketRequestState struct {
 	applicationOutputSeen bool
 	billingReused         bool
 	cancelRequested       bool
+	replayDisallowed      bool
 	pendingFrames         []responsesWebSocketFrame
 	pendingBytes          int
 }
@@ -157,17 +158,17 @@ func prepareResponsesWebSocketBilling(state *responsesWebSocketRequestState) *ty
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 	}
+	if state.billingReused {
+		if billingSession, ok := state.info.Billing.(*service.BillingSession); ok {
+			billingSession.RebindRelayInfo(state.info)
+		}
+	}
 	if !priceData.FreeModel {
 		if state.info.Billing == nil {
 			if apiErr := service.PreConsumeBilling(state.ctx, priceData.QuotaToPreConsume, state.info); apiErr != nil {
 				return apiErr
 			}
 		} else {
-			if state.billingReused {
-				if billingSession, ok := state.info.Billing.(*service.BillingSession); ok {
-					billingSession.RebindRelayInfo(state.info)
-				}
-			}
 			if err := state.info.Billing.Reserve(priceData.QuotaToPreConsume); err != nil {
 				return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 			}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -47,6 +48,9 @@ func TestResponsesWebSocketCapacityCodeRequiresVersionedBoundedReason(t *testing
 		{name: "server overloaded", code: responsesWebSocketCapacityCloseCode, reason: responsesWebSocketCapacityCloseReason, want: "server_is_overloaded"},
 		{name: "slow down", code: responsesWebSocketCapacityCloseCode, reason: responsesWebSocketCapacityReasonPrefix + "slow_down", want: "slow_down"},
 		{name: "wrong close code", code: websocket.CloseInternalServerErr, reason: responsesWebSocketCapacityCloseReason},
+		{name: "ordinary internal close", code: websocket.CloseInternalServerErr, reason: "ordinary"},
+		{name: "ordinary service unavailable close", code: websocket.CloseServiceRestart, reason: "ordinary"},
+		{name: "ordinary try again close", code: websocket.CloseTryAgainLater, reason: "ordinary"},
 		{name: "unknown version", code: responsesWebSocketCapacityCloseCode, reason: "ai-cove-capacity/v2;state=rejected;phase=pre_output;code=server_is_overloaded"},
 		{name: "unknown code", code: responsesWebSocketCapacityCloseCode, reason: responsesWebSocketCapacityReasonPrefix + "quota_exhausted"},
 		{name: "oversized reason", code: responsesWebSocketCapacityCloseCode, reason: responsesWebSocketCapacityCloseReason + "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"},
@@ -64,9 +68,24 @@ func TestResponsesWebSocketCapacityCodeRequiresVersionedBoundedReason(t *testing
 	}
 }
 
+func TestPropagateResponsesWebSocketCapacityCloseMapsToStandardInternalError(t *testing.T) {
+	upstream := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
+		propagateResponsesWebSocketClose(conn, &websocket.CloseError{Code: responsesWebSocketCapacityCloseCode, Text: responsesWebSocketCapacityCloseReason})
+	})
+	client, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(upstream.server.URL, "http"), nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+	closeErr := readResponsesWebSocketTestClose(t, client)
+	require.Equal(t, websocket.CloseInternalServerErr, closeErr.Code)
+	require.Equal(t, "upstream websocket disconnected", closeErr.Text)
+}
+
 func TestResponsesWebSocketEventAllowsCapacityRetryOnlyForEmptyHandshake(t *testing.T) {
 	require.True(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"response.created","response":{"output":[],"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}`)))
 	require.True(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"codex.rate_limits","rate_limits":{}}`)))
+	require.True(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"response.created","response":{"output":[],"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"input_tokens_details":{"cached_tokens":0},"audio_tokens":{"input":0}}}}`)))
+	require.False(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"response.created","response":{"output":[],"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"input_tokens_details":{"cached_tokens":2}}}}`)))
+	require.False(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"response.in_progress","usage":{"reasoning_tokens":1}}`)))
 	require.False(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"response.created","response":{"output":[{"type":"function_call"}]}}`)))
 	require.False(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"response.in_progress","response":{"usage":{"input_tokens":1}}}`)))
 	require.False(t, responsesWebSocketEventAllowsCapacityRetry([]byte(`{"type":"response.output_text.delta","delta":"hello"}`)))
@@ -97,10 +116,39 @@ func TestResponsesWebSocketRetryPreparationFailureRefundsInheritedBillingOnce(t 
 		nil,
 		0,
 		nil,
+		true,
 	)
 
 	require.Error(t, err)
 	require.Equal(t, int32(1), billing.refunds.Load())
+	refundResponsesWebSocketBillingIfPending(baseCtx, billing)
+	require.Equal(t, int32(1), billing.refunds.Load())
+}
+
+func TestResponsesWebSocketRetryIntermediatePreparationKeepsGenericBillingPending(t *testing.T) {
+	setupResponsesWebSocketHandlerTest(t)
+	gin.SetMode(gin.TestMode)
+	baseCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	baseCtx.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	billing := &responsesWebSocketRetryBillingProbe{}
+	billing.pending.Store(true)
+
+	_, _, _, _, _, err := prepareFirstResponsesWebSocketRequestWithBilling(
+		baseCtx,
+		[]byte(`{"type":"not_response.create","model":"gpt-4o-mini"}`),
+		time.Now(),
+		billing,
+		nil,
+		nil,
+		nil,
+		nil,
+		0,
+		nil,
+		false,
+	)
+
+	require.Error(t, err)
+	require.Zero(t, billing.refunds.Load())
 	refundResponsesWebSocketBillingIfPending(baseCtx, billing)
 	require.Equal(t, int32(1), billing.refunds.Load())
 }

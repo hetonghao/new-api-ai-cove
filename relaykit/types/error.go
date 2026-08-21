@@ -52,6 +52,9 @@ const (
 	ErrorCodeGetChannelFailed              ErrorCode = "get_channel_failed"
 	ErrorCodeResponsesWebSocketUnavailable ErrorCode = "responses_websocket_unavailable"
 	ErrorCodeServerIsOverloaded            ErrorCode = "server_is_overloaded"
+	ErrorCodeModelCapacity                 ErrorCode = "model_capacity"
+	ErrorCodeSlowDown                      ErrorCode = "slow_down"
+	ErrorCodeAuthUnavailable               ErrorCode = "auth_unavailable"
 	ErrorCodeGenRelayInfoFailed            ErrorCode = "gen_relay_info_failed"
 
 	// channel error
