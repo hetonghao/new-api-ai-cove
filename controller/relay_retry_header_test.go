@@ -100,6 +100,25 @@ func TestPreserveCapacityAttemptErrorKeepsEvidenceOverUpstream429(t *testing.T) 
 	require.Same(t, capacity, preserveCapacityAttemptError(ctx, types.RelayFormatOpenAI, rateLimited))
 }
 
+func TestPreserveCapacityAttemptErrorDoesNotReplaceSkipRetry429(t *testing.T) {
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	capacity := types.NewErrorWithStatusCode(
+		errors.New("Selected model is at capacity"),
+		types.ErrorCode("unknown_error"),
+		http.StatusTooManyRequests,
+	)
+	skipRetry429 := types.NewErrorWithStatusCode(
+		errors.New("local rate limit"),
+		types.ErrorCode("rate_limit_exceeded"),
+		http.StatusTooManyRequests,
+		types.ErrOptionWithSkipRetry(),
+	)
+	recordRelayAttemptError(ctx, capacity)
+	recordRelayAttemptError(ctx, skipRetry429)
+
+	require.Same(t, skipRetry429, preserveCapacityAttemptError(ctx, types.RelayFormatOpenAI, skipRetry429))
+}
+
 func TestRelayCapacityMessageMatchIsBoundedAndCaseInsensitive(t *testing.T) {
 	require.True(t, isRelayCapacityError(types.NewError(errors.New("selected model is at capacity"), types.ErrorCode("unknown_error"))))
 	require.True(t, isRelayCapacityError(types.NewError(errors.New("SELECTED MODEL IS AT CAPACITY"), types.ErrorCode("unknown_error"))))

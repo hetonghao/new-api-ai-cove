@@ -127,6 +127,9 @@ func relayErrorIsClientRequestError(err *types.NewAPIError) bool {
 	if err == nil {
 		return false
 	}
+	if types.IsSkipRetryError(err) && err.StatusCode == http.StatusTooManyRequests {
+		return true
+	}
 	if err.GetErrorCode() == types.ErrorCodeAuthUnavailable || err.StatusCode == http.StatusTooManyRequests {
 		return false
 	}
