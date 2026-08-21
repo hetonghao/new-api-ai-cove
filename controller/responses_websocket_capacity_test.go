@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
@@ -215,4 +216,25 @@ func TestResponsesWebSocketRetryIntermediatePreparationKeepsGenericBillingPendin
 	require.Zero(t, billing.refunds.Load())
 	refundResponsesWebSocketBillingIfPending(baseCtx, billing)
 	require.Equal(t, int32(1), billing.refunds.Load())
+}
+
+func TestResponsesWebSocketRetryContextPreservesLogicalRequestID(t *testing.T) {
+	setupResponsesWebSocketHandlerTest(t)
+	gin.SetMode(gin.TestMode)
+	baseCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	baseCtx.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	baseCtx.Set(common.RequestIdKey, "client-request-id")
+	inheritedInfo := &relaycommon.RelayInfo{RequestId: "logical-request-id"}
+
+	state, _, err := prepareResponsesWebSocketRequestWithInheritedState(
+		baseCtx,
+		[]byte(`{"type":"not_response.create","model":"gpt-4o-mini"}`),
+		"",
+		nil,
+		inheritedInfo,
+	)
+
+	require.Error(t, err)
+	require.NotNil(t, state)
+	require.Equal(t, "logical-request-id", state.ctx.GetString(common.RequestIdKey))
 }

@@ -39,6 +39,8 @@ const relayRetryCountHeader = "X-AI-Cove-Retry-Count"
 
 const relayAttemptErrorsKey = "relay_attempt_errors"
 const relayAttemptErrorHistoryMax = 32
+const relayCapacityMessageMax = 512
+const relaySelectedModelCapacityPhrase = "selected model is at capacity"
 
 type relayAttemptErrorRecord struct {
 	err *types.NewAPIError
@@ -100,14 +102,22 @@ func isRelayCapacityError(err *types.NewAPIError) bool {
 	if isRelayCapacityErrorCode(err.GetErrorCode()) {
 		return true
 	}
-	return strings.Contains(strings.ToLower(err.Error()), "our servers are currently overloaded")
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	if len(message) > relayCapacityMessageMax {
+		message = message[:relayCapacityMessageMax]
+	}
+	return strings.Contains(message, "our servers are currently overloaded") ||
+		strings.Contains(message, relaySelectedModelCapacityPhrase)
 }
 
 func relayErrorCanBeReplacedByCapacity(err *types.NewAPIError) bool {
 	if err == nil || relayErrorIsClientRequestError(err) {
 		return false
 	}
-	if err.GetErrorCode() == types.ErrorCodeAuthUnavailable || err.GetErrorCode() == types.ErrorCodeDoRequestFailed || err.GetErrorCode() == types.ErrorCodeGetChannelFailed {
+	if err.GetErrorCode() == types.ErrorCodeAuthUnavailable ||
+		err.GetErrorCode() == types.ErrorCodeDoRequestFailed ||
+		err.GetErrorCode() == types.ErrorCodeGetChannelFailed ||
+		err.StatusCode == http.StatusTooManyRequests {
 		return true
 	}
 	return err.StatusCode >= 500 && err.StatusCode <= 599
@@ -115,6 +125,9 @@ func relayErrorCanBeReplacedByCapacity(err *types.NewAPIError) bool {
 
 func relayErrorIsClientRequestError(err *types.NewAPIError) bool {
 	if err == nil {
+		return false
+	}
+	if err.GetErrorCode() == types.ErrorCodeAuthUnavailable || err.StatusCode == http.StatusTooManyRequests {
 		return false
 	}
 	if err.StatusCode >= 400 && err.StatusCode < 500 {
@@ -436,6 +449,12 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 			Name:    c.GetString("channel_name"),
 			AutoBan: &autoBanInt,
 		}
+		if channel.Id > 0 {
+			if cached, err := model.CacheGetChannel(channel.Id); err == nil && cached != nil && cached.BaseURL != nil {
+				baseURL := *cached.BaseURL
+				channel.BaseURL = &baseURL
+			}
+		}
 		retryParam.RecordChannel(channel)
 		return channel, nil
 	}
@@ -467,11 +486,11 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	if retryTimes <= 0 {
 		return false
 	}
-	if types.IsChannelError(openaiErr) {
-		return true
-	}
 	if types.IsSkipRetryError(openaiErr) {
 		return false
+	}
+	if types.IsChannelError(openaiErr) {
+		return true
 	}
 	if _, ok := c.Get("specific_channel_id"); ok {
 		return false

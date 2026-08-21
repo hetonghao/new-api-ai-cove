@@ -60,6 +60,9 @@ func prepareResponsesWebSocketRequestWithInheritedState(baseCtx *gin.Context, pa
 		}
 	}
 	requestCtx := newResponsesWebSocketRequestContext(baseCtx, requestPayload, modelName)
+	if inheritedBillingInfo != nil && strings.TrimSpace(inheritedBillingInfo.RequestId) != "" {
+		requestCtx.Set(common.RequestIdKey, inheritedBillingInfo.RequestId)
+	}
 	observabilityValue, _ := baseCtx.Get(responsesWebSocketObservabilityKey)
 	observability, _ := observabilityValue.(*responsesWebSocketObservability)
 	state := &responsesWebSocketRequestState{

@@ -73,3 +73,26 @@ func TestBillingSessionRebindRefundsOnce(t *testing.T) {
 	}
 	require.Equal(t, int32(1), funding.refunds.Load())
 }
+
+func TestBillingSessionSettleAfterRefundIsNoop(t *testing.T) {
+	info := &relaycommon.RelayInfo{IsPlayground: true}
+	funding := &rebindCountingFunding{refundDone: make(chan struct{}, 1)}
+	session := &BillingSession{
+		relayInfo:        info,
+		funding:          funding,
+		preConsumedQuota: 10,
+		tokenConsumed:    10,
+	}
+	info.Billing = session
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	session.Refund(ctx)
+	select {
+	case <-funding.refundDone:
+	case <-time.After(time.Second):
+		require.FailNow(t, "timeout waiting for asynchronous funding refund")
+	}
+
+	require.NoError(t, session.Settle(15))
+	require.Zero(t, funding.settles.Load())
+}

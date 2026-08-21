@@ -58,7 +58,7 @@ func (s *BillingSession) RebindRelayInfo(info *relaycommon.RelayInfo) {
 func (s *BillingSession) Settle(actualQuota int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.settled {
+	if s.settled || s.refunded {
 		return nil
 	}
 	delta := actualQuota - s.preConsumedQuota
