@@ -100,7 +100,7 @@ func isRelayCapacityError(err *types.NewAPIError) bool {
 	if isRelayCapacityErrorCode(err.GetErrorCode()) {
 		return true
 	}
-	return strings.EqualFold(strings.TrimSpace(err.Error()), "Our servers are currently overloaded")
+	return strings.Contains(strings.ToLower(err.Error()), "our servers are currently overloaded")
 }
 
 func relayErrorCanBeReplacedByCapacity(err *types.NewAPIError) bool {

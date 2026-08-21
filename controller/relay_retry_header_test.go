@@ -48,7 +48,7 @@ func TestPreserveCapacityAttemptErrorKeepsEvidenceOverInternalChannelExhaustion(
 
 func TestPreserveCapacityAttemptErrorRecognizesSanitizedOverloadMessage(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	capacity := types.NewErrorWithStatusCode(errors.New("Our servers are currently overloaded"), types.ErrorCode("unknown_error"), 503)
+	capacity := types.NewErrorWithStatusCode(errors.New("Our servers are currently overloaded."), types.ErrorCode("unknown_error"), 503)
 	authUnavailable := types.NewErrorWithStatusCode(errors.New("auth unavailable"), types.ErrorCodeAuthUnavailable, 503)
 	recordRelayAttemptError(ctx, capacity)
 	recordRelayAttemptError(ctx, authUnavailable)
