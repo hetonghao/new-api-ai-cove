@@ -79,6 +79,9 @@ func responsesWebSocketIsClientRequestError(err *types.NewAPIError) bool {
 	if err == nil {
 		return false
 	}
+	if err.StatusCode == http.StatusTooManyRequests {
+		return false
+	}
 	if err.StatusCode >= 400 && err.StatusCode < 500 {
 		return true
 	}

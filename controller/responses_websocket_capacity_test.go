@@ -139,6 +139,28 @@ func TestResponsesWebSocketCapacityErrorSkipsRetry(t *testing.T) {
 	require.True(t, types.IsSkipRetryError(err))
 }
 
+func TestResponsesWebSocketCapacityFallbackPreservesCapacityForUpstream429(t *testing.T) {
+	for _, code := range []types.ErrorCode{
+		types.ErrorCode("usage_limit_reached"),
+		types.ErrorCode("rate_limit_exceeded"),
+		types.ErrorCodeAuthUnavailable,
+		types.ErrorCodeChannelNoAvailableKey,
+	} {
+		fallback := types.NewErrorWithStatusCode(errors.New(string(code)), code, http.StatusTooManyRequests)
+		got := responsesWebSocketCapacityFallbackError("server_is_overloaded", fallback)
+
+		require.Equal(t, types.ErrorCodeServerIsOverloaded, got.GetErrorCode(), code)
+	}
+}
+
+func TestResponsesWebSocketCapacityFallbackPreservesClient400Error(t *testing.T) {
+	fallback := types.NewErrorWithStatusCode(errors.New("invalid request"), types.ErrorCodeInvalidRequest, http.StatusBadRequest)
+
+	got := responsesWebSocketCapacityFallbackError("server_is_overloaded", fallback)
+
+	require.Same(t, fallback, got)
+}
+
 func TestResponsesWebSocketRetryPreparationFailureRefundsInheritedBillingOnce(t *testing.T) {
 	setupResponsesWebSocketHandlerTest(t)
 	gin.SetMode(gin.TestMode)
