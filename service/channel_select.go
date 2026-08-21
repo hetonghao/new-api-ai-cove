@@ -64,10 +64,10 @@ func (p *RetryParam) RecordChannel(channel *model.Channel) {
 }
 
 func channelRetryRouteKey(channel *model.Channel) string {
-	if channel == nil {
+	if channel == nil || channel.BaseURL == nil {
 		return ""
 	}
-	return strings.TrimRight(strings.TrimSpace(channel.GetBaseURL()), "/")
+	return strings.TrimRight(strings.TrimSpace(*channel.BaseURL), "/")
 }
 
 func orderRetryCandidates(candidates []*model.Channel, lastChannelID int, lastRoute string) []*model.Channel {
@@ -75,48 +75,34 @@ func orderRetryCandidates(candidates []*model.Channel, lastChannelID int, lastRo
 		return append([]*model.Channel(nil), candidates...)
 	}
 	ordered := make([]*model.Channel, 0, len(candidates))
-	if lastRoute == "" {
+	for bucket := 0; bucket <= 3; bucket++ {
 		for _, candidate := range candidates {
-			if candidate.Id != lastChannelID {
+			if retryCandidateBucket(candidate, lastChannelID, lastRoute) == bucket {
 				ordered = append(ordered, candidate)
 			}
-		}
-		for _, candidate := range candidates {
-			if candidate.Id == lastChannelID {
-				ordered = append(ordered, candidate)
-			}
-		}
-		return ordered
-	}
-	appendMatching := func(match func(*model.Channel) bool) {
-		for _, candidate := range candidates {
-			if match(candidate) {
-				ordered = append(ordered, candidate)
-			}
-		}
-	}
-	appendMatching(func(candidate *model.Channel) bool {
-		return lastRoute != "" && channelRetryRouteKey(candidate) != lastRoute
-	})
-	appendMatching(func(candidate *model.Channel) bool {
-		return channelRetryRouteKey(candidate) == lastRoute && candidate.Id != lastChannelID
-	})
-	appendMatching(func(candidate *model.Channel) bool {
-		return candidate.Id == lastChannelID
-	})
-	if len(ordered) == len(candidates) {
-		return ordered
-	}
-	seen := make(map[int]bool, len(ordered))
-	for _, candidate := range ordered {
-		seen[candidate.Id] = true
-	}
-	for _, candidate := range candidates {
-		if !seen[candidate.Id] {
-			ordered = append(ordered, candidate)
 		}
 	}
 	return ordered
+}
+
+func retryCandidateBucket(candidate *model.Channel, lastChannelID int, lastRoute string) int {
+	if candidate == nil {
+		return 2
+	}
+	if candidate.Id == lastChannelID {
+		return 3
+	}
+	route := channelRetryRouteKey(candidate)
+	if route == "" {
+		return 2
+	}
+	if lastRoute != "" && route != lastRoute {
+		return 0
+	}
+	if lastRoute != "" {
+		return 1
+	}
+	return 2
 }
 
 func retryExcludedChannelIDs(param *RetryParam) map[int]bool {
@@ -148,6 +134,39 @@ func collectRetryCandidates(param *RetryParam, group string) ([]*model.Channel, 
 		excluded[candidate.Id] = true
 		candidates = append(candidates, candidate)
 	}
+}
+
+func selectRetryCandidateAcrossGroups(param *RetryParam, groups []string, startGroupIndex int) (*model.Channel, string, int, error) {
+	if startGroupIndex < 0 {
+		startGroupIndex = 0
+	}
+	if startGroupIndex >= len(groups) {
+		return nil, "", -1, nil
+	}
+	candidates := make([]*model.Channel, 0)
+	groupByChannelID := make(map[int]string)
+	groupIndexByChannelID := make(map[int]int)
+	for index := startGroupIndex; index < len(groups); index++ {
+		group := groups[index]
+		groupCandidates, err := collectRetryCandidates(param, group)
+		if err != nil {
+			return nil, group, -1, err
+		}
+		for _, candidate := range groupCandidates {
+			if _, seen := groupByChannelID[candidate.Id]; seen {
+				continue
+			}
+			candidates = append(candidates, candidate)
+			groupByChannelID[candidate.Id] = group
+			groupIndexByChannelID[candidate.Id] = index
+		}
+	}
+	ordered := orderRetryCandidates(candidates, param.LastChannelID, param.LastChannelRoute)
+	if len(ordered) == 0 {
+		return nil, "", -1, nil
+	}
+	selected := ordered[0]
+	return selected, groupByChannelID[selected.Id], groupIndexByChannelID[selected.Id], nil
 }
 
 func selectRetryChannel(param *RetryParam, group string, priorityRetry int, allowSameChannelFallback bool) (*model.Channel, error) {
@@ -262,6 +281,31 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			if idx, ok := lastGroupIndex.(int); ok {
 				startGroupIndex = idx
 			}
+		}
+
+		if crossGroupRetry && len(param.TriedChannelIDs) > 0 {
+			channel, selectGroup, selectedGroupIndex, err := selectRetryCandidateAcrossGroups(param, autoGroups, startGroupIndex)
+			if err != nil {
+				return nil, selectGroup, err
+			}
+			if channel != nil {
+				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroup, selectGroup)
+				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupRetryIndex, param.GetRetry())
+				if param.GetRetry() >= common.RetryTimes {
+					common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, selectedGroupIndex+1)
+				} else {
+					common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, selectedGroupIndex)
+				}
+				return channel, selectGroup, nil
+			}
+			channel, selectGroup, err = selectLastChannelFallbackInGroups(param, autoGroups)
+			if err != nil {
+				return nil, selectGroup, err
+			}
+			if channel != nil {
+				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroup, selectGroup)
+			}
+			return channel, selectGroup, nil
 		}
 
 		for i := startGroupIndex; i < len(autoGroups); i++ {

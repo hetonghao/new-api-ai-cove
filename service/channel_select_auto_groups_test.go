@@ -197,6 +197,43 @@ func TestCacheGetRandomSatisfiedChannelCrossGroupPrefersNextGroupBeforeSameChann
 	assert.Equal(t, "vip", selectedGroup)
 }
 
+func TestCacheGetRandomSatisfiedChannelCrossGroupOrdersKnownRoutesGlobally(t *testing.T) {
+	db := setupChannelSelectAutoGroupsTest(t)
+	common.RetryTimes = 1
+	const modelName = "cross-group-route-order-model"
+	createChannelSelectAutoGroupsChannel(t, db, 2131, "default", modelName)
+	createChannelSelectAutoGroupsChannel(t, db, 2132, "default", modelName)
+	createChannelSelectAutoGroupsChannel(t, db, 2133, "vip", modelName)
+	baseA := "https://cpa-a.example"
+	baseB := "https://cpa-b.example"
+	require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 2131).Updates(map[string]any{"base_url": baseA, "priority": 10}).Error)
+	require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 2132).Updates(map[string]any{"base_url": baseA, "priority": 0}).Error)
+	require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 2133).Updates(map[string]any{"base_url": baseB, "priority": 0}).Error)
+	model.InitChannelCache()
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"default", "vip"})
+	common.SetContextKey(ctx, constant.ContextKeyTokenCrossGroupRetry, true)
+
+	retry := 0
+	param := &RetryParam{Ctx: ctx, TokenGroup: "auto", ModelName: modelName, RequestPath: "/v1/chat/completions", Retry: &retry}
+	first, selectedGroup, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, first)
+	assert.Equal(t, 2131, first.Id)
+	assert.Equal(t, "default", selectedGroup)
+
+	param.RecordChannel(first)
+	param.IncreaseRetry()
+	second, selectedGroup, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, second)
+	assert.Equal(t, 2133, second.Id, "a known different route in a later group must beat a same-route channel")
+	assert.Equal(t, "vip", selectedGroup)
+}
+
 func TestRetryCandidateOrderPrefersDifferentRouteBeforeSameRoute(t *testing.T) {
 	baseA := "https://cpa-a.example"
 	baseB := "https://cpa-b.example"
@@ -220,6 +257,21 @@ func TestRetryCandidateOrderKeepsUnknownRouteLastChannelAsFinalFallback(t *testi
 	assert.Equal(t, 2212, ordered[0].Id)
 	assert.Equal(t, 2213, ordered[1].Id)
 	assert.Equal(t, 2211, ordered[2].Id)
+}
+
+func TestRetryCandidateOrderDoesNotPromoteUnknownRoute(t *testing.T) {
+	baseA := "https://cpa-a.example"
+	candidates := []*model.Channel{
+		{Id: 2221, BaseURL: &baseA},
+		{Id: 2222},
+		{Id: 2223, BaseURL: &baseA},
+	}
+
+	ordered := orderRetryCandidates(candidates, 2221, baseA)
+	require.Len(t, ordered, 3)
+	assert.Equal(t, 2223, ordered[0].Id)
+	assert.Equal(t, 2222, ordered[1].Id)
+	assert.Equal(t, 2221, ordered[2].Id)
 }
 
 func TestCacheGetRandomSatisfiedChannelRetryPrefersAnotherRouteAndAllowsLastFallback(t *testing.T) {
