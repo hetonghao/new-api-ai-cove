@@ -10,6 +10,7 @@ import (
 	"time"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
@@ -95,6 +96,12 @@ func TestResponsesWebSocketEventAllowsCapacityRetryOnlyForEmptyHandshake(t *test
 func TestResponsesWebSocketCapacityCodeRejectsNonCloseErrors(t *testing.T) {
 	_, ok := responsesWebSocketCapacityCode(errors.New("unexpected EOF"))
 	require.False(t, ok)
+}
+
+func TestResponsesWebSocketCapacityErrorSkipsRetry(t *testing.T) {
+	err := newResponsesWebSocketCapacityError("server_is_overloaded")
+
+	require.True(t, types.IsSkipRetryError(err))
 }
 
 func TestResponsesWebSocketRetryPreparationFailureRefundsInheritedBillingOnce(t *testing.T) {

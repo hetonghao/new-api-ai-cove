@@ -46,6 +46,7 @@ func newResponsesWebSocketCapacityError(code string) *types.NewAPIError {
 		errors.New("upstream capacity rejected the request"),
 		types.ErrorCode(code),
 		http.StatusServiceUnavailable,
+		types.ErrOptionWithSkipRetry(),
 	)
 }
 

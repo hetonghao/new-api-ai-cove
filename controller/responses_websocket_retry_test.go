@@ -84,6 +84,10 @@ func TestResponsesWebSocket_retries_valid_capacity_sideband_before_output(t *tes
 		}
 		if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.completed","response":{"status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`)); err != nil {
 			assert.NoError(t, err, "write backup completion")
+			return
+		}
+		if err := conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "done"), time.Now().Add(time.Second)); err != nil {
+			assert.NoError(t, err, "close backup upstream")
 		}
 	})
 	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 401, baseURL: primary.server.URL, priority: 100})
@@ -98,9 +102,8 @@ func TestResponsesWebSocket_retries_valid_capacity_sideband_before_output(t *tes
 	}
 	close(releaseCapacity)
 	require.Equal(t, "response.completed", gjson.GetBytes(readResponsesWebSocketTestEvent(t, client), "type").String())
-	client.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
-	_, _, err := client.ReadMessage()
-	require.Error(t, err, "unexpected duplicate event after capacity retry")
+	closeErr := readResponsesWebSocketTestClose(t, client)
+	require.Equal(t, websocket.CloseNormalClosure, closeErr.Code)
 	closeResponsesWebSocketTestClient(client)
 	require.Equal(t, int32(1), primary.connections.Load())
 	require.Equal(t, int32(1), backup.connections.Load())
