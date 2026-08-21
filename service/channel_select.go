@@ -67,7 +67,7 @@ func channelRetryRouteKey(channel *model.Channel) string {
 	if channel == nil || channel.BaseURL == nil {
 		return ""
 	}
-	return strings.TrimRight(strings.TrimSpace(*channel.BaseURL), "/")
+	return strings.TrimRight(strings.TrimSpace(channel.GetBaseURL()), "/")
 }
 
 func orderRetryCandidates(candidates []*model.Channel, lastChannelID int, lastRoute string) []*model.Channel {

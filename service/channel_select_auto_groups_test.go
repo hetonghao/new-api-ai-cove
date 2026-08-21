@@ -262,9 +262,9 @@ func TestRetryCandidateOrderKeepsUnknownRouteLastChannelAsFinalFallback(t *testi
 func TestRetryCandidateOrderDoesNotPromoteUnknownRoute(t *testing.T) {
 	baseA := "https://cpa-a.example"
 	candidates := []*model.Channel{
-		{Id: 2221, BaseURL: &baseA},
-		{Id: 2222},
-		{Id: 2223, BaseURL: &baseA},
+		{Id: 2221, Type: constant.ChannelTypeOpenAI, BaseURL: &baseA},
+		{Id: 2222, Type: constant.ChannelTypeOpenAI},
+		{Id: 2223, Type: constant.ChannelTypeOpenAI, BaseURL: &baseA},
 	}
 
 	ordered := orderRetryCandidates(candidates, 2221, baseA)
@@ -272,6 +272,15 @@ func TestRetryCandidateOrderDoesNotPromoteUnknownRoute(t *testing.T) {
 	assert.Equal(t, 2223, ordered[0].Id)
 	assert.Equal(t, 2222, ordered[1].Id)
 	assert.Equal(t, 2221, ordered[2].Id)
+}
+
+func TestChannelRetryRouteKeyUsesTypeFallbackForEmptyBaseURL(t *testing.T) {
+	emptyBaseURL := ""
+	withEmptyBaseURL := &model.Channel{Type: constant.ChannelTypeOpenAI, BaseURL: &emptyBaseURL}
+	withoutBaseURL := &model.Channel{Type: constant.ChannelTypeOpenAI}
+
+	assert.Equal(t, "https://api.openai.com", channelRetryRouteKey(withEmptyBaseURL))
+	assert.Empty(t, channelRetryRouteKey(withoutBaseURL))
 }
 
 func TestCacheGetRandomSatisfiedChannelRetryPrefersAnotherRouteAndAllowsLastFallback(t *testing.T) {
