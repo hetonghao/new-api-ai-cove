@@ -5588,6 +5588,8 @@
     "Severe risk records appear here after an invalid prompt rejection.": "Severe risk records appear here after an invalid prompt rejection.",
     "Failed to load severe risk records": "Failed to load severe risk records",
     "Severe risk record details": "Severe risk record details",
+    "Enable severe risk auto-quarantine": "Enable severe risk auto-quarantine",
+    "Automatically disable the affected user and upstream channel when invalid_prompt is confirmed.": "Automatically disable the affected user and upstream channel when invalid_prompt is confirmed.",
     "Isolation": "Isolation",
     "Path": "Path",
     "Matched key only": "Matched key only",

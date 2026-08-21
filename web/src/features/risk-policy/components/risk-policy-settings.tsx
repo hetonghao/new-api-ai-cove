@@ -29,8 +29,14 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { TitledCard } from '@/components/ui/titled-card'
 import type { RiskProvider } from '@/features/risk-providers/types'
+import {
+  getOptionValue,
+  useSystemOptions,
+} from '@/features/system-settings/hooks/use-system-options'
+import { useUpdateOption } from '@/features/system-settings/hooks/use-update-option'
 
 import {
   getRiskPolicy,
@@ -51,6 +57,10 @@ const QUERY_KEY = ['risk', 'policy'] as const
 const CHANNELS_QUERY_KEY = ['risk', 'policy', 'channels'] as const
 const USERS_QUERY_KEY = ['risk', 'policy', 'users'] as const
 const MODELS_QUERY_KEY = ['risk', 'policy', 'models'] as const
+const SEVERE_RISK_OPTION_KEY = 'SevereRiskAutoQuarantineEnabled'
+const SEVERE_RISK_OPTION_DEFAULTS = {
+  [SEVERE_RISK_OPTION_KEY]: true,
+}
 const DEFAULT_VALUES: RiskPolicyFormValues = {
   enabled: false,
   enabled_channels: [],
@@ -68,6 +78,12 @@ type RiskPolicySettingsProps = {
 
 export function RiskPolicySettings(props: RiskPolicySettingsProps) {
   const { t } = useTranslation()
+  const systemOptionsQuery = useSystemOptions()
+  const updateOption = useUpdateOption()
+  const severeRiskOptions = getOptionValue(
+    systemOptionsQuery.data?.data,
+    SEVERE_RISK_OPTION_DEFAULTS
+  )
   const validatedProviders = useMemo(
     () => props.providers.filter((provider) => provider.validated_at !== null),
     [props.providers]
@@ -221,7 +237,35 @@ export function RiskPolicySettings(props: RiskPolicySettingsProps) {
       }
       disableHoverEffect
     >
-      {content}
+      <div className='space-y-5'>
+        <div className='bg-muted/20 flex items-center justify-between gap-4 rounded-xl border px-3 py-2.5'>
+          <div className='min-w-0 space-y-0.5'>
+            <label
+              className='text-sm leading-snug font-medium'
+              htmlFor='severe-risk-auto-quarantine'
+            >
+              {t('Enable severe risk auto-quarantine')}
+            </label>
+            <p className='break-keep text-muted-foreground text-pretty text-xs'>
+              {t(
+                'Automatically disable the affected user and upstream channel when invalid_prompt is confirmed.'
+              )}
+            </p>
+          </div>
+          <Switch
+            id='severe-risk-auto-quarantine'
+            checked={severeRiskOptions[SEVERE_RISK_OPTION_KEY]}
+            disabled={systemOptionsQuery.isLoading || updateOption.isPending}
+            onCheckedChange={(checked) => {
+              updateOption.mutate({
+                key: SEVERE_RISK_OPTION_KEY,
+                value: checked,
+              })
+            }}
+          />
+        </div>
+        {content}
+      </div>
     </TitledCard>
   )
 }

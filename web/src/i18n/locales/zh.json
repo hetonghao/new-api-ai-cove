@@ -5599,6 +5599,8 @@
     "Severe risk records appear here after an invalid prompt rejection.": "命中 invalid_prompt 后，严重风险记录会显示在这里。",
     "Failed to load severe risk records": "严重风险记录加载失败",
     "Severe risk record details": "严重风险记录详情",
+    "Enable severe risk auto-quarantine": "启用严重风险自动隔离",
+    "Automatically disable the affected user and upstream channel when invalid_prompt is confirmed.": "确认 invalid_prompt 后，自动禁用受影响用户并隔离上游渠道。",
     "Isolation": "隔离处置",
     "Path": "请求路径",
     "Matched key only": "仅隔离命中 Key",

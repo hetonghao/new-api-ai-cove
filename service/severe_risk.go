@@ -86,6 +86,9 @@ func HandleSevereRiskEvent(input SevereRiskEventInput) error {
 	if !claimed {
 		return nil
 	}
+	if !common.SevereRiskAutoQuarantineEnabled {
+		return model.UpdateSevereRiskActionStatus(input.Context, input.RequestID, model.SevereRiskActionDisabled, model.SevereRiskActionDisabled)
+	}
 
 	userStatus := model.SevereRiskActionFailed
 	if err := model.DisableUserForSevereRisk(input.Context, input.UserID); err == nil {

@@ -17,9 +17,10 @@ const (
 	SevereRiskChannelScopeAll SevereRiskChannelScope = "all"
 	SevereRiskChannelScopeKey SevereRiskChannelScope = "key"
 
-	SevereRiskActionPending SevereRiskActionStatus = "pending"
-	SevereRiskActionSuccess SevereRiskActionStatus = "success"
-	SevereRiskActionFailed  SevereRiskActionStatus = "failed"
+	SevereRiskActionPending  SevereRiskActionStatus = "pending"
+	SevereRiskActionSuccess  SevereRiskActionStatus = "success"
+	SevereRiskActionFailed   SevereRiskActionStatus = "failed"
+	SevereRiskActionDisabled SevereRiskActionStatus = "disabled"
 )
 
 var ErrInvalidSevereRiskRecord = errors.New("invalid severe risk record")
@@ -129,7 +130,7 @@ func QuerySevereRiskRecords(ctx context.Context, filter SevereRiskRecordQuery) (
 		query = query.Where("request_id = ?", strings.TrimSpace(filter.RequestID))
 	}
 	if filter.ActionStatus != "" {
-		if filter.ActionStatus != SevereRiskActionPending && filter.ActionStatus != SevereRiskActionSuccess && filter.ActionStatus != SevereRiskActionFailed {
+		if !validSevereRiskActionStatus(filter.ActionStatus) {
 			return nil, 0, ErrInvalidSevereRiskRecord
 		}
 		query = query.Where("(user_action_status = ? OR channel_action_status = ?)", filter.ActionStatus, filter.ActionStatus)
@@ -214,7 +215,7 @@ func UpdateSevereRiskActionStatus(ctx context.Context, requestID string, userSta
 }
 
 func validSevereRiskActionStatus(status SevereRiskActionStatus) bool {
-	return status == SevereRiskActionPending || status == SevereRiskActionSuccess || status == SevereRiskActionFailed
+	return status == SevereRiskActionPending || status == SevereRiskActionSuccess || status == SevereRiskActionFailed || status == SevereRiskActionDisabled
 }
 
 func newSevereRiskRecord(input SevereRiskRecordInput) (SevereRiskRecord, error) {

@@ -89,3 +89,43 @@ func TestHandleSevereRiskEvent_ignoresNonTerminalErrors(t *testing.T) {
 	require.NoError(t, model.DB.Model(&model.SevereRiskRecord{}).Where("request_id = ?", "non-terminal-request").Count(&count).Error)
 	require.Zero(t, count)
 }
+
+func TestHandleSevereRiskEvent_recordsButSkipsQuarantineWhenDisabled(t *testing.T) {
+	// Given
+	require.NoError(t, model.DB.AutoMigrate(&model.SevereRiskRecord{}, &model.User{}, &model.Token{}, &model.Channel{}, &model.Ability{}))
+	previous := common.SevereRiskAutoQuarantineEnabled
+	common.SevereRiskAutoQuarantineEnabled = false
+	t.Cleanup(func() { common.SevereRiskAutoQuarantineEnabled = previous })
+	user := &model.User{Username: "severe-disabled-user", Password: "password", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AuthVersion: 1, AffCode: "severe-disabled-user"}
+	channel := &model.Channel{Name: "severe-disabled-channel", Key: "disabled-key", Status: common.ChannelStatusEnabled}
+	require.NoError(t, model.DB.Create(user).Error)
+	require.NoError(t, model.DB.Create(channel).Error)
+	token := &model.Token{UserId: user.Id, Name: "disabled-token", Key: "disabled-token-key", Status: common.TokenStatusEnabled}
+	require.NoError(t, model.DB.Create(token).Error)
+	t.Cleanup(func() {
+		model.DB.Delete(&model.SevereRiskRecord{}, "request_id = ?", "severe-disabled-request")
+		model.DB.Delete(&model.Token{}, token.Id)
+		model.DB.Delete(&model.Channel{}, channel.Id)
+		model.DB.Delete(&model.User{}, user.Id)
+	})
+	apiErr := types.WithOpenAIError(types.OpenAIError{Message: "Invalid prompt", Code: "invalid_prompt"}, http.StatusBadRequest)
+
+	// When
+	require.NoError(t, HandleSevereRiskEvent(SevereRiskEventInput{
+		Context: context.Background(), Request: &dto.GeneralOpenAIRequest{Prompt: "prompt"}, RequestID: "severe-disabled-request", ChannelID: channel.Id,
+		ChannelName: channel.Name, UserID: user.Id, Username: user.Username, TokenID: token.Id, TokenName: token.Name,
+		Model: "gpt-5.6-sol", Path: "/v1/responses", UpstreamErr: apiErr,
+	}))
+
+	// Then
+	var record model.SevereRiskRecord
+	require.NoError(t, model.DB.Where("request_id = ?", "severe-disabled-request").First(&record).Error)
+	var storedUser model.User
+	var storedChannel model.Channel
+	require.NoError(t, model.DB.First(&storedUser, user.Id).Error)
+	require.NoError(t, model.DB.First(&storedChannel, channel.Id).Error)
+	require.Equal(t, model.SevereRiskActionDisabled, record.UserActionStatus)
+	require.Equal(t, model.SevereRiskActionDisabled, record.ChannelActionStatus)
+	require.Equal(t, common.UserStatusEnabled, storedUser.Status)
+	require.Equal(t, common.ChannelStatusEnabled, storedChannel.Status)
+}

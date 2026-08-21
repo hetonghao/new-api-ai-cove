@@ -32,17 +32,15 @@ const ACTION_STATUS_LABELS: Readonly<Record<SevereRiskActionStatus, string>> = {
   pending: 'pending',
   success: 'success',
   failed: 'failed',
+  disabled: 'disabled',
 }
 
 function Status(props: { readonly value: SevereRiskActionStatus }) {
   const { t } = useTranslation()
-  return (
-    <span
-      className={props.value === 'success' ? 'text-success' : 'text-warning'}
-    >
-      {t(ACTION_STATUS_LABELS[props.value])}
-    </span>
-  )
+  let className = 'text-warning'
+  if (props.value === 'success') className = 'text-success'
+  if (props.value === 'disabled') className = 'text-muted-foreground'
+  return <span className={className}>{t(ACTION_STATUS_LABELS[props.value])}</span>
 }
 
 export function SevereRiskRecordList() {

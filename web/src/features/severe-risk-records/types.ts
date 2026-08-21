@@ -4,6 +4,7 @@ export const severeRiskActionStatusSchema = z.enum([
   'pending',
   'success',
   'failed',
+  'disabled',
 ])
 
 export const severeRiskRecordSchema = z.object({
