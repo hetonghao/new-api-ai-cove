@@ -20,23 +20,30 @@ import (
 )
 
 const (
+	responsesWebSocketCleanupSessionClosed        = "session closed before terminal response"
+	responsesWebSocketCleanupClientDisconnected   = "client disconnected before terminal response"
+	responsesWebSocketCleanupUpstreamDisconnected = "upstream disconnected"
+	responsesWebSocketCleanupUpstreamWriteFailed  = "upstream write failed"
 	responsesWebSocketFailureRuntime              = "runtime_failure"
 	responsesWebSocketFailureUpstreamWrite        = "upstream_write_failed"
 	responsesWebSocketFailureUpstreamDisconnected = "upstream_disconnected"
 	responsesWebSocketFailureInvalidUpstreamEvent = "invalid_upstream_event"
 	responsesWebSocketFailureSessionClosed        = "session_closed_before_terminal"
+	responsesWebSocketFailureClientDisconnected   = "client_disconnected_before_terminal"
 )
 
 func responsesWebSocketFailureCode(reason string) string {
 	switch reason {
-	case "upstream write failed":
+	case responsesWebSocketCleanupUpstreamWriteFailed:
 		return responsesWebSocketFailureUpstreamWrite
-	case "upstream disconnected":
+	case responsesWebSocketCleanupUpstreamDisconnected:
 		return responsesWebSocketFailureUpstreamDisconnected
 	case "invalid upstream event":
 		return responsesWebSocketFailureInvalidUpstreamEvent
-	case "session closed before terminal response":
+	case responsesWebSocketCleanupSessionClosed:
 		return responsesWebSocketFailureSessionClosed
+	case responsesWebSocketCleanupClientDisconnected:
+		return responsesWebSocketFailureClientDisconnected
 	default:
 		return responsesWebSocketFailureRuntime
 	}
@@ -78,6 +85,13 @@ func failPreparedResponsesWebSocketRequest(state *responsesWebSocketRequestState
 			}
 			recordRelayErrorLog(state.ctx, apiErr)
 		}
+	}
+	finalizeFailedResponsesWebSocketRequest(state)
+}
+
+func finalizeFailedResponsesWebSocketRequest(state *responsesWebSocketRequestState) {
+	if state == nil {
+		return
 	}
 	if state.info != nil && state.info.Billing != nil {
 		state.info.Billing.Refund(state.ctx)

@@ -36,9 +36,13 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 		logicalAttempts   int
 		attemptedChannels map[int]bool
 		capacityEvidence  string
+		cleanupReason     = responsesWebSocketCleanupSessionClosed
 	)
 	defer func() {
-		cleanupResponsesWebSocketSession(&active, &upstreamConn)
+		if active != nil && cleanupReason == responsesWebSocketCleanupClientDisconnected {
+			observability.markFailure(responsesWebSocketFailureCode(cleanupReason))
+		}
+		cleanupResponsesWebSocketSession(&active, &upstreamConn, cleanupReason)
 		observability.markCleanup()
 		observability.log(baseCtx, "cleanup")
 	}()
@@ -64,6 +68,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			}
 		case frame, ok := <-clientFrames:
 			if !ok {
+				cleanupReason = responsesWebSocketCleanupClientDisconnected
 				return nil
 			}
 			if draining && active == nil {
@@ -72,6 +77,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			}
 			if frame.controlType == websocket.PongMessage {
 				if err := writeResponsesWebSocketControl(clientConn, websocket.PongMessage, frame.payload); err != nil {
+					cleanupReason = responsesWebSocketCleanupClientDisconnected
 					return err
 				}
 				continue
@@ -83,6 +89,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				}
 				propagateResponsesWebSocketClose(upstreamConn, frame.err)
 				if isNormalResponsesWebSocketClose(frame.err) {
+					cleanupReason = responsesWebSocketCleanupClientDisconnected
 					return nil
 				}
 				return frame.err
@@ -114,6 +121,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				if active != nil {
 					apiErr := types.NewErrorWithStatusCode(errors.New("上一条 response.create 尚未结束，不支持并发创建"), types.ErrorCodeInvalidRequest, http.StatusConflict, types.ErrOptionWithSkipRetry())
 					if err := writeResponsesWebSocketError(clientConn, clientCodec, active.ctx, apiErr); err != nil {
+						cleanupReason = responsesWebSocketCleanupClientDisconnected
 						return err
 					}
 					continue
@@ -127,6 +135,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				if upstreamConn != nil && explicitModel != "" && explicitModel != sessionModel {
 					if previousResponseID != "" {
 						if err := writeResponsesWebSocketStateMissing(clientConn, clientCodec, baseCtx); err != nil {
+							cleanupReason = responsesWebSocketCleanupClientDisconnected
 							return err
 						}
 						continue
@@ -213,14 +222,15 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			active.replayDisallowed = true
 			if err := writeResponsesWebSocketMessage(upstreamConn, websocket.TextMessage, frame.payload); err != nil {
 				if active != nil {
-					common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, "upstream write failed")
+					common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, responsesWebSocketCleanupUpstreamWriteFailed)
 				}
+				cleanupReason = responsesWebSocketCleanupUpstreamWriteFailed
 				return err
 			}
 
 		case frame, ok := <-upstreamFrames:
 			if !ok {
-				observability.markFailure("upstream_websocket_closed")
+				cleanupReason = responsesWebSocketCleanupUpstreamDisconnected
 				return errors.New("upstream websocket closed")
 			}
 			observability.upstreamQueue.dequeue(len(frame.payload))
@@ -230,6 +240,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			}
 			if frame.controlType == websocket.PongMessage {
 				if err := writeResponsesWebSocketControl(upstreamConn, websocket.PongMessage, frame.payload); err != nil {
+					cleanupReason = responsesWebSocketCleanupUpstreamWriteFailed
 					return err
 				}
 				continue
@@ -452,6 +463,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			}
 			for _, frameToForward := range framesToForward {
 				if err := writeResponsesWebSocketClientMessage(clientConn, clientCodec, frameToForward.messageType, frameToForward.payload); err != nil {
+					cleanupReason = responsesWebSocketCleanupClientDisconnected
 					return err
 				}
 			}

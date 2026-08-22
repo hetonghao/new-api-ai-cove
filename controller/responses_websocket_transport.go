@@ -107,9 +107,17 @@ func startResponsesWebSocketReader(conn *websocket.Conn, done <-chan struct{}, c
 	return frames
 }
 
-func cleanupResponsesWebSocketSession(active **responsesWebSocketRequestState, upstream **websocket.Conn) {
+func cleanupResponsesWebSocketSession(active **responsesWebSocketRequestState, upstream **websocket.Conn, reason string) {
 	if *active != nil {
-		failResponsesWebSocketRequest(*active, nil, "session closed before terminal response")
+		if reason != responsesWebSocketCleanupClientDisconnected {
+			common.SetContextKey((*active).ctx, constant.ContextKeyWebSocketCloseReason, reason)
+		}
+		if reason == responsesWebSocketCleanupClientDisconnected {
+			finalizeFailedResponsesWebSocketRequest(*active)
+		} else {
+			failResponsesWebSocketRequest(*active, nil, reason)
+		}
+		*active = nil
 	}
 	if *upstream != nil {
 		_ = (*upstream).Close()
