@@ -23,6 +23,12 @@ func SetRelayRouter(router *gin.Engine) {
 		transportAckRouter.POST("", controller.TransportAckHTTP)
 		transportAckRouter.GET("", controller.TransportAckWebSocket)
 	}
+	transportCapabilitiesRouter := router.Group(constant.TransportCapabilitiesPath)
+	transportCapabilitiesRouter.Use(middleware.RouteTag("relay"))
+	transportCapabilitiesRouter.Use(middleware.TokenAuth())
+	{
+		transportCapabilitiesRouter.GET("", controller.TransportCapabilities)
+	}
 	// https://platform.openai.com/docs/api-reference/introduction
 	modelsRouter := router.Group("/v1/models")
 	modelsRouter.Use(middleware.RouteTag("relay"))

@@ -76,8 +76,9 @@ const (
 	ContextKeyWebSocketCompleteMs        ContextKey = "websocket_complete_ms"
 	ContextKeyWebSocketCloseReason       ContextKey = "websocket_close_reason"
 
-	TransportAckPath     = "/v1/transport/ack"
-	TransportAckMaxBytes = 1 << 20
+	TransportAckPath          = "/v1/transport/ack"
+	TransportAckMaxBytes      = 1 << 20
+	TransportCapabilitiesPath = "/v1/transport/capabilities"
 
 	// ContextKeyAuditLogged marks that the current request has already recorded
 	// a manage/operation audit log inside the handler. When set, the admin-audit
