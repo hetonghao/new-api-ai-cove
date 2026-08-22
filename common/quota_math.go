@@ -1,6 +1,7 @@
 package common
 
 import (
+	"errors"
 	"fmt"
 	"math"
 
@@ -15,6 +16,8 @@ const (
 	MaxQuota = math.MaxInt32
 	MinQuota = math.MinInt32
 )
+
+var errQuotaOutOfNativeIntRange = errors.New("quota out of native int range")
 
 // QuotaClampKind identifies why a quota conversion had to be saturated.
 type QuotaClampKind string
@@ -151,4 +154,14 @@ func QuotaFromDecimalChecked(d decimal.Decimal) (int, *QuotaClamp) {
 // value that would otherwise be saturated at the database's int32 boundary.
 func QuotaFromDecimalStrict(d decimal.Decimal) (int, error) {
 	return strictQuota(QuotaFromDecimalChecked(d))
+}
+
+// QuotaFromDecimalNativeIntStrict converts a rounded decimal quota within the Go int range.
+func QuotaFromDecimalNativeIntStrict(d decimal.Decimal) (int, error) {
+	rounded := d.Round(0)
+	if rounded.GreaterThan(decimal.NewFromInt(math.MaxInt)) ||
+		rounded.LessThan(decimal.NewFromInt(math.MinInt)) {
+		return 0, errQuotaOutOfNativeIntRange
+	}
+	return int(rounded.IntPart()), nil
 }
