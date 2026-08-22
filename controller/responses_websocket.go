@@ -83,7 +83,9 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				continue
 			}
 			if frame.err != nil {
-				cleanupReason = responsesWebSocketCleanupClientDisconnected
+				if isResponsesWebSocketClientDisconnectError(frame.err) {
+					cleanupReason = responsesWebSocketCleanupClientDisconnected
+				}
 				var protocolErr *responsesWebSocketPrivateProtocolError
 				if errors.As(frame.err, &protocolErr) {
 					_ = writeResponsesWebSocketClose(clientConn, protocolErr.CloseCode(), protocolErr.Error())

@@ -246,6 +246,23 @@ func isNormalResponsesWebSocketClose(err error) bool {
 		websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway)
 }
 
+func isResponsesWebSocketClientDisconnectError(err error) bool {
+	var closeErr *websocket.CloseError
+	if !errors.As(err, &closeErr) {
+		return false
+	}
+	switch closeErr.Code {
+	case websocket.CloseNormalClosure,
+		websocket.CloseGoingAway,
+		websocket.CloseNoStatusReceived,
+		websocket.CloseAbnormalClosure,
+		websocket.CloseTLSHandshake:
+		return true
+	default:
+		return false
+	}
+}
+
 func responsesWebSocketCloseCode(code int) int {
 	switch code {
 	case websocket.CloseNormalClosure,

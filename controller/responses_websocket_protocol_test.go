@@ -131,6 +131,18 @@ func TestResponsesWebSocketCloseClassification(t *testing.T) {
 	require.False(t, isNormalResponsesWebSocketClose(errors.New("connection reset")))
 }
 
+func TestResponsesWebSocketClientDisconnectErrorClassification(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, isResponsesWebSocketClientDisconnectError(&websocket.CloseError{Code: websocket.CloseAbnormalClosure}))
+	require.True(t, isResponsesWebSocketClientDisconnectError(&websocket.CloseError{Code: websocket.CloseNormalClosure}))
+	require.False(t, isResponsesWebSocketClientDisconnectError(errors.New("connection reset")))
+	require.False(t, isResponsesWebSocketClientDisconnectError(&responsesWebSocketPrivateProtocolError{
+		closeCode: websocket.CloseMessageTooBig,
+		reason:    "private message exceeds configured limit",
+	}))
+}
+
 func TestResponsesWebSocketFailureChannel_skips_peer_and_context_closes(t *testing.T) {
 	t.Parallel()
 
