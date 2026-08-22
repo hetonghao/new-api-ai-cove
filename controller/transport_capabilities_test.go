@@ -43,22 +43,35 @@ func TestTransportCapabilitiesReturnsOrderedTTLAndLocalHints(t *testing.T) {
 	user := model.User{Id: 991, Username: "capability-user", Password: "password", Group: "default", Status: common.UserStatusEnabled}
 	require.NoError(t, db.Create(&user).Error)
 	for _, channel := range []*model.Channel{
-		{Id: 992, Type: constant.ChannelTypeOpenAI, Key: "local-http", Status: common.ChannelStatusEnabled, Name: "http", Models: "cap-http", Group: "default"},
-		{Id: 993, Type: constant.ChannelTypeOpenAI, Key: "local-ws", Status: common.ChannelStatusEnabled, Name: "ws", Models: "cap-http", Group: "default"},
+		{Id: 992, Type: constant.ChannelTypeCodex, Key: "local-http", Status: common.ChannelStatusEnabled, Name: "http", Models: "cap-http", Group: "default"},
+		{Id: 993, Type: constant.ChannelTypeCodex, Key: "local-ws", Status: common.ChannelStatusEnabled, Name: "ws", Models: "cap-http", Group: "default"},
+		{Id: 996, Type: constant.ChannelTypeCodex, Key: "http-only", Status: common.ChannelStatusEnabled, Name: "http-only", Models: "cap-http-only", Group: "default"},
 	} {
 		channel.SetOtherSettings(dto.ChannelOtherSettings{SupportsWebSockets: channel.Id == 993})
 		require.NoError(t, db.Create(channel).Error)
-		require.NoError(t, db.Create(&model.Ability{Group: "default", Model: "cap-http", ChannelId: channel.Id, Enabled: true}).Error)
+		abilityModel := "cap-http"
+		if channel.Id == 996 {
+			abilityModel = "cap-http-only"
+		}
+		require.NoError(t, db.Create(&model.Ability{Group: "default", Model: abilityModel, ChannelId: channel.Id, Enabled: true}).Error)
 	}
+	chatChannel := &model.Channel{Id: 994, Type: constant.ChannelTypeOpenAI, Key: "chat-only", Status: common.ChannelStatusEnabled, Name: "chat", Models: "cap-chat", Group: "default"}
+	require.NoError(t, db.Create(chatChannel).Error)
+	require.NoError(t, db.Create(&model.Ability{Group: "default", Model: "cap-chat", ChannelId: chatChannel.Id, Enabled: true}).Error)
+	customChannel := &model.Channel{Id: 995, Type: constant.ChannelTypeAdvancedCustom, Key: "custom-chat", Status: common.ChannelStatusEnabled, Name: "custom-chat", Models: "cap-custom-chat", Group: "default"}
+	customChannel.SetOtherSettings(dto.ChannelOtherSettings{AdvancedCustom: &dto.AdvancedCustomConfig{Routes: []dto.AdvancedCustomRoute{{IncomingPath: "/v1/chat/completions", UpstreamPath: "/v1/chat/completions", Models: []string{"cap-custom-chat"}}}}})
+	require.NoError(t, db.Create(customChannel).Error)
+	require.NoError(t, db.Create(&model.Ability{Group: "default", Model: "cap-custom-chat", ChannelId: customChannel.Id, Enabled: true}).Error)
 	recorder := httptest.NewRecorder()
 	context, _ := gin.CreateTestContext(recorder)
-	context.Request = httptest.NewRequest("GET", "/v1/transport/capabilities?models=missing,cap-http,missing", nil)
+	context.Request = httptest.NewRequest("GET", "/v1/transport/capabilities?models=missing,cap-http,cap-chat,cap-custom-chat,cap-http-only,missing", nil)
 	context.Set("id", user.Id)
 	TransportCapabilities(context)
 	require.Equal(t, 200, recorder.Code)
 	payload := gjson.Parse(recorder.Body.String())
 	require.True(t, payload.Get("success").Bool())
-	require.Equal(t, float64(2), payload.Get("data.#").Float())
+	require.Equal(t, float64(1), payload.Get("version").Float())
+	require.Equal(t, float64(5), payload.Get("data.#").Float())
 	require.Equal(t, "missing", payload.Get("data.0.model").String())
 	require.False(t, payload.Get("data.0.allowed").Bool())
 	require.Equal(t, "model_not_allowed", payload.Get("data.0.reason_code").String())
@@ -67,6 +80,19 @@ func TestTransportCapabilitiesReturnsOrderedTTLAndLocalHints(t *testing.T) {
 	require.True(t, payload.Get("data.1.http").Bool())
 	require.True(t, payload.Get("data.1.responses_websocket").Bool())
 	require.Equal(t, "ok", payload.Get("data.1.reason_code").String())
+	require.Equal(t, "cap-chat", payload.Get("data.2.model").String())
+	require.True(t, payload.Get("data.2.allowed").Bool())
+	require.False(t, payload.Get("data.2.http").Bool())
+	require.Equal(t, "no_http_channel", payload.Get("data.2.reason_code").String())
+	require.Equal(t, "cap-custom-chat", payload.Get("data.3.model").String())
+	require.True(t, payload.Get("data.3.allowed").Bool())
+	require.False(t, payload.Get("data.3.http").Bool())
+	require.Equal(t, "no_http_channel", payload.Get("data.3.reason_code").String())
+	require.Equal(t, "cap-http-only", payload.Get("data.4.model").String())
+	require.True(t, payload.Get("data.4.allowed").Bool())
+	require.True(t, payload.Get("data.4.http").Bool())
+	require.False(t, payload.Get("data.4.responses_websocket").Bool())
+	require.Equal(t, "no_responses_websocket_channel", payload.Get("data.4.reason_code").String())
 	require.NotEmpty(t, payload.Get("generated_at").String())
 	require.NotEmpty(t, payload.Get("expires_at").String())
 	require.NotContains(t, recorder.Body.String(), "992")

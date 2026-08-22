@@ -89,8 +89,8 @@ func TestGetRandomSatisfiedChannelSupportsAllResponsesWebSocketChannelTypes(t *t
 
 func TestGetTransportCapabilityReturnsLocalHTTPAndResponsesWebSocketHints(t *testing.T) {
 	resetPricingEndpointTestTables(t)
-	insertWebSocketSelectionChannel(t, 406, constant.ChannelTypeOpenAI, false)
-	insertWebSocketSelectionChannel(t, 407, constant.ChannelTypeOpenAI, true)
+	insertWebSocketSelectionChannel(t, 406, constant.ChannelTypeCodex, false)
+	insertWebSocketSelectionChannel(t, 407, constant.ChannelTypeCodex, true)
 	InitChannelCache()
 
 	for _, memoryCacheEnabled := range []bool{true, false} {
@@ -98,6 +98,7 @@ func TestGetTransportCapabilityReturnsLocalHTTPAndResponsesWebSocketHints(t *tes
 			common.MemoryCacheEnabled = memoryCacheEnabled
 			capability, err := GetTransportCapability([]string{"default", "default"}, "gpt-5.4")
 			require.NoError(t, err)
+			require.True(t, capability.Allowed)
 			require.True(t, capability.HTTP)
 			require.True(t, capability.ResponsesWebSocket)
 			unknown, err := GetTransportCapability([]string{"default"}, "missing-model")

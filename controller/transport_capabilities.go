@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -61,7 +62,8 @@ func TransportCapabilities(c *gin.Context) {
 	for _, modelName := range models {
 		item := transportCapabilityItem{Model: modelName, ReasonCode: "model_not_allowed"}
 		if tokenLimited {
-			if !tokenModelLimit[modelName] {
+			matchingName := ratio_setting.FormatMatchingModelName(modelName)
+			if !tokenModelLimit[modelName] && !tokenModelLimit[matchingName] {
 				items = append(items, item)
 				continue
 			}
@@ -71,20 +73,24 @@ func TransportCapabilities(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "code": "capability_lookup_failed"})
 			return
 		}
+		item.Allowed = capability.Allowed
 		item.HTTP = capability.HTTP
 		item.ResponsesWebSocket = capability.ResponsesWebSocket
-		item.Allowed = capability.HTTP
-		if item.Allowed {
-			item.ReasonCode = "http_only"
-			if item.ResponsesWebSocket {
-				item.ReasonCode = "ok"
-			}
+		if !item.Allowed {
+			item.ReasonCode = "model_not_allowed"
+		} else if !item.HTTP {
+			item.ReasonCode = "no_http_channel"
+		} else if !item.ResponsesWebSocket {
+			item.ReasonCode = "no_responses_websocket_channel"
+		} else {
+			item.ReasonCode = "ok"
 		}
 		items = append(items, item)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":      true,
+		"version":      1,
 		"object":       "transport_capabilities",
 		"generated_at": now,
 		"expires_at":   now.Add(transportCapabilityTTL),
