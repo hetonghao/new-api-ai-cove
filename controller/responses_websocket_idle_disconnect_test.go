@@ -1,12 +1,15 @@
 package controller
 
 import (
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 
+	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -46,7 +49,7 @@ func TestResponsesWebSocket_idle_upstream_close_does_not_emit_request_error(t *t
 	require.Equal(t, model.LogTypeConsume, logs[0].Type)
 }
 
-func TestResponsesWebSocket_active_client_close_does_not_record_generic_request_error(t *testing.T) {
+func TestResponsesWebSocket_active_client_disconnect_does_not_record_generic_request_error(t *testing.T) {
 	// Given
 	db := setupResponsesWebSocketHandlerTest(t)
 	constant.ErrorLogEnabled = true
@@ -72,7 +75,7 @@ func TestResponsesWebSocket_active_client_close_does_not_record_generic_request_
 	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for upstream request")
 	}
-	closeResponsesWebSocketTestClient(client)
+	require.NoError(t, client.Close())
 
 	// Then
 	select {
@@ -86,6 +89,37 @@ func TestResponsesWebSocket_active_client_close_does_not_record_generic_request_
 	var logs []model.Log
 	require.NoError(t, db.Find(&logs).Error)
 	require.Empty(t, logs)
+}
+
+type responsesWebSocketTestBilling struct {
+	refunds int
+}
+
+func (*responsesWebSocketTestBilling) Settle(int) error         { return nil }
+func (*responsesWebSocketTestBilling) NeedsRefund() bool        { return true }
+func (*responsesWebSocketTestBilling) GetPreConsumedQuota() int { return 0 }
+func (*responsesWebSocketTestBilling) Reserve(int) error        { return nil }
+func (billing *responsesWebSocketTestBilling) Refund(*gin.Context) {
+	billing.refunds++
+}
+
+func TestResponsesWebSocket_client_disconnect_cleanup_finalizes_once(t *testing.T) {
+	// Given
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	billing := &responsesWebSocketTestBilling{}
+	active := &responsesWebSocketRequestState{
+		ctx:  ctx,
+		info: &relaycommon.RelayInfo{Billing: billing},
+	}
+	var upstream *websocket.Conn
+
+	// When
+	cleanupResponsesWebSocketSession(&active, &upstream, responsesWebSocketCleanupClientDisconnected)
+	cleanupResponsesWebSocketSession(&active, &upstream, responsesWebSocketCleanupClientDisconnected)
+
+	// Then
+	require.Nil(t, active)
+	require.Equal(t, 1, billing.refunds)
 }
 
 func TestResponsesWebSocket_active_upstream_close_records_upstream_disconnect_once(t *testing.T) {

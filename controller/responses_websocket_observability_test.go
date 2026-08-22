@@ -40,6 +40,18 @@ func TestResponsesWebSocketRuntimeFailureKeepsSpecificReason(t *testing.T) {
 	require.Equal(t, "upstream_write_failed", snapshot.FailureReason)
 }
 
+func TestResponsesWebSocketClientDisconnectKeepsSpecificReason(t *testing.T) {
+	// Given
+	observability := newResponsesWebSocketObservability("0123456789abcdef0123456789abcdef")
+
+	// When
+	observability.markFailure(responsesWebSocketFailureCode(responsesWebSocketCleanupClientDisconnected))
+
+	// Then
+	snapshot := observability.snapshot(time.Now())
+	require.Equal(t, responsesWebSocketFailureClientDisconnected, snapshot.FailureReason)
+}
+
 func TestResponsesWebSocketObservabilityUsesStableMessageWithFields(t *testing.T) {
 	var output bytes.Buffer
 	previousWriter := gin.DefaultWriter
