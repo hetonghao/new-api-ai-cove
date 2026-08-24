@@ -53,6 +53,8 @@ export interface CommonLogFilters extends CommonFilters {
   group?: string
   username?: string
   hideSelf?: boolean
+  ws?: boolean
+  fromTurbo?: boolean
   requestId?: string
   upstreamRequestId?: string
 }
@@ -329,6 +331,8 @@ export interface GetLogsParams {
   group?: string
   request_id?: string
   upstream_request_id?: string
+  ws?: boolean
+  from_turbo?: boolean
 }
 
 export interface GetLogsResponse {
@@ -354,6 +358,8 @@ export interface GetLogStatsParams {
   group?: string
   request_id?: string
   upstream_request_id?: string
+  ws?: boolean
+  from_turbo?: boolean
 }
 
 export interface GetLogStatsResponse {

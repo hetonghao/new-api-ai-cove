@@ -93,24 +93,6 @@ function timestampToSeconds(ms: number): number {
 }
 
 /**
- * Build query parameters from filters
- */
-export function buildQueryParams(
-  params: Record<string, unknown>
-): URLSearchParams {
-  const queryParams = new URLSearchParams()
-
-  Object.entries(params).forEach(([key, value]) => {
-    // Keep 0 as a valid value, only filter out undefined, null, and empty string
-    if (value !== undefined && value !== null && value !== '') {
-      queryParams.append(key, String(value))
-    }
-  })
-
-  return queryParams
-}
-
-/**
  * Build time range parameters with default values
  * Shared logic for all log types
  */
@@ -227,6 +209,8 @@ export function buildApiParams(config: {
     ...(searchParams.upstreamRequestId
       ? { upstream_request_id: String(searchParams.upstreamRequestId) }
       : {}),
+    ...(searchParams.ws === true ? { ws: true } : {}),
+    ...(searchParams.fromTurbo === true ? { from_turbo: true } : {}),
     ...buildTimeRangeParams(searchParams, false),
   }
 

@@ -252,7 +252,7 @@ func TestGetSalesLogsOnlyReturnsInvitedUsers(t *testing.T) {
 		{UserId: 4, Username: "mallory", Type: LogTypeConsume, CreatedAt: 102, ModelName: "gpt-other", TokenName: "other-token", Group: "default", Quota: 30},
 	}).Error)
 
-	logs, total, err := GetSalesLogs(1, LogTypeConsume, 0, 0, "", "", "", 0, 20, 0, "", "", "")
+	logs, total, err := GetSalesLogs(1, LogTypeConsume, 0, 0, "", "", "", 0, 20, 0, "", "", "", LogSourceFilters{})
 
 	require.NoError(t, err)
 	require.EqualValues(t, 1, total)
@@ -277,7 +277,7 @@ func TestGetSalesLogsStillFiltersByRequestedTypeWithinSalesScope(t *testing.T) {
 		{UserId: 4, Username: "mallory", Type: LogTypeError, CreatedAt: 103, ModelName: "gpt-other-error", TokenName: "other-error-token", Group: "default", Quota: 40},
 	}).Error)
 
-	logs, total, err := GetSalesLogs(1, LogTypeError, 0, 0, "", "", "", 0, 20, 0, "", "", "")
+	logs, total, err := GetSalesLogs(1, LogTypeError, 0, 0, "", "", "", 0, 20, 0, "", "", "", LogSourceFilters{})
 
 	require.NoError(t, err)
 	require.EqualValues(t, 1, total)
@@ -298,7 +298,7 @@ func TestGetSalesLogsStatOnlyCountsInvitedUsers(t *testing.T) {
 		{UserId: 4, Username: "mallory", Type: LogTypeConsume, CreatedAt: now - 1, ModelName: "gpt-other", TokenName: "other-token", Group: "default", Quota: 30, PromptTokens: 50, CompletionTokens: 60},
 	}).Error)
 
-	stat, err := GetSalesLogsStat(1, LogTypeUnknown, 0, 0, "", "", "", 0, "", "", "")
+	stat, err := GetSalesLogsStat(1, LogTypeUnknown, 0, 0, "", "", "", 0, "", "", "", LogSourceFilters{})
 
 	require.NoError(t, err)
 	require.Equal(t, 20, stat.Quota)
@@ -317,7 +317,7 @@ func TestGetSalesLogsStatWithUnknownTypeOnlyCountsInvitedConsumeLogs(t *testing.
 		{UserId: 4, Username: "mallory", Type: LogTypeConsume, CreatedAt: now - 1, ModelName: "gpt-other", TokenName: "other-token", Group: "default", Quota: 30, PromptTokens: 50, CompletionTokens: 60},
 	}).Error)
 
-	stat, err := GetSalesLogsStat(1, LogTypeUnknown, 0, 0, "", "", "", 0, "", "", "")
+	stat, err := GetSalesLogsStat(1, LogTypeUnknown, 0, 0, "", "", "", 0, "", "", "", LogSourceFilters{})
 
 	require.NoError(t, err)
 	require.Equal(t, 20, stat.Quota)
@@ -335,7 +335,7 @@ func TestGetSalesLogsStatWithNonConsumeTypeReturnsEmptyStats(t *testing.T) {
 		{UserId: 2, Username: "alice", Type: LogTypeManage, CreatedAt: now - 1, ModelName: "gpt-sales-manage", TokenName: "manage-token", Group: "default", Quota: 800, PromptTokens: 801, CompletionTokens: 802},
 	}).Error)
 
-	stat, err := GetSalesLogsStat(1, LogTypeError, 0, 0, "", "", "", 0, "", "", "")
+	stat, err := GetSalesLogsStat(1, LogTypeError, 0, 0, "", "", "", 0, "", "", "", LogSourceFilters{})
 
 	require.NoError(t, err)
 	require.Equal(t, 0, stat.Quota)
@@ -352,7 +352,7 @@ func TestGetSalesLogsStatSupportsRequestFilters(t *testing.T) {
 		{UserId: 2, Username: "alice", Type: LogTypeConsume, CreatedAt: now - 2, ModelName: "gpt-sales-invite", TokenName: "invite-token", Group: "default", Quota: 50, PromptTokens: 60, CompletionTokens: 70, RequestId: "req-2", UpstreamRequestId: "up-2"},
 	}).Error)
 
-	stat, err := GetSalesLogsStat(1, LogTypeUnknown, 0, 0, "", "", "", 0, "", "req-1", "up-1")
+	stat, err := GetSalesLogsStat(1, LogTypeUnknown, 0, 0, "", "", "", 0, "", "req-1", "up-1", LogSourceFilters{})
 
 	require.NoError(t, err)
 	require.Equal(t, 20, stat.Quota)
@@ -370,13 +370,13 @@ func TestSalesLogsWorkWhenDBAndLogDBAreSeparate(t *testing.T) {
 		{UserId: 4, Username: "mallory", Type: LogTypeConsume, CreatedAt: now - 1, ModelName: "gpt-other", TokenName: "other-token", Group: "default", Quota: 30, PromptTokens: 50, CompletionTokens: 60},
 	}).Error)
 
-	logs, total, err := GetSalesLogs(1, LogTypeConsume, 0, 0, "", "", "", 0, 20, 0, "", "", "")
+	logs, total, err := GetSalesLogs(1, LogTypeConsume, 0, 0, "", "", "", 0, 20, 0, "", "", "", LogSourceFilters{})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, total)
 	require.Len(t, logs, 1)
 	require.Equal(t, 2, logs[0].UserId)
 
-	stat, err := GetSalesLogsStat(1, LogTypeUnknown, 0, 0, "", "", "", 0, "", "", "")
+	stat, err := GetSalesLogsStat(1, LogTypeUnknown, 0, 0, "", "", "", 0, "", "", "", LogSourceFilters{})
 	require.NoError(t, err)
 	require.Equal(t, 20, stat.Quota)
 	require.Equal(t, 1, stat.Rpm)
@@ -395,12 +395,12 @@ func TestSalesLogsReturnEmptyWhenSalesHasNoInvitedUsers(t *testing.T) {
 	}).Error)
 	require.NoError(t, logDB.Create(&Log{UserId: 99, Username: "other", Type: LogTypeConsume, CreatedAt: time.Now().Unix(), Quota: 100}).Error)
 
-	logs, total, err := GetSalesLogs(1, LogTypeUnknown, 0, 0, "", "", "", 0, 20, 0, "", "", "")
+	logs, total, err := GetSalesLogs(1, LogTypeUnknown, 0, 0, "", "", "", 0, 20, 0, "", "", "", LogSourceFilters{})
 	require.NoError(t, err)
 	require.EqualValues(t, 0, total)
 	require.Empty(t, logs)
 
-	stat, err := GetSalesLogsStat(1, LogTypeUnknown, 0, 0, "", "", "", 0, "", "", "")
+	stat, err := GetSalesLogsStat(1, LogTypeUnknown, 0, 0, "", "", "", 0, "", "", "", LogSourceFilters{})
 	require.NoError(t, err)
 	require.Equal(t, 0, stat.Quota)
 	require.Equal(t, 0, stat.Rpm)

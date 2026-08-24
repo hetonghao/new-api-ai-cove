@@ -10,6 +10,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func getLogSourceFilters(c *gin.Context) model.LogSourceFilters {
+	webSocket, _ := strconv.ParseBool(c.Query("ws"))
+	fromTurbo, _ := strconv.ParseBool(c.Query("from_turbo"))
+	return model.LogSourceFilters{WebSocket: webSocket, FromTurbo: fromTurbo}
+}
+
 func GetAllLogs(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	logType, _ := strconv.Atoi(c.Query("type"))
@@ -23,7 +29,7 @@ func GetAllLogs(c *gin.Context) {
 	requestId := c.Query("request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
 	excludeUserId, _ := strconv.Atoi(c.Query("exclude_user_id"))
-	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, upstreamRequestId, excludeUserId)
+	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, upstreamRequestId, excludeUserId, getLogSourceFilters(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -45,7 +51,7 @@ func GetUserLogs(c *gin.Context) {
 	group := c.Query("group")
 	requestId := c.Query("request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
-	logs, total, err := model.GetUserLogs(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, upstreamRequestId)
+	logs, total, err := model.GetUserLogs(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, upstreamRequestId, getLogSourceFilters(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -115,7 +121,7 @@ func GetLogsStat(c *gin.Context) {
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
 	excludeUserId, _ := strconv.Atoi(c.Query("exclude_user_id"))
-	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, excludeUserId)
+	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, excludeUserId, getLogSourceFilters(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -142,7 +148,7 @@ func GetLogsSelfStat(c *gin.Context) {
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
-	quotaNum, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, 0)
+	quotaNum, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, 0, getLogSourceFilters(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return

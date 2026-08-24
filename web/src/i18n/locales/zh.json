@@ -3144,7 +3144,7 @@
     "No uptime data available": "暂无可用率数据",
     "No Uptime Kuma groups yet. Click \"Add Group\" to create one.": "暂无 Uptime Kuma 分组。点击“添加分组”来创建一个。",
     "No uptime monitoring configured": "未配置正常运行时间监控",
-    "No usage logs available. Logs will appear here once API calls are made.": "暂无使用日志。发起 API 调用后日志将显示在此处。",
+    "No usage logs available. Logs will appear here once API calls are made.": "暂无使用日志。发起请求后日志将显示在此处。",
     "No user information available": "暂无用户信息",
     "No user selected": "未选择用户",
     "No users": "无用户",

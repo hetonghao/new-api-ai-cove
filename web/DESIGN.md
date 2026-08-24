@@ -76,6 +76,12 @@ Risk Center 实现，以及 Issue #9 已通过的 375 / 768 / 1280 截图。
 - 状态：默认、focus、disabled、invalid；错误区域使用 `role="alert"`。
 - 可访问性：保留显式 label 和说明，不使用 placeholder 代替标签。
 
+### 使用日志筛选条
+
+- 桌面端时间范围按实际文案保持紧凑宽度；窄屏回到满宽，避免时间文案截断。
+- WS、来源等布尔条件复用紧凑开关字段，标签与开关组成同一可点击语义，默认关闭并允许独立组合。
+- 首行使用可换行的紧凑控件组；空间不足时自然换行，不压缩输入内容或引入横向滚动。
+
 ### StatusBadge
 
 - 变体：`success`、`warning`、`danger`、`info`、`neutral`；形态为 badge/text/underline。

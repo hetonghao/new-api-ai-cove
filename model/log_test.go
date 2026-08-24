@@ -69,6 +69,7 @@ func TestGetAllLogsCanExcludeCurrentAdminUser(t *testing.T) {
 		"",
 		"",
 		1,
+		LogSourceFilters{},
 	)
 
 	require.NoError(t, err)
@@ -91,6 +92,7 @@ func TestSumUsedQuotaCanExcludeCurrentAdminUser(t *testing.T) {
 		0,
 		"",
 		1,
+		LogSourceFilters{},
 	)
 
 	require.NoError(t, err)

@@ -44,6 +44,8 @@ const usageLogsSearchSchema = z.object({
   group: z.string().optional().catch(''),
   username: z.string().optional().catch(''),
   hideSelf: z.boolean().optional().catch(false),
+  ws: z.boolean().optional().catch(false),
+  fromTurbo: z.boolean().optional().catch(false),
   requestId: z.string().optional().catch(''),
   upstreamRequestId: z.string().optional().catch(''),
   startTime: z.number().optional(),

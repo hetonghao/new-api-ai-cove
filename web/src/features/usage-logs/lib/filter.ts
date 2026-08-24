@@ -55,6 +55,8 @@ export function buildSearchParams(
         ...(commonFilters.group && { group: commonFilters.group }),
         ...(commonFilters.username && { username: commonFilters.username }),
         ...(commonFilters.hideSelf && { hideSelf: commonFilters.hideSelf }),
+        ...(commonFilters.ws && { ws: true }),
+        ...(commonFilters.fromTurbo && { fromTurbo: true }),
         ...(commonFilters.requestId && { requestId: commonFilters.requestId }),
         ...(commonFilters.upstreamRequestId && {
           upstreamRequestId: commonFilters.upstreamRequestId,

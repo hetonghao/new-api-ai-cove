@@ -40,6 +40,7 @@ import {
   DrawerTrigger,
 } from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { useMediaQuery } from '@/hooks'
 import { cn } from '@/lib/utils'
 
@@ -65,6 +66,7 @@ interface LogsFilterToolbarProps<TData> {
 interface LogsFilterFieldProps {
   children: ReactNode
   wide?: boolean
+  fit?: boolean
   className?: string
 }
 
@@ -74,10 +76,38 @@ export function LogsFilterField(props: LogsFilterFieldProps) {
       className={cn(
         'min-w-0 [&_[data-slot=select-trigger]]:w-full [&_[data-slot=select-trigger]]:text-sm [&_[data-slot=select-value]]:leading-5',
         props.wide && 'sm:col-span-2',
+        props.fit && 'sm:w-fit',
         props.className
       )}
     >
       {props.children}
+    </div>
+  )
+}
+
+interface LogsFilterToggleProps {
+  id: string
+  label: ReactNode
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+}
+
+export function LogsFilterToggle(props: LogsFilterToggleProps) {
+  return (
+    <div className='bg-background border-input flex h-8 w-fit items-center gap-2 rounded-lg border px-2.5 whitespace-nowrap'>
+      <label
+        htmlFor={props.id}
+        className='text-muted-foreground cursor-pointer text-sm leading-5'
+      >
+        {props.label}
+      </label>
+      <Switch
+        id={props.id}
+        size='sm'
+        checked={props.checked}
+        onCheckedChange={props.onCheckedChange}
+        aria-label={typeof props.label === 'string' ? props.label : undefined}
+      />
     </div>
   )
 }

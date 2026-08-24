@@ -46,6 +46,7 @@ import { CompactDateTimeRangePicker } from './compact-date-time-range-picker'
 import {
   LogsFilterField,
   LogsFilterInput,
+  LogsFilterToggle,
   LogsFilterToolbar,
 } from './logs-filter-toolbar'
 import { useLogsViewScope, useUsageLogsContext } from './usage-logs-provider'
@@ -85,6 +86,8 @@ function buildSearchSourceKey(values: {
   hideSelf?: unknown
   requestId?: unknown
   upstreamRequestId?: unknown
+  ws?: unknown
+  fromTurbo?: unknown
   type?: unknown
 }) {
   return [
@@ -98,6 +101,8 @@ function buildSearchSourceKey(values: {
     values.hideSelf,
     values.requestId,
     values.upstreamRequestId,
+    values.ws,
+    values.fromTurbo,
     Array.isArray(values.type) ? values.type.join(',') : values.type,
   ]
     .map((value) => String(value ?? ''))
@@ -149,6 +154,8 @@ export function CommonLogsFilterBar<TData>(
       hideSelf: searchParams.hideSelf,
       requestId: searchParams.requestId,
       upstreamRequestId: searchParams.upstreamRequestId,
+      ws: searchParams.ws,
+      fromTurbo: searchParams.fromTurbo,
       type: searchParams.type,
     }
     const filters: CommonLogFilters = {
@@ -162,6 +169,8 @@ export function CommonLogsFilterBar<TData>(
       hideSelf: searchParams.hideSelf === true,
       requestId: getStringSearchParam(searchParams.requestId),
       upstreamRequestId: getStringSearchParam(searchParams.upstreamRequestId),
+      ws: searchParams.ws === true,
+      fromTurbo: searchParams.fromTurbo === true,
     }
     return {
       sourceKey: buildSearchSourceKey(sourceValues),
@@ -179,6 +188,8 @@ export function CommonLogsFilterBar<TData>(
     searchParams.hideSelf,
     searchParams.requestId,
     searchParams.upstreamRequestId,
+    searchParams.ws,
+    searchParams.fromTurbo,
     searchParams.type,
   ])
   const [draft, setDraft] = useState<CommonLogDraft>(() => searchState)
@@ -227,6 +238,8 @@ export function CommonLogsFilterBar<TData>(
       type: [LOG_TYPE_ALL_VALUE],
       startTime: start.getTime(),
       endTime: end.getTime(),
+      ws: undefined,
+      fromTurbo: undefined,
     }
     setDraft({
       sourceKey: buildSearchSourceKey(resetSearch),
@@ -259,10 +272,15 @@ export function CommonLogsFilterBar<TData>(
     !!filters.channel ||
     !!filters.requestId ||
     !!filters.upstreamRequestId
+  const hasSourceFilters = !!filters.ws || !!filters.fromTurbo
 
   const hasTypeFilter = logType !== LOG_TYPE_ALL_VALUE
   const hasAdditionalFilters =
-    !!filters.model || !!filters.group || hasTypeFilter || hasExpandedFilters
+    !!filters.model ||
+    !!filters.group ||
+    hasTypeFilter ||
+    hasExpandedFilters ||
+    hasSourceFilters
 
   const expandedFilterCount = [
     filters.token,
@@ -310,7 +328,7 @@ export function CommonLogsFilterBar<TData>(
   )
 
   const dateRangeFilter = (
-    <LogsFilterField wide>
+    <LogsFilterField wide fit>
       <CompactDateTimeRangePicker
         start={filters.startTime}
         end={filters.endTime}
@@ -318,6 +336,7 @@ export function CommonLogsFilterBar<TData>(
           handleChange('startTime', start)
           handleChange('endTime', end)
         }}
+        className='sm:w-fit sm:max-w-full sm:whitespace-nowrap'
       />
     </LogsFilterField>
   )
@@ -376,6 +395,26 @@ export function CommonLogsFilterBar<TData>(
           </SelectGroup>
         </SelectContent>
       </Select>
+    </LogsFilterField>
+  )
+  const wsFilter = (
+    <LogsFilterField fit>
+      <LogsFilterToggle
+        id='usage-logs-ws-filter'
+        label='WS'
+        checked={filters.ws === true}
+        onCheckedChange={(checked) => handleChange('ws', checked)}
+      />
+    </LogsFilterField>
+  )
+  const turboFilter = (
+    <LogsFilterField fit>
+      <LogsFilterToggle
+        id='usage-logs-turbo-filter'
+        label={t('From Turbo')}
+        checked={filters.fromTurbo === true}
+        onCheckedChange={(checked) => handleChange('fromTurbo', checked)}
+      />
     </LogsFilterField>
   )
   const advancedFilters = (
@@ -437,6 +476,8 @@ export function CommonLogsFilterBar<TData>(
       primaryFilters={
         <>
           {dateRangeFilter}
+          {wsFilter}
+          {turboFilter}
           {modelFilter}
           {groupFilter}
           {typeFilter}
@@ -447,14 +488,21 @@ export function CommonLogsFilterBar<TData>(
       mobileFilters={
         <>
           {modelFilter}
+          {wsFilter}
+          {turboFilter}
           {groupFilter}
           {typeFilter}
           {advancedFilters}
         </>
       }
       mobileFilterCount={
-        [filters.model, filters.group, hasTypeFilter].filter(Boolean).length +
-        expandedFilterCount
+        [
+          filters.model,
+          filters.group,
+          hasTypeFilter,
+          filters.ws,
+          filters.fromTurbo,
+        ].filter(Boolean).length + expandedFilterCount
       }
       advancedOpenRequest={advancedFilterExpansionRequest}
       hasAdvancedActiveFilters={hasExpandedFilters}

@@ -165,11 +165,12 @@ func GetSalesInvitedUser(salesUserID int, targetUserID int) (*User, error) {
 	return &user, nil
 }
 
-func GetSalesLogs(salesUserID int, logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetSalesLogs(salesUserID int, logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string, sourceFilters LogSourceFilters) (logs []*Log, total int64, err error) {
 	tx, err := salesLogsScope(salesUserID, logType)
 	if err != nil {
 		return nil, 0, err
 	}
+	tx = applyLogSourceFilters(tx, sourceFilters)
 
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
 		return nil, 0, err
@@ -208,7 +209,7 @@ func GetSalesLogs(salesUserID int, logType int, startTimestamp int64, endTimesta
 	return logs, total, nil
 }
 
-func GetSalesLogsStat(salesUserID int, logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string, upstreamRequestId string) (stat Stat, err error) {
+func GetSalesLogsStat(salesUserID int, logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string, upstreamRequestId string, sourceFilters LogSourceFilters) (stat Stat, err error) {
 	if logType != LogTypeUnknown && logType != LogTypeConsume {
 		return stat, nil
 	}
@@ -219,6 +220,8 @@ func GetSalesLogsStat(salesUserID int, logType int, startTimestamp int64, endTim
 	}
 	tx := salesLogsScopeForUserIDs(userIDs, LogTypeConsume).Select("COALESCE(sum(logs.quota), 0) quota")
 	rpmTpmQuery := salesLogsScopeForUserIDs(userIDs, LogTypeConsume).Select("count(*) rpm, COALESCE(sum(logs.prompt_tokens), 0) + COALESCE(sum(logs.completion_tokens), 0) tpm")
+	tx = applyLogSourceFilters(tx, sourceFilters)
+	rpmTpmQuery = applyLogSourceFilters(rpmTpmQuery, sourceFilters)
 
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.username", username); err != nil {
 		return stat, err

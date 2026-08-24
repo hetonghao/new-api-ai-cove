@@ -137,7 +137,7 @@ func GetSalesLogs(c *gin.Context) {
 	group := c.Query("group")
 	requestId := c.Query("request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
-	logs, total, err := model.GetSalesLogs(c.GetInt("id"), logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, upstreamRequestId)
+	logs, total, err := model.GetSalesLogs(c.GetInt("id"), logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, upstreamRequestId, getLogSourceFilters(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -158,7 +158,7 @@ func GetSalesLogsStat(c *gin.Context) {
 	group := c.Query("group")
 	requestId := c.Query("request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
-	stat, err := model.GetSalesLogsStat(c.GetInt("id"), logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId, upstreamRequestId)
+	stat, err := model.GetSalesLogsStat(c.GetInt("id"), logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId, upstreamRequestId, getLogSourceFilters(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
