@@ -1,7 +1,6 @@
 package model
 
 import (
-	"math"
 	"testing"
 	"time"
 
@@ -298,7 +297,7 @@ func TestRechargeEpayRejectsQuotaOverflowBeforeCompletingOrder(t *testing.T) {
 	truncateTables(t)
 
 	oldQuotaPerUnit := common.QuotaPerUnit
-	common.QuotaPerUnit = float64(math.MaxInt)
+	common.QuotaPerUnit = float64(common.MaxWalletQuota + 1)
 	t.Cleanup(func() { common.QuotaPerUnit = oldQuotaPerUnit })
 
 	user := insertUserForPaymentGuardTest(t, 505, 3)
@@ -310,24 +309,65 @@ func TestRechargeEpayRejectsQuotaOverflowBeforeCompletingOrder(t *testing.T) {
 	assert.Equal(t, common.TopUpStatusPending, getTopUpStatusForPaymentGuardTest(t, order.TradeNo))
 }
 
+func TestRechargeEpayEnforcesFinalWalletQuotaLimit(t *testing.T) {
+	oldQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 500000
+	t.Cleanup(func() { common.QuotaPerUnit = oldQuotaPerUnit })
+
+	testCases := []struct {
+		name         string
+		currentQuota int
+		wantErr      bool
+		wantQuota    int
+		wantStatus   string
+	}{
+		{
+			name:         "allows exact highest representable wallet balance",
+			currentQuota: common.MaxWalletQuota - 1_000_000,
+			wantQuota:    common.MaxWalletQuota,
+			wantStatus:   common.TopUpStatusSuccess,
+		},
+		{
+			name:         "rejects balance above wallet quota domain",
+			currentQuota: common.MaxWalletQuota - 999_999,
+			wantErr:      true,
+			wantQuota:    common.MaxWalletQuota - 999_999,
+			wantStatus:   common.TopUpStatusPending,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			truncateTables(t)
+			user := insertUserForPaymentGuardTest(t, 506, tc.currentQuota)
+			order := createEpayTestOrder(t, user.Id, "EPAYTESTWALLETLIMIT", PaymentProviderEpay, common.TopUpStatusPending)
+
+			_, err := RechargeEpay(order.TradeNo, "alipay", "127.0.0.1")
+			if tc.wantErr {
+				require.ErrorIs(t, err, ErrTopUpQuotaLimitExceeded)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, tc.wantQuota, getUserQuotaForPaymentGuardTest(t, user.Id))
+			assert.Equal(t, tc.wantStatus, getTopUpStatusForPaymentGuardTest(t, order.TradeNo))
+		})
+	}
+}
+
 func TestRechargeEpayCredits5000ToBigIntWallet(t *testing.T) {
-	// Given: production stores wallet quota as BIGINT and this account already
-	// has a balance above the legacy int32 ceiling.
 	truncateTables(t)
 
 	oldQuotaPerUnit := common.QuotaPerUnit
 	common.QuotaPerUnit = 500000
 	t.Cleanup(func() { common.QuotaPerUnit = oldQuotaPerUnit })
 
-	user := insertUserForPaymentGuardTest(t, 506, 4_986_109_506)
+	user := insertUserForPaymentGuardTest(t, 507, 4_986_109_506)
 	order := createEpayTestOrder(t, user.Id, "EPAYTESTBIGINT", PaymentProviderEpay, common.TopUpStatusPending)
 	order.Amount = 5000
 	require.NoError(t, DB.Save(&order).Error)
 
-	// When: the gateway settles a 5000 USD top-up.
 	_, err := RechargeEpay(order.TradeNo, "alipay", "127.0.0.1")
 
-	// Then: the full 2.5B quota credit is stored atomically.
 	require.NoError(t, err)
 	assert.Equal(t, 7_486_109_506, getUserQuotaForPaymentGuardTest(t, user.Id))
 	assert.Equal(t, common.TopUpStatusSuccess, getTopUpStatusForPaymentGuardTest(t, order.TradeNo))
