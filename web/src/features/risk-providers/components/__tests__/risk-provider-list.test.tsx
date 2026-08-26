@@ -185,6 +185,21 @@ test('labels OpenAI providers without showing a Neurons quota', () => {
   assert.ok(screen.getByText('Not applicable'))
 })
 
+test('renders the Neurons quota with the shared progress cell', () => {
+  setViewport(1280)
+  renderProviderList({
+    ...PROVIDER,
+    daily_neurons_used: 2500,
+    daily_neurons_reserved: 500,
+    daily_neurons_remaining: 7000,
+  })
+
+  const progress = screen.getByRole('progressbar')
+  assert.equal(progress.getAttribute('aria-valuenow'), '70')
+  assert.ok(screen.getByText('7,000'))
+  assert.ok(screen.getByText('10,000'))
+})
+
 test('keeps provider card edges inside clipped risk-center content', () => {
   setViewport(1280)
   renderProviderList()

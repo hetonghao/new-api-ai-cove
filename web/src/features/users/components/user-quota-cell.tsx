@@ -31,6 +31,8 @@ import { cn } from '@/lib/utils'
 type UserQuotaCellProps = {
   used: number
   remaining: number
+  total?: number
+  formatValue?: (value: number) => string
 }
 
 function getQuotaProgressColor(percentage: number): string {
@@ -41,10 +43,11 @@ function getQuotaProgressColor(percentage: number): string {
 
 export function UserQuotaCell(props: UserQuotaCellProps) {
   const { t } = useTranslation()
-  const total = props.used + props.remaining
+  const total = props.total ?? props.used + props.remaining
   const percentage = total > 0 ? (props.remaining / total) * 100 : 0
-  const formattedRemaining = formatQuota(props.remaining)
-  const formattedTotal = formatQuota(total)
+  const formatValue = props.formatValue ?? formatQuota
+  const formattedRemaining = formatValue(props.remaining)
+  const formattedTotal = formatValue(total)
 
   if (total === 0) {
     return (
@@ -80,7 +83,7 @@ export function UserQuotaCell(props: UserQuotaCellProps) {
       <TooltipContent>
         <div className='space-y-1 text-xs'>
           <div>
-            {t('Used:')} {formatQuota(props.used)}
+            {t('Used:')} {formatValue(props.used)}
           </div>
           <div>
             {t('Remaining:')} {formattedRemaining}

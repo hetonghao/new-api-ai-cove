@@ -328,7 +328,7 @@ export function CommonLogsFilterBar<TData>(
   )
 
   const dateRangeFilter = (
-    <LogsFilterField wide fit>
+    <LogsFilterField fit>
       <CompactDateTimeRangePicker
         start={filters.startTime}
         end={filters.endTime}
@@ -473,6 +473,7 @@ export function CommonLogsFilterBar<TData>(
       table={props.table}
       stats={statsBar}
       actionStart={sensitiveToggle}
+      primaryFiltersClassName='lg:grid-cols-[max-content_max-content_max-content_repeat(3,minmax(0,1fr))]'
       primaryFilters={
         <>
           {dateRangeFilter}

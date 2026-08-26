@@ -41,6 +41,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { TitledCard } from '@/components/ui/titled-card'
+import { UserQuotaCell } from '@/features/users/components/user-quota-cell'
 import { formatNumber } from '@/lib/format'
 
 import type { RiskProvider } from '../types'
@@ -234,16 +235,15 @@ export function RiskProviderList(props: RiskProviderListProps): ReactElement {
         meta: { mobileOrder: 30 },
         cell: ({ row }) =>
           row.original.provider_type === 'cloudflare' ? (
-            <div className='max-w-full min-w-0'>
-              <div className='tabular-nums'>
-                {formatNumber(row.original.daily_neurons_used)} /{' '}
-                {formatNumber(row.original.daily_neurons_limit)}
-              </div>
-              <div className='text-muted-foreground text-xs tabular-nums'>
-                {formatNumber(row.original.daily_neurons_remaining)}{' '}
-                {t('remaining')}
-              </div>
-            </div>
+            <UserQuotaCell
+              used={
+                row.original.daily_neurons_used +
+                row.original.daily_neurons_reserved
+              }
+              remaining={row.original.daily_neurons_remaining}
+              total={row.original.daily_neurons_limit}
+              formatValue={formatNumber}
+            />
           ) : (
             t('Not applicable')
           ),
