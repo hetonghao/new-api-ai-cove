@@ -109,6 +109,24 @@ func TestGetTransportCapabilityReturnsLocalHTTPAndResponsesWebSocketHints(t *tes
 	}
 }
 
+func TestGetTransportCapabilityTreatsOpenAIChannelsAsResponsesHTTP(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+	insertWebSocketSelectionChannel(t, 408, constant.ChannelTypeOpenAI, false)
+	insertWebSocketSelectionChannel(t, 409, constant.ChannelTypeOpenAI, true)
+	InitChannelCache()
+
+	for _, memoryCacheEnabled := range []bool{true, false} {
+		t.Run(fmt.Sprintf("memory_cache_%t", memoryCacheEnabled), func(t *testing.T) {
+			common.MemoryCacheEnabled = memoryCacheEnabled
+			capability, err := GetTransportCapability([]string{"default"}, "gpt-5.4")
+			require.NoError(t, err)
+			require.True(t, capability.Allowed)
+			require.True(t, capability.HTTP, "OpenAI Responses requests use the channel's ordinary HTTP route")
+			require.True(t, capability.ResponsesWebSocket)
+		})
+	}
+}
+
 func insertWebSocketSelectionChannel(t *testing.T, id int, channelType int, supportsWebSockets bool) {
 	t.Helper()
 	channel := &Channel{

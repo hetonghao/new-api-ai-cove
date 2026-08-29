@@ -37,7 +37,7 @@ func TestTransportCapabilitiesRejectsTooManyModels(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), "too_many_models")
 }
 
-func TestTransportCapabilitiesReturnsOrderedTTLAndLocalHints(t *testing.T) {
+func TestTransportCapabilitiesReturnsOrderedTTLAndOpenAIResponsesHint(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
 	common.MemoryCacheEnabled = false
 	user := model.User{Id: 991, Username: "capability-user", Password: "password", Group: "default", Status: common.UserStatusEnabled}
@@ -82,8 +82,9 @@ func TestTransportCapabilitiesReturnsOrderedTTLAndLocalHints(t *testing.T) {
 	require.Equal(t, "ok", payload.Get("data.1.reason_code").String())
 	require.Equal(t, "cap-chat", payload.Get("data.2.model").String())
 	require.True(t, payload.Get("data.2.allowed").Bool())
-	require.False(t, payload.Get("data.2.http").Bool())
-	require.Equal(t, "no_http_channel", payload.Get("data.2.reason_code").String())
+	require.True(t, payload.Get("data.2.http").Bool())
+	require.False(t, payload.Get("data.2.responses_websocket").Bool())
+	require.Equal(t, "no_responses_websocket_channel", payload.Get("data.2.reason_code").String())
 	require.Equal(t, "cap-custom-chat", payload.Get("data.3.model").String())
 	require.True(t, payload.Get("data.3.allowed").Bool())
 	require.False(t, payload.Get("data.3.http").Bool())

@@ -20,6 +20,9 @@ func channelSupportsResponsesHTTP(channel *Channel, modelName string) bool {
 	if channel == nil {
 		return false
 	}
+	if channel.Type == constant.ChannelTypeOpenAI {
+		return true
+	}
 	if channel.Type == constant.ChannelTypeAdvancedCustom {
 		config := channel.GetOtherSettings().AdvancedCustom
 		return config != nil && config.SupportsPathForModel(transportCapabilityResponsesPath, modelName)
