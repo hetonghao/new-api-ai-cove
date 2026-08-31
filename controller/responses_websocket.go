@@ -403,6 +403,11 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			terminal := false
 			terminalActive := false
 			var usage *dto.Usage
+			if active != nil && active.logicalAttempts > 1 && responsesWebSocketEventIsPreOutputState(frame.payload) {
+				// A retry attempt has already established upstream response state;
+				// only the first attempt may use a later capacity sideband to retry.
+				active.replayDisallowed = true
+			}
 			if active != nil && capacityEvidence != "" && responsesWebSocketTerminalErrorEvent(frame.payload) &&
 				!active.applicationOutputSeen && !active.cancelRequested && !responsesWebSocketEventHasApplicationOutput(frame.payload) {
 				capacityErr := newResponsesWebSocketCapacityError(capacityEvidence)

@@ -114,6 +114,47 @@ func TestResponsesWebSocket_retries_valid_capacity_sideband_before_output(t *tes
 	require.Equal(t, model.LogTypeConsume, logs[0].Type)
 }
 
+func TestResponsesWebSocket_doesNotReplayAfterRetryAttemptStateEvent(t *testing.T) {
+	db := setupResponsesWebSocketHandlerTest(t)
+	common.RetryTimes = 2
+	primary := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			assert.NoError(t, err, "read primary response.create")
+			return
+		}
+		_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(responsesWebSocketCapacityCloseCode, responsesWebSocketCapacityCloseReason), time.Now().Add(time.Second))
+	})
+	backup := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			assert.NoError(t, err, "read backup response.create")
+			return
+		}
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.in_progress","response":{"status":"in_progress","output":[],"usage":{"total_tokens":0}}}`)); err != nil {
+			assert.NoError(t, err, "write backup state event")
+			return
+		}
+		_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(responsesWebSocketCapacityCloseCode, responsesWebSocketCapacityCloseReason), time.Now().Add(time.Second))
+	})
+	third := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
+		_, _, _ = conn.ReadMessage()
+	})
+	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 421, baseURL: primary.server.URL, priority: 100})
+	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 422, baseURL: backup.server.URL, priority: 0})
+	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 423, baseURL: third.server.URL, priority: -1})
+	client := dialResponsesWebSocketTestClient(t)
+
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"gpt-4o-mini","input":[]}`)))
+	errorEvent := readResponsesWebSocketTestEvent(t, client)
+	require.Equal(t, "server_is_overloaded", gjson.GetBytes(errorEvent, "error.code").String())
+	closeErr := readResponsesWebSocketTestClose(t, client)
+	require.Equal(t, websocket.CloseInternalServerErr, closeErr.Code)
+	closeResponsesWebSocketTestClient(client)
+
+	require.Equal(t, int32(1), primary.connections.Load())
+	require.Equal(t, int32(1), backup.connections.Load())
+	require.Zero(t, third.connections.Load(), "a retry-attempt state event must block a further replay")
+}
+
 func TestResponsesWebSocket_preservesCapacityAfterBackupUnknownDisconnect(t *testing.T) {
 	db := setupResponsesWebSocketHandlerTest(t)
 	primary := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {

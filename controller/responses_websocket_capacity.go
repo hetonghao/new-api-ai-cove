@@ -122,15 +122,21 @@ func responsesWebSocketHasSpecificChannel(c *gin.Context) bool {
 	return ok
 }
 
-func responsesWebSocketEventAllowsCapacityRetry(payload []byte) bool {
-	eventType := gjson.GetBytes(payload, "type").String()
-	switch eventType {
+func responsesWebSocketEventIsPreOutputState(payload []byte) bool {
+	switch gjson.GetBytes(payload, "type").String() {
 	case "response.created", "response.in_progress", "codex.rate_limits", "codex.response.metadata":
-		hasOutput, unknown := responsesWebSocketInspectEnvelope(payload, false)
-		return !hasOutput && !unknown
+		return true
 	default:
 		return false
 	}
+}
+
+func responsesWebSocketEventAllowsCapacityRetry(payload []byte) bool {
+	if responsesWebSocketEventIsPreOutputState(payload) {
+		hasOutput, unknown := responsesWebSocketInspectEnvelope(payload, false)
+		return !hasOutput && !unknown
+	}
+	return false
 }
 
 func responsesWebSocketTerminalErrorEvent(payload []byte) bool {
