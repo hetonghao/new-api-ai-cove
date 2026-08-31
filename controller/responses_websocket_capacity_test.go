@@ -47,7 +47,7 @@ func TestResponsesWebSocketCapacityCodeRequiresVersionedBoundedReason(t *testing
 		reason string
 		want   string
 	}{
-		{name: "server overloaded", code: responsesWebSocketCapacityCloseCode, reason: responsesWebSocketCapacityCloseReason, want: "server_is_overloaded"},
+		{name: "server overloaded", code: responsesWebSocketCapacityCloseCode, reason: "ai-cove-capacity/v1;state=rejected;phase=pre_output;code=server_is_overloaded", want: "server_is_overloaded"},
 		{name: "slow down", code: responsesWebSocketCapacityCloseCode, reason: responsesWebSocketCapacityReasonPrefix + "slow_down", want: "slow_down"},
 		{name: "wrong close code", code: websocket.CloseInternalServerErr, reason: responsesWebSocketCapacityCloseReason},
 		{name: "ordinary internal close", code: websocket.CloseInternalServerErr, reason: "ordinary"},
