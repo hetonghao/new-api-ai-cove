@@ -28,6 +28,7 @@ import {
   ListTodo,
   MessageSquare,
   Palette,
+  PlugZap,
   Radio,
   ServerCog,
   Settings,
@@ -175,6 +176,12 @@ export function useSidebarData(): SidebarData {
             title: t('Risk Center'),
             url: '/risk-center',
             icon: ShieldCheck,
+            requiredRole: ROLE.SUPER_ADMIN,
+          },
+          {
+            title: t('Task Plugins'),
+            url: '/task-plugins',
+            icon: PlugZap,
             requiredRole: ROLE.SUPER_ADMIN,
           },
           {

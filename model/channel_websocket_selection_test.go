@@ -22,16 +22,16 @@ func TestGetRandomSatisfiedChannelFiltersResponsesWebSocketCapability(t *testing
 		t.Run(fmt.Sprintf("memory_cache_%t", memoryCacheEnabled), func(t *testing.T) {
 			common.MemoryCacheEnabled = memoryCacheEnabled
 
-			wsChannel, err := GetRandomSatisfiedChannel("default", "gpt-5.4", 0, "/v1/responses", true, nil)
+			wsChannel, err := GetRandomSatisfiedChannelWithSelection("default", "gpt-5.4", 0, "/v1/responses", true, nil)
 			require.NoError(t, err)
 			require.NotNil(t, wsChannel)
 			require.Equal(t, 403, wsChannel.Id)
 
-			wsFallback, err := GetRandomSatisfiedChannel("default", "gpt-5.4", 0, "/v1/responses", true, map[int]bool{403: true})
+			wsFallback, err := GetRandomSatisfiedChannelWithSelection("default", "gpt-5.4", 0, "/v1/responses", true, map[int]bool{403: true})
 			require.NoError(t, err)
 			require.Nil(t, wsFallback)
 
-			httpChannel, err := GetRandomSatisfiedChannel("default", "gpt-5.4", 0, "/v1/responses", false, nil)
+			httpChannel, err := GetRandomSatisfiedChannelWithSelection("default", "gpt-5.4", 0, "/v1/responses", false, nil)
 			require.NoError(t, err)
 			require.NotNil(t, httpChannel)
 			require.Contains(t, []int{401, 402, 403}, httpChannel.Id)
@@ -50,7 +50,7 @@ func TestGetRandomSatisfiedChannelExcludesDisabledWebSocketChannelWithStaleAbili
 		t.Run(fmt.Sprintf("memory_cache_%t", memoryCacheEnabled), func(t *testing.T) {
 			common.MemoryCacheEnabled = memoryCacheEnabled
 
-			channel, err := GetRandomSatisfiedChannel("default", "gpt-5.4", 0, "/v1/responses", true, nil)
+			channel, err := GetRandomSatisfiedChannelWithSelection("default", "gpt-5.4", 0, "/v1/responses", true, nil)
 			require.NoError(t, err)
 			require.Nil(t, channel)
 		})
@@ -78,7 +78,7 @@ func TestGetRandomSatisfiedChannelSupportsAllResponsesWebSocketChannelTypes(t *t
 
 			for _, memoryCacheEnabled := range []bool{true, false} {
 				common.MemoryCacheEnabled = memoryCacheEnabled
-				channel, err := GetRandomSatisfiedChannel("default", "gpt-5.4", 0, "/v1/responses", true, nil)
+				channel, err := GetRandomSatisfiedChannelWithSelection("default", "gpt-5.4", 0, "/v1/responses", true, nil)
 				require.NoError(t, err)
 				require.NotNil(t, channel)
 				require.Equal(t, 405, channel.Id)

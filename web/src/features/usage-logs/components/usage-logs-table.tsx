@@ -44,7 +44,11 @@ import type { LogCategory } from '../types'
 import { CommonLogsFilterBar } from './common-logs-filter-bar'
 import { TaskLogsFilterBar } from './task-logs-filter-bar'
 import { UsageLogsMobileList } from './usage-logs-mobile-card'
-import { useLogsViewScope, useUsageLogsContext } from './usage-logs-provider'
+import {
+  useLogsViewScope,
+  useUsageLogsContext,
+  type LogsViewAccess,
+} from './usage-logs-provider'
 
 const logTypeRowTint: Record<number, string> = {
   [LOG_TYPE_ENUM.ERROR]: 'bg-rose-50/40 dark:bg-rose-950/20',
@@ -87,9 +91,9 @@ const PROTOTYPE_SOURCE_MARKER_LOG: UsageLog = {
 
 function getColumnVisibilityStorageKey(
   logCategory: LogCategory,
-  isAdmin: boolean
+  viewAccess: LogsViewAccess
 ): string {
-  return `usage-logs:${logCategory}:${isAdmin ? 'admin' : 'user'}:column-visibility`
+  return `usage-logs:${logCategory}:${viewAccess}:column-visibility`
 }
 
 function deserializeLogTypeFilter(value: unknown): unknown[] {
@@ -108,7 +112,11 @@ interface UsageLogsTableProps {
 
 export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   const { t } = useTranslation()
-  const { isAdminView } = useLogsViewScope()
+  const {
+    isAdminView,
+    isRootView: isRoot,
+    viewAccess,
+  } = useLogsViewScope()
   const currentUserId = useAuthStore((state) => state.auth.user?.id)
   const isMobile = useMediaQuery('(max-width: 640px)')
   const {
@@ -169,6 +177,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       canUseAdminControls,
       canHideSelf,
       currentUserId,
+      viewAccess,
       pagination.pageIndex + 1,
       pagination.pageSize,
       columnFilters,
@@ -195,7 +204,10 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       return result.data || DEFAULT_LOGS_DATA
     },
     placeholderData: (previousData, previousQuery) => {
-      if (previousQuery?.queryKey[2] === logCategory) {
+      if (
+        previousQuery?.queryKey[2] === logCategory &&
+        previousQuery.queryKey[7] === viewAccess
+      ) {
         return previousData
       }
       return undefined
@@ -211,7 +223,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   const logs = showPrototypePreview
     ? [PROTOTYPE_SOURCE_MARKER_LOG]
     : fetchedLogs
-  const columns = useColumnsByCategory(logCategory, canUseAdminControls)
+  const columns = useColumnsByCategory(logCategory, canUseAdminControls, isRoot)
   const isLoadingData = isLoading || (isFetching && !data)
 
   const { table } = useDataTable({
@@ -220,7 +232,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     columnFilters,
     columnVisibilityStorageKey: getColumnVisibilityStorageKey(
       logCategory,
-      canUseAdminControls
+      viewAccess
     ),
     pagination,
     enableRowSelection: false,

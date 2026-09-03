@@ -267,10 +267,16 @@ func GetSalesLogsStat(salesUserID int, logType int, startTimestamp int64, endTim
 		common.SysError("failed to query sales log stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
-	if err = rpmTpmQuery.Scan(&stat).Error; err != nil {
+	var rateStat struct {
+		Rpm int
+		Tpm int
+	}
+	if err = rpmTpmQuery.Scan(&rateStat).Error; err != nil {
 		common.SysError("failed to query sales rpm/tpm stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
+	stat.Rpm = rateStat.Rpm
+	stat.Tpm = rateStat.Tpm
 
 	return stat, nil
 }

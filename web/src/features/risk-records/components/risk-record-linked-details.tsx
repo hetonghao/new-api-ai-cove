@@ -81,6 +81,7 @@ export function RiskRecordRequestDetailsButton(props: {
         <UsageLogDetailsDialog
           log={usageLog}
           isAdmin
+          isRoot={false}
           open={open}
           onOpenChange={setOpen}
         />

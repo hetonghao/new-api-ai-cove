@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -20,7 +21,7 @@ func TestAppendRelayTransportLogInfo_appends_websocket_lifecycle_fields(t *testi
 	common.SetContextKey(ctx, constant.ContextKeyWebSocketFirstOutputMs, int64(34))
 	common.SetContextKey(ctx, constant.ContextKeyWebSocketCompleteMs, int64(45))
 	common.SetContextKey(ctx, constant.ContextKeyWebSocketCloseReason, "upstream disconnected")
-	other := map[string]interface{}{}
+	other := model.NewLogOther()
 
 	AppendRelayTransportLogInfo(ctx, other)
 
@@ -31,7 +32,7 @@ func TestAppendRelayTransportLogInfo_appends_websocket_lifecycle_fields(t *testi
 		"websocket_first_output_ms":     int64(34),
 		"websocket_complete_ms":         int64(45),
 		"websocket_close_reason":        "upstream disconnected",
-	}, other)
+	}, other.Snapshot())
 }
 
 func TestAppendRelayTransportLogInfo_appends_turbo_client_source(t *testing.T) {
@@ -41,10 +42,11 @@ func TestAppendRelayTransportLogInfo_appends_turbo_client_source(t *testing.T) {
 		"X-Ai-Cove-Client":         []string{"turbo"},
 		"X-Ai-Cove-Client-Version": []string{"mac/0.1.0-beta.4"},
 	}}
-	other := map[string]interface{}{}
+	other := model.NewLogOther()
 
 	AppendRelayTransportLogInfo(ctx, other)
 
-	require.Equal(t, "turbo", other["client_source"])
-	require.Equal(t, "mac/0.1.0-beta.4", other["client_version"])
+	values := other.Snapshot()
+	require.Equal(t, "turbo", values["client_source"])
+	require.Equal(t, "mac/0.1.0-beta.4", values["client_version"])
 }

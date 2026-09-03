@@ -76,8 +76,25 @@ func LogInfo(ctx context.Context, msg string, fields ...map[string]any) {
 	logHelper(ctx, loggerINFO, msg, fields...)
 }
 
-func LogWarn(ctx context.Context, msg string, fields ...map[string]any) {
-	logHelper(ctx, loggerWarn, msg, fields...)
+func LogWarn(ctx context.Context, msg string, args ...any) {
+	var fields []map[string]any
+	allFields := len(args) > 0
+	for _, arg := range args {
+		field, ok := arg.(map[string]any)
+		if !ok {
+			allFields = false
+			break
+		}
+		fields = append(fields, field)
+	}
+	if allFields {
+		logHelper(ctx, loggerWarn, msg, fields...)
+		return
+	}
+	if len(args) > 0 {
+		msg = fmt.Sprintf(msg, args...)
+	}
+	logHelper(ctx, loggerWarn, msg)
 }
 
 func LogError(ctx context.Context, msg string) {
