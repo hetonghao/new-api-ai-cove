@@ -80,6 +80,9 @@ func TestConvertOpenAIResponsesRequestToGeminiEnablesServerToolInvocationsForMix
 	require.NotNil(t, got.ToolConfig)
 	require.NotNil(t, got.ToolConfig.IncludeServerSideToolInvocations)
 	assert.True(t, *got.ToolConfig.IncludeServerSideToolInvocations)
+	wire, err := common.Marshal(got)
+	require.NoError(t, err)
+	assert.Equal(t, true, gjson.GetBytes(wire, "toolConfig.includeServerSideToolInvocations").Bool())
 }
 
 func TestConvertOpenAIResponsesRequestToGeminiFunctionCallConversation(t *testing.T) {
