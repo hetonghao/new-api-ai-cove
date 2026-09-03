@@ -59,6 +59,27 @@ func TestConvertOpenAIResponsesRequestToGeminiFunctionToolAndChoice(t *testing.T
 	require.NotNil(t, got.ToolConfig.FunctionCallingConfig)
 	assert.Equal(t, dto.FunctionCallingConfigMode("ANY"), got.ToolConfig.FunctionCallingConfig.Mode)
 	assert.Equal(t, []string{"lookup"}, got.ToolConfig.FunctionCallingConfig.AllowedFunctionNames)
+	assert.Nil(t, got.ToolConfig.IncludeServerSideToolInvocations)
+}
+
+func TestConvertOpenAIResponsesRequestToGeminiEnablesServerToolInvocationsForMixedTools(t *testing.T) {
+	// Given: Responses combines a client function with a server-side web search tool.
+	request := dto.OpenAIResponsesRequest{
+		Model: "gemini-test",
+		Input: mustGeminiRawMessage(t, "search and call lookup"),
+		Tools: mustGeminiRawMessage(t, []map[string]any{
+			{"type": "function", "name": "lookup", "parameters": map[string]any{"type": "object"}},
+			{"type": "web_search_preview"},
+		}),
+	}
+
+	// When: the Responses request is converted to Gemini generateContent.
+	got := mustConvertResponsesToGemini(t, request)
+
+	// Then: Gemini explicitly allows server-side tools alongside function calling.
+	require.NotNil(t, got.ToolConfig)
+	require.NotNil(t, got.ToolConfig.IncludeServerSideToolInvocations)
+	assert.True(t, *got.ToolConfig.IncludeServerSideToolInvocations)
 }
 
 func TestConvertOpenAIResponsesRequestToGeminiFunctionCallConversation(t *testing.T) {

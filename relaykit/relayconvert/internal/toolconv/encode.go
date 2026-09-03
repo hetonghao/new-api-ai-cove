@@ -334,9 +334,10 @@ func attachGeminiRequest(request any, set Set) (any, []types.ConversionDiagnosti
 		return target, unsupportedHostedHistoryDiagnostics(types.RelayFormatGemini, set.History), nil
 	}
 	var (
-		functions   []map[string]any
-		tools       []map[string]any
-		diagnostics []types.ConversionDiagnostic
+		functions        []map[string]any
+		tools            []map[string]any
+		diagnostics      []types.ConversionDiagnostic
+		hasServerToolSet bool
 	)
 	for index, definition := range set.Definitions {
 		switch definition.Kind {
@@ -368,6 +369,7 @@ func attachGeminiRequest(request any, set Set) (any, []types.ConversionDiagnosti
 				diagnostics = append(diagnostics, presentationLoss(fmt.Sprintf("tools[%d].strict", index), "unsupported_function_strict", "Gemini does not expose OpenAI function strictness"))
 			}
 		case KindWebSearch:
+			hasServerToolSet = true
 			if set.Source == types.RelayFormatGemini && len(definition.Raw) > 0 {
 				var tool map[string]any
 				if err := kitutil.Unmarshal(definition.Raw, &tool); err != nil {
@@ -382,12 +384,14 @@ func attachGeminiRequest(request any, set Set) (any, []types.ConversionDiagnosti
 			}
 		case KindCodeExecution:
 			if set.Source == types.RelayFormatGemini || definition.NativeType == "codeExecution" {
+				hasServerToolSet = true
 				tools = append(tools, map[string]any{"codeExecution": map[string]any{}})
 				continue
 			}
 			diagnostics = append(diagnostics, semanticLoss(fmt.Sprintf("tools[%d]", index), "unverified_tool_mapping", "code execution semantics differ across providers"))
 		case KindURLContext:
 			if set.Source == types.RelayFormatGemini || definition.NativeType == "urlContext" {
+				hasServerToolSet = true
 				tools = append(tools, map[string]any{"urlContext": map[string]any{}})
 				continue
 			}
@@ -440,6 +444,12 @@ func attachGeminiRequest(request any, set Set) (any, []types.ConversionDiagnosti
 		target.Tools = encoded
 	}
 	config, choiceDiagnostics := encodeGeminiChoice(set.Choice)
+	if len(functions) > 0 && hasServerToolSet {
+		if config == nil {
+			config = &dto.ToolConfig{}
+		}
+		config.IncludeServerSideToolInvocations = kitutil.GetPointer(true)
+	}
 	target.ToolConfig = config
 	diagnostics = append(diagnostics, choiceDiagnostics...)
 	if set.ParallelAllowed != nil && !*set.ParallelAllowed {
