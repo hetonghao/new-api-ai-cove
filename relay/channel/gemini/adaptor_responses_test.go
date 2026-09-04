@@ -62,7 +62,7 @@ func TestConvertOpenAIResponsesRequestToGeminiFunctionToolAndChoice(t *testing.T
 	assert.Nil(t, got.ToolConfig.IncludeServerSideToolInvocations)
 }
 
-func TestConvertOpenAIResponsesRequestToGeminiEnablesServerToolInvocationsForMixedTools(t *testing.T) {
+func TestConvertOpenAIResponsesRequestToGeminiOmitsServerToolsForMixedTools(t *testing.T) {
 	// Given: Responses combines a client function with a server-side web search tool.
 	request := dto.OpenAIResponsesRequest{
 		Model: "gemini-test",
@@ -76,13 +76,22 @@ func TestConvertOpenAIResponsesRequestToGeminiEnablesServerToolInvocationsForMix
 	// When: the Responses request is converted to Gemini generateContent.
 	got := mustConvertResponsesToGemini(t, request)
 
-	// Then: Gemini explicitly allows server-side tools alongside function calling.
-	require.NotNil(t, got.ToolConfig)
-	require.NotNil(t, got.ToolConfig.IncludeServerSideToolInvocations)
-	assert.True(t, *got.ToolConfig.IncludeServerSideToolInvocations)
-	wire, err := common.Marshal(got)
-	require.NoError(t, err)
-	assert.Equal(t, true, gjson.GetBytes(wire, "toolConfig.includeServerSideToolInvocations").Bool())
+	// Then: Antigravity-compatible Gemini keeps client functions and omits built-in tools.
+	require.Len(t, got.GetTools(), 1)
+	assert.Equal(t, "lookup", gjson.GetBytes(got.Tools, "0.functionDeclarations.0.name").String())
+	assert.False(t, gjson.GetBytes(got.Tools, "#(googleSearch)").Exists())
+	assert.Nil(t, got.ToolConfig)
+}
+
+func TestConvertOpenAIResponsesRequestToGeminiKeepsPureServerTool(t *testing.T) {
+	got := mustConvertResponsesToGemini(t, dto.OpenAIResponsesRequest{
+		Model: "gemini-test",
+		Input: mustGeminiRawMessage(t, "search only"),
+		Tools: mustGeminiRawMessage(t, []map[string]any{{"type": "web_search_preview"}}),
+	})
+
+	require.Len(t, got.GetTools(), 1)
+	assert.NotEmpty(t, gjson.GetBytes(got.Tools, "0.googleSearch"))
 }
 
 func TestConvertOpenAIResponsesRequestToGeminiFunctionCallConversation(t *testing.T) {
