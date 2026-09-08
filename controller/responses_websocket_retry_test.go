@@ -295,7 +295,7 @@ func TestResponsesWebSocket_doesNotRetryCapacityDuringDrain(t *testing.T) {
 	require.Equal(t, int32(0), backup.connections.Load())
 }
 
-func TestResponsesWebSocket_does_not_replay_malformed_capacity_sideband(t *testing.T) {
+func TestResponsesWebSocket_retries_unknown_capacity_sideband_before_output(t *testing.T) {
 	db := setupResponsesWebSocketHandlerTest(t)
 	primary := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
 		if _, _, err := conn.ReadMessage(); err != nil {
@@ -305,20 +305,27 @@ func TestResponsesWebSocket_does_not_replay_malformed_capacity_sideband(t *testi
 		_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(responsesWebSocketCapacityCloseCode, "ai-cove-capacity/v2;state=rejected;phase=pre_output;code=server_is_overloaded"), time.Now().Add(time.Second))
 	})
 	backup := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
-		_, _, _ = conn.ReadMessage()
+		if _, _, err := conn.ReadMessage(); err != nil {
+			assert.NoError(t, err, "read backup response.create")
+			return
+		}
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.completed","response":{"status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`)); err != nil {
+			assert.NoError(t, err, "write backup completion")
+		}
 	})
 	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 403, baseURL: primary.server.URL, priority: 100})
 	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 404, baseURL: backup.server.URL, priority: 0})
 	client := dialResponsesWebSocketTestClient(t)
 
 	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"gpt-4o-mini","input":[]}`)))
-	errorEvent := readResponsesWebSocketTestEvent(t, client)
-	require.Equal(t, "error", gjson.GetBytes(errorEvent, "type").String())
-	require.NotEqual(t, "server_is_overloaded", gjson.GetBytes(errorEvent, "error.code").String())
-	_, _, err := client.ReadMessage()
-	require.Error(t, err)
+	require.Equal(t, "response.completed", gjson.GetBytes(readResponsesWebSocketTestEvent(t, client), "type").String())
 	closeResponsesWebSocketTestClient(client)
-	require.Equal(t, int32(0), backup.connections.Load())
+	require.Equal(t, int32(1), backup.connections.Load())
+
+	var logs []model.Log
+	require.NoError(t, db.Find(&logs).Error)
+	require.Len(t, logs, 1)
+	require.Equal(t, model.LogTypeConsume, logs[0].Type)
 }
 
 func TestResponsesWebSocket_capacityRetryHonorsZeroBudget(t *testing.T) {
@@ -412,7 +419,7 @@ func TestResponsesWebSocket_does_not_replay_capacity_after_client_cancel(t *test
 	require.Equal(t, int32(0), backup.connections.Load())
 }
 
-func TestResponsesWebSocket_does_not_replay_after_upstream_received_create(t *testing.T) {
+func TestResponsesWebSocket_retries_another_channel_after_pre_output_disconnect(t *testing.T) {
 	db := setupResponsesWebSocketHandlerTest(t)
 	primaryReceived := make(chan struct{})
 	primary := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
@@ -424,7 +431,13 @@ func TestResponsesWebSocket_does_not_replay_after_upstream_received_create(t *te
 		_ = conn.UnderlyingConn().Close()
 	})
 	backup := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
-		_, _, _ = conn.ReadMessage()
+		if _, _, err := conn.ReadMessage(); err != nil {
+			assert.NoError(t, err, "read backup response.create")
+			return
+		}
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.completed","response":{"status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`)); err != nil {
+			assert.NoError(t, err, "write backup completion")
+		}
 	})
 	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 203, baseURL: primary.server.URL, priority: 100})
 	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 204, baseURL: backup.server.URL, priority: 0})
@@ -436,18 +449,92 @@ func TestResponsesWebSocket_does_not_replay_after_upstream_received_create(t *te
 	case <-time.After(5 * time.Second):
 		require.FailNow(t, "timeout waiting for primary upstream request")
 	}
-	errorEvent := readResponsesWebSocketTestEvent(t, client)
-	require.Equal(t, "error", gjson.GetBytes(errorEvent, "type").String())
-	_, _, err := client.ReadMessage()
-	var closeErr *websocket.CloseError
-	require.ErrorAs(t, err, &closeErr)
-	require.Equal(t, websocket.CloseInternalServerErr, closeErr.Code)
-	require.Equal(t, int32(0), backup.connections.Load())
+	require.Equal(t, "response.completed", gjson.GetBytes(readResponsesWebSocketTestEvent(t, client), "type").String())
+	closeResponsesWebSocketTestClient(client)
+	require.Equal(t, int32(1), backup.connections.Load())
 
 	var primaryChannel model.Channel
 	require.NoError(t, db.First(&primaryChannel, 203).Error)
 	require.Equal(t, common.ChannelStatusEnabled, primaryChannel.Status)
-	require.NotContains(t, string(errorEvent), "upstream-key")
+
+	var logs []model.Log
+	require.NoError(t, db.Find(&logs).Error)
+	require.Len(t, logs, 1)
+	require.Equal(t, model.LogTypeConsume, logs[0].Type)
+}
+
+func TestResponsesWebSocket_does_not_replay_pre_output_disconnect_after_output(t *testing.T) {
+	db := setupResponsesWebSocketHandlerTest(t)
+	primary := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			assert.NoError(t, err, "read primary response.create")
+			return
+		}
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.created","response":{"output":[{"type":"function_call","call_id":"call-1"}],"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}`)); err != nil {
+			assert.NoError(t, err, "write output-bearing handshake")
+			return
+		}
+		_ = conn.UnderlyingConn().Close()
+	})
+	backup := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
+		_, _, _ = conn.ReadMessage()
+	})
+	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 209, baseURL: primary.server.URL, priority: 100})
+	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 210, baseURL: backup.server.URL, priority: 0})
+	client := dialResponsesWebSocketTestClient(t)
+
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"gpt-4o-mini","input":[]}`)))
+	_ = readResponsesWebSocketTestEvent(t, client)
+	closeResponsesWebSocketTestClient(client)
+	require.Equal(t, int32(0), backup.connections.Load())
+}
+
+func TestResponsesWebSocket_does_not_replay_pre_output_disconnect_with_previous_response_id(t *testing.T) {
+	db := setupResponsesWebSocketHandlerTest(t)
+	primary := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			assert.NoError(t, err, "read primary response.create")
+			return
+		}
+		_ = conn.UnderlyingConn().Close()
+	})
+	backup := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
+		_, _, _ = conn.ReadMessage()
+	})
+	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 211, baseURL: primary.server.URL, priority: 100})
+	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 212, baseURL: backup.server.URL, priority: 0})
+	client := dialResponsesWebSocketTestClient(t)
+
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"gpt-4o-mini","previous_response_id":"resp-1","input":[]}`)))
+	errorEvent := readResponsesWebSocketTestEvent(t, client)
+	require.Equal(t, "error", gjson.GetBytes(errorEvent, "type").String())
+	require.Contains(t, gjson.GetBytes(errorEvent, "error.message").String(), "upstream websocket disconnected")
+	require.Equal(t, int32(0), backup.connections.Load())
+}
+
+func TestResponsesWebSocket_preOutputDisconnectHonorsZeroBudget(t *testing.T) {
+	db := setupResponsesWebSocketHandlerTest(t)
+	common.RetryTimes = 0
+	primary := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			assert.NoError(t, err, "read primary response.create")
+			return
+		}
+		_ = conn.UnderlyingConn().Close()
+	})
+	backup := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
+		_, _, _ = conn.ReadMessage()
+	})
+	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 213, baseURL: primary.server.URL, priority: 100})
+	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 214, baseURL: backup.server.URL, priority: 0})
+	client := dialResponsesWebSocketTestClient(t)
+
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"gpt-4o-mini","input":[]}`)))
+	errorEvent := readResponsesWebSocketTestEvent(t, client)
+	require.Equal(t, "error", gjson.GetBytes(errorEvent, "type").String())
+	require.Contains(t, gjson.GetBytes(errorEvent, "error.message").String(), "upstream websocket disconnected")
+	closeResponsesWebSocketTestClient(client)
+	require.Equal(t, int32(0), backup.connections.Load())
 }
 
 func TestResponsesWebSocket_records_one_error_when_retry_candidates_are_exhausted(t *testing.T) {

@@ -269,17 +269,50 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				if capacityRejected {
 					capacityEvidence = mergeResponsesWebSocketCapacityCode(capacityEvidence, capacityCode)
 				}
-				if capacityRejected && !draining &&
-					!active.applicationOutputSeen &&
-					!active.cancelRequested &&
-					!active.replayDisallowed &&
-					strings.TrimSpace(gjson.GetBytes(activePayload, "previous_response_id").String()) == "" &&
-					!responsesWebSocketHasSpecificChannel(active.ctx) &&
-					logicalAttempts <= common.RetryTimes &&
-					sessionCtx.Err() == nil &&
-					baseCtx.Request.Context().Err() == nil {
-					capacityErr := newResponsesWebSocketCapacityError(capacityCode)
-					recordResponsesWebSocketRetryFailure(active, pinnedChannel, capacityErr)
+				preOutputSwitchErr := responsesWebSocketPreOutputSwitchError(frame.err, capacityRejected, capacityCode)
+				canSwitchPreOutput := preOutputSwitchErr != nil &&
+					responsesWebSocketCanSwitchPreOutput(active, activePayload, draining, logicalAttempts, sessionCtx.Err(), baseCtx.Request.Context().Err()) &&
+					(capacityRejected || shouldRetry(active.ctx, preOutputSwitchErr, common.RetryTimes-logicalAttempts+1))
+				var retryParam *service.RetryParam
+				excludedRetryChannels := map[int]bool(nil)
+				if canSwitchPreOutput {
+					excludedRetryChannels = make(map[int]bool, len(attemptedChannels)+1)
+					for channelID := range attemptedChannels {
+						excludedRetryChannels[channelID] = true
+					}
+					if pinnedChannel != nil {
+						excludedRetryChannels[pinnedChannel.Id] = true
+					}
+					retryParam = &service.RetryParam{
+						Ctx:                active.ctx,
+						TokenGroup:         active.info.TokenGroup,
+						ModelName:          active.info.OriginModelName,
+						RequestPath:        baseCtx.Request.URL.Path,
+						RequireWebSockets:  true,
+						ExcludedChannelIDs: excludedRetryChannels,
+						TriedChannelIDs:    make(map[int]bool, len(attemptedChannels)),
+						Retry:              common.GetPointer(logicalAttempts),
+					}
+					for channelID := range attemptedChannels {
+						retryParam.TriedChannelIDs[channelID] = true
+					}
+					if pinnedChannel != nil {
+						retryParam.RecordChannel(pinnedChannel)
+					}
+					if !capacityRejected {
+						nextChannel, _, nextErr := service.CacheGetRandomSatisfiedChannel(retryParam)
+						if nextChannel == nil || nextErr != nil {
+							canSwitchPreOutput = false
+						}
+					}
+				}
+				if canSwitchPreOutput {
+					recordErr := preOutputSwitchErr
+					if !capacityRejected {
+						common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, "upstream disconnected")
+						recordErr = types.NewError(errors.New("upstream disconnected"), types.ErrorCodeDoRequestFailed)
+					}
+					recordResponsesWebSocketRetryFailure(active, pinnedChannel, recordErr)
 					oldState := active
 					oldPayload := append([]byte(nil), activePayload...)
 					oldAttempts := logicalAttempts
@@ -288,30 +321,6 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					_ = upstreamConn.Close()
 					upstreamConn = nil
 					upstreamFrames = nil
-
-					excludedRetryChannels := make(map[int]bool, len(attemptedChannels)+1)
-					for channelID := range attemptedChannels {
-						excludedRetryChannels[channelID] = true
-					}
-					if pinnedChannel != nil {
-						excludedRetryChannels[pinnedChannel.Id] = true
-					}
-					retryParam := &service.RetryParam{
-						Ctx:                oldState.ctx,
-						TokenGroup:         oldState.info.TokenGroup,
-						ModelName:          oldState.info.OriginModelName,
-						RequestPath:        baseCtx.Request.URL.Path,
-						RequireWebSockets:  true,
-						ExcludedChannelIDs: nil,
-						TriedChannelIDs:    make(map[int]bool, len(attemptedChannels)),
-						Retry:              common.GetPointer(oldAttempts),
-					}
-					for channelID := range attemptedChannels {
-						retryParam.TriedChannelIDs[channelID] = true
-					}
-					if pinnedChannel != nil {
-						retryParam.RecordChannel(pinnedChannel)
-					}
 					retryState, retryOutgoing, retryConn, retryChannel, connectMs, retryErr := prepareFirstResponsesWebSocketRequestWithBilling(baseCtx, oldPayload, connectionStarted, oldBilling, oldRateLimit, oldState.info, retryParam, excludedRetryChannels, oldAttempts, oldState.ctx.GetStringSlice("use_channel"), false)
 					if retryErr == nil {
 						active = retryState
@@ -335,8 +344,9 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 							activePayload = nil
 							logicalAttempts = 0
 							attemptedChannels = nil
-							_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, newResponsesWebSocketCapacityError(capacityEvidence))
-							_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInternalServerErr, "upstream capacity rejected")
+							clientErr, closeReason := responsesWebSocketPreOutputSwitchClientError(capacityEvidence, nil)
+							_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, clientErr)
+							_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInternalServerErr, closeReason)
 							return err
 						}
 						observability.commitUpstreamRequest()
@@ -351,10 +361,9 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					logicalAttempts = 0
 					attemptedChannels = nil
 					refundResponsesWebSocketBillingIfPending(baseCtx, oldBilling)
-					retryAPIError := asResponsesWebSocketAPIError(retryErr)
-					finalErr := responsesWebSocketCapacityFallbackError(capacityEvidence, retryAPIError)
+					finalErr, closeReason := responsesWebSocketPreOutputSwitchClientError(capacityEvidence, retryErr)
 					_ = writeResponsesWebSocketError(clientConn, clientCodec, baseCtx, finalErr)
-					_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInternalServerErr, "upstream capacity rejected")
+					_ = writeResponsesWebSocketClose(clientConn, websocket.CloseInternalServerErr, closeReason)
 					return finalErr
 				}
 				if capacityRejected && !active.cancelRequested {
@@ -480,4 +489,44 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			}
 		}
 	}
+}
+
+func responsesWebSocketCanSwitchPreOutput(active *responsesWebSocketRequestState, payload []byte, draining bool, logicalAttempts int, sessionErr, requestErr error) bool {
+	return active != nil &&
+		!draining &&
+		!active.applicationOutputSeen &&
+		!active.cancelRequested &&
+		!active.replayDisallowed &&
+		strings.TrimSpace(gjson.GetBytes(payload, "previous_response_id").String()) == "" &&
+		!responsesWebSocketHasSpecificChannel(active.ctx) &&
+		logicalAttempts <= common.RetryTimes &&
+		sessionErr == nil &&
+		requestErr == nil
+}
+
+func responsesWebSocketPreOutputSwitchError(err error, capacityRejected bool, capacityCode string) *types.NewAPIError {
+	if capacityRejected {
+		return newResponsesWebSocketCapacityError(capacityCode)
+	}
+	if err == nil || isNormalResponsesWebSocketClose(err) {
+		return nil
+	}
+	return types.NewError(errors.New("upstream websocket disconnected"), types.ErrorCodeDoRequestFailed)
+}
+
+func responsesWebSocketPreOutputSwitchClientError(capacityEvidence string, retryErr error) (*types.NewAPIError, string) {
+	if capacityEvidence != "" {
+		var retryAPIError *types.NewAPIError
+		if retryErr != nil {
+			retryAPIError = asResponsesWebSocketAPIError(retryErr)
+		}
+		return responsesWebSocketCapacityFallbackError(capacityEvidence, retryAPIError), "upstream capacity rejected"
+	}
+	if retryErr != nil {
+		retryAPIError := asResponsesWebSocketAPIError(retryErr)
+		if responsesWebSocketIsClientRequestError(retryAPIError) {
+			return retryAPIError, retryAPIError.Error()
+		}
+	}
+	return types.NewError(errors.New("upstream websocket disconnected"), types.ErrorCodeDoRequestFailed), "upstream websocket disconnected"
 }
