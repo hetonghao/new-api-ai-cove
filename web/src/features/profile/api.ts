@@ -40,6 +40,12 @@ import type {
 /**
  * Get current user profile
  */
+/** Generate a system access token for the desktop sign-in handoff. */
+export async function generateAccessToken(): Promise<ApiResponse<string>> {
+  const res = await api.get('/api/user/token')
+  return res.data
+}
+
 export async function getUserProfile(): Promise<ApiResponse<UserProfile>> {
   const res = await api.get('/api/user/self')
   return res.data

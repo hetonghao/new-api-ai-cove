@@ -63,15 +63,6 @@ export function Profile() {
                   profile={profile}
                   onProfileUpdate={refreshProfile}
                 />
-<<<<<<< HEAD
-                <ProfileSecurityCard
-                  profile={profile}
-                  loading={loading}
-                  onProfileUpdate={refreshProfile}
-                />
-                <LoginSessionsCard />
-=======
->>>>>>> v1.0.0-rc.36
               </div>
 
               <div className='space-y-4 sm:space-y-6 xl:sticky xl:top-6'>
