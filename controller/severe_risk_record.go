@@ -57,8 +57,8 @@ func GetSevereRiskRecord(c *gin.Context) {
 		common.ApiErrorMsg(c, "严重风险上下文读取失败")
 		return
 	}
-	model.RecordOperationAuditLog(c.GetInt("id"), "Viewed severe risk record", c.ClientIP(), "risk.severe_record_view", map[string]interface{}{
+	model.RecordOperationAuditLog(c.GetInt("id"), c.GetInt("role"), "Viewed severe risk record", c.ClientIP(), "risk.severe_record_view", map[string]any{
 		"record_id": record.Id, "request_id": record.RequestID,
-	}, map[string]interface{}{"admin_id": c.GetInt("id"), "admin_username": c.GetString("username"), "admin_role": c.GetInt("role")}, nil)
+	}, auditOperatorInfo(c), nil, c)
 	common.ApiSuccess(c, gin.H{"record": record, "context": contextSnapshot})
 }
