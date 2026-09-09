@@ -19,39 +19,14 @@ type WebAssets struct {
 	IndexPage []byte
 }
 
-var webGzipExcludedExtensions = []string{
-	".avif",
-	".css",
-	".gif",
-	".ico",
-	".jpeg",
-	".jpg",
-	".js",
-	".map",
-	".mjs",
-	".otf",
-	".png",
-	".svg",
-	".ttf",
-	".webp",
-	".woff",
-	".woff2",
-}
-
-func SetWebRouter(router *gin.Engine, assets WebAssets, pluginDispatchers ...gin.HandlerFunc) {
+func SetWebRouter(router *gin.Engine, assets WebAssets, pluginDispatcher gin.HandlerFunc) {
 	frontendFS := common.EmbedFolder(assets.BuildFS, "web/dist")
 
-	handlers := []gin.HandlerFunc{}
-	if len(pluginDispatchers) > 0 && pluginDispatchers[0] != nil {
-		handlers = append(handlers, pluginDispatchers[0])
-	}
-	handlers = append(handlers,
+	router.NoRoute(
+		pluginDispatcher,
 		middleware.RouteTag("web"),
-		gzip.Gzip(
-			gzip.DefaultCompression,
-			gzip.WithExcludedPaths([]string{"/downloads/"}),
-			gzip.WithExcludedExtensions(webGzipExcludedExtensions),
-		),
+		gzip.Gzip(gzip.DefaultCompression),
+		middleware.AccessTokenAudit(),
 		middleware.GlobalWebRateLimit(),
 		middleware.Cache(),
 		static.Serve("/", frontendFS),
@@ -64,5 +39,4 @@ func SetWebRouter(router *gin.Engine, assets WebAssets, pluginDispatchers ...gin
 			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.IndexPage)
 		},
 	)
-	router.NoRoute(handlers...)
 }

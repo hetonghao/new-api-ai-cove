@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -25,8 +24,8 @@ import { SectionPageLayout } from '@/components/layout'
 import type { NavGroup } from '@/components/layout/types'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CacheStatsDialog } from '@/features/system-settings/general/channel-affinity/cache-stats-dialog'
-import { buildUsernameFilterSearch } from './lib/filter'
 import { useSidebarConfig } from '@/hooks/use-sidebar-config'
+
 import { UserInfoDialog } from './components/dialogs/user-info-dialog'
 import {
   type LogsViewScope,
@@ -59,7 +58,6 @@ const SECTION_META: Record<UsageLogsSectionId, { titleKey: string }> = {
 function UsageLogsContent() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
   const params = route.useParams()
   const activeCategory: UsageLogsSectionId =
     params.section && isUsageLogsSectionId(params.section)
@@ -72,10 +70,6 @@ function UsageLogsContent() {
     affinityTarget,
     affinityDialogOpen,
     setAffinityDialogOpen,
-    requestAdvancedFilterExpansion,
-    search,
-    navigateSearch,
-    queryKeyScope,
   } = useUsageLogsContext()
   const { canManageScope, viewScope, setViewScope } = useLogsViewScope()
   const tabNavGroups = useMemo<NavGroup[]>(
@@ -116,34 +110,11 @@ function UsageLogsContent() {
 
   const handleViewScopeChange = useCallback(
     (scope: string) => {
-      if (scope === 'others') {
-        setViewScope('all')
-        navigateSearch({
-          search: { ...search, hideSelf: true, page: 1 },
-        })
-        void queryClient.invalidateQueries({ queryKey: ['logs', queryKeyScope] })
-        void queryClient.invalidateQueries({
-          queryKey: ['usage-logs-stats', queryKeyScope],
-        })
-        return
-      }
-
       if (scope === 'all' || scope === 'self') {
         setViewScope(scope as LogsViewScope)
-        if (search.hideSelf) {
-          navigateSearch({
-            search: { ...search, hideSelf: undefined, page: 1 },
-          })
-          void queryClient.invalidateQueries({
-            queryKey: ['logs', queryKeyScope],
-          })
-          void queryClient.invalidateQueries({
-            queryKey: ['usage-logs-stats', queryKeyScope],
-          })
-        }
       }
     },
-    [navigateSearch, queryClient, queryKeyScope, search, setViewScope]
+    [setViewScope]
   )
 
   const pageMeta =
@@ -151,54 +122,22 @@ function UsageLogsContent() {
   const showTaskSwitcher =
     activeCategory !== 'common' && visibleSections.length > 1
 
-  const handleFilterByUsername = useCallback(
-    (username: string) => {
-      requestAdvancedFilterExpansion()
-      navigateSearch({
-        search: buildUsernameFilterSearch(search, username),
-      })
-      setUserInfoDialogOpen(false)
-      void queryClient.invalidateQueries({ queryKey: ['logs', queryKeyScope] })
-      void queryClient.invalidateQueries({
-        queryKey: ['usage-logs-stats', queryKeyScope],
-      })
-    },
-    [
-      navigateSearch,
-      queryClient,
-      queryKeyScope,
-      requestAdvancedFilterExpansion,
-      search,
-      setUserInfoDialogOpen,
-    ]
-  )
-
   return (
     <>
       <SectionPageLayout fixedContent>
         <SectionPageLayout.Title>
           {t(pageMeta.titleKey)}
         </SectionPageLayout.Title>
-        {canManageScope && (
-          <SectionPageLayout.Actions>
-            <Tabs
-              value={
-                activeCategory === 'common' && search.hideSelf === true
-                  ? 'others'
-                  : viewScope
-              }
-              onValueChange={handleViewScopeChange}
-            >
+        <SectionPageLayout.Actions>
+          {canManageScope && (
+            <Tabs value={viewScope} onValueChange={handleViewScopeChange}>
               <TabsList>
                 <TabsTrigger value='all'>{t('All')}</TabsTrigger>
                 <TabsTrigger value='self'>{t('Only Mine')}</TabsTrigger>
-                {activeCategory === 'common' && (
-                  <TabsTrigger value='others'>{t('Not Mine')}</TabsTrigger>
-                )}
               </TabsList>
             </Tabs>
-          </SectionPageLayout.Actions>
-        )}
+          )}
+        </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
           <div className='flex h-full min-h-0 flex-col gap-4'>
             {showTaskSwitcher && (
@@ -223,7 +162,6 @@ function UsageLogsContent() {
         userId={selectedUserId}
         open={userInfoDialogOpen}
         onOpenChange={setUserInfoDialogOpen}
-        onFilterByUsername={handleFilterByUsername}
       />
 
       <CacheStatsDialog
@@ -248,11 +186,8 @@ function UsageLogsContent() {
 }
 
 export function UsageLogs() {
-  const search = route.useSearch()
-  const navigateSearch = route.useNavigate()
-
   return (
-    <UsageLogsProvider search={search} navigateSearch={navigateSearch}>
+    <UsageLogsProvider>
       <UsageLogsContent />
     </UsageLogsProvider>
   )

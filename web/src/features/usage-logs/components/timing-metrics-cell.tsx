@@ -16,13 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { CircleAlert, Zap } from 'lucide-react'
+import { CircleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import {
   dotColorMap,
   textColorMap,
-  StatusBadge,
   type StatusVariant,
 } from '@/components/status-badge'
 import {
@@ -64,6 +63,7 @@ interface TimingMetricsCellProps {
    * indicator used elsewhere on the mobile card.
    */
   indicator?: 'bar' | 'dot'
+  compact?: boolean
 }
 
 export function TimingMetricsCell(props: TimingMetricsCellProps) {
@@ -85,7 +85,13 @@ export function TimingMetricsCell(props: TimingMetricsCellProps) {
   const totalTimeLabel = formatUseTime(props.useTimeSec)
 
   const labels = (
-    <div className='flex min-h-8 min-w-0 flex-col justify-center gap-0.5 text-xs leading-tight'>
+    <div
+      className={cn(
+        'flex min-h-8 min-w-0 flex-col justify-center gap-0.5 text-xs leading-tight',
+        props.compact &&
+          'min-h-0 flex-row flex-wrap items-center gap-x-2.5 gap-y-1'
+      )}
+    >
       {showFirstToken && (
         <div className='flex items-baseline gap-1.5'>
           {indicator === 'dot' && (
@@ -152,10 +158,7 @@ export function TimingMetricsCell(props: TimingMetricsCellProps) {
 
 interface StreamTpsCellProps {
   isStream: boolean
-  isWebSocket?: boolean
-  isTurbo?: boolean
-  isTurboWarmup?: boolean
-  turboVersion?: string
+  compact?: boolean
   /** Task logs are asynchronous jobs; stream vs non-stream does not apply. */
   isTask?: boolean
   tokensPerSecond?: number | null
@@ -175,60 +178,12 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
   if (props.isTask) {
     streamLabel = t('Async')
   }
-  const turboVersionLabel = props.turboVersion
-    ? `${t('Version')} ${props.turboVersion}`
-    : null
-  const turboAriaLabel = [t('From Turbo'), turboVersionLabel]
-    .filter(Boolean)
-    .join(' / ')
-  const webSocketMarker = props.isWebSocket ? (
-    <TooltipProvider delay={150}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type='button'
-              className='border-info/25 bg-info/10 text-info hover:bg-info/15 focus-visible:ring-info/50 inline-flex h-4 cursor-default items-center rounded border px-1 font-mono text-[9px] font-semibold tracking-wide transition-colors focus-visible:ring-2 focus-visible:outline-none'
-              aria-label={t('WebSocket acceleration channel')}
-            >
-              WS
-            </button>
-          }
-        />
-        <TooltipContent>{t('WebSocket acceleration channel')}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  ) : null
-  const turboMarker = props.isTurbo ? (
-    <TooltipProvider delay={150}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type='button'
-              className='text-success hover:bg-success/15 focus-visible:ring-success/50 inline-flex size-4 cursor-default items-center justify-center rounded-full transition-transform duration-200 hover:scale-110 focus-visible:ring-2 focus-visible:outline-none'
-              aria-label={turboAriaLabel}
-            >
-              <Zap className='fill-success/20 size-3' aria-hidden='true' />
-            </button>
-          }
-        />
-        <TooltipContent>
-          <div className='space-y-0.5 text-xs'>
-            <p>{t('From Turbo')}</p>
-            {turboVersionLabel && (
-              <p className='font-mono'>{turboVersionLabel}</p>
-            )}
-          </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  ) : null
 
   return (
     <div
       className={cn(
         'flex shrink-0 flex-col items-start justify-center gap-0.5 text-xs leading-tight',
+        props.compact && 'flex-row flex-wrap items-center gap-1.5',
         props.className
       )}
     >
@@ -239,8 +194,6 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
         )}
       >
         {streamLabel}
-        {webSocketMarker}
-        {turboMarker}
         {showStreamError && (
           <TooltipProvider>
             <Tooltip>
@@ -264,25 +217,12 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
           </TooltipProvider>
         )}
       </span>
-      <span
-        className={cn(
-          'text-muted-foreground/60 tabular-nums',
-          !props.isTurboWarmup && 'px-0.5'
-        )}
-      >
-        {props.isTurboWarmup ? (
-          <StatusBadge
-            label={t('Turbo warm-up request')}
-            variant='success'
-            size='sm'
-            copyable={false}
-            type='badge'
-            className='border-success/30 bg-success/10 border'
-          />
-        ) : (
-          tpsLabel
-        )}
-      </span>
+      {(!props.compact ||
+        (props.isStream && props.tokensPerSecond != null)) && (
+        <span className='text-muted-foreground/60 px-0.5 tabular-nums'>
+          {tpsLabel}
+        </span>
+      )}
     </div>
   )
 }
