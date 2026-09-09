@@ -113,6 +113,20 @@ type User struct {
 	TopUpAmount          float64                    `json:"topup_amount" gorm:"-:all"`
 	AuthVersion          int64                      `json:"-" gorm:"type:bigint;not null;default:1;column:auth_version"`
 	AdminPermissions     map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
+	HasPassword          bool                       `json:"has_password" gorm:"-:all"`
+}
+
+func GetSelfUserById(id int) (*User, error) {
+	if id == 0 {
+		return nil, errors.New("id 为空！")
+	}
+	var profile struct {
+		User
+		HasPassword bool `gorm:"column:has_password"`
+	}
+	err := DB.Model(&User{}).Select("id", "username", "display_name", "role", "status", "email", "github_id", "discord_id", "oidc_id", "wechat_id", "telegram_id", "group", "quota", "used_quota", "request_count", "aff_code", "aff_count", "aff_quota", "aff_history", "inviter_id", "linux_do_id", "setting", "stripe_customer", "auth_version", "CASE WHEN password <> '' THEN 1 ELSE 0 END AS has_password").First(&profile, "id = ?", id).Error
+	profile.User.HasPassword = profile.HasPassword
+	return &profile.User, err
 }
 
 func lockNormalizedEmail(tx *gorm.DB, email string) error {
