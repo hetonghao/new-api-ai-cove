@@ -23,6 +23,8 @@ import {
   createRoute,
   createRouter,
   RouterProvider,
+  useNavigate,
+  useRouterState,
 } from '@tanstack/react-router'
 import { getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import {
@@ -35,6 +37,7 @@ import {
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 
+import type { NavigateFn } from '@/hooks/use-table-url-state'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -52,8 +55,15 @@ function FilterFixture() {
     columns: [],
     getCoreRowModel: getCoreRowModel(),
   })
+  const search = useRouterState({
+    select: (state) => state.location.search as Record<string, unknown>,
+  })
+  const navigate = useNavigate()
+  const navigateSearch: NavigateFn = (opts) => {
+    void navigate({ search: opts.search as never, replace: opts.replace })
+  }
   return (
-    <UsageLogsProvider>
+    <UsageLogsProvider search={search} navigateSearch={navigateSearch}>
       <CommonLogsFilterBar table={table} />
     </UsageLogsProvider>
   )
@@ -260,9 +270,12 @@ it('lets mobile users select a long group name inside the filter drawer and subm
   await waitFor(() =>
     expect(router.state.location.search).toMatchObject({ group: longGroup })
   )
-  await waitFor(() =>
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  )
+  await waitFor(() => {
+    const dialog = screen.queryByRole('dialog')
+    expect(
+      dialog == null || dialog.getAttribute('data-state') === 'closed'
+    ).toBe(true)
+  })
 })
 
 it.each([1, 10])(

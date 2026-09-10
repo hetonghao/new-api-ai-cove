@@ -23,6 +23,8 @@ import {
   createRoute,
   createRouter,
   RouterProvider,
+  useNavigate,
+  useRouterState,
 } from '@tanstack/react-router'
 import { getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import {
@@ -37,6 +39,7 @@ import userEvent from '@testing-library/user-event'
 import i18next from 'i18next'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
+import type { NavigateFn } from '@/hooks/use-table-url-state'
 import zhTW from '@/i18n/locales/zh-TW.json'
 import zh from '@/i18n/locales/zh.json'
 import { api } from '@/lib/api'
@@ -64,8 +67,15 @@ function Fixture() {
     columns: [],
     getCoreRowModel: getCoreRowModel(),
   })
+  const search = useRouterState({
+    select: (state) => state.location.search as Record<string, unknown>,
+  })
+  const navigate = useNavigate()
+  const navigateSearch: NavigateFn = (opts) => {
+    void navigate({ search: opts.search as never, replace: opts.replace })
+  }
   return (
-    <UsageLogsProvider>
+    <UsageLogsProvider search={search} navigateSearch={navigateSearch}>
       <CommonLogsFilterBar table={table} />
     </UsageLogsProvider>
   )
@@ -163,11 +173,12 @@ it('applies mobile drawer filters only when Search is pressed', async () => {
       model: 'gemini-3.7-flash',
     })
   )
-  await waitFor(() =>
+  await waitFor(() => {
+    const dialog = screen.queryByRole('dialog', { name: 'Filter' })
     expect(
-      screen.queryByRole('dialog', { name: 'Filter' })
-    ).not.toBeInTheDocument()
-  )
+      dialog == null || dialog.getAttribute('data-state') === 'closed'
+    ).toBe(true)
+  })
 })
 
 it('keeps all quick actions visible without opening a menu', async () => {

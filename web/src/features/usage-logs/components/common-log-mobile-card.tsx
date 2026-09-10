@@ -32,7 +32,7 @@ import dayjs from '@/lib/dayjs'
 import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 
 import type { UsageLog } from '../data/schema'
-import { formatModelName, parseLogOther } from '../lib/format'
+import { formatModelName, isTurboWarmupLog, parseLogOther } from '../lib/format'
 import {
   getLogTypeConfig,
   isDisplayableLogType,
@@ -192,6 +192,12 @@ export function CommonLogMobileCard<TData>(props: {
                   compact
                   className='min-h-5 max-w-full min-w-0 justify-end'
                   isStream={log.is_stream}
+                  isWebSocket={
+                    other?.transport === 'websocket' || other?.ws === true
+                  }
+                  isTurbo={other?.client_source === 'turbo'}
+                  isTurboWarmup={isTurboWarmupLog(log, other)}
+                  turboVersion={other?.client_version}
                   isTask={other?.is_task === true}
                   tokensPerSecond={
                     log.use_time > 0 && log.completion_tokens > 0

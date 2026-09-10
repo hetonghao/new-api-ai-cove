@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQueryClient, useIsFetching, useQuery } from '@tanstack/react-query'
-import { useNavigate, getRouteApi } from '@tanstack/react-router'
 import type { Table } from '@tanstack/react-table'
 import { Eye, EyeOff } from 'lucide-react'
 import { useState, useCallback, useMemo } from 'react'
@@ -52,11 +51,10 @@ import { CompactDateTimeRangePicker } from './compact-date-time-range-picker'
 import {
   LogsFilterField,
   LogsFilterInput,
+  LogsFilterToggle,
   LogsFilterToolbar,
 } from './logs-filter-toolbar'
 import { useLogsViewScope, useUsageLogsContext } from './usage-logs-provider'
-
-const route = getRouteApi('/_authenticated/usage-logs/$section')
 
 type LogTypeValue = (typeof LOG_TYPE_FILTERS)[number]['value']
 const logTypeValueSet = new Set<string>(
@@ -82,6 +80,14 @@ function getLogTypeValue(value: unknown): LogTypeValue {
     : LOG_TYPE_ALL_VALUE
 }
 
+function getStringSearchParam(value: unknown): string | undefined {
+  return typeof value === 'string' && value !== '' ? value : undefined
+}
+
+function getNumberSearchParam(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
 function buildSearchSourceKey(values: {
   startTime?: unknown
   endTime?: unknown
@@ -90,8 +96,11 @@ function buildSearchSourceKey(values: {
   token?: unknown
   group?: unknown
   username?: unknown
+  hideSelf?: unknown
   requestId?: unknown
   upstreamRequestId?: unknown
+  ws?: unknown
+  fromTurbo?: unknown
   type?: unknown
 }) {
   return [
@@ -102,8 +111,11 @@ function buildSearchSourceKey(values: {
     values.token,
     values.group,
     values.username,
+    values.hideSelf,
     values.requestId,
     values.upstreamRequestId,
+    values.ws,
+    values.fromTurbo,
     Array.isArray(values.type) ? values.type.join(',') : values.type,
   ]
     .map((value) => String(value ?? ''))
@@ -119,33 +131,42 @@ export function CommonLogsFilterBar<TData>(
 ) {
   const { t } = useTranslation()
   const isMobile = useMediaQuery('(max-width: 640px)')
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const searchParams = route.useSearch()
-  const { isAdminView: isAdmin } = useLogsViewScope()
-  const { sensitiveVisible, setSensitiveVisible } = useUsageLogsContext()
-  const fetchingLogs = useIsFetching({ queryKey: ['logs'] })
+  const { isAdminView } = useLogsViewScope()
+  const {
+    sensitiveVisible,
+    setSensitiveVisible,
+    search: searchParams,
+    navigateSearch,
+    adminControls,
+    advancedFilterExpansionRequest,
+    queryKeyScope,
+  } = useUsageLogsContext()
+  const fetchingLogs = useIsFetching({ queryKey: ['logs', queryKeyScope] })
+  const canUseAdminControls = adminControls ?? isAdminView
   const { data: adminGroups } = useQuery({
     queryKey: ['groups'],
     queryFn: getGroups,
-    enabled: isAdmin,
+    enabled: canUseAdminControls,
   })
   const { data: userGroups } = useQuery({
     queryKey: ['user-groups'],
     queryFn: getUserGroups,
-    enabled: !isAdmin,
+    enabled: !canUseAdminControls,
   })
   const groupOptions = useMemo(() => {
-    const groups = isAdmin
+    const groups = canUseAdminControls
       ? (adminGroups?.data ?? [])
       : Object.keys(userGroups?.data ?? {})
     return groups
       .filter((group) => group !== 'auto')
       .map((group) => ({ label: group, value: group }))
-  }, [isAdmin, adminGroups, userGroups])
+  }, [canUseAdminControls, adminGroups, userGroups])
 
   const searchState = useMemo<CommonLogDraft>(() => {
     const { start, end } = getDefaultTimeRange()
+    const startTime = getNumberSearchParam(searchParams.startTime)
+    const endTime = getNumberSearchParam(searchParams.endTime)
     const sourceValues = {
       startTime: searchParams.startTime,
       endTime: searchParams.endTime,
@@ -154,22 +175,26 @@ export function CommonLogsFilterBar<TData>(
       token: searchParams.token,
       group: searchParams.group,
       username: searchParams.username,
+      hideSelf: searchParams.hideSelf,
       requestId: searchParams.requestId,
       upstreamRequestId: searchParams.upstreamRequestId,
+      ws: searchParams.ws,
+      fromTurbo: searchParams.fromTurbo,
       type: searchParams.type,
     }
     const filters: CommonLogFilters = {
-      startTime: searchParams.startTime
-        ? new Date(searchParams.startTime)
-        : start,
-      endTime: searchParams.endTime ? new Date(searchParams.endTime) : end,
-      channel: searchParams.channel || undefined,
-      model: searchParams.model || undefined,
-      token: searchParams.token || undefined,
-      group: searchParams.group || undefined,
-      username: searchParams.username || undefined,
-      requestId: searchParams.requestId || undefined,
-      upstreamRequestId: searchParams.upstreamRequestId || undefined,
+      startTime: startTime ? new Date(startTime) : start,
+      endTime: endTime ? new Date(endTime) : end,
+      channel: getStringSearchParam(searchParams.channel),
+      model: getStringSearchParam(searchParams.model),
+      token: getStringSearchParam(searchParams.token),
+      group: getStringSearchParam(searchParams.group),
+      username: getStringSearchParam(searchParams.username),
+      hideSelf: searchParams.hideSelf === true,
+      requestId: getStringSearchParam(searchParams.requestId),
+      upstreamRequestId: getStringSearchParam(searchParams.upstreamRequestId),
+      ws: searchParams.ws === true,
+      fromTurbo: searchParams.fromTurbo === true,
     }
     return {
       sourceKey: buildSearchSourceKey(sourceValues),
@@ -184,8 +209,11 @@ export function CommonLogsFilterBar<TData>(
     searchParams.token,
     searchParams.group,
     searchParams.username,
+    searchParams.hideSelf,
     searchParams.requestId,
     searchParams.upstreamRequestId,
+    searchParams.ws,
+    searchParams.fromTurbo,
     searchParams.type,
   ])
   const [draft, setDraft] = useState<CommonLogDraft>(() => searchState)
@@ -195,7 +223,10 @@ export function CommonLogsFilterBar<TData>(
   const logType = activeDraft.logType
 
   const handleChange = useCallback(
-    (field: keyof CommonLogFilters, value: Date | string | undefined) => {
+    (
+      field: keyof CommonLogFilters,
+      value: Date | string | boolean | undefined
+    ) => {
       setDraft((current) => {
         const base =
           current.sourceKey === searchState.sourceKey ? current : searchState
@@ -212,19 +243,19 @@ export function CommonLogsFilterBar<TData>(
   const handleApply = useCallback(
     (nextFilters: CommonLogFilters = filters) => {
       const filterParams = buildSearchParams(nextFilters, 'common')
-      navigate({
-        to: '/usage-logs/$section',
-        params: { section: 'common' },
+      navigateSearch({
         search: {
           ...filterParams,
           type: [logType],
           page: 1,
         },
       })
-      queryClient.invalidateQueries({ queryKey: ['logs'] })
-      queryClient.invalidateQueries({ queryKey: ['usage-logs-stats'] })
+      void queryClient.invalidateQueries({ queryKey: ['logs', queryKeyScope] })
+      void queryClient.invalidateQueries({
+        queryKey: ['usage-logs-stats', queryKeyScope],
+      })
     },
-    [filters, logType, navigate, queryClient]
+    [filters, logType, navigateSearch, queryClient, queryKeyScope]
   )
 
   const handleReset = useCallback(() => {
@@ -234,6 +265,8 @@ export function CommonLogsFilterBar<TData>(
       type: [LOG_TYPE_ALL_VALUE],
       startTime: start.getTime(),
       endTime: end.getTime(),
+      ws: undefined,
+      fromTurbo: undefined,
     }
     setDraft({
       sourceKey: buildSearchSourceKey(resetSearch),
@@ -241,17 +274,17 @@ export function CommonLogsFilterBar<TData>(
       logType: LOG_TYPE_ALL_VALUE,
     })
 
-    navigate({
-      to: '/usage-logs/$section',
-      params: { section: 'common' },
+    navigateSearch({
       search: {
         page: 1,
         ...resetSearch,
       },
     })
-    queryClient.invalidateQueries({ queryKey: ['logs'] })
-    queryClient.invalidateQueries({ queryKey: ['usage-logs-stats'] })
-  }, [navigate, queryClient])
+    void queryClient.invalidateQueries({ queryKey: ['logs', queryKeyScope] })
+    void queryClient.invalidateQueries({
+      queryKey: ['usage-logs-stats', queryKeyScope],
+    })
+  }, [navigateSearch, queryClient, queryKeyScope])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -266,15 +299,20 @@ export function CommonLogsFilterBar<TData>(
     !!filters.channel ||
     !!filters.requestId ||
     !!filters.upstreamRequestId
+  const hasSourceFilters = !!filters.ws || !!filters.fromTurbo
 
   const hasTypeFilter = logType !== LOG_TYPE_ALL_VALUE
   const hasAdditionalFilters =
-    !!filters.model || !!filters.group || hasTypeFilter || hasExpandedFilters
+    !!filters.model ||
+    !!filters.group ||
+    hasTypeFilter ||
+    hasSourceFilters ||
+    hasExpandedFilters
 
   const expandedFilterCount = [
     filters.token,
-    isAdmin ? filters.username : undefined,
-    isAdmin ? filters.channel : undefined,
+    canUseAdminControls ? filters.username : undefined,
+    canUseAdminControls ? filters.channel : undefined,
     filters.requestId,
     filters.upstreamRequestId,
   ].filter(Boolean).length
@@ -318,7 +356,7 @@ export function CommonLogsFilterBar<TData>(
   )
 
   const dateRangeFilter = (
-    <LogsFilterField wide>
+    <LogsFilterField fit>
       <CompactDateTimeRangePicker
         start={filters.startTime}
         end={filters.endTime}
@@ -329,6 +367,7 @@ export function CommonLogsFilterBar<TData>(
             handleApply({ ...filters, startTime: start, endTime: end })
           }
         }}
+        className='sm:w-fit sm:max-w-full sm:whitespace-nowrap'
       />
     </LogsFilterField>
   )
@@ -430,6 +469,26 @@ export function CommonLogsFilterBar<TData>(
       </Select>
     </LogsFilterField>
   )
+  const wsFilter = (
+    <LogsFilterField fit>
+      <LogsFilterToggle
+        id='usage-logs-ws-filter'
+        label='WS'
+        checked={filters.ws === true}
+        onCheckedChange={(checked) => handleChange('ws', checked)}
+      />
+    </LogsFilterField>
+  )
+  const turboFilter = (
+    <LogsFilterField fit>
+      <LogsFilterToggle
+        id='usage-logs-turbo-filter'
+        label={t('From Turbo')}
+        checked={filters.fromTurbo === true}
+        onCheckedChange={(checked) => handleChange('fromTurbo', checked)}
+      />
+    </LogsFilterField>
+  )
   const advancedFilters = (
     <>
       <LogsFilterField>
@@ -441,7 +500,7 @@ export function CommonLogsFilterBar<TData>(
           onKeyDown={handleKeyDown}
         />
       </LogsFilterField>
-      {isAdmin && (
+      {canUseAdminControls && (
         <LogsFilterField>
           <LogsFilterInput
             placeholder={t('Username')}
@@ -452,7 +511,7 @@ export function CommonLogsFilterBar<TData>(
           />
         </LogsFilterField>
       )}
-      {isAdmin && (
+      {canUseAdminControls && (
         <LogsFilterField>
           <LogsFilterInput
             placeholder={t('Channel ID')}
@@ -487,9 +546,12 @@ export function CommonLogsFilterBar<TData>(
       compactMobile
       stats={statsBar}
       actionStart={sensitiveToggle}
+      primaryFiltersClassName='lg:grid-cols-[max-content_max-content_max-content_repeat(3,minmax(0,1fr))]'
       primaryFilters={
         <>
           {dateRangeFilter}
+          {wsFilter}
+          {turboFilter}
           {modelFilter}
           {groupFilter}
           {typeFilter}
@@ -500,15 +562,23 @@ export function CommonLogsFilterBar<TData>(
       mobileFilters={
         <>
           {modelFilter}
+          {wsFilter}
+          {turboFilter}
           {groupFilter}
           {typeFilter}
           {advancedFilters}
         </>
       }
       mobileFilterCount={
-        [filters.model, filters.group, hasTypeFilter].filter(Boolean).length +
-        expandedFilterCount
+        [
+          filters.model,
+          filters.group,
+          hasTypeFilter,
+          filters.ws,
+          filters.fromTurbo,
+        ].filter(Boolean).length + expandedFilterCount
       }
+      advancedOpenRequest={advancedFilterExpansionRequest}
       hasAdvancedActiveFilters={hasExpandedFilters}
       advancedFilterCount={expandedFilterCount}
       hasActiveFilters={hasAdditionalFilters}
