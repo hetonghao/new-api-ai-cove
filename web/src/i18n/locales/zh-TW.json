@@ -6351,6 +6351,7 @@
     "Disabled rules are kept but do not affect cloud review.": "停用的規則會保留，但不影響雲端審核。",
     "Add keywords, phrases, or Go regular expressions that send matching content to or skip it from cloud review.": "新增關鍵字、片語或 Go 正則表達式，將符合內容送交或略過雲端審核。",
     "Rules run on normalized new user text and decide whether cloud review is sent or skipped.": "規則會在正規化的新使用者文字上執行，並決定送交或略過雲端審核。",
-    "Selected original model names skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged.": "所選原始模型名稱將略過本地風險初篩、雲端審核和風控記錄，原有敏感詞檢查不受影響。"
+    "Selected original model names skip local screening, cloud review, and risk records. The existing sensitive-word check is unchanged.": "所選原始模型名稱將略過本地風險初篩、雲端審核和風控記錄，原有敏感詞檢查不受影響。",
+    "Selecting a plugin fills its declared models.": "選擇外掛後將自動填入其宣告的模型。"
   }
 }
