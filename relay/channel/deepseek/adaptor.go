@@ -1,6 +1,7 @@
 package deepseek
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -169,7 +170,60 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(_ *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
 	applyDeepSeekV4ResponsesThinkingSuffix(info, &request)
+	request.Input = dropUnpairedDeepSeekToolCalls(request.Input)
 	return request, nil
+}
+
+type deepSeekToolPairItem struct {
+	Type   string `json:"type"`
+	CallID string `json:"call_id"`
+}
+
+func dropUnpairedDeepSeekToolCalls(input json.RawMessage) json.RawMessage {
+	if len(input) == 0 {
+		return input
+	}
+	var items []json.RawMessage
+	if err := common.Unmarshal(input, &items); err != nil {
+		return input
+	}
+	outputIDs := make(map[string]struct{})
+	for _, item := range items {
+		var peek deepSeekToolPairItem
+		if common.Unmarshal(item, &peek) != nil {
+			continue
+		}
+		if peek.Type != "function_call_output" && peek.Type != "custom_tool_call_output" {
+			continue
+		}
+		if peek.CallID != "" {
+			outputIDs[peek.CallID] = struct{}{}
+		}
+	}
+	kept := make([]json.RawMessage, 0, len(items))
+	changed := false
+	for _, item := range items {
+		var peek deepSeekToolPairItem
+		if common.Unmarshal(item, &peek) != nil {
+			kept = append(kept, item)
+			continue
+		}
+		if peek.Type == "function_call" || peek.Type == "custom_tool_call" {
+			if _, ok := outputIDs[peek.CallID]; !ok {
+				changed = true
+				continue
+			}
+		}
+		kept = append(kept, item)
+	}
+	if !changed {
+		return input
+	}
+	raw, err := common.Marshal(kept)
+	if err != nil {
+		return input
+	}
+	return raw
 }
 
 func applyDeepSeekV4ResponsesThinkingSuffix(info *relaycommon.RelayInfo, request *dto.OpenAIResponsesRequest) {
