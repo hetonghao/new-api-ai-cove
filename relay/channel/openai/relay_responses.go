@@ -76,6 +76,9 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	var responseTextBuilder strings.Builder
 	imageCounter := &relaycommon.ImageGenerationCallCounter{}
 	imageCommitted := false
+	var deepSeekReason strings.Builder
+	var deepSeekResponseID string
+	captureDeepSeek := relaycommon.IsDeepSeekReasoningRelay(info, info.OriginModelName)
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
@@ -87,6 +90,12 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			return
 		}
 		sendResponsesStreamData(c, streamResponse, data)
+		if captureDeepSeek {
+			relaycommon.AppendDeepSeekReasoning(&deepSeekReason, streamResponse)
+			if id := relaycommon.CompletedDeepSeekResponseID(streamResponse); id != "" {
+				deepSeekResponseID = id
+			}
+		}
 		switch streamResponse.Type {
 		case "response.completed", "response.done":
 			if streamResponse.Response != nil {
@@ -138,6 +147,10 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			}
 		}
 	})
+
+	if captureDeepSeek {
+		relaycommon.SaveDeepSeekReasoning(info, deepSeekResponseID, deepSeekReason.String())
+	}
 
 	if usage.CompletionTokens == 0 {
 		// 计算输出文本的 token 数量

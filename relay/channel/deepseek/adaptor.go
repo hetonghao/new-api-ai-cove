@@ -171,6 +171,7 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 func (a *Adaptor) ConvertOpenAIResponsesRequest(_ *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
 	applyDeepSeekV4ResponsesThinkingSuffix(info, &request)
 	request.Input = dropUnpairedDeepSeekToolCalls(request.Input)
+	injectCachedDeepSeekReasoning(info, &request)
 	return request, nil
 }
 
