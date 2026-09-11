@@ -274,6 +274,11 @@ func TestResponsesRequestToChatCompletionsRequestRejectsStatefulFields(t *testin
 			want: "previous_response_id",
 		},
 		{
+			name: "previous response empty input",
+			req:  &dto.OpenAIResponsesRequest{Model: "gpt-test", PreviousResponseID: "resp_1", Input: mustRawMessage(t, []any{})},
+			want: "previous_response_id",
+		},
+		{
 			name: "prompt",
 			req:  &dto.OpenAIResponsesRequest{Model: "gpt-test", Prompt: mustRawMessage(t, map[string]any{"id": "pmpt_1"})},
 			want: "prompt",
@@ -293,6 +298,18 @@ func TestResponsesRequestToChatCompletionsRequestRejectsStatefulFields(t *testin
 			assert.Contains(t, err.Error(), "stateful fields")
 		})
 	}
+}
+
+func TestResponsesRequestToChatCompletionsRequestIgnoresPreviousResponseIDWhenInputPresent(t *testing.T) {
+	req := &dto.OpenAIResponsesRequest{
+		Model:              "gpt-test",
+		PreviousResponseID: "resp_1",
+		Input:              mustRawMessage(t, "hello"),
+	}
+	got, err := ResponsesRequestToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	require.Len(t, got.Messages, 1)
+	assert.Equal(t, dto.Message{Role: "user", Content: "hello"}, got.Messages[0])
 }
 
 func TestResponsesRequestToChatCompletionsRequestPreservesPenalties(t *testing.T) {

@@ -115,7 +115,9 @@ func validateResponsesRequestChatUnsupportedFields(req *dto.OpenAIResponsesReque
 	if rawJSONPresent(req.Conversation) {
 		unsupported = append(unsupported, "conversation")
 	}
-	if strings.TrimSpace(req.PreviousResponseID) != "" {
+	if strings.TrimSpace(req.PreviousResponseID) != "" && !responsesRequestHasConvertibleInput(req) {
+		// ponytail: ignore previous_response_id when input already carries context.
+		// hydrate from a stored previous response if Codex starts sending incremental input.
 		unsupported = append(unsupported, "previous_response_id")
 	}
 	if rawJSONPresent(req.Prompt) {
@@ -559,6 +561,25 @@ func responsesJSONString(raw json.RawMessage) (string, error) {
 		return "", err
 	}
 	return value, nil
+}
+
+func responsesRequestHasConvertibleInput(req *dto.OpenAIResponsesRequest) bool {
+	if req == nil || !rawJSONPresent(req.Input) {
+		return false
+	}
+	switch kitutil.GetJsonType(req.Input) {
+	case "string":
+		input, err := responsesJSONString(req.Input)
+		return err == nil && strings.TrimSpace(input) != ""
+	case "array":
+		var items []json.RawMessage
+		if err := kitutil.Unmarshal(req.Input, &items); err != nil {
+			return false
+		}
+		return len(items) > 0
+	default:
+		return false
+	}
 }
 
 func rawJSONPresent(raw json.RawMessage) bool {
