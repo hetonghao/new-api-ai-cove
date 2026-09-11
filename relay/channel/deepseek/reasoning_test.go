@@ -20,28 +20,49 @@ func TestRewriteDeepSeekReasoningInputFillsEmptyReasoningFromCache(t *testing.T)
 	require.Equal(t, "need pwd", gjson.GetBytes(got, "0.content.0.text").String())
 }
 
-func TestRewriteDeepSeekReasoningInputDropsEmptyReasoningWithoutCache(t *testing.T) {
+func TestRewriteDeepSeekReasoningInputKeepsEmptyReasoningWithoutCache(t *testing.T) {
 	input := mustJSON(t, []map[string]any{
 		{"type": "reasoning", "id": "rs_1"},
+		{"type": "reasoning", "id": "rs_2"},
+		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
 		{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
 	})
 
 	got := rewriteDeepSeekReasoningInput(input, "")
-	require.Equal(t, []string{"function_call_output"}, inputTypes(t, got))
+	require.Equal(t, []string{"reasoning", "reasoning", "function_call", "function_call_output"}, inputTypes(t, got))
+	require.Equal(t, "rs_1", gjson.GetBytes(got, "0.id").String())
+	require.Equal(t, "rs_2", gjson.GetBytes(got, "1.id").String())
 }
 
-func TestRewriteDeepSeekReasoningInputInjectsBeforeLatestToolOutput(t *testing.T) {
+func TestRewriteDeepSeekReasoningInputInjectsBeforeLatestSequentialToolCall(t *testing.T) {
 	input := mustJSON(t, []map[string]any{
 		{"type": "reasoning", "content": []map[string]string{{"type": "reasoning_text", "text": "old"}}},
 		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
 		{"type": "function_call_output", "call_id": "call-1", "output": "old"},
+		{"type": "function_call", "call_id": "call-2", "name": "exec_command", "arguments": "{}"},
 		{"type": "function_call_output", "call_id": "call-2", "output": "new"},
 	})
 
 	got := rewriteDeepSeekReasoningInput(input, "need pwd")
-	require.Equal(t, []string{"reasoning", "function_call", "function_call_output", "reasoning", "function_call_output"}, inputTypes(t, got))
+	require.Equal(t, []string{"reasoning", "function_call", "function_call_output", "reasoning", "function_call", "function_call_output"}, inputTypes(t, got))
 	require.Equal(t, "old", gjson.GetBytes(got, "0.content.0.text").String())
 	require.Equal(t, "need pwd", gjson.GetBytes(got, "3.content.0.text").String())
+	require.Equal(t, "call-2", gjson.GetBytes(got, "4.call_id").String())
+}
+
+func TestRewriteDeepSeekReasoningInputDoesNotSplitParallelToolCalls(t *testing.T) {
+	input := mustJSON(t, []map[string]any{
+		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
+		{"type": "function_call", "call_id": "call-2", "name": "exec_command", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-1", "output": "a"},
+		{"type": "function_call_output", "call_id": "call-2", "output": "b"},
+	})
+
+	got := rewriteDeepSeekReasoningInput(input, "need pwd")
+	require.Equal(t, []string{"reasoning", "function_call", "function_call", "function_call_output", "function_call_output"}, inputTypes(t, got))
+	require.Equal(t, "need pwd", gjson.GetBytes(got, "0.content.0.text").String())
+	require.Equal(t, "call-1", gjson.GetBytes(got, "1.call_id").String())
+	require.Equal(t, "call-2", gjson.GetBytes(got, "2.call_id").String())
 }
 
 func TestRewriteDeepSeekReasoningInputKeepsAdjacentReasoning(t *testing.T) {

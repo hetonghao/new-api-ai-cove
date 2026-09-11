@@ -26,6 +26,7 @@ func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.Ra
 		return input
 	}
 	changed := false
+	hadCache := cached != ""
 	kept := make([]json.RawMessage, 0, len(items)+1)
 	for _, item := range items {
 		if peekType(item) != "reasoning" {
@@ -36,17 +37,19 @@ func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.Ra
 			kept = append(kept, item)
 			continue
 		}
-		if cached == "" {
+		if cached != "" {
+			if filled := reasoningItemJSON(cached); len(filled) > 0 {
+				kept = append(kept, filled)
+				changed = true
+				cached = ""
+				continue
+			}
+		}
+		if hadCache {
 			changed = true
 			continue
 		}
-		if filled := reasoningItemJSON(cached); len(filled) > 0 {
-			kept = append(kept, filled)
-			changed = true
-			cached = ""
-			continue
-		}
-		changed = true
+		kept = append(kept, item)
 	}
 	if cached != "" {
 		if insertAt, ok := lastToolTurnMissingReasoning(kept); ok {
@@ -71,49 +74,49 @@ func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.Ra
 }
 
 func lastToolTurnMissingReasoning(items []json.RawMessage) (int, bool) {
-	outputIdx := -1
+	lastOut := -1
 	for i := len(items) - 1; i >= 0; i-- {
-		switch peekType(items[i]) {
-		case "function_call_output", "custom_tool_call_output":
-			outputIdx = i
-		}
-		if outputIdx >= 0 {
+		if isDeepSeekToolOutput(items[i]) {
+			lastOut = i
 			break
 		}
 	}
-	insertAt := -1
-	if outputIdx >= 0 {
-		callID := peekCallID(items[outputIdx])
-		if callID != "" {
-			for i := outputIdx - 1; i >= 0; i-- {
-				if (peekType(items[i]) == "function_call" || peekType(items[i]) == "custom_tool_call") &&
-					peekCallID(items[i]) == callID {
-					insertAt = i
-					break
-				}
-			}
-		}
-		if insertAt < 0 {
-			insertAt = outputIdx
-		}
-	} else {
-		for i := len(items) - 1; i >= 0; i-- {
-			switch peekType(items[i]) {
-			case "function_call", "custom_tool_call":
-				insertAt = i
-			}
-			if insertAt >= 0 {
-				break
-			}
-		}
-	}
-	if insertAt < 0 {
+	if lastOut < 0 {
 		return 0, false
+	}
+	startOut := lastOut
+	for startOut > 0 && isDeepSeekToolOutput(items[startOut-1]) {
+		startOut--
+	}
+	if startOut == 0 || !isDeepSeekToolCall(items[startOut-1]) {
+		return 0, false
+	}
+	insertAt := startOut - 1
+	for insertAt > 0 && isDeepSeekToolCall(items[insertAt-1]) {
+		insertAt--
 	}
 	if insertAt > 0 && reasoningItemHasText(items[insertAt-1]) {
 		return 0, false
 	}
 	return insertAt, true
+}
+
+func isDeepSeekToolCall(item json.RawMessage) bool {
+	switch peekType(item) {
+	case "function_call", "custom_tool_call":
+		return true
+	default:
+		return false
+	}
+}
+
+func isDeepSeekToolOutput(item json.RawMessage) bool {
+	switch peekType(item) {
+	case "function_call_output", "custom_tool_call_output":
+		return true
+	default:
+		return false
+	}
 }
 
 func reasoningItemHasText(item json.RawMessage) bool {
@@ -154,14 +157,6 @@ func peekType(item json.RawMessage) string {
 	}
 	_ = common.Unmarshal(item, &peek)
 	return peek.Type
-}
-
-func peekCallID(item json.RawMessage) string {
-	var peek struct {
-		CallID string `json:"call_id"`
-	}
-	_ = common.Unmarshal(item, &peek)
-	return peek.CallID
 }
 
 func asString(v any) string {
