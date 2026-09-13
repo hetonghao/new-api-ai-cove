@@ -686,6 +686,8 @@ For commercial licensing, please contact support@quantumnous.com
 
 .ai-cove-landing-header .public-header-brand > span {
   display: block;
+  overflow: visible;
+  max-width: none;
   color: var(--home-ink);
   font-family: var(--home-serif);
   font-size: 24px;
@@ -693,6 +695,7 @@ For commercial licensing, please contact support@quantumnous.com
   font-weight: 400;
   letter-spacing: -0.01em;
   line-height: 1;
+  white-space: normal;
 }
 
 .ai-cove-landing-header .public-header-brand > span::before {
