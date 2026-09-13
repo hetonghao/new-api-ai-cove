@@ -74,3 +74,34 @@ func TestRewriteDeepSeekReasoningInputKeepsAdjacentReasoning(t *testing.T) {
 	got := rewriteDeepSeekReasoningInput(input, "cached")
 	require.Equal(t, string(input), string(got))
 }
+
+func TestRewriteDeepSeekReasoningInputFillsEveryEmptyReasoningFromCache(t *testing.T) {
+	input := mustJSON(t, []map[string]any{
+		{"type": "reasoning", "id": "rs_1"},
+		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-1", "output": "old"},
+		{"type": "reasoning", "id": "rs_2", "encrypted_content": "stub"},
+		{"type": "function_call", "call_id": "call-2", "name": "exec_command", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-2", "output": "new"},
+	})
+
+	got := rewriteDeepSeekReasoningInput(input, "need pwd")
+	require.Equal(t, []string{"reasoning", "function_call", "function_call_output", "reasoning", "function_call", "function_call_output"}, inputTypes(t, got))
+	require.Equal(t, "rs_1", gjson.GetBytes(got, "0.id").String())
+	require.Equal(t, "need pwd", gjson.GetBytes(got, "0.content.0.text").String())
+	require.Equal(t, "rs_2", gjson.GetBytes(got, "3.id").String())
+	require.Equal(t, "need pwd", gjson.GetBytes(got, "3.content.0.text").String())
+	require.False(t, gjson.GetBytes(got, "3.encrypted_content").Exists())
+}
+
+func TestRewriteDeepSeekReasoningInputInjectsBeforeOutputOnlyTurn(t *testing.T) {
+	input := mustJSON(t, []map[string]any{
+		{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+		{"type": "function_call_output", "call_id": "call-2", "output": "also"},
+	})
+
+	got := rewriteDeepSeekReasoningInput(input, "need pwd")
+	require.Equal(t, []string{"reasoning", "function_call_output", "function_call_output"}, inputTypes(t, got))
+	require.Equal(t, "need pwd", gjson.GetBytes(got, "0.content.0.text").String())
+	require.Equal(t, "call-1", gjson.GetBytes(got, "1.call_id").String())
+}

@@ -26,7 +26,6 @@ func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.Ra
 		return input
 	}
 	changed := false
-	hadCache := cached != ""
 	kept := make([]json.RawMessage, 0, len(items)+1)
 	for _, item := range items {
 		if peekType(item) != "reasoning" {
@@ -38,16 +37,11 @@ func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.Ra
 			continue
 		}
 		if cached != "" {
-			if filled := reasoningItemJSON(cached); len(filled) > 0 {
+			if filled := fillReasoningItem(item, cached); len(filled) > 0 {
 				kept = append(kept, filled)
 				changed = true
-				cached = ""
 				continue
 			}
-		}
-		if hadCache {
-			changed = true
-			continue
 		}
 		kept = append(kept, item)
 	}
@@ -88,14 +82,17 @@ func lastToolTurnMissingReasoning(items []json.RawMessage) (int, bool) {
 	for startOut > 0 && isDeepSeekToolOutput(items[startOut-1]) {
 		startOut--
 	}
-	if startOut == 0 || !isDeepSeekToolCall(items[startOut-1]) {
-		return 0, false
-	}
-	insertAt := startOut - 1
-	for insertAt > 0 && isDeepSeekToolCall(items[insertAt-1]) {
-		insertAt--
+	insertAt := startOut
+	if startOut > 0 && isDeepSeekToolCall(items[startOut-1]) {
+		insertAt = startOut - 1
+		for insertAt > 0 && isDeepSeekToolCall(items[insertAt-1]) {
+			insertAt--
+		}
 	}
 	if insertAt > 0 && reasoningItemHasText(items[insertAt-1]) {
+		return 0, false
+	}
+	if insertAt < len(items) && reasoningItemHasText(items[insertAt]) {
 		return 0, false
 	}
 	return insertAt, true
@@ -135,6 +132,25 @@ func reasoningItemHasText(item json.RawMessage) bool {
 		}
 	}
 	return false
+}
+
+func fillReasoningItem(item json.RawMessage, text string) json.RawMessage {
+	var parsed map[string]any
+	if common.Unmarshal(item, &parsed) != nil {
+		return reasoningItemJSON(text)
+	}
+	parsed["type"] = "reasoning"
+	parsed["content"] = []map[string]string{{
+		"type": "reasoning_text",
+		"text": text,
+	}}
+	// ponytail: Codex stubs encrypted_content with a local id; DeepSeek wants reasoning_text, not that blob.
+	delete(parsed, "encrypted_content")
+	raw, err := common.Marshal(parsed)
+	if err != nil {
+		return reasoningItemJSON(text)
+	}
+	return raw
 }
 
 func reasoningItemJSON(text string) json.RawMessage {
