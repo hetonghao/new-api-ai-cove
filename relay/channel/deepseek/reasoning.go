@@ -17,6 +17,9 @@ func injectCachedDeepSeekReasoning(info *relaycommon.RelayInfo, request *dto.Ope
 	request.Input = rewriteDeepSeekReasoningInput(request.Input, cached)
 }
 
+// rewriteDeepSeekReasoningInput keeps one invariant:
+// every function_call group is immediately preceded by reasoning_text,
+// and reasoning never sits between an unmatched function_call and its output.
 func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.RawMessage {
 	if len(input) == 0 {
 		return input
@@ -28,7 +31,7 @@ func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.Ra
 	changed := false
 	insertText := cached
 	lastSeenText := ""
-	kept := make([]json.RawMessage, 0, len(items)+1)
+	kept := make([]json.RawMessage, 0, len(items)+2)
 	for i, item := range items {
 		if peekType(item) != "reasoning" {
 			kept = append(kept, item)
@@ -64,15 +67,13 @@ func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.Ra
 		insertText = lastSeenText
 	}
 	if insertText != "" {
-		if insertAt, ok := lastToolTurnMissingReasoning(kept); ok {
-			if filled := reasoningItemJSON(insertText); len(filled) > 0 {
-				next := make([]json.RawMessage, 0, len(kept)+1)
-				next = append(next, kept[:insertAt]...)
-				next = append(next, filled)
-				next = append(next, kept[insertAt:]...)
-				kept = next
-				changed = true
-			}
+		if next, ok := ensureReasoningBeforeEveryToolTurn(kept, insertText); ok {
+			kept = next
+			changed = true
+		}
+		if next, ok := ensureReasoningBeforeOutputOnlyTurn(kept, insertText); ok {
+			kept = next
+			changed = true
 		}
 	}
 	if !changed {
@@ -83,6 +84,64 @@ func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.Ra
 		return input
 	}
 	return raw
+}
+
+func ensureReasoningBeforeEveryToolTurn(items []json.RawMessage, text string) ([]json.RawMessage, bool) {
+	filled := reasoningItemJSON(text)
+	if len(filled) == 0 {
+		return items, false
+	}
+	out := make([]json.RawMessage, 0, len(items)+2)
+	changed := false
+	i := 0
+	for i < len(items) {
+		if !isDeepSeekToolCall(items[i]) {
+			out = append(out, items[i])
+			i++
+			continue
+		}
+		if len(out) == 0 || !reasoningItemHasText(out[len(out)-1]) {
+			out = append(out, filled)
+			changed = true
+		}
+		for i < len(items) && isDeepSeekToolCall(items[i]) {
+			out = append(out, items[i])
+			i++
+		}
+	}
+	if !changed {
+		return items, false
+	}
+	return out, true
+}
+
+func ensureReasoningBeforeOutputOnlyTurn(items []json.RawMessage, text string) ([]json.RawMessage, bool) {
+	filled := reasoningItemJSON(text)
+	if len(filled) == 0 {
+		return items, false
+	}
+	hasCall := false
+	firstOut := -1
+	for i, item := range items {
+		if isDeepSeekToolCall(item) {
+			hasCall = true
+			break
+		}
+		if firstOut < 0 && isDeepSeekToolOutput(item) {
+			firstOut = i
+		}
+	}
+	if hasCall || firstOut < 0 {
+		return items, false
+	}
+	if firstOut > 0 && reasoningItemHasText(items[firstOut-1]) {
+		return items, false
+	}
+	next := make([]json.RawMessage, 0, len(items)+1)
+	next = append(next, items[:firstOut]...)
+	next = append(next, filled)
+	next = append(next, items[firstOut:]...)
+	return next, true
 }
 
 func reasoningInsideOpenToolTurn(items []json.RawMessage, idx int) bool {
@@ -98,37 +157,6 @@ func reasoningInsideOpenToolTurn(items []json.RawMessage, idx int) bool {
 		}
 	}
 	return open > 0
-}
-
-func lastToolTurnMissingReasoning(items []json.RawMessage) (int, bool) {
-	lastOut := -1
-	for i := len(items) - 1; i >= 0; i-- {
-		if isDeepSeekToolOutput(items[i]) {
-			lastOut = i
-			break
-		}
-	}
-	if lastOut < 0 {
-		return 0, false
-	}
-	startOut := lastOut
-	for startOut > 0 && isDeepSeekToolOutput(items[startOut-1]) {
-		startOut--
-	}
-	insertAt := startOut
-	if startOut > 0 && isDeepSeekToolCall(items[startOut-1]) {
-		insertAt = startOut - 1
-		for insertAt > 0 && isDeepSeekToolCall(items[insertAt-1]) {
-			insertAt--
-		}
-	}
-	if insertAt > 0 && reasoningItemHasText(items[insertAt-1]) {
-		return 0, false
-	}
-	if insertAt < len(items) && reasoningItemHasText(items[insertAt]) {
-		return 0, false
-	}
-	return insertAt, true
 }
 
 func isDeepSeekToolCall(item json.RawMessage) bool {

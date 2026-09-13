@@ -1,6 +1,7 @@
 package deepseek
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -149,4 +150,63 @@ func TestRewriteDeepSeekReasoningInputFillsEmptyFromEarlierTurnWhenCacheMiss(t *
 	require.Equal(t, []string{"reasoning", "function_call", "function_call_output", "reasoning", "function_call", "function_call_output"}, inputTypes(t, got))
 	require.Equal(t, "first", gjson.GetBytes(got, "0.content.0.text").String())
 	require.Equal(t, "first", gjson.GetBytes(got, "3.content.0.text").String())
+}
+
+func TestRewriteDeepSeekReasoningInputAddsReasoningBeforeEarlierToolTurn(t *testing.T) {
+	input := mustJSON(t, []map[string]any{
+		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-1", "output": "old"},
+		{"type": "reasoning", "content": []map[string]string{{"type": "reasoning_text", "text": "later"}}},
+		{"type": "function_call", "call_id": "call-2", "name": "exec_command", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-2", "output": "new"},
+	})
+
+	got := rewriteDeepSeekReasoningInput(input, "need pwd")
+	require.Equal(t, []string{"reasoning", "function_call", "function_call_output", "reasoning", "function_call", "function_call_output"}, inputTypes(t, got))
+	require.Equal(t, "need pwd", gjson.GetBytes(got, "0.content.0.text").String())
+	require.Equal(t, "call-1", gjson.GetBytes(got, "1.call_id").String())
+	require.Equal(t, "later", gjson.GetBytes(got, "3.content.0.text").String())
+	require.Equal(t, "call-2", gjson.GetBytes(got, "4.call_id").String())
+}
+
+func TestRewriteDeepSeekReasoningInputAddsReasoningBeforeEveryMissingToolTurn(t *testing.T) {
+	input := mustJSON(t, []map[string]any{
+		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-1", "output": "a"},
+		{"type": "function_call", "call_id": "call-2", "name": "exec_command", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-2", "output": "b"},
+		{"type": "reasoning", "content": []map[string]string{{"type": "reasoning_text", "text": "third"}}},
+		{"type": "function_call", "call_id": "call-3", "name": "exec_command", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-3", "output": "c"},
+	})
+	got := rewriteDeepSeekReasoningInput(input, "need pwd")
+	require.Equal(t, []string{
+		"reasoning", "function_call", "function_call_output",
+		"reasoning", "function_call", "function_call_output",
+		"reasoning", "function_call", "function_call_output",
+	}, inputTypes(t, got))
+	requireReasoningBeforeEveryCall(t, got)
+}
+
+func requireReasoningBeforeEveryCall(t *testing.T, raw []byte) {
+	t.Helper()
+	types := inputTypes(t, raw)
+	open := 0
+	for i, typ := range types {
+		switch typ {
+		case "function_call", "custom_tool_call":
+			if open == 0 {
+				require.Greater(t, i, 0, "function_call at %d missing preceding reasoning", i)
+				require.Equal(t, "reasoning", types[i-1], "function_call at %d not preceded by reasoning", i)
+				require.NotEmpty(t, gjson.GetBytes(raw, fmt.Sprintf("%d.content.0.text", i-1)).String())
+			}
+			open++
+		case "function_call_output", "custom_tool_call_output":
+			if open > 0 {
+				open--
+			}
+		case "reasoning":
+			require.Zerof(t, open, "reasoning at %d splits an open tool turn", i)
+		}
+	}
 }
