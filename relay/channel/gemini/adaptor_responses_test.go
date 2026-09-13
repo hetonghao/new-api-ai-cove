@@ -136,6 +136,38 @@ func TestConvertOpenAIResponsesRequestToGeminiFunctionCallConversation(t *testin
 	assert.Equal(t, map[string]any{"ok": true}, got.Contents[1].Parts[0].FunctionResponse.Response)
 }
 
+func TestConvertOpenAIResponsesRequestToGeminiRejectsNamelessFunctionOutputOnly(t *testing.T) {
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-test",
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: "gemini-test",
+		},
+	}
+	_, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, info, dto.OpenAIResponsesRequest{
+		Model: "gemini-test",
+		Input: mustGeminiRawMessage(t, []map[string]any{
+			{"type": "function_call_output", "call_id": "call_1", "output": "ok"},
+		}),
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "function_call_output item is missing name")
+}
+
+func TestConvertOpenAIResponsesRequestToGeminiSkipsNamelessFunctionOutputAmongText(t *testing.T) {
+	got := mustConvertResponsesToGemini(t, dto.OpenAIResponsesRequest{
+		Model: "gemini-test",
+		Input: mustGeminiRawMessage(t, []map[string]any{
+			{"type": "function_call_output", "call_id": "call_1", "output": "ok"},
+			{"role": "user", "content": "continue"},
+		}),
+	})
+	require.Len(t, got.Contents, 1)
+	assert.Equal(t, "user", got.Contents[0].Role)
+	require.Len(t, got.Contents[0].Parts, 1)
+	assert.Equal(t, "continue", got.Contents[0].Parts[0].Text)
+	assert.Nil(t, got.Contents[0].Parts[0].FunctionResponse)
+}
+
 func TestConvertOpenAIResponsesRequestToGeminiSkipsCustomToolCalls(t *testing.T) {
 	got := mustConvertResponsesToGemini(t, dto.OpenAIResponsesRequest{
 		Model: "gemini-test",
