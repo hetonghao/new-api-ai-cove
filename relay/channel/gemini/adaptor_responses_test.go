@@ -136,6 +136,19 @@ func TestConvertOpenAIResponsesRequestToGeminiFunctionCallConversation(t *testin
 	assert.Equal(t, map[string]any{"ok": true}, got.Contents[1].Parts[0].FunctionResponse.Response)
 }
 
+func TestConvertOpenAIResponsesRequestToGeminiHydratesNamelessFunctionOutputFromSavedCall(t *testing.T) {
+	relaycommon.SaveGeminiCallName("call_saved", "exec_command")
+	got := mustConvertResponsesToGemini(t, dto.OpenAIResponsesRequest{
+		Model: "gemini-test",
+		Input: mustGeminiRawMessage(t, []map[string]any{
+			{"type": "function_call_output", "call_id": "call_saved", "output": "ok"},
+		}),
+	})
+	require.Len(t, got.Contents, 1)
+	require.NotNil(t, got.Contents[0].Parts[0].FunctionResponse)
+	assert.Equal(t, "exec_command", got.Contents[0].Parts[0].FunctionResponse.Name)
+}
+
 func TestConvertOpenAIResponsesRequestToGeminiRejectsNamelessFunctionOutputOnly(t *testing.T) {
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "gemini-test",
@@ -146,7 +159,7 @@ func TestConvertOpenAIResponsesRequestToGeminiRejectsNamelessFunctionOutputOnly(
 	_, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, info, dto.OpenAIResponsesRequest{
 		Model: "gemini-test",
 		Input: mustGeminiRawMessage(t, []map[string]any{
-			{"type": "function_call_output", "call_id": "call_1", "output": "ok"},
+			{"type": "function_call_output", "call_id": "call_missing_only", "output": "ok"},
 		}),
 	})
 	require.Error(t, err)
@@ -157,7 +170,7 @@ func TestConvertOpenAIResponsesRequestToGeminiSkipsNamelessFunctionOutputAmongTe
 	got := mustConvertResponsesToGemini(t, dto.OpenAIResponsesRequest{
 		Model: "gemini-test",
 		Input: mustGeminiRawMessage(t, []map[string]any{
-			{"type": "function_call_output", "call_id": "call_1", "output": "ok"},
+			{"type": "function_call_output", "call_id": "call_missing_text", "output": "ok"},
 			{"role": "user", "content": "continue"},
 		}),
 	})
