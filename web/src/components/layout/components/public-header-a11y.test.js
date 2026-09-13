@@ -127,3 +127,16 @@ test('public header open-menu focus loop covers visible header and overlay contr
     /const focusTargets = \[trigger, \.\.\.overlayFocusTargets\]/
   )
 })
+
+test('public header does not keep auth or site name behind system-config loading', () => {
+  assert.match(source, /\{displaySiteName\}/)
+  assert.doesNotMatch(
+    source,
+    /loading \? <Skeleton className='h-4 w-16' \/> : displaySiteName/
+  )
+  assert.doesNotMatch(
+    source,
+    /\{loading && <Skeleton className='h-8 w-20 rounded-lg' \/>\}/
+  )
+  assert.match(source, /isAuthenticated \? \(\s*<ProfileDropdown \/>/)
+})

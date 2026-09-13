@@ -50,7 +50,7 @@ function RootComponent() {
   const queryClient = useQueryClient()
 
   // Load system configuration (logo, system name, etc.) from backend
-  useSystemConfig()
+  useSystemConfig({ autoLoad: true })
 
   useEffect(() => {
     const clearTimer = window.setTimeout(() => {

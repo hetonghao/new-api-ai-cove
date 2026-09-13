@@ -328,10 +328,12 @@ export function PublicHeader(props: PublicHeaderProps) {
                   className='max-w-48 truncate text-sm font-semibold tracking-tight'
                   title={displaySiteName}
                 >
-                  {loading ? <Skeleton className='h-4 w-16' /> : displaySiteName}
+                  {displaySiteName}
                 </span>
               </Link>
-              <SystemUpdateAction presentation='version' />
+              {!props.className?.includes('ai-cove-landing-header') && (
+                <SystemUpdateAction presentation='version' />
+              )}
             </div>
 
             {/* Desktop nav */}
@@ -394,9 +396,9 @@ export function PublicHeader(props: PublicHeaderProps) {
               {showAuthButtons && (
                 <>
                   <div className='bg-border/40 mx-1 h-4 w-px' />
-                  {loading && <Skeleton className='h-8 w-20 rounded-lg' />}
-                  {!loading && isAuthenticated && <ProfileDropdown />}
-                  {!loading && !isAuthenticated && (
+                  {isAuthenticated ? (
+                    <ProfileDropdown />
+                  ) : (
                     <Button
                       size='sm'
                       className='public-header-auth-button h-8 rounded-lg px-3.5 text-xs font-medium'
@@ -414,9 +416,7 @@ export function PublicHeader(props: PublicHeaderProps) {
               {showCompactUtilities && languageSwitcher}
               {showThemeSwitch && <ThemeSwitch />}
               {showCompactUtilities && notificationPopover}
-              {showAuthButtons && !loading && isAuthenticated && (
-                <ProfileDropdown />
-              )}
+              {showAuthButtons && isAuthenticated && <ProfileDropdown />}
               <Button
                 ref={mobileMenuTriggerRef}
                 type='button'

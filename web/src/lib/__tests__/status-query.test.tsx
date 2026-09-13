@@ -144,6 +144,17 @@ describe('shared status query deduplication', () => {
     }
   )
 
+  test('clears system-config loading after a successful status read', async () => {
+    stubStatusEndpoint('ready')
+    const queryClient = createQueryClient()
+    expect(useSystemConfigStore.getState().loading).toBe(true)
+
+    await ensureStatus(queryClient)
+
+    expect(useSystemConfigStore.getState().loading).toBe(false)
+    expect(useSystemConfigStore.getState().config.systemName).toBe('ready')
+  })
+
   test('resolves a later consumer from the warm cache without a second request', async () => {
     stubStatusEndpoint('warm')
     const queryClient = createQueryClient()
