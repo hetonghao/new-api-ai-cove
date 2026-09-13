@@ -105,3 +105,32 @@ func TestRewriteDeepSeekReasoningInputInjectsBeforeOutputOnlyTurn(t *testing.T) 
 	require.Equal(t, "need pwd", gjson.GetBytes(got, "0.content.0.text").String())
 	require.Equal(t, "call-1", gjson.GetBytes(got, "1.call_id").String())
 }
+
+func TestRewriteDeepSeekReasoningInputMovesReasoningOutOfParallelToolTurn(t *testing.T) {
+	input := mustJSON(t, []map[string]any{
+		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
+		{"type": "function_call", "call_id": "call-2", "name": "exec_command", "arguments": "{}"},
+		{"type": "reasoning", "id": "rs_mid"},
+		{"type": "function_call_output", "call_id": "call-1", "output": "a"},
+		{"type": "function_call_output", "call_id": "call-2", "output": "b"},
+	})
+
+	got := rewriteDeepSeekReasoningInput(input, "need pwd")
+	require.Equal(t, []string{"reasoning", "function_call", "function_call", "function_call_output", "function_call_output"}, inputTypes(t, got))
+	require.Equal(t, "need pwd", gjson.GetBytes(got, "0.content.0.text").String())
+	require.Equal(t, "call-1", gjson.GetBytes(got, "1.call_id").String())
+	require.Equal(t, "call-2", gjson.GetBytes(got, "2.call_id").String())
+}
+
+func TestRewriteDeepSeekReasoningInputMovesFilledReasoningOutOfToolTurn(t *testing.T) {
+	input := mustJSON(t, []map[string]any{
+		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
+		{"type": "reasoning", "content": []map[string]string{{"type": "reasoning_text", "text": "turn thought"}}},
+		{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+	})
+
+	got := rewriteDeepSeekReasoningInput(input, "cached")
+	require.Equal(t, []string{"reasoning", "function_call", "function_call_output"}, inputTypes(t, got))
+	require.Equal(t, "turn thought", gjson.GetBytes(got, "0.content.0.text").String())
+	require.Equal(t, "call-1", gjson.GetBytes(got, "1.call_id").String())
+}

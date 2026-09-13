@@ -26,10 +26,18 @@ func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.Ra
 		return input
 	}
 	changed := false
+	insertText := cached
 	kept := make([]json.RawMessage, 0, len(items)+1)
-	for _, item := range items {
+	for i, item := range items {
 		if peekType(item) != "reasoning" {
 			kept = append(kept, item)
+			continue
+		}
+		if reasoningInsideOpenToolTurn(items, i) {
+			if text := reasoningItemText(item); text != "" {
+				insertText = text
+			}
+			changed = true
 			continue
 		}
 		if reasoningItemHasText(item) {
@@ -45,9 +53,9 @@ func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.Ra
 		}
 		kept = append(kept, item)
 	}
-	if cached != "" {
+	if insertText != "" {
 		if insertAt, ok := lastToolTurnMissingReasoning(kept); ok {
-			if filled := reasoningItemJSON(cached); len(filled) > 0 {
+			if filled := reasoningItemJSON(insertText); len(filled) > 0 {
 				next := make([]json.RawMessage, 0, len(kept)+1)
 				next = append(next, kept[:insertAt]...)
 				next = append(next, filled)
@@ -65,6 +73,21 @@ func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.Ra
 		return input
 	}
 	return raw
+}
+
+func reasoningInsideOpenToolTurn(items []json.RawMessage, idx int) bool {
+	open := 0
+	for i := 0; i < idx; i++ {
+		switch peekType(items[i]) {
+		case "function_call", "custom_tool_call":
+			open++
+		case "function_call_output", "custom_tool_call_output":
+			if open > 0 {
+				open--
+			}
+		}
+	}
+	return open > 0
 }
 
 func lastToolTurnMissingReasoning(items []json.RawMessage) (int, bool) {
@@ -117,9 +140,13 @@ func isDeepSeekToolOutput(item json.RawMessage) bool {
 }
 
 func reasoningItemHasText(item json.RawMessage) bool {
+	return reasoningItemText(item) != ""
+}
+
+func reasoningItemText(item json.RawMessage) string {
 	var parsed map[string]any
 	if common.Unmarshal(item, &parsed) != nil || peekType(item) != "reasoning" {
-		return false
+		return ""
 	}
 	content, _ := parsed["content"].([]any)
 	for _, part := range content {
@@ -127,11 +154,11 @@ func reasoningItemHasText(item json.RawMessage) bool {
 		if strings.TrimSpace(asString(fields["type"])) != "reasoning_text" {
 			continue
 		}
-		if strings.TrimSpace(asString(fields["text"])) != "" {
-			return true
+		if text := strings.TrimSpace(asString(fields["text"])); text != "" {
+			return text
 		}
 	}
-	return false
+	return ""
 }
 
 func fillReasoningItem(item json.RawMessage, text string) json.RawMessage {
