@@ -134,3 +134,19 @@ func TestRewriteDeepSeekReasoningInputMovesFilledReasoningOutOfToolTurn(t *testi
 	require.Equal(t, "turn thought", gjson.GetBytes(got, "0.content.0.text").String())
 	require.Equal(t, "call-1", gjson.GetBytes(got, "1.call_id").String())
 }
+
+func TestRewriteDeepSeekReasoningInputFillsEmptyFromEarlierTurnWhenCacheMiss(t *testing.T) {
+	input := mustJSON(t, []map[string]any{
+		{"type": "reasoning", "content": []map[string]string{{"type": "reasoning_text", "text": "first"}}},
+		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-1", "output": "old"},
+		{"type": "reasoning", "id": "rs_2"},
+		{"type": "function_call", "call_id": "call-2", "name": "exec_command", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-2", "output": "new"},
+	})
+
+	got := rewriteDeepSeekReasoningInput(input, "")
+	require.Equal(t, []string{"reasoning", "function_call", "function_call_output", "reasoning", "function_call", "function_call_output"}, inputTypes(t, got))
+	require.Equal(t, "first", gjson.GetBytes(got, "0.content.0.text").String())
+	require.Equal(t, "first", gjson.GetBytes(got, "3.content.0.text").String())
+}

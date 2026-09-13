@@ -27,6 +27,7 @@ func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.Ra
 	}
 	changed := false
 	insertText := cached
+	lastSeenText := ""
 	kept := make([]json.RawMessage, 0, len(items)+1)
 	for i, item := range items {
 		if peekType(item) != "reasoning" {
@@ -36,22 +37,31 @@ func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.Ra
 		if reasoningInsideOpenToolTurn(items, i) {
 			if text := reasoningItemText(item); text != "" {
 				insertText = text
+				lastSeenText = text
 			}
 			changed = true
 			continue
 		}
-		if reasoningItemHasText(item) {
+		if text := reasoningItemText(item); text != "" {
 			kept = append(kept, item)
+			lastSeenText = text
 			continue
 		}
-		if cached != "" {
-			if filled := fillReasoningItem(item, cached); len(filled) > 0 {
+		fillFrom := cached
+		if fillFrom == "" {
+			fillFrom = lastSeenText
+		}
+		if fillFrom != "" {
+			if filled := fillReasoningItem(item, fillFrom); len(filled) > 0 {
 				kept = append(kept, filled)
 				changed = true
 				continue
 			}
 		}
 		kept = append(kept, item)
+	}
+	if insertText == "" {
+		insertText = lastSeenText
 	}
 	if insertText != "" {
 		if insertAt, ok := lastToolTurnMissingReasoning(kept); ok {

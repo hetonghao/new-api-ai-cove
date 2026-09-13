@@ -95,6 +95,16 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			if id := relaycommon.CompletedDeepSeekResponseID(streamResponse); id != "" {
 				deepSeekResponseID = id
 			}
+			if text := strings.TrimSpace(deepSeekReason.String()); text != "" {
+				switch streamResponse.Type {
+				case "response.reasoning_text.done":
+					relaycommon.SaveDeepSeekReasoning(info, firstNonEmpty(streamResponse.ItemID, deepSeekResponseID), text)
+				case dto.ResponsesOutputTypeItemDone:
+					if streamResponse.Item != nil && streamResponse.Item.Type == "reasoning" {
+						relaycommon.SaveDeepSeekReasoning(info, firstNonEmpty(streamResponse.Item.ID, streamResponse.ItemID, deepSeekResponseID), text)
+					}
+				}
+			}
 		}
 		switch streamResponse.Type {
 		case "response.completed", "response.done":
@@ -172,4 +182,13 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	}
 
 	return usage, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
