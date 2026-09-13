@@ -26,6 +26,21 @@ interface MarkdownProps {
   breaks?: boolean
   children: string
   className?: string
+  baseUrl?: string
+}
+
+function resolveMarkdownHref(href: string | undefined, baseUrl?: string) {
+  if (!href) return href
+  if (!baseUrl) return href
+  try {
+    const url = new URL(href, baseUrl)
+    if (['http:', 'https:', 'mailto:'].includes(url.protocol)) {
+      return url.href
+    }
+    return undefined
+  } catch {
+    return undefined
+  }
 }
 
 export function Markdown(props: MarkdownProps) {
@@ -42,9 +57,10 @@ export function Markdown(props: MarkdownProps) {
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw]}
         components={{
-          a: ({ node, className: linkClassName, ...anchorProps }) => (
+          a: ({ node, className: linkClassName, href, ...anchorProps }) => (
             <a
               {...anchorProps}
+              href={resolveMarkdownHref(href, props.baseUrl)}
               target='_blank'
               rel='noopener noreferrer'
               className={cn(

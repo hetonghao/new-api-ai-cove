@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 
 import {
   DataTablePage,
@@ -28,6 +27,7 @@ import {
 } from '@/components/data-table'
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
+import { createServerError } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -197,8 +197,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       })
 
       if (!result?.success) {
-        toast.error(result?.message || t('Failed to load logs'))
-        return DEFAULT_LOGS_DATA
+        throw createServerError(result, t('Failed to load logs'))
       }
 
       return result.data || DEFAULT_LOGS_DATA

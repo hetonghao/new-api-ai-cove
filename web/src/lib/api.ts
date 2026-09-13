@@ -1,4 +1,3 @@
-import type { SystemStatus } from '@/features/auth/types'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -19,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/http-client'
 import { authRequestOptions, authResult } from '@/lib/secure-verification'
+import { requireServerSuccess } from '@/lib/server-error-message'
 
 export {
   applyAuthBundle,
@@ -36,11 +36,6 @@ export {
 export type { AuthTokenRotation, RefreshOutcome } from '@/lib/auth-session'
 export { api }
 export type { ApiRequestConfig } from '@/lib/http-client'
-export type SystemStatusData = NonNullable<SystemStatus['data']>
-
-type SystemStatusApiResponse = {
-  readonly data?: SystemStatusData
-}
 
 // ============================================================================
 // User APIs
@@ -75,9 +70,9 @@ export async function getUserGroups(): Promise<{
 // System APIs
 // ============================================================================
 
-export async function getStatus(): Promise<SystemStatusData | null> {
-  const res = await api.get<SystemStatusApiResponse>('/api/status')
-  return res.data?.data ?? null
+export async function getStatus() {
+  const res = await api.get('/api/status')
+  return requireServerSuccess(res.data)?.data as Record<string, unknown>
 }
 
 export async function getNotice(): Promise<{

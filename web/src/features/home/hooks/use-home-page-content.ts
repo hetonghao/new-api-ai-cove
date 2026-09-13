@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect, useState } from 'react'
 
 import { isHttpUrl } from '@/lib/content-format'
+import { handleServerError } from '@/lib/handle-server-error'
 
 import { getHomePageContent } from '../api'
 import { getInitialHomePageContentState } from '../lib/home-page-content-state'
@@ -64,14 +65,9 @@ export function useHomePageContent(): HomePageContentResult {
         }
       } catch (error) {
         if (!mounted) return
-        // eslint-disable-next-line no-console
-        console.error('Failed to load home page content:', error)
-        const [{ toast }, i18next] = await Promise.all([
-          import('sonner'),
-          import('i18next'),
-        ])
+        const i18next = (await import('i18next')).default
         if (!mounted) return
-        toast.error(i18next.default.t('Failed to load home page content'))
+        handleServerError(error, i18next.t('Failed to load home page content'))
       } finally {
         if (mounted) {
           setState((state) =>

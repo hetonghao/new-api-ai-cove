@@ -41,6 +41,7 @@ import type {
   UserTrendChartType,
   UserChartsFilters,
 } from '@/features/dashboard/types'
+import { requireServerSuccess } from '@/lib/server-error-message'
 import { getRollingDateRange, type TimeGranularity } from '@/lib/time'
 import { VCHART_OPTION } from '@/lib/vchart'
 
@@ -154,7 +155,8 @@ export function UserCharts({
 
   const { data: userData, isLoading } = useQuery({
     queryKey: ['dashboard', 'user-quota', scope, timeRange],
-    queryFn: () => getUserQuotaDataByUsers(timeRange, scope),
+    queryFn: async () =>
+      requireServerSuccess(await getUserQuotaDataByUsers(timeRange, scope)),
     select: (res) => (res.success ? res.data : []),
     staleTime: 60_000,
   })

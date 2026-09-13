@@ -27,6 +27,7 @@ import { ProfileDropdown } from '@/components/profile-dropdown'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { SystemUpdateAction } from '@/features/system-update/system-update-action'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useSystemConfig } from '@/hooks/use-system-config'
@@ -299,33 +300,39 @@ export function PublicHeader(props: PublicHeaderProps) {
           <nav
             className={cn(
               'public-header-nav',
-              'flex items-center justify-between transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
+              'flex items-center justify-between gap-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
               scrolled
                 ? 'bg-background/60 ring-border/50 h-12 rounded-2xl pr-1.5 pl-4 shadow-[0_2px_16px_-6px_rgba(0,0,0,0.08),0_0_0_0.5px_rgba(0,0,0,0.02)] ring-[0.5px] backdrop-blur-2xl dark:shadow-[0_2px_16px_-6px_rgba(0,0,0,0.4)]'
                 : 'h-16 px-2'
             )}
           >
             {/* Logo */}
-            <Link
-              to={homeUrl}
-              className='public-header-brand group flex shrink-0 items-center gap-2.5'
-            >
-              <div className='flex size-7 shrink-0 items-center justify-center transition-all duration-300 group-hover:scale-105'>
-                {loading && <Skeleton className='size-full rounded-lg' />}
-                {!loading && customLogo}
-                {!loading && !customLogo && (
-                  <HeaderLogo
-                    src={systemLogo}
-                    loading={loading}
-                    logoLoaded={logoLoaded}
-                    className='size-full rounded-lg object-contain'
-                  />
-                )}
-              </div>
-              <span className='text-sm font-semibold tracking-tight'>
-                {loading ? <Skeleton className='h-4 w-16' /> : displaySiteName}
-              </span>
-            </Link>
+            <div className='@container/system-brand flex min-w-0 flex-1 items-center gap-1 lg:min-w-36'>
+              <Link
+                to={homeUrl}
+                className='public-header-brand group flex min-w-0 items-center gap-2.5'
+              >
+                <div className='flex size-7 shrink-0 items-center justify-center transition-all duration-300 group-hover:scale-105'>
+                  {loading && <Skeleton className='size-full rounded-lg' />}
+                  {!loading && customLogo}
+                  {!loading && !customLogo && (
+                    <HeaderLogo
+                      src={systemLogo}
+                      loading={loading}
+                      logoLoaded={logoLoaded}
+                      className='size-full rounded-lg object-contain'
+                    />
+                  )}
+                </div>
+                <span
+                  className='max-w-48 truncate text-sm font-semibold tracking-tight'
+                  title={displaySiteName}
+                >
+                  {loading ? <Skeleton className='h-4 w-16' /> : displaySiteName}
+                </span>
+              </Link>
+              <SystemUpdateAction presentation='version' />
+            </div>
 
             {/* Desktop nav */}
             <div className='public-header-desktop hidden items-center gap-0.5 lg:flex'>

@@ -16,25 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  QueryCache,
-  QueryClient,
-  QueryClientProvider,
-} from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
-import { AxiosError } from 'axios'
-import i18next from 'i18next'
 import { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
-import { toast } from 'sonner'
 
-import { getStatus } from '@/lib/api'
 import { installBuildMetadata } from '@/lib/build-metadata'
 import { applyFaviconToDom } from '@/lib/dom-utils'
 import '@/lib/dayjs'
 import { initializeFrontendCache } from '@/lib/frontend-cache'
-import { handleServerError } from '@/lib/handle-server-error'
-import { syncStatusToSystemConfig } from '@/hooks/use-system-config'
+import { createAppQueryClient } from '@/lib/query-client'
+import { readCachedStatus, statusQueryOptions } from '@/lib/status-query'
 
 import { DirectionProvider } from './context/direction-provider'
 import { FontProvider } from './context/font-provider'
@@ -51,47 +43,8 @@ import './styles/index.css'
 initializeFrontendCache()
 installBuildMetadata()
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: (failureCount, error) => {
-        // eslint-disable-next-line no-console
-        if (import.meta.env.DEV) console.log({ failureCount, error })
-
-        if (failureCount >= 0 && import.meta.env.DEV) return false
-        if (failureCount > 3 && import.meta.env.PROD) return false
-
-        return !(
-          error instanceof AxiosError &&
-          [401, 403].includes(error.response?.status ?? 0)
-        )
-      },
-      // Keep focused tabs from silently re-running heavy pages like logs.
-      refetchOnWindowFocus: false,
-      staleTime: 10 * 1000, // 10s
-    },
-    mutations: {
-      onError: (error) => {
-        handleServerError(error)
-
-        if (error instanceof AxiosError) {
-          if (error.response?.status === 304) {
-            toast.error(i18next.t('Content not modified!'))
-          }
-        }
-      },
-    },
-  },
-  queryCache: new QueryCache({
-    onError: (error) => {
-      if (error instanceof AxiosError) {
-        if (error.response?.status === 500) {
-          toast.error(i18next.t('Internal Server Error!'))
-          router.navigate({ to: '/500' })
-        }
-      }
-    },
-  }),
+const queryClient = createAppQueryClient(() => {
+  void router.navigate({ to: '/500' })
 })
 
 // Create a new router instance
@@ -101,12 +54,6 @@ const router = createRouter({
   defaultPreload: 'intent',
   defaultPreloadStaleTime: 0,
 })
-
-type CachedStatus = Awaited<ReturnType<typeof getStatus>>
-
-function isCachedStatus(value: unknown): value is NonNullable<CachedStatus> {
-  return typeof value === 'object' && value !== null
-}
 
 // Register the router instance for type safety
 declare module '@tanstack/react-router' {
@@ -132,37 +79,22 @@ if (!rootElement) {
       if (metaTitle) metaTitle.setAttribute('content', name)
     }
     // Cache-first
-    try {
-      const saved = localStorage.getItem('status')
-      if (saved) {
-        const s = JSON.parse(saved)
-        if (s?.system_name) apply(s.system_name)
-        if (s?.logo) applyFaviconToDom(s.logo)
-        if (isCachedStatus(s)) {
-          queryClient.setQueryData(['status'], s)
-          syncStatusToSystemConfig(s)
-        }
-      }
-    } catch {
-      /* empty */
-    }
-    // Background refresh
-    getStatus()
+    const cached = readCachedStatus()
+    if (cached?.system_name) apply(cached.system_name as string)
+    if (cached?.logo) applyFaviconToDom(cached.logo as string)
+
+    // Background refresh through the shared cache. This primes ['status']
+    // before React mounts, so the root guard and every status consumer reuse
+    // this one request instead of firing their own. `fetchStatus` owns the
+    // localStorage write and the system-config store sync.
+    queryClient
+      .ensureQueryData(statusQueryOptions)
       .then((s) => {
-        queryClient.setQueryData(['status'], s)
-        syncStatusToSystemConfig(s)
-        if (s?.system_name) {
-          apply(s.system_name)
-          try {
-            localStorage.setItem('status', JSON.stringify(s))
-          } catch {
-            /* empty */
-          }
-        }
-        if (s?.logo) applyFaviconToDom(s.logo)
+        if (s?.system_name) apply(s.system_name as string)
+        if (s?.logo) applyFaviconToDom(s.logo as string)
       })
       .catch(() => {
-        syncStatusToSystemConfig(null)
+        /* empty */
       })
   } catch {
     /* empty */

@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { listSystemTasks } from '@/features/system-settings/api'
 import type { SystemTaskStatus } from '@/features/system-settings/types'
+import { createServerError } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
 import { SystemTasksTable } from './system-tasks-table'
@@ -50,7 +51,7 @@ export function SystemTasksPanel() {
     queryFn: async () => {
       const res = await listSystemTasks(TASK_LIMIT)
       if (!res.success || !Array.isArray(res.data)) {
-        throw new Error(res.message || t('We could not load system tasks.'))
+        throw createServerError(res, t('We could not load system tasks.'))
       }
       return res.data
     },

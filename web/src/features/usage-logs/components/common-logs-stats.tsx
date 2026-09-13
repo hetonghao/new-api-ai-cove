@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatLogQuota } from '@/lib/format'
+import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -83,10 +84,10 @@ export function CommonLogsStats() {
 
       const result =
         dataScope === 'sales'
-          ? await getSalesLogStats(params)
+          ? requireServerSuccess(await getSalesLogStats(params))
           : canUseAdminControls
-            ? await getLogStats(params)
-            : await getUserLogStats(params)
+            ? requireServerSuccess(await getLogStats(params))
+            : requireServerSuccess(await getUserLogStats(params))
 
       return result.success
         ? result.data || DEFAULT_LOG_STATS

@@ -16,95 +16,71 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useCallback } from 'react'
 
-import type { SystemStatusData } from '@/lib/api'
-import { DEFAULT_SYSTEM_NAME, DEFAULT_LOGO } from '@/lib/constants'
+import { DEFAULT_LOGO } from '@/lib/constants'
 import { applyFaviconToDom } from '@/lib/dom-utils'
-import {
-  useSystemConfigStore,
-  type CurrencyConfig,
-  type SystemConfig,
-  DEFAULT_CURRENCY_CONFIG,
-} from '@/stores/system-config-store'
+import { ensureStatus } from '@/lib/status-query'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 
-function toNumber(value: unknown, fallback: number): number {
-  if (typeof value === 'number' && !Number.isNaN(value)) return value
-  if (typeof value === 'string') {
-    const parsed = Number(value)
-    if (!Number.isNaN(parsed)) return parsed
-  }
-  return fallback
+interface UseSystemConfigOptions {
+  /** Automatically fetch config from backend (use only in root component) */
+  autoLoad?: boolean
 }
 
-/**
- * Map `/api/status` response data to our persisted system config structure
- */
-export function mapStatusDataToConfig(
-  data: SystemStatusData | null | undefined
-): Partial<SystemConfig> {
-  if (!data) return {}
-
-  const currency: CurrencyConfig = {
-    displayInCurrency: true,
-    quotaDisplayType: 'USD',
-    quotaPerUnit: toNumber(
-      data.quota_per_unit,
-      DEFAULT_CURRENCY_CONFIG.quotaPerUnit
-    ),
-    usdExchangeRate: 1,
-    customCurrencySymbol: '$',
-    customCurrencyExchangeRate: 1,
-  }
-
-  return {
-    systemName: data.system_name || DEFAULT_SYSTEM_NAME,
-    logo: data.logo || DEFAULT_LOGO,
-    footerHtml:
-      typeof data.footer_html === 'string' ? data.footer_html : undefined,
-    demoSiteEnabled: data.demo_site_enabled,
-    displayTokenStatEnabled: data.display_token_stat_enabled,
-    currency,
-  }
-}
-
-export function syncStatusToSystemConfig(
-  data: SystemStatusData | null | undefined
-): void {
-  const { setConfig, setLoading } = useSystemConfigStore.getState()
-  if (data) {
-    setConfig(mapStatusDataToConfig(data))
-  }
-  setLoading(false)
-}
-
-// Preload image and return cleanup function
+/** Preload an image, returning a cleanup that detaches the pending handlers. */
 function preloadImage(
   src: string,
   onLoad: () => void,
   onError: () => void
 ): () => void {
   const img = new Image()
-  img.addEventListener('load', onLoad)
-  img.addEventListener('error', onError)
+  img.onload = onLoad
+  img.onerror = onError
   img.src = src
 
   return () => {
-    img.removeEventListener('load', onLoad)
-    img.removeEventListener('error', onError)
+    img.onload = null
+    img.onerror = null
   }
 }
 
 /**
  * System configuration hook with auto-loading and logo preloading
+ *
+ * @example
+ * // Root component - auto-load from backend
+ * useSystemConfig({ autoLoad: true })
+ *
+ * @example
+ * // Other components - use cached config
+ * const { systemName, logo, loading } = useSystemConfig()
  */
-export function useSystemConfig() {
-  const {
-    config,
-    loading,
-    loadedLogoUrl,
-    setLoadedLogoUrl,
-  } = useSystemConfigStore()
+export function useSystemConfig(options: UseSystemConfigOptions = {}) {
+  const { autoLoad = false } = options
+  const queryClient = useQueryClient()
+  const { config, loading, loadedLogoUrl, setLoadedLogoUrl, setLoading } =
+    useSystemConfigStore()
+
+  // Load config from backend via the shared `/api/status` cache.
+  // `ensureStatus` writes the mapped config into this store itself, so there is
+  // no second request and no second mapping path here.
+  const loadConfig = useCallback(async () => {
+    try {
+      setLoading(true)
+      await ensureStatus(queryClient)
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to load system config:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [queryClient, setLoading])
+
+  useEffect(() => {
+    if (autoLoad) loadConfig()
+  }, [autoLoad, loadConfig])
 
   // Preload logo image when URL changes
   useEffect(() => {

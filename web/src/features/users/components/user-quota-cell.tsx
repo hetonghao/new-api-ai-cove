@@ -27,6 +27,11 @@ import { useSystemConfigStore } from '@/stores/system-config-store'
 type UserQuotaCellProps = {
   remaining: number
   used: number
+  total?: number
+  formatValue?: (
+    value: number | null | undefined,
+    locales?: Intl.LocalesArgument
+  ) => string
 }
 
 export function UserQuotaCell(props: UserQuotaCellProps) {
