@@ -2052,6 +2052,86 @@ func TestApplyParamOverrideWithRelayInfoMoveAndCopyHeaders(t *testing.T) {
 	}
 }
 
+func TestApplyParamOverrideWithRelayInfoChatPassthroughKeepsBodyAndSetsSessionHeader(t *testing.T) {
+	info := &RelayInfo{
+		ChannelMeta: &ChannelMeta{
+			ParamOverride: map[string]any{
+				"operations": []any{
+					map[string]any{
+						"mode":        "pass_headers",
+						"keep_origin": true,
+						"value":       []any{"session_id", "x-opencode-session"},
+					},
+					map[string]any{
+						"mode":        "copy_header",
+						"from":        "session_id",
+						"to":          "x-opencode-session",
+						"keep_origin": true,
+					},
+					map[string]any{
+						"mode":        "set_header",
+						"path":        "x-opencode-session",
+						"value":       "AI-Cove",
+						"keep_origin": true,
+					},
+				},
+			},
+		},
+	}
+	input := []byte(`{"model":"deepseek-v4.1-flash","messages":[{"role":"user","content":"hi"}]}`)
+	out, err := ApplyParamOverrideWithRelayInfo(input, info)
+	if err != nil {
+		t.Fatalf("ApplyParamOverrideWithRelayInfo returned error: %v", err)
+	}
+	assertJSONEqual(t, string(input), string(out))
+	if !info.UseRuntimeHeadersOverride {
+		t.Fatalf("expected runtime header override to be enabled")
+	}
+	if info.RuntimeHeadersOverride["x-opencode-session"] != "AI-Cove" {
+		t.Fatalf("expected x-opencode-session fallback, got: %v", info.RuntimeHeadersOverride["x-opencode-session"])
+	}
+}
+
+func TestApplyParamOverrideWithRelayInfoChatPassthroughCopiesSessionId(t *testing.T) {
+	info := &RelayInfo{
+		RequestHeaders: map[string]string{
+			"session_id": "sess-dsh-1",
+		},
+		ChannelMeta: &ChannelMeta{
+			ParamOverride: map[string]any{
+				"operations": []any{
+					map[string]any{
+						"mode":        "pass_headers",
+						"keep_origin": true,
+						"value":       []any{"session_id", "x-opencode-session"},
+					},
+					map[string]any{
+						"mode":        "copy_header",
+						"from":        "session_id",
+						"to":          "x-opencode-session",
+						"keep_origin": true,
+					},
+					map[string]any{
+						"mode":        "set_header",
+						"path":        "x-opencode-session",
+						"value":       "AI-Cove",
+						"keep_origin": true,
+					},
+				},
+			},
+		},
+	}
+	input := []byte(`{"model":"deepseek-v4.1-flash","messages":[{"role":"user","content":"hi"}]}`)
+	out, err := ApplyParamOverrideWithRelayInfo(input, info)
+	if err != nil {
+		t.Fatalf("ApplyParamOverrideWithRelayInfo returned error: %v", err)
+	}
+	assertJSONEqual(t, string(input), string(out))
+	if info.RuntimeHeadersOverride["x-opencode-session"] != "sess-dsh-1" {
+		t.Fatalf("expected session_id copy, got: %v", info.RuntimeHeadersOverride["x-opencode-session"])
+	}
+}
+
 func TestApplyParamOverrideWithRelayInfoSetHeaderMapRewritesAnthropicBeta(t *testing.T) {
 	info := &RelayInfo{
 		ChannelMeta: &ChannelMeta{
