@@ -492,6 +492,49 @@ func TestConvertRequestResponsesToGeminiUsesDirectConverter(t *testing.T) {
 	assert.Empty(t, geminiReq.Contents[1].Parts[0].ThoughtSignature)
 }
 
+func TestConvertRequestResponsesToGeminiSynthesizesFunctionCallForOutputOnly(t *testing.T) {
+	info := &convmeta.Values{
+		Options:             &convmeta.Options{Gemini: convmeta.GeminiOptions{FunctionCallThoughtSignatureEnabled: true}},
+		ConversionChain:     []types.RelayFormat{types.RelayFormatOpenAIResponses},
+		ChannelMetaAttached: true,
+		UpstreamModelName:   "gemini-test",
+	}
+	req := &dto.OpenAIResponsesRequest{
+		Model: "gemini-test",
+		Input: mustRawMessage(t, []map[string]any{
+			{
+				"type":    "function_call_output",
+				"call_id": "call_1",
+				"name":    "exec_command",
+				"output":  map[string]any{"ok": true},
+			},
+		}),
+		Tools: mustRawMessage(t, []map[string]any{
+			{"type": "function", "name": "exec_command", "parameters": map[string]any{"type": "object"}},
+		}),
+	}
+
+	result, err := ConvertRequest(nil, info, types.RelayFormatGemini, req)
+
+	require.NoError(t, err)
+	geminiReq, ok := result.Value.(*dto.GeminiChatRequest)
+	require.True(t, ok)
+	require.Len(t, geminiReq.Contents, 2)
+	assert.Equal(t, "model", geminiReq.Contents[0].Role)
+	require.Len(t, geminiReq.Contents[0].Parts, 1)
+	require.NotNil(t, geminiReq.Contents[0].Parts[0].FunctionCall)
+	assert.Equal(t, "exec_command", geminiReq.Contents[0].Parts[0].FunctionCall.FunctionName)
+	assert.Equal(t, "call_1", geminiReq.Contents[0].Parts[0].FunctionCall.ID)
+	var thoughtSignature string
+	require.NoError(t, kitutil.Unmarshal(geminiReq.Contents[0].Parts[0].ThoughtSignature, &thoughtSignature))
+	assert.Equal(t, sharedgemini.ThoughtSignatureBypassValue, thoughtSignature)
+	assert.Equal(t, "user", geminiReq.Contents[1].Role)
+	require.Len(t, geminiReq.Contents[1].Parts, 1)
+	require.NotNil(t, geminiReq.Contents[1].Parts[0].FunctionResponse)
+	assert.Equal(t, "exec_command", geminiReq.Contents[1].Parts[0].FunctionResponse.Name)
+	assert.Empty(t, geminiReq.Contents[1].Parts[0].ThoughtSignature)
+}
+
 func TestConvertRequestResponsesToGeminiSkipsThoughtSignatureWhenDisabled(t *testing.T) {
 	info := &convmeta.Values{
 		Options:             &convmeta.Options{Gemini: convmeta.GeminiOptions{FunctionCallThoughtSignatureEnabled: false}},

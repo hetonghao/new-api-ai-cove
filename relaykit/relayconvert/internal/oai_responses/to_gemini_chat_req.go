@@ -133,6 +133,7 @@ func OpenAIResponsesRequestToGeminiChat(c context.Context, req *dto.OpenAIRespon
 		return nil, err
 	}
 	callNames := make(map[string]string)
+	seenCalls := make(map[string]struct{})
 	skippedNamelessOutput := false
 	for _, item := range inputItems {
 		itemType := strings.TrimSpace(kitutil.Interface2String(item["type"]))
@@ -146,6 +147,7 @@ func OpenAIResponsesRequestToGeminiChat(c context.Context, req *dto.OpenAIRespon
 			if callID != "" {
 				callNames[callID] = part.FunctionCall.FunctionName
 			}
+			markGeminiFunctionCallSeen(seenCalls, callID, part.FunctionCall.FunctionName)
 			appendGeminiContentPart(geminiRequest, "model", part)
 		case ResponsesInputTypeFunctionCallOutput:
 			part, err := responsesFunctionOutputItemToGeminiPart(item, callNames)
@@ -156,6 +158,7 @@ func OpenAIResponsesRequestToGeminiChat(c context.Context, req *dto.OpenAIRespon
 				skippedNamelessOutput = true
 				continue
 			}
+			ensureGeminiFunctionCallBeforeResponse(geminiRequest, opts, seenCalls, CallID(item), part.FunctionResponse.Name)
 			appendGeminiContentPart(geminiRequest, "user", part)
 		default:
 			role := responsesGeminiRole(item)
@@ -304,6 +307,41 @@ func responsesFunctionOutputItemToGeminiPart(item map[string]any, callNames map[
 	return dto.GeminiPart{
 		FunctionResponse: response,
 	}, nil
+}
+
+func markGeminiFunctionCallSeen(seen map[string]struct{}, callID, name string) {
+	key := strings.TrimSpace(callID)
+	if key == "" {
+		key = strings.TrimSpace(name)
+	}
+	if key == "" {
+		return
+	}
+	seen[key] = struct{}{}
+}
+
+func ensureGeminiFunctionCallBeforeResponse(req *dto.GeminiChatRequest, opts *convmeta.Options, seen map[string]struct{}, callID, name string) {
+	// ponytail: dummy args {}, cache original call args if Google starts schema-checking these
+	key := strings.TrimSpace(callID)
+	if key == "" {
+		key = strings.TrimSpace(name)
+	}
+	if key == "" {
+		return
+	}
+	if _, ok := seen[key]; ok {
+		return
+	}
+	part := dto.GeminiPart{
+		FunctionCall: &dto.FunctionCall{
+			ID:           strings.TrimSpace(callID),
+			FunctionName: name,
+			Arguments:    map[string]any{},
+		},
+	}
+	sharedgemini.AttachFunctionCallThoughtSignature(opts, &part)
+	appendGeminiContentPart(req, "model", part)
+	seen[key] = struct{}{}
 }
 
 func appendGeminiContentPart(req *dto.GeminiChatRequest, role string, part dto.GeminiPart) {
