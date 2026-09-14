@@ -133,7 +133,6 @@ func OpenAIResponsesRequestToGeminiChat(c context.Context, req *dto.OpenAIRespon
 		return nil, err
 	}
 	callNames := make(map[string]string)
-	skippedNamelessOutput := false
 	for _, item := range inputItems {
 		itemType := strings.TrimSpace(kitutil.Interface2String(item["type"]))
 		switch itemType {
@@ -151,10 +150,6 @@ func OpenAIResponsesRequestToGeminiChat(c context.Context, req *dto.OpenAIRespon
 			part, err := responsesFunctionOutputItemToGeminiPart(item, callNames)
 			if err != nil {
 				return nil, err
-			}
-			if part.FunctionResponse == nil {
-				skippedNamelessOutput = true
-				continue
 			}
 			appendGeminiContentPart(geminiRequest, "user", part)
 		default:
@@ -178,10 +173,6 @@ func OpenAIResponsesRequestToGeminiChat(c context.Context, req *dto.OpenAIRespon
 				})
 			}
 		}
-	}
-
-	if skippedNamelessOutput && len(geminiRequest.Contents) == 0 {
-		return nil, fmt.Errorf("function_call_output item is missing name")
 	}
 
 	if len(systemTexts) > 0 {
@@ -286,9 +277,6 @@ func responsesFunctionOutputItemToGeminiPart(item map[string]any, callNames map[
 	name := strings.TrimSpace(kitutil.Interface2String(item["name"]))
 	if name == "" {
 		name = callNames[callID]
-	}
-	if name == "" {
-		return dto.GeminiPart{}, nil
 	}
 	response := &dto.GeminiFunctionResponse{
 		Name:     name,
