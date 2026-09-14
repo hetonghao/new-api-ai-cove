@@ -13,63 +13,10 @@ func FillMissingOpenCodeReasoning(info *relaycommon.RelayInfo, request *dto.Open
 	if request == nil || !relaycommon.IsDeepSeekReasoningRelay(info, request.Model) {
 		return
 	}
+	// OpenCode thinking rejects fc/fco groups without a preceding reasoning_text,
+	// and rejects reasoning sitting between an unmatched call and its output.
 	cached := relaycommon.LoadDeepSeekReasoningByResponseID(request.PreviousResponseID)
-	request.Input = fillMissingOpenCodeReasoningInput(request.Input, cached)
-}
-
-func fillMissingOpenCodeReasoningInput(input json.RawMessage, cached string) json.RawMessage {
-	if len(input) == 0 {
-		return input
-	}
-	var items []json.RawMessage
-	if common.Unmarshal(input, &items) != nil {
-		return input
-	}
-	changed := false
-	lastSeen := ""
-	out := make([]json.RawMessage, 0, len(items)+1)
-	for _, item := range items {
-		if peekType(item) != "reasoning" {
-			out = append(out, item)
-			continue
-		}
-		if text := reasoningItemText(item); text != "" {
-			out = append(out, item)
-			lastSeen = text
-			continue
-		}
-		fillFrom := strings.TrimSpace(cached)
-		if fillFrom == "" {
-			fillFrom = lastSeen
-		}
-		if fillFrom != "" {
-			if filled := fillReasoningItem(item, fillFrom); len(filled) > 0 {
-				out = append(out, filled)
-				lastSeen = fillFrom
-				changed = true
-				continue
-			}
-		}
-		out = append(out, item)
-	}
-	insertText := strings.TrimSpace(cached)
-	if insertText == "" {
-		insertText = lastSeen
-	}
-	if insertText != "" {
-		if next, ok := ensureReasoningBeforeOutputOnlyTurn(out, insertText); ok {
-			out = next
-			changed = true
-		}
-	}
-	if !changed {
-		return input
-	}
-	raw, err := common.Marshal(out)
-	if err != nil {
-		return input
-	}
-	return raw
+	request.Input = rewriteDeepSeekReasoningInput(request.Input, cached)
 }
 
 func injectCachedDeepSeekReasoning(info *relaycommon.RelayInfo, request *dto.OpenAIResponsesRequest) {

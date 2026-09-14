@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -211,40 +212,50 @@ func requireReasoningBeforeEveryCall(t *testing.T, raw []byte) {
 	}
 }
 
-func TestFillMissingOpenCodeReasoningInputInsertsBeforeOutputOnly(t *testing.T) {
-	in := mustJSON(t, []map[string]any{
-		{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
-	})
-	got := fillMissingOpenCodeReasoningInput(in, "think")
-	require.Equal(t, []string{"reasoning", "function_call_output"}, inputTypes(t, got))
-	require.Equal(t, "think", gjson.GetBytes(got, "0.content.0.text").String())
-	require.NotContains(t, string(got), "根据以上工具结果，回答用户最初的问题")
+func TestFillMissingOpenCodeReasoningPutsReasoningBeforeEveryToolTurn(t *testing.T) {
+	req := dto.OpenAIResponsesRequest{
+		Model: "deepseek-v4.1-flash",
+		Input: mustJSON(t, []map[string]any{
+			{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
+			{"type": "function_call_output", "call_id": "call-1", "output": "a"},
+			{"type": "reasoning", "content": []map[string]string{{"type": "reasoning_text", "text": "think"}}},
+			{"type": "function_call", "call_id": "call-2", "name": "exec_command", "arguments": "{}"},
+			{"type": "function_call_output", "call_id": "call-2", "output": "b"},
+		}),
+	}
+	FillMissingOpenCodeReasoning(nil, &req)
+	require.Equal(t, []string{
+		"reasoning", "function_call", "function_call_output",
+		"reasoning", "function_call", "function_call_output",
+	}, inputTypes(t, req.Input))
+	require.Equal(t, "think", gjson.GetBytes(req.Input, "0.content.0.text").String())
+	require.NotContains(t, string(req.Input), "根据以上工具结果，回答用户最初的问题")
 }
 
-func TestFillMissingOpenCodeReasoningInputNoCacheLeavesOutputOnly(t *testing.T) {
-	in := mustJSON(t, []map[string]any{
-		{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
-	})
-	got := fillMissingOpenCodeReasoningInput(in, "")
-	require.Equal(t, []string{"function_call_output"}, inputTypes(t, got))
+func TestFillMissingOpenCodeReasoningMovesReasoningOutOfOpenToolTurn(t *testing.T) {
+	req := dto.OpenAIResponsesRequest{
+		Model: "deepseek-v4.1-flash",
+		Input: mustJSON(t, []map[string]any{
+			{"type": "message", "role": "user", "content": "hi"},
+			{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
+			{"type": "reasoning", "content": []map[string]string{{"type": "reasoning_text", "text": "think"}}},
+			{"type": "function_call", "call_id": "call-2", "name": "exec_command", "arguments": "{}"},
+			{"type": "function_call_output", "call_id": "call-1", "output": "a"},
+			{"type": "function_call_output", "call_id": "call-2", "output": "b"},
+		}),
+	}
+	FillMissingOpenCodeReasoning(nil, &req)
+	requireReasoningBeforeEveryCall(t, req.Input)
+	require.NotContains(t, string(req.Input), "根据以上工具结果，回答用户最初的问题")
 }
 
-func TestFillMissingOpenCodeReasoningInputFillsEmptyStub(t *testing.T) {
-	in := mustJSON(t, []map[string]any{
-		{"type": "reasoning", "encrypted_content": "rs_local"},
-		{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
-	})
-	got := fillMissingOpenCodeReasoningInput(in, "think")
-	require.Equal(t, []string{"reasoning", "function_call_output"}, inputTypes(t, got))
-	require.Equal(t, "think", gjson.GetBytes(got, "0.content.0.text").String())
-	require.Equal(t, "", gjson.GetBytes(got, "0.encrypted_content").String())
-}
-
-func TestFillMissingOpenCodeReasoningInputKeepsUnpairedFunctionCall(t *testing.T) {
-	in := mustJSON(t, []map[string]any{
-		{"type": "message", "role": "user", "content": "hi"},
-		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
-	})
-	got := fillMissingOpenCodeReasoningInput(in, "think")
-	require.Equal(t, []string{"message", "function_call"}, inputTypes(t, got))
+func TestFillMissingOpenCodeReasoningNoCacheLeavesOutputOnly(t *testing.T) {
+	req := dto.OpenAIResponsesRequest{
+		Model: "deepseek-v4.1-flash",
+		Input: mustJSON(t, []map[string]any{
+			{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+		}),
+	}
+	FillMissingOpenCodeReasoning(nil, &req)
+	require.Equal(t, []string{"function_call_output"}, inputTypes(t, req.Input))
 }
