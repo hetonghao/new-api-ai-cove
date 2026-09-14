@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/tidwall/gjson"
 )
 
@@ -83,7 +84,7 @@ func TestApplyChatCopiesEarlierReasoningToToolAssistant(t *testing.T) {
 		{"role":"tool","tool_call_id":"c1","content":"ok"},
 		{"role":"assistant","content":"","tool_calls":[{"id":"c2","type":"function","function":{"name":"pwd","arguments":"{}"}}]}
 	]}`)
-	out := ApplyChatOpenCodeThinking(in, "", OpenCodeSessionUnknown)
+	out := ApplyChatOpenCodeThinking(in, "", OpenCodeSessionDeepSeek)
 	if gjson.GetBytes(out, "messages.2.reasoning_content").String() != "think1" {
 		t.Fatalf("expected earlier reasoning, got %s", out)
 	}
@@ -101,6 +102,18 @@ func TestApplyChatFillsToolAssistantFromSessionCache(t *testing.T) {
 	out := ApplyChatOpenCodeThinking(in, "need pwd", OpenCodeSessionDeepSeek)
 	if gjson.GetBytes(out, "messages.1.reasoning_content").String() != "need pwd" {
 		t.Fatalf("expected cache fill, got %s", out)
+	}
+}
+
+func TestApplyChatUnknownDoesNotCopyEarlierReasoning(t *testing.T) {
+	in := []byte(`{"messages":[
+		{"role":"assistant","content":"a","reasoning_content":"think1","tool_calls":[{"id":"c1","type":"function","function":{"name":"ls","arguments":"{}"}}]},
+		{"role":"tool","tool_call_id":"c1","content":"ok"},
+		{"role":"assistant","content":"","tool_calls":[{"id":"c2","type":"function","function":{"name":"pwd","arguments":"{}"}}]}
+	]}`)
+	out := ApplyChatOpenCodeThinking(in, "need pwd", OpenCodeSessionUnknown)
+	if gjson.GetBytes(out, "messages.2.reasoning_content").String() != "" {
+		t.Fatalf("unknown last model must not copy or fill: %s", out)
 	}
 }
 
@@ -172,5 +185,20 @@ func TestOpenCodeSessionKeyPrefersPromptCacheKeyAndRejectsCoveFallback(t *testin
 	info = &RelayInfo{RequestHeaders: map[string]string{"x-opencode-session": "AI-Cove"}}
 	if got := OpenCodeSessionKey(info, nil); got != "" {
 		t.Fatalf("cove-only must be empty: %q", got)
+	}
+}
+
+func TestOpenCodeSessionKeyRejectsCodexThreadPromptCacheKey(t *testing.T) {
+	body := []byte(`{"prompt_cache_key":"01a0a0aa-8889-7302-bcb6-926a8c6d0327"}`)
+	if got := OpenCodeSessionKey(nil, body); got != "" {
+		t.Fatalf("codex thread prompt_cache_key must not be session: %q", got)
+	}
+	info := &RelayInfo{Request: &dto.OpenAIResponsesRequest{PromptCacheKey: []byte(`"01a0a0aa-8889-7302-bcb6-926a8c6d0327"`)}}
+	if got := OpenCodeSessionKey(info, nil); got != "" {
+		t.Fatalf("codex request prompt_cache_key must not be session: %q", got)
+	}
+	info = &RelayInfo{RequestHeaders: map[string]string{"x-opencode-session": "01a0a0aa-8889-7302-bcb6-926a8c6d0327"}}
+	if got := OpenCodeSessionKey(info, nil); got != "01a0a0aa-8889-7302-bcb6-926a8c6d0327" {
+		t.Fatalf("opencode header still accepted: %q", got)
 	}
 }

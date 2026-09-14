@@ -278,6 +278,22 @@ func TestApplyOpenCodeResponsesThinkingKeepsToolsWhenLastUnknown(t *testing.T) {
 	})
 	got := ApplyOpenCodeResponsesThinking(input, "need pwd", relaycommon.OpenCodeSessionUnknown)
 	require.Equal(t, []string{"function_call", "function_call_output"}, inputTypes(t, got))
+	require.Equal(t, string(input), string(got))
+}
+
+func TestFillMissingOpenCodeReasoningIgnoresCodexPromptCacheKey(t *testing.T) {
+	req := dto.OpenAIResponsesRequest{
+		Model:          "deepseek-v4.1-flash",
+		PromptCacheKey: []byte(`"01a0a0aa-8889-7302-bcb6-926a8c6d0327"`),
+		Input: mustJSON(t, []map[string]any{
+			{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
+			{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+		}),
+	}
+	orig := string(req.Input)
+	FillMissingOpenCodeReasoning(&relaycommon.RelayInfo{OriginModelName: "deepseek-v4.1-flash"}, &req)
+	require.Equal(t, orig, string(req.Input))
+	require.Equal(t, []string{"function_call", "function_call_output"}, inputTypes(t, req.Input))
 }
 
 func TestApplyOpenCodeResponsesThinkingFlattensWhenLastOther(t *testing.T) {

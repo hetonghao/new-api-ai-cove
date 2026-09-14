@@ -204,12 +204,12 @@ func LoadOpenCodeSessionReasoning(info *RelayInfo, body []byte) string {
 
 func OpenCodeSessionKey(info *RelayInfo, body []byte) string {
 	if len(body) > 0 {
-		if key := validOpenCodeSessionKey(gjson.GetBytes(body, "prompt_cache_key").String()); key != "" {
+		if key := openCodePromptCacheSessionKey(gjson.GetBytes(body, "prompt_cache_key").String()); key != "" {
 			return key
 		}
 	}
 	if info != nil {
-		if key := validOpenCodeSessionKey(promptCacheKeyFromRelay(info)); key != "" {
+		if key := openCodePromptCacheSessionKey(promptCacheKeyFromRelay(info)); key != "" {
 			return key
 		}
 		for _, name := range []string{"session-id", "session_id", "x-opencode-session"} {
@@ -219,6 +219,64 @@ func OpenCodeSessionKey(info *RelayInfo, body []byte) string {
 		}
 	}
 	return ""
+}
+
+func openCodePromptCacheSessionKey(key string) string {
+	key = validOpenCodeSessionKey(key)
+	if key == "" || isCodexThreadSessionKey(key) {
+		return ""
+	}
+	return key
+}
+
+func isCodexThreadSessionKey(key string) bool {
+	switch len(key) {
+	case 36:
+		return key[8] == '-' && key[13] == '-' && key[18] == '-' && key[23] == '-' &&
+			isHexString(key[:8]) && isHexString(key[9:13]) && isHexString(key[14:18]) &&
+			isHexString(key[19:23]) && isHexString(key[24:])
+	case 26:
+		return isULIDString(key)
+	default:
+		return false
+	}
+}
+
+func isHexString(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+	}
+	return true
+}
+
+func isULIDString(s string) bool {
+	if len(s) != 26 {
+		return false
+	}
+	c0 := s[0]
+	if c0 < '0' || c0 > '7' {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= '0' && c <= '9':
+		case c >= 'A' && c <= 'H':
+		case c >= 'J' && c <= 'K':
+		case c >= 'M' && c <= 'N':
+		case c >= 'P' && c <= 'T':
+		case c >= 'V' && c <= 'Z':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func promptCacheKeyFromRelay(info *RelayInfo) string {

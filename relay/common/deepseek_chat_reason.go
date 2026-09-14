@@ -30,9 +30,15 @@ func PrepareChatCompletionsBody(info *RelayInfo, body []byte) []byte {
 
 func ApplyChatOpenCodeThinking(body []byte, cached string, last OpenCodeSessionModel) []byte {
 	body = NormalizeChatCompletionsReasoning(body)
-	body = copyEarlierAssistantReasoningToToolTurns(body)
-	if chatToolAssistantMissingReasoning(body) && last == OpenCodeSessionDeepSeek {
-		body = fillToolAssistantReasoning(body, cached)
+	if last == OpenCodeSessionUnknown {
+		return body
+	}
+	if last == OpenCodeSessionDeepSeek {
+		body = copyEarlierAssistantReasoningToToolTurns(body)
+		if chatToolAssistantMissingReasoning(body) {
+			body = fillToolAssistantReasoning(body, cached)
+		}
+		return body
 	}
 	if last == OpenCodeSessionOther && chatHasToolCalls(body) && !chatHasReasoningContent(body) {
 		return flattenChatToolTurns(body)
