@@ -12,8 +12,7 @@ func PrepareChatCompletionsBody(info *RelayInfo, body []byte) []byte {
 	if len(body) == 0 || !IsDeepSeekReasoningRelay(info, infoOriginModel(info)) {
 		return body
 	}
-	body = NormalizeChatCompletionsReasoning(body)
-	return InjectChatCachedReasoning(info, body)
+	return NormalizeChatCompletionsReasoning(body)
 }
 
 func NormalizeChatCompletionsReasoning(body []byte) []byte {
@@ -65,10 +64,6 @@ func copyAssistantReasoning(body []byte, arrayPath string) []byte {
 		result = next
 	}
 	return result
-}
-
-func InjectChatCachedReasoning(info *RelayInfo, body []byte) []byte {
-	return injectChatCachedReasoning(body, LoadDeepSeekReasoning(info, ""))
 }
 
 func injectChatCachedReasoning(body []byte, cached string) []byte {

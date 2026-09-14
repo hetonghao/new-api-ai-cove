@@ -74,12 +74,25 @@ func LoadDeepSeekReasoning(info *RelayInfo, previousResponseID string) string {
 	if info == nil || !napicommon.RedisEnabled {
 		return ""
 	}
-	if previousResponseID = strings.TrimSpace(previousResponseID); previousResponseID != "" {
-		if text, err := napicommon.RedisGet(deepSeekReasonIDKey(previousResponseID)); err == nil && text != "" {
-			return text
-		}
+	if text := LoadDeepSeekReasoningByResponseID(previousResponseID); text != "" {
+		return text
 	}
 	text, err := napicommon.RedisGet(deepSeekLatestReasonKey(info))
+	if err != nil {
+		return ""
+	}
+	return text
+}
+
+func LoadDeepSeekReasoningByResponseID(responseID string) string {
+	if !napicommon.RedisEnabled || napicommon.RDB == nil {
+		return ""
+	}
+	responseID = strings.TrimSpace(responseID)
+	if responseID == "" {
+		return ""
+	}
+	text, err := napicommon.RedisGet(deepSeekReasonIDKey(responseID))
 	if err != nil {
 		return ""
 	}

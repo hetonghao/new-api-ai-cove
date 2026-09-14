@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/claude"
+	"github.com/QuantumNous/new-api/relay/channel/deepseek"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -64,8 +65,9 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
-	// ponytail: type 60 talks to OpenCode Go. Rewriting Responses input
-	// (reasoning inject / continue hint) broke Codex continuation and still 400s.
+	// ponytail: OpenCode needs missing reasoning_text on tool continue.
+	// Do not drop unpaired tools or append a developer continue hint.
+	deepseek.FillMissingOpenCodeReasoning(info, &request)
 	return request, nil
 }
 

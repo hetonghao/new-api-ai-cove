@@ -54,3 +54,25 @@ func TestAppendDeepSeekChatReasoning(t *testing.T) {
 		t.Fatalf("got %q", buf.String())
 	}
 }
+
+func TestPrepareChatCompletionsBodyDoesNotInjectCachedReasoning(t *testing.T) {
+	info := &RelayInfo{UserId: 2, TokenId: 9, OriginModelName: "deepseek-v4.1-flash"}
+	in := []byte(`{"messages":[{"role":"assistant","content":"a"},{"role":"user","content":"next"}]}`)
+	out := PrepareChatCompletionsBody(info, in)
+	if gjson.GetBytes(out, "messages.0.reasoning_content").String() != "" {
+		t.Fatalf("must not fill from token cache: %s", out)
+	}
+	injected := injectChatCachedReasoning(in, "cached-think")
+	if gjson.GetBytes(injected, "messages.0.reasoning_content").String() != "cached-think" {
+		t.Fatalf("sanity inject helper: %s", injected)
+	}
+}
+
+func TestPrepareChatCompletionsBodyStillCopiesThisRequestReasoning(t *testing.T) {
+	info := &RelayInfo{OriginModelName: "deepseek-v4.1-flash"}
+	in := []byte(`{"messages":[{"role":"assistant","content":"ok","reasoning":"think"}]}`)
+	out := PrepareChatCompletionsBody(info, in)
+	if gjson.GetBytes(out, "messages.0.reasoning_content").String() != "think" {
+		t.Fatalf("got %s", out)
+	}
+}

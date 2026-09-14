@@ -210,3 +210,41 @@ func requireReasoningBeforeEveryCall(t *testing.T, raw []byte) {
 		}
 	}
 }
+
+func TestFillMissingOpenCodeReasoningInputInsertsBeforeOutputOnly(t *testing.T) {
+	in := mustJSON(t, []map[string]any{
+		{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+	})
+	got := fillMissingOpenCodeReasoningInput(in, "think")
+	require.Equal(t, []string{"reasoning", "function_call_output"}, inputTypes(t, got))
+	require.Equal(t, "think", gjson.GetBytes(got, "0.content.0.text").String())
+	require.NotContains(t, string(got), "根据以上工具结果，回答用户最初的问题")
+}
+
+func TestFillMissingOpenCodeReasoningInputNoCacheLeavesOutputOnly(t *testing.T) {
+	in := mustJSON(t, []map[string]any{
+		{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+	})
+	got := fillMissingOpenCodeReasoningInput(in, "")
+	require.Equal(t, []string{"function_call_output"}, inputTypes(t, got))
+}
+
+func TestFillMissingOpenCodeReasoningInputFillsEmptyStub(t *testing.T) {
+	in := mustJSON(t, []map[string]any{
+		{"type": "reasoning", "encrypted_content": "rs_local"},
+		{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+	})
+	got := fillMissingOpenCodeReasoningInput(in, "think")
+	require.Equal(t, []string{"reasoning", "function_call_output"}, inputTypes(t, got))
+	require.Equal(t, "think", gjson.GetBytes(got, "0.content.0.text").String())
+	require.Equal(t, "", gjson.GetBytes(got, "0.encrypted_content").String())
+}
+
+func TestFillMissingOpenCodeReasoningInputKeepsUnpairedFunctionCall(t *testing.T) {
+	in := mustJSON(t, []map[string]any{
+		{"type": "message", "role": "user", "content": "hi"},
+		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
+	})
+	got := fillMissingOpenCodeReasoningInput(in, "think")
+	require.Equal(t, []string{"message", "function_call"}, inputTypes(t, got))
+}

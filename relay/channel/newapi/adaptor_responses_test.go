@@ -24,6 +24,23 @@ func TestConvertOpenAIResponsesRequestPassesDeepSeekThrough(t *testing.T) {
 	require.Equal(t, []string{"message", "function_call"}, inputTypes(t, converted.Input))
 }
 
+func TestConvertOpenAIResponsesRequestDoesNotAppendContinueHint(t *testing.T) {
+	req := dto.OpenAIResponsesRequest{
+		Model:              "deepseek-v4.1-flash",
+		PreviousResponseID: "resp_1",
+		Input: mustJSON(t, []map[string]any{
+			{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+		}),
+	}
+	got, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, nil, req)
+	require.NoError(t, err)
+	converted, ok := got.(dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+	require.Equal(t, []string{"function_call_output"}, inputTypes(t, converted.Input))
+	require.NotContains(t, string(converted.Input), "根据以上工具结果，回答用户最初的问题")
+	require.NotEqual(t, "developer", gjson.GetBytes(converted.Input, "0.role").String())
+}
+
 func TestConvertOpenAIResponsesRequestSkipsNonDeepSeek(t *testing.T) {
 	req := dto.OpenAIResponsesRequest{
 		Model: "gpt-4.1",
