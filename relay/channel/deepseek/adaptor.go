@@ -168,8 +168,6 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 	return nil, errors.New("not implemented")
 }
 
-const deepSeekContinueHint = "根据以上工具结果，回答用户最初的问题。缺少新的 user 消息并不表示没有任务。"
-
 func PrepareResponsesRequest(info *relaycommon.RelayInfo, request *dto.OpenAIResponsesRequest) {
 	if request == nil {
 		return
@@ -177,80 +175,6 @@ func PrepareResponsesRequest(info *relaycommon.RelayInfo, request *dto.OpenAIRes
 	applyDeepSeekV4ResponsesThinkingSuffix(info, request)
 	request.Input = dropUnpairedDeepSeekToolCalls(request.Input)
 	injectCachedDeepSeekReasoning(info, request)
-	appendDeepSeekDeveloperContinueHint(request)
-}
-
-func appendDeepSeekDeveloperContinueHint(request *dto.OpenAIResponsesRequest) {
-	if request == nil || strings.TrimSpace(request.PreviousResponseID) == "" {
-		return
-	}
-	next, ok := appendDeveloperContinueHint(request.Input)
-	if ok {
-		request.Input = next
-	}
-}
-
-func appendDeveloperContinueHint(input json.RawMessage) (json.RawMessage, bool) {
-	var items []json.RawMessage
-	if len(input) > 0 {
-		if err := common.Unmarshal(input, &items); err != nil {
-			return input, false
-		}
-	}
-	if lastIsUserMessage(items) || lastIsContinueHint(items) {
-		return input, false
-	}
-	hint, err := common.Marshal(map[string]any{
-		"type": "message",
-		"role": "developer",
-		"content": []map[string]string{{
-			"type": "input_text",
-			"text": deepSeekContinueHint,
-		}},
-	})
-	if err != nil {
-		return input, false
-	}
-	items = append(items, hint)
-	raw, err := common.Marshal(items)
-	if err != nil {
-		return input, false
-	}
-	return raw, true
-}
-
-func lastIsUserMessage(items []json.RawMessage) bool {
-	role, ok := lastMessageRole(items)
-	return ok && role == "user"
-}
-
-func lastIsContinueHint(items []json.RawMessage) bool {
-	if len(items) == 0 {
-		return false
-	}
-	var peek struct {
-		Type    string          `json:"type"`
-		Role    string          `json:"role"`
-		Content json.RawMessage `json:"content"`
-	}
-	if common.Unmarshal(items[len(items)-1], &peek) != nil || peek.Type != "message" || peek.Role != "developer" {
-		return false
-	}
-	return strings.Contains(string(peek.Content), deepSeekContinueHint)
-}
-
-func lastMessageRole(items []json.RawMessage) (string, bool) {
-	if len(items) == 0 {
-		return "", false
-	}
-	var peek struct {
-		Type string `json:"type"`
-		Role string `json:"role"`
-	}
-	if common.Unmarshal(items[len(items)-1], &peek) != nil || peek.Type != "message" {
-		return "", false
-	}
-	return peek.Role, true
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(_ *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {

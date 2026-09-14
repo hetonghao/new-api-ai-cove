@@ -9,7 +9,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestConvertOpenAIResponsesRequestPreparesDeepSeekLikeNativeAdaptor(t *testing.T) {
+func TestConvertOpenAIResponsesRequestPassesDeepSeekThrough(t *testing.T) {
 	req := dto.OpenAIResponsesRequest{
 		Model: "deepseek-v4.1-flash",
 		Input: mustJSON(t, []map[string]any{
@@ -21,7 +21,7 @@ func TestConvertOpenAIResponsesRequestPreparesDeepSeekLikeNativeAdaptor(t *testi
 	require.NoError(t, err)
 	converted, ok := got.(dto.OpenAIResponsesRequest)
 	require.True(t, ok)
-	require.Equal(t, []string{"message"}, inputTypes(t, converted.Input))
+	require.Equal(t, []string{"message", "function_call"}, inputTypes(t, converted.Input))
 }
 
 func TestConvertOpenAIResponsesRequestSkipsNonDeepSeek(t *testing.T) {
