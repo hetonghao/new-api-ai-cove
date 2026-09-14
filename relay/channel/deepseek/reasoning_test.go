@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -258,4 +259,46 @@ func TestFillMissingOpenCodeReasoningNoCacheLeavesOutputOnly(t *testing.T) {
 	}
 	FillMissingOpenCodeReasoning(nil, &req)
 	require.Equal(t, []string{"function_call_output"}, inputTypes(t, req.Input))
+}
+
+func TestApplyOpenCodeResponsesThinkingFillsFromCacheWhenLastDeepSeek(t *testing.T) {
+	input := mustJSON(t, []map[string]any{
+		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+	})
+	got := ApplyOpenCodeResponsesThinking(input, "need pwd", relaycommon.OpenCodeSessionDeepSeek)
+	require.Equal(t, []string{"reasoning", "function_call", "function_call_output"}, inputTypes(t, got))
+	require.Equal(t, "need pwd", gjson.GetBytes(got, "0.content.0.text").String())
+}
+
+func TestApplyOpenCodeResponsesThinkingKeepsToolsWhenLastUnknown(t *testing.T) {
+	input := mustJSON(t, []map[string]any{
+		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+	})
+	got := ApplyOpenCodeResponsesThinking(input, "need pwd", relaycommon.OpenCodeSessionUnknown)
+	require.Equal(t, []string{"function_call", "function_call_output"}, inputTypes(t, got))
+}
+
+func TestApplyOpenCodeResponsesThinkingFlattensWhenLastOther(t *testing.T) {
+	input := mustJSON(t, []map[string]any{
+		{"type": "message", "role": "user", "content": "hi"},
+		{"type": "function_call", "call_id": "call-1", "name": "ls", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+	})
+	got := ApplyOpenCodeResponsesThinking(input, "stale", relaycommon.OpenCodeSessionOther)
+	require.Equal(t, []string{"message", "message"}, inputTypes(t, got))
+	require.Contains(t, gjson.GetBytes(got, "1.content.0.text").String(), "ls")
+	require.Contains(t, gjson.GetBytes(got, "1.content.0.text").String(), "ok")
+	require.NotContains(t, string(got), "stale")
+}
+
+func TestApplyOpenCodeResponsesThinkingDoesNotFlattenWhenReasoningPresent(t *testing.T) {
+	input := mustJSON(t, []map[string]any{
+		{"type": "reasoning", "content": []map[string]string{{"type": "reasoning_text", "text": "keep"}}},
+		{"type": "function_call", "call_id": "call-1", "name": "ls", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+	})
+	got := ApplyOpenCodeResponsesThinking(input, "", relaycommon.OpenCodeSessionOther)
+	require.Equal(t, []string{"reasoning", "function_call", "function_call_output"}, inputTypes(t, got))
 }

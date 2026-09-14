@@ -13,10 +13,28 @@ func FillMissingOpenCodeReasoning(info *relaycommon.RelayInfo, request *dto.Open
 	if request == nil || !relaycommon.IsDeepSeekReasoningRelay(info, request.Model) {
 		return
 	}
-	// OpenCode thinking rejects fc/fco groups without a preceding reasoning_text,
-	// and rejects reasoning sitting between an unmatched call and its output.
-	cached := relaycommon.LoadDeepSeekReasoningByResponseID(request.PreviousResponseID)
-	request.Input = rewriteDeepSeekReasoningInput(request.Input, cached)
+	body, _ := common.Marshal(request)
+	relaycommon.RememberOpenCodeSessionModel(info, body)
+	last := relaycommon.LoadOpenCodeSessionModel(info, body)
+	cached := ""
+	if last == relaycommon.OpenCodeSessionDeepSeek {
+		cached = relaycommon.LoadDeepSeekReasoningByResponseID(request.PreviousResponseID)
+		if cached == "" {
+			cached = relaycommon.LoadOpenCodeSessionReasoning(info, body)
+		}
+	}
+	request.Input = ApplyOpenCodeResponsesThinking(request.Input, cached, last)
+	relaycommon.WriteOpenCodeSessionModel(info)
+}
+
+func ApplyOpenCodeResponsesThinking(input json.RawMessage, cached string, last relaycommon.OpenCodeSessionModel) json.RawMessage {
+	if last == relaycommon.OpenCodeSessionOther && responsesHasToolTurn(input) && !responsesHasReasoningText(input) {
+		return flattenResponsesToolTurns(input)
+	}
+	if last != relaycommon.OpenCodeSessionDeepSeek {
+		cached = ""
+	}
+	return rewriteDeepSeekReasoningInput(input, cached)
 }
 
 func injectCachedDeepSeekReasoning(info *relaycommon.RelayInfo, request *dto.OpenAIResponsesRequest) {
@@ -253,4 +271,119 @@ func peekType(item json.RawMessage) string {
 func asString(v any) string {
 	s, _ := v.(string)
 	return s
+}
+
+func responsesHasToolTurn(input json.RawMessage) bool {
+	for _, item := range responsesItems(input) {
+		if isDeepSeekToolCall(item) || isDeepSeekToolOutput(item) {
+			return true
+		}
+	}
+	return false
+}
+
+func responsesHasReasoningText(input json.RawMessage) bool {
+	for _, item := range responsesItems(input) {
+		if reasoningItemHasText(item) {
+			return true
+		}
+	}
+	return false
+}
+
+func flattenResponsesToolTurns(input json.RawMessage) json.RawMessage {
+	items := responsesItems(input)
+	if len(items) == 0 {
+		return input
+	}
+	out := make([]json.RawMessage, 0, len(items))
+	outputs := map[string]string{}
+	for _, item := range items {
+		if !isDeepSeekToolOutput(item) {
+			continue
+		}
+		var parsed map[string]any
+		if common.Unmarshal(item, &parsed) != nil {
+			continue
+		}
+		id := strings.TrimSpace(asString(parsed["call_id"]))
+		if id == "" {
+			id = strings.TrimSpace(asString(parsed["id"]))
+		}
+		outputs[id] = strings.TrimSpace(asString(parsed["output"]))
+	}
+	for i := 0; i < len(items); {
+		item := items[i]
+		if peekType(item) == "reasoning" {
+			i++
+			continue
+		}
+		if !isDeepSeekToolCall(item) && !isDeepSeekToolOutput(item) {
+			out = append(out, item)
+			i++
+			continue
+		}
+		if isDeepSeekToolOutput(item) {
+			i++
+			continue
+		}
+		var b strings.Builder
+		for i < len(items) && isDeepSeekToolCall(items[i]) {
+			var parsed map[string]any
+			if common.Unmarshal(items[i], &parsed) != nil {
+				i++
+				continue
+			}
+			name := strings.TrimSpace(asString(parsed["name"]))
+			args := strings.TrimSpace(asString(parsed["arguments"]))
+			id := strings.TrimSpace(asString(parsed["call_id"]))
+			if b.Len() > 0 {
+				b.WriteByte('\n')
+			}
+			b.WriteString("调用 ")
+			b.WriteString(name)
+			if args != "" {
+				b.WriteByte('(')
+				b.WriteString(args)
+				b.WriteByte(')')
+			}
+			if res := outputs[id]; res != "" {
+				b.WriteByte('\n')
+				b.WriteString("结果：")
+				b.WriteString(res)
+			}
+			i++
+		}
+		for i < len(items) && isDeepSeekToolOutput(items[i]) {
+			i++
+		}
+		msg, err := common.Marshal(map[string]any{
+			"type": "message",
+			"role": "assistant",
+			"content": []map[string]string{{
+				"type": "input_text",
+				"text": strings.TrimSpace(b.String()),
+			}},
+		})
+		if err != nil {
+			return input
+		}
+		out = append(out, msg)
+	}
+	raw, err := common.Marshal(out)
+	if err != nil {
+		return input
+	}
+	return raw
+}
+
+func responsesItems(input json.RawMessage) []json.RawMessage {
+	if len(input) == 0 {
+		return nil
+	}
+	var items []json.RawMessage
+	if common.Unmarshal(input, &items) != nil {
+		return nil
+	}
+	return items
 }

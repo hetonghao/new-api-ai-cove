@@ -1,6 +1,7 @@
 package common
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -8,11 +9,193 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+type OpenCodeSessionModel int
+
+const (
+	OpenCodeSessionUnknown OpenCodeSessionModel = iota
+	OpenCodeSessionDeepSeek
+	OpenCodeSessionOther
+)
+
 func PrepareChatCompletionsBody(info *RelayInfo, body []byte) []byte {
 	if len(body) == 0 || !IsDeepSeekReasoningRelay(info, infoOriginModel(info)) {
 		return body
 	}
-	return NormalizeChatCompletionsReasoning(body)
+	bindOpenCodeSession(info, body)
+	cached, last := LoadOpenCodeChatThinking(info, body)
+	out := ApplyChatOpenCodeThinking(body, cached, last)
+	WriteOpenCodeSessionModel(info)
+	return out
+}
+
+func ApplyChatOpenCodeThinking(body []byte, cached string, last OpenCodeSessionModel) []byte {
+	body = NormalizeChatCompletionsReasoning(body)
+	body = copyEarlierAssistantReasoningToToolTurns(body)
+	if chatToolAssistantMissingReasoning(body) && last == OpenCodeSessionDeepSeek {
+		body = fillToolAssistantReasoning(body, cached)
+	}
+	if last == OpenCodeSessionOther && chatHasToolCalls(body) && !chatHasReasoningContent(body) {
+		return flattenChatToolTurns(body)
+	}
+	return body
+}
+
+func copyEarlierAssistantReasoningToToolTurns(body []byte) []byte {
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.IsArray() {
+		return body
+	}
+	lastReasoning := ""
+	result := body
+	for i, msg := range messages.Array() {
+		if msg.Get("role").String() != "assistant" {
+			continue
+		}
+		if text := strings.TrimSpace(msg.Get("reasoning_content").String()); text != "" {
+			lastReasoning = text
+			continue
+		}
+		if lastReasoning == "" || !chatMsgHasToolCalls(msg) {
+			continue
+		}
+		next, err := sjson.SetBytes(result, fmt.Sprintf("messages.%d.reasoning_content", i), lastReasoning)
+		if err != nil {
+			return result
+		}
+		result = next
+	}
+	return result
+}
+
+func fillToolAssistantReasoning(body []byte, cached string) []byte {
+	cached = strings.TrimSpace(cached)
+	if cached == "" {
+		return body
+	}
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.IsArray() {
+		return body
+	}
+	result := body
+	arr := messages.Array()
+	for i, msg := range arr {
+		if msg.Get("role").String() != "assistant" || !chatMsgHasToolCalls(msg) {
+			continue
+		}
+		if strings.TrimSpace(msg.Get("reasoning_content").String()) != "" {
+			continue
+		}
+		next, err := sjson.SetBytes(result, fmt.Sprintf("messages.%d.reasoning_content", i), cached)
+		if err != nil {
+			return result
+		}
+		result = next
+	}
+	return result
+}
+
+func flattenChatToolTurns(body []byte) []byte {
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.IsArray() {
+		return body
+	}
+	arr := messages.Array()
+	out := make([]any, 0, len(arr))
+	for i := 0; i < len(arr); {
+		msg := arr[i]
+		if msg.Get("role").String() != "assistant" || !chatMsgHasToolCalls(msg) {
+			if msg.Get("role").String() == "tool" {
+				i++
+				continue
+			}
+			var raw any
+			if err := json.Unmarshal([]byte(msg.Raw), &raw); err != nil {
+				return body
+			}
+			out = append(out, raw)
+			i++
+			continue
+		}
+		var b strings.Builder
+		if text := chatMsgContent(msg); text != "" {
+			b.WriteString(text)
+		}
+		for _, tc := range msg.Get("tool_calls").Array() {
+			name := tc.Get("function.name").String()
+			if name == "" {
+				name = tc.Get("name").String()
+			}
+			args := tc.Get("function.arguments").String()
+			if b.Len() > 0 {
+				b.WriteByte('\n')
+			}
+			b.WriteString("调用 ")
+			b.WriteString(name)
+			if args != "" {
+				b.WriteByte('(')
+				b.WriteString(args)
+				b.WriteByte(')')
+			}
+		}
+		i++
+		for i < len(arr) && arr[i].Get("role").String() == "tool" {
+			if b.Len() > 0 {
+				b.WriteByte('\n')
+			}
+			b.WriteString("结果：")
+			b.WriteString(arr[i].Get("content").String())
+			i++
+		}
+		out = append(out, map[string]any{
+			"role":    "assistant",
+			"content": strings.TrimSpace(b.String()),
+		})
+	}
+	next, err := sjson.SetBytes(body, "messages", out)
+	if err != nil {
+		return body
+	}
+	return next
+}
+
+func chatHasToolCalls(body []byte) bool {
+	for _, msg := range gjson.GetBytes(body, "messages").Array() {
+		if chatMsgHasToolCalls(msg) {
+			return true
+		}
+	}
+	return false
+}
+
+func chatHasReasoningContent(body []byte) bool {
+	for _, msg := range gjson.GetBytes(body, "messages").Array() {
+		if strings.TrimSpace(msg.Get("reasoning_content").String()) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func chatToolAssistantMissingReasoning(body []byte) bool {
+	for _, msg := range gjson.GetBytes(body, "messages").Array() {
+		if msg.Get("role").String() == "assistant" && chatMsgHasToolCalls(msg) && strings.TrimSpace(msg.Get("reasoning_content").String()) == "" {
+			return true
+		}
+	}
+	return false
+}
+
+func chatMsgHasToolCalls(msg gjson.Result) bool {
+	calls := msg.Get("tool_calls")
+	return calls.Exists() && calls.IsArray() && len(calls.Array()) > 0
+}
+
+func chatMsgContent(msg gjson.Result) string {
+	c := msg.Get("content")
+	if c.Type == gjson.String {
+		return strings.TrimSpace(c.String())
+	}
+	return strings.TrimSpace(c.Raw)
 }
 
 func NormalizeChatCompletionsReasoning(body []byte) []byte {

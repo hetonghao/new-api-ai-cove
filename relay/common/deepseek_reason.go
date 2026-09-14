@@ -1,13 +1,17 @@
 package common
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
 
 	napicommon "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+
+	"github.com/tidwall/gjson"
 )
 
 const deepSeekReasoningTTL = 30 * time.Minute
@@ -67,6 +71,13 @@ func SaveDeepSeekReasoning(info *RelayInfo, responseID, text string) {
 	_ = napicommon.RedisSet(deepSeekLatestReasonKey(info), text, deepSeekReasoningTTL)
 	if responseID = strings.TrimSpace(responseID); responseID != "" {
 		_ = napicommon.RedisSet(deepSeekReasonIDKey(responseID), text, deepSeekReasoningTTL)
+	}
+	key := info.OpenCodeSession
+	if key == "" {
+		key = OpenCodeSessionKey(info, nil)
+	}
+	if key != "" {
+		_ = napicommon.RedisSet(openCodeSessionReasonKey(key), text, deepSeekReasoningTTL)
 	}
 }
 
@@ -129,4 +140,152 @@ func deepSeekLatestReasonKey(info *RelayInfo) string {
 
 func deepSeekReasonIDKey(responseID string) string {
 	return "ds_reason:id:" + responseID
+}
+
+func RememberOpenCodeSessionModel(info *RelayInfo, body []byte) {
+	bindOpenCodeSession(info, body)
+	if info != nil && !IsDeepSeekReasoningRelay(info, infoOriginModel(info)) {
+		WriteOpenCodeSessionModel(info)
+	}
+}
+
+func bindOpenCodeSession(info *RelayInfo, body []byte) {
+	key := OpenCodeSessionKey(info, body)
+	if info != nil && key != "" {
+		info.OpenCodeSession = key
+	}
+}
+
+func WriteOpenCodeSessionModel(info *RelayInfo) {
+	if info == nil || info.OpenCodeSession == "" || !napicommon.RedisEnabled || !tracksOpenCodeSessionModel(info) {
+		return
+	}
+	model := strings.TrimSpace(infoOriginModel(info))
+	if model == "" {
+		return
+	}
+	_ = napicommon.RedisSet(openCodeSessionModelKey(info.OpenCodeSession), model, deepSeekReasoningTTL)
+}
+
+func LoadOpenCodeChatThinking(info *RelayInfo, body []byte) (string, OpenCodeSessionModel) {
+	last := LoadOpenCodeSessionModel(info, body)
+	if last != OpenCodeSessionDeepSeek {
+		return "", last
+	}
+	return LoadOpenCodeSessionReasoning(info, body), last
+}
+
+func LoadOpenCodeSessionModel(info *RelayInfo, body []byte) OpenCodeSessionModel {
+	key := OpenCodeSessionKey(info, body)
+	if key == "" || !napicommon.RedisEnabled || napicommon.RDB == nil {
+		return OpenCodeSessionUnknown
+	}
+	model, err := napicommon.RedisGet(openCodeSessionModelKey(key))
+	if err != nil || strings.TrimSpace(model) == "" {
+		return OpenCodeSessionUnknown
+	}
+	if strings.HasPrefix(model, "deepseek") {
+		return OpenCodeSessionDeepSeek
+	}
+	return OpenCodeSessionOther
+}
+
+func LoadOpenCodeSessionReasoning(info *RelayInfo, body []byte) string {
+	key := OpenCodeSessionKey(info, body)
+	if key == "" || !napicommon.RedisEnabled || napicommon.RDB == nil {
+		return ""
+	}
+	text, err := napicommon.RedisGet(openCodeSessionReasonKey(key))
+	if err != nil {
+		return ""
+	}
+	return text
+}
+
+func OpenCodeSessionKey(info *RelayInfo, body []byte) string {
+	if len(body) > 0 {
+		if key := validOpenCodeSessionKey(gjson.GetBytes(body, "prompt_cache_key").String()); key != "" {
+			return key
+		}
+	}
+	if info != nil {
+		if key := validOpenCodeSessionKey(promptCacheKeyFromRelay(info)); key != "" {
+			return key
+		}
+		for _, name := range []string{"session-id", "session_id", "x-opencode-session"} {
+			if key := validOpenCodeSessionKey(relayHeader(info, name)); key != "" {
+				return key
+			}
+		}
+	}
+	return ""
+}
+
+func promptCacheKeyFromRelay(info *RelayInfo) string {
+	if info == nil || info.Request == nil {
+		return ""
+	}
+	switch req := info.Request.(type) {
+	case *dto.OpenAIResponsesRequest:
+		return rawJSONString(req.PromptCacheKey)
+	case *dto.GeneralOpenAIRequest:
+		return req.PromptCacheKey
+	default:
+		return ""
+	}
+}
+
+func rawJSONString(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	return strings.Trim(string(raw), `"`)
+}
+
+func validOpenCodeSessionKey(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" || strings.HasPrefix(key, "AI-Cove") {
+		return ""
+	}
+	return key
+}
+
+func relayHeader(info *RelayInfo, name string) string {
+	if info == nil || info.RequestHeaders == nil {
+		return ""
+	}
+	if v := strings.TrimSpace(info.RequestHeaders[name]); v != "" {
+		return v
+	}
+	for k, v := range info.RequestHeaders {
+		if strings.EqualFold(k, name) {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+func openCodeSessionModelKey(session string) string {
+	return "ds_sess:" + session + ":model"
+}
+
+func openCodeSessionReasonKey(session string) string {
+	return "ds_sess:" + session + ":reason"
+}
+
+func tracksOpenCodeSessionModel(info *RelayInfo) bool {
+	if info == nil {
+		return false
+	}
+	switch info.RelayMode {
+	case relayconstant.RelayModeChatCompletions, relayconstant.RelayModeResponses, relayconstant.RelayModeResponsesCompact:
+		return true
+	default:
+		path := info.RequestURLPath
+		return strings.Contains(path, "/chat/completions") || strings.Contains(path, "/responses")
+	}
 }
