@@ -103,15 +103,19 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
-		if len(info.ParamOverride) > 0 {
+		needTouch := len(info.ParamOverride) > 0 || relaycommon.IsDeepSeekReasoningRelay(info, info.OriginModelName)
+		if needTouch {
 			jsonData, bErr := storage.Bytes()
 			if bErr != nil {
 				return types.NewErrorWithStatusCode(bErr, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 			}
-			jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
-			if err != nil {
-				return newAPIErrorFromParamOverride(err)
+			if len(info.ParamOverride) > 0 {
+				jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
+				if err != nil {
+					return newAPIErrorFromParamOverride(err)
+				}
 			}
+			jsonData = relaycommon.PrepareChatCompletionsBody(info, jsonData)
 			if common.DebugEnabled {
 				logger.LogDebug(c, "requestBody: %s", jsonData)
 			}

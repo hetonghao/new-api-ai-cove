@@ -13,7 +13,7 @@ import (
 const deepSeekReasoningTTL = 30 * time.Minute
 
 func IsDeepSeekReasoningRelay(info *RelayInfo, model string) bool {
-	if info != nil && info.ChannelType == constant.ChannelTypeDeepSeek {
+	if info != nil && info.ChannelMeta != nil && info.ChannelType == constant.ChannelTypeDeepSeek {
 		return true
 	}
 	if info != nil && strings.HasPrefix(info.OriginModelName, "deepseek") {
