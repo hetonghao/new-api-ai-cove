@@ -99,6 +99,34 @@ func LoadDeepSeekReasoningByResponseID(responseID string) string {
 	return text
 }
 
+func SaveOpenCodeUserTask(sessionKey, text string) {
+	text = strings.TrimSpace(text)
+	sessionKey = strings.TrimSpace(sessionKey)
+	if text == "" || sessionKey == "" || !napicommon.RedisEnabled || napicommon.RDB == nil {
+		return
+	}
+	_ = napicommon.RedisSet(openCodeUserTaskKey(sessionKey), text, deepSeekReasoningTTL)
+}
+
+func LoadOpenCodeUserTask(sessionKey string) string {
+	if !napicommon.RedisEnabled || napicommon.RDB == nil {
+		return ""
+	}
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		return ""
+	}
+	text, err := napicommon.RedisGet(openCodeUserTaskKey(sessionKey))
+	if err != nil {
+		return ""
+	}
+	return text
+}
+
+func openCodeUserTaskKey(sessionKey string) string {
+	return "ds_task:" + sessionKey
+}
+
 func CompletedDeepSeekResponseID(ev dto.ResponsesStreamResponse) string {
 	if ev.Response == nil {
 		return ""
