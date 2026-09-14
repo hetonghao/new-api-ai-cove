@@ -68,7 +68,6 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	// ponytail: OpenCode needs missing reasoning_text on tool continue.
 	// Do not drop unpaired tools or append a developer continue hint.
 	deepseek.FillMissingOpenCodeReasoning(info, &request)
-	deepseek.RememberOpenCodeUserTask(info, &request)
 	return request, nil
 }
 
