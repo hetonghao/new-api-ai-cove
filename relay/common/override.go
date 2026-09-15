@@ -20,6 +20,7 @@ import (
 )
 
 var negativeIndexRegexp = regexp.MustCompile(`\.(-\d+)`)
+var paramOverridePlaceholderRegexp = regexp.MustCompile(`\{([a-z_]+)\}`)
 
 const (
 	paramOverrideContextRequestHeaders = "request_headers"
@@ -1238,7 +1239,38 @@ func resolveHeaderOverrideValue(context map[string]any, headerName string, value
 	if headerValue == "" {
 		return "", false, nil
 	}
-	return headerValue, true, nil
+	expanded := expandParamOverridePlaceholders(headerValue, context)
+	if expanded != headerValue && paramOverridePlaceholderRegexp.MatchString(expanded) {
+		return "", false, nil
+	}
+	expanded = strings.TrimSpace(expanded)
+	if expanded == "" {
+		return "", false, nil
+	}
+	return expanded, true, nil
+}
+
+func expandParamOverridePlaceholders(s string, context map[string]any) string {
+	if context == nil || !strings.Contains(s, "{") {
+		return s
+	}
+	return paramOverridePlaceholderRegexp.ReplaceAllStringFunc(s, func(match string) string {
+		key := match[1 : len(match)-1]
+		switch key {
+		case "token_id", "model", "original_model", "upstream_model", "user_id":
+		default:
+			return match
+		}
+		raw, ok := context[key]
+		if !ok || raw == nil {
+			return match
+		}
+		val := strings.TrimSpace(fmt.Sprintf("%v", raw))
+		if val == "" {
+			return match
+		}
+		return val
+	})
 }
 
 func resolveHeaderOverrideValueByMapping(context map[string]any, headerName string, mapping map[string]any) (string, bool, error) {
@@ -2161,6 +2193,7 @@ func mergeObjects(data []byte, path string, value any, keepOrigin bool) ([]byte,
 //   - upstream_model/model：始终为通道映射后的上游模型名。
 //   - original_model：请求最初指定的模型名。
 //   - user_id：已认证用户 ID。
+//   - token_id：当前请求使用的令牌 ID。
 //   - user_group：用户所属分组。
 //   - token_group：令牌指定的分组；未指定时回退为用户分组。
 //   - using_group：当前实际使用的分组，自动跨分组重试时可能变化。
@@ -2173,6 +2206,7 @@ func BuildParamOverrideContext(info *RelayInfo) map[string]any {
 
 	ctx := make(map[string]any)
 	ctx["user_id"] = info.UserId
+	ctx["token_id"] = info.TokenId
 	ctx["user_group"] = info.UserGroup
 	ctx["token_group"] = info.TokenGroup
 	ctx["using_group"] = info.UsingGroup

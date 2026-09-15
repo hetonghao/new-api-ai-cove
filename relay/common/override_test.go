@@ -2523,3 +2523,120 @@ func TestReasoningEffortOverrideIsAuditedWithoutDebugMode(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"set reasoning.effort = max"}, info.ParamOverrideAudit)
 }
+
+func TestApplyParamOverrideSessionHeaderFallbackPlaceholders(t *testing.T) {
+	input := []byte(`{"model":"deepseek-v4.1-flash"}`)
+	override := map[string]any{
+		"operations": []any{
+			map[string]any{
+				"mode":        "set_header",
+				"path":        "x-opencode-session",
+				"value":       "{token_id}-{model}",
+				"keep_origin": true,
+				"logic":       "AND",
+				"conditions": []any{
+					map[string]any{"path": "request_headers.session_id", "mode": "full", "value": "", "pass_missing_key": true},
+					map[string]any{"path": "request_headers.session-id", "mode": "full", "value": "", "pass_missing_key": true},
+					map[string]any{"path": "request_headers.x-session-id", "mode": "full", "value": "", "pass_missing_key": true},
+					map[string]any{"path": "request_headers.x-session-affinity", "mode": "full", "value": "", "pass_missing_key": true},
+					map[string]any{"path": "request_headers.x-opencode-session", "mode": "full", "value": "", "pass_missing_key": true},
+				},
+			},
+		},
+	}
+	ctx := map[string]any{
+		"token_id": 42,
+		"model":    "deepseek-v4.1-flash",
+	}
+	_, err := ApplyParamOverride(input, override, ctx)
+	require.NoError(t, err)
+	headers, ok := ctx["header_override"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "42-deepseek-v4.1-flash", headers["x-opencode-session"])
+}
+
+func TestApplyParamOverrideSessionHeaderFallbackSkipsWhenAnySessionExists(t *testing.T) {
+	input := []byte(`{"model":"deepseek-v4.1-flash"}`)
+	override := map[string]any{
+		"operations": []any{
+			map[string]any{
+				"mode":        "set_header",
+				"path":        "x-opencode-session",
+				"value":       "{token_id}-{model}",
+				"keep_origin": true,
+				"logic":       "AND",
+				"conditions": []any{
+					map[string]any{"path": "request_headers.session_id", "mode": "full", "value": "", "pass_missing_key": true},
+					map[string]any{"path": "request_headers.x-session-id", "mode": "full", "value": "", "pass_missing_key": true},
+				},
+			},
+		},
+	}
+	ctx := map[string]any{
+		"token_id": 42,
+		"model":    "deepseek-v4.1-flash",
+		"request_headers": map[string]any{
+			"x-session-id": "dsh-real-session",
+		},
+	}
+	_, err := ApplyParamOverride(input, override, ctx)
+	require.NoError(t, err)
+	headers, _ := ctx["header_override"].(map[string]any)
+	assert.Empty(t, headers["x-opencode-session"])
+}
+
+func TestApplyParamOverrideSessionHeaderFallbackKeepsExistingOpenCodeSession(t *testing.T) {
+	input := []byte(`{"model":"deepseek-v4.1-flash"}`)
+	override := map[string]any{
+		"operations": []any{
+			map[string]any{
+				"mode":        "set_header",
+				"path":        "x-opencode-session",
+				"value":       "{token_id}-{model}",
+				"keep_origin": true,
+			},
+		},
+	}
+	ctx := map[string]any{
+		"token_id": 42,
+		"model":    "deepseek-v4.1-flash",
+		"header_override": map[string]any{
+			"x-opencode-session": "copied-from-client",
+		},
+	}
+	_, err := ApplyParamOverride(input, override, ctx)
+	require.NoError(t, err)
+	headers := ctx["header_override"].(map[string]any)
+	assert.Equal(t, "copied-from-client", headers["x-opencode-session"])
+}
+
+func TestApplyParamOverrideSessionHeaderFallbackSkipsUnexpandedPlaceholder(t *testing.T) {
+	input := []byte(`{"model":"deepseek-v4.1-flash"}`)
+	override := map[string]any{
+		"operations": []any{
+			map[string]any{
+				"mode":  "set_header",
+				"path":  "x-opencode-session",
+				"value": "{token_id}-{model}",
+			},
+		},
+	}
+	ctx := map[string]any{
+		"model": "deepseek-v4.1-flash",
+	}
+	_, err := ApplyParamOverride(input, override, ctx)
+	require.NoError(t, err)
+	headers, _ := ctx["header_override"].(map[string]any)
+	assert.Empty(t, headers["x-opencode-session"])
+}
+
+func TestBuildParamOverrideContextIncludesTokenID(t *testing.T) {
+	info := &RelayInfo{
+		UserId:          7,
+		TokenId:         42,
+		OriginModelName: "deepseek-v4.1-flash",
+	}
+	ctx := BuildParamOverrideContext(info)
+	assert.Equal(t, 42, ctx["token_id"])
+	assert.Equal(t, "deepseek-v4.1-flash", ctx["model"])
+}
