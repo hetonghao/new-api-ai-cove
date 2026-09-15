@@ -170,6 +170,9 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
 	applyDeepSeekV4ResponsesThinkingSuffix(info, &request)
+	// Canonicalize first so the reasoning pass cannot backfill reasoning_text
+	// between a parallel call and its output.
+	request.Input = canonicalizeDeepSeekToolRuns(request.Input)
 	if prev := strings.TrimSpace(request.PreviousResponseID); prev != "" {
 		// OpenCode does not expand previous_response_id. Replay stored history
 		// for incremental Codex continuations, then stop mutating item identity.
@@ -179,11 +182,11 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 		}
 		cached := relaycommon.LoadDeepSeekReasoning(info, prev)
 		request.Input = fillEmptyDeepSeekReasoningInPlace(request.Input, cached)
-		relaycommon.StashDeepSeekResponsesInput(c, request.Input)
-		return request, nil
+	} else {
+		request.Input = dropUnpairedDeepSeekToolCalls(request.Input)
+		injectCachedDeepSeekReasoning(info, &request)
 	}
-	request.Input = dropUnpairedDeepSeekToolCalls(request.Input)
-	injectCachedDeepSeekReasoning(info, &request)
+	request.Input = canonicalizeDeepSeekToolRuns(request.Input)
 	relaycommon.StashDeepSeekResponsesInput(c, request.Input)
 	return request, nil
 }

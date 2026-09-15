@@ -197,6 +197,128 @@ func isDeepSeekToolOutput(item json.RawMessage) bool {
 	}
 }
 
+// Codex replays the previous provider's history verbatim. The DeepSeek upstream
+// only accepts a contiguous tool run in which every call has its own output:
+// an assistant message or reasoning item in between fails the whole turn with
+// "No tool output found for tool call ..." (grok-4.6 interleaves both, including
+// web_search_call items). So hoist such items above the call they interrupt.
+// The upstream never resolves previous_response_id state, so it also rejects any
+// output whose call is missing from the same payload with "No tool call found
+// for tool output ...": drop those together with the foreign web_search_call
+// items it cannot deserialize.
+func canonicalizeDeepSeekToolRuns(input json.RawMessage) json.RawMessage {
+	if len(input) == 0 {
+		return input
+	}
+	var items []json.RawMessage
+	if common.Unmarshal(input, &items) != nil {
+		return input
+	}
+	callIDs := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		if !isDeepSeekToolCall(item) {
+			continue
+		}
+		if id := toolCallID(item); id != "" {
+			callIDs[id] = struct{}{}
+		}
+	}
+	keptInput := make([]json.RawMessage, 0, len(items))
+	dropped := false
+	for _, item := range items {
+		if isDeepSeekForeignSearchCall(item) {
+			dropped = true
+			continue
+		}
+		if isDeepSeekToolOutput(item) {
+			if id := toolCallID(item); id != "" {
+				if _, ok := callIDs[id]; !ok {
+					dropped = true
+					continue
+				}
+			}
+		}
+		keptInput = append(keptInput, item)
+	}
+	items = keptInput
+	outputAt := make(map[string]int, len(items))
+	for i, item := range items {
+		if !isDeepSeekToolOutput(item) {
+			continue
+		}
+		if id := toolCallID(item); id != "" {
+			outputAt[id] = i
+		}
+	}
+	hoisted := make(map[int][]json.RawMessage)
+	moved := make(map[int]struct{})
+	for i, item := range items {
+		if !isDeepSeekToolRunBreaker(item) {
+			continue
+		}
+		target := -1
+		for j := range i {
+			if !isDeepSeekToolCall(items[j]) {
+				continue
+			}
+			id := toolCallID(items[j])
+			if id == "" {
+				continue
+			}
+			at, ok := outputAt[id]
+			if !ok || at < i {
+				continue
+			}
+			target = j
+			break
+		}
+		if target >= 0 {
+			moved[i] = struct{}{}
+			hoisted[target] = append(hoisted[target], item)
+		}
+	}
+	if len(moved) == 0 && !dropped {
+		return input
+	}
+	kept := make([]json.RawMessage, 0, len(items))
+	for i, item := range items {
+		if _, ok := moved[i]; ok {
+			continue
+		}
+		kept = append(kept, hoisted[i]...)
+		kept = append(kept, item)
+	}
+	raw, err := common.Marshal(kept)
+	if err != nil {
+		return input
+	}
+	return raw
+}
+
+func toolCallID(item json.RawMessage) string {
+	var peek deepSeekToolPairItem
+	if common.Unmarshal(item, &peek) != nil {
+		return ""
+	}
+	return peek.CallID
+}
+
+// message 与 reasoning 都会终止上游的工具轮校验，必须移出工具轮。
+func isDeepSeekToolRunBreaker(item json.RawMessage) bool {
+	switch peekType(item) {
+	case "message", "reasoning":
+		return true
+	default:
+		return false
+	}
+}
+
+// xAI 的 web_search_call（status/action）上游反序列化不过去，deepseek 自己也不会产出，
+// 只可能来自被切过来的别家历史。
+func isDeepSeekForeignSearchCall(item json.RawMessage) bool {
+	return peekType(item) == "web_search_call"
+}
+
 func reasoningItemHasText(item json.RawMessage) bool {
 	var parsed map[string]any
 	if common.Unmarshal(item, &parsed) != nil || peekType(item) != "reasoning" {

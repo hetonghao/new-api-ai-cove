@@ -45,11 +45,14 @@ func TestConvertOpenAIResponsesRequestKeepsPairedFunctionCall(t *testing.T) {
 	require.Equal(t, "call-1", gjson.GetBytes(converted.Input, "1.call_id").String())
 }
 
-func TestConvertOpenAIResponsesRequestKeepsUnpairedFunctionCallOutput(t *testing.T) {
+// 上游不解析 previous_response_id 状态，孤立 output 只会让整轮 400
+// (No tool call found for tool output)，所以和落单 call 一样丢掉。
+func TestConvertOpenAIResponsesRequestDropsUnpairedFunctionCallOutput(t *testing.T) {
 	req := dto.OpenAIResponsesRequest{
 		Model: "deepseek-v4.1-flash",
 		Input: mustJSON(t, []map[string]any{
 			{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+			{"type": "message", "role": "user", "content": "continue"},
 		}),
 	}
 
@@ -57,8 +60,8 @@ func TestConvertOpenAIResponsesRequestKeepsUnpairedFunctionCallOutput(t *testing
 	require.NoError(t, err)
 	converted, ok := got.(dto.OpenAIResponsesRequest)
 	require.True(t, ok)
-	require.Equal(t, []string{"function_call_output"}, inputTypes(t, converted.Input))
-	require.Equal(t, "call-1", gjson.GetBytes(converted.Input, "0.call_id").String())
+	require.Equal(t, []string{"message"}, inputTypes(t, converted.Input))
+	require.NotContains(t, string(converted.Input), "call-1")
 }
 
 func TestConvertOpenAIResponsesRequestDropsUnpairedCustomToolCall(t *testing.T) {
@@ -141,6 +144,58 @@ func TestConvertOpenAIResponsesRequestContinuationPreservesHistoryShape(t *testi
 		"function_call",
 	}, inputTypes(t, converted.Input))
 	require.Contains(t, gjson.GetBytes(converted.Input, "1.arguments").String(), "pelican-bike.svg")
+}
+
+func TestConvertOpenAIResponsesRequestHoistsTextBetweenParallelToolCalls(t *testing.T) {
+	shape := []map[string]any{
+		{"type": "reasoning", "content": []map[string]string{{"type": "reasoning_text", "text": "need skill"}}},
+		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": `{"cmd":"cat SKILL.md"}`},
+		{"type": "message", "role": "assistant", "content": []map[string]string{{"type": "output_text", "text": "规则已读完。"}}},
+		{"type": "function_call", "call_id": "call-2", "name": "exec_command", "arguments": `{"cmd":"ps aux"}`},
+		{"type": "function_call_output", "call_id": "call-1", "output": "skill body"},
+		{"type": "function_call_output", "call_id": "call-2", "output": "ps out"},
+	}
+
+	for _, previousResponseID := range []string{"", "resp_switch"} {
+		req := dto.OpenAIResponsesRequest{
+			Model:              "deepseek-v4.1-flash",
+			PreviousResponseID: previousResponseID,
+			Input:              mustJSON(t, shape),
+		}
+
+		got, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, nil, req)
+		require.NoError(t, err)
+		converted, ok := got.(dto.OpenAIResponsesRequest)
+		require.True(t, ok)
+		require.Equal(t, []string{
+			"reasoning",
+			"message",
+			"function_call",
+			"function_call",
+			"function_call_output",
+			"function_call_output",
+		}, inputTypes(t, converted.Input))
+		require.Equal(t, "call-1", gjson.GetBytes(converted.Input, "2.call_id").String())
+		require.Equal(t, "call-1", gjson.GetBytes(converted.Input, "4.call_id").String())
+		require.Equal(t, "call-2", gjson.GetBytes(converted.Input, "5.call_id").String())
+	}
+}
+
+func TestConvertOpenAIResponsesRequestKeepsTextAfterToolOutputs(t *testing.T) {
+	req := dto.OpenAIResponsesRequest{
+		Model: "deepseek-v4.1-flash",
+		Input: mustJSON(t, []map[string]any{
+			{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
+			{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+			{"type": "message", "role": "assistant", "content": []map[string]string{{"type": "output_text", "text": "done"}}},
+		}),
+	}
+
+	got, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, nil, req)
+	require.NoError(t, err)
+	converted, ok := got.(dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+	require.Equal(t, []string{"function_call", "function_call_output", "message"}, inputTypes(t, converted.Input))
 }
 
 func TestConvertOpenAIResponsesRequestLeavesNonArrayInput(t *testing.T) {
