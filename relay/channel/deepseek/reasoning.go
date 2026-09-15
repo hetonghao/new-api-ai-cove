@@ -51,6 +51,10 @@ func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.Ra
 		}
 		kept = append(kept, item)
 	}
+	if regrouped, ok := regroupDeepSeekToolRuns(kept); ok {
+		kept = regrouped
+		changed = true
+	}
 	if cached != "" {
 		if insertAt, ok := lastToolTurnMissingReasoning(kept); ok {
 			if filled := reasoningItemJSON(cached); len(filled) > 0 {
@@ -71,6 +75,51 @@ func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.Ra
 		return input
 	}
 	return raw
+}
+
+func regroupDeepSeekToolRuns(items []json.RawMessage) ([]json.RawMessage, bool) {
+	out := make([]json.RawMessage, 0, len(items))
+	changed := false
+	i := 0
+	for i < len(items) {
+		if !isDeepSeekToolCall(items[i]) && !isDeepSeekToolOutput(items[i]) {
+			out = append(out, items[i])
+			i++
+			continue
+		}
+		j := i
+		for j < len(items) && (isDeepSeekToolCall(items[j]) || isDeepSeekToolOutput(items[j])) {
+			j++
+		}
+		run := items[i:j]
+		calls := make([]json.RawMessage, 0, len(run))
+		outs := make([]json.RawMessage, 0, len(run))
+		seenOut := false
+		grouped := true
+		for _, item := range run {
+			if isDeepSeekToolOutput(item) {
+				seenOut = true
+				outs = append(outs, item)
+				continue
+			}
+			if seenOut {
+				grouped = false
+			}
+			calls = append(calls, item)
+		}
+		if grouped {
+			out = append(out, run...)
+		} else {
+			out = append(out, calls...)
+			out = append(out, outs...)
+			changed = true
+		}
+		i = j
+	}
+	if !changed {
+		return items, false
+	}
+	return out, true
 }
 
 func lastToolTurnMissingReasoning(items []json.RawMessage) (int, bool) {
