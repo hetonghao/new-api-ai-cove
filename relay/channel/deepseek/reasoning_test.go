@@ -74,3 +74,15 @@ func TestRewriteDeepSeekReasoningInputKeepsAdjacentReasoning(t *testing.T) {
 	got := rewriteDeepSeekReasoningInput(input, "cached")
 	require.Equal(t, string(input), string(got))
 }
+
+func TestRewriteDeepSeekReasoningInputInjectsBeforeCompactToolOutputs(t *testing.T) {
+	input := mustJSON(t, []map[string]any{
+		{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+		{"type": "function_call_output", "call_id": "call-2", "output": "ok2"},
+	})
+
+	got := rewriteDeepSeekReasoningInput(input, "need pwd")
+	require.Equal(t, []string{"reasoning", "function_call_output", "function_call_output"}, inputTypes(t, got))
+	require.Equal(t, "need pwd", gjson.GetBytes(got, "0.content.0.text").String())
+	require.Equal(t, "call-1", gjson.GetBytes(got, "1.call_id").String())
+}

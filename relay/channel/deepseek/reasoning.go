@@ -88,12 +88,12 @@ func lastToolTurnMissingReasoning(items []json.RawMessage) (int, bool) {
 	for startOut > 0 && isDeepSeekToolOutput(items[startOut-1]) {
 		startOut--
 	}
-	if startOut == 0 || !isDeepSeekToolCall(items[startOut-1]) {
-		return 0, false
-	}
-	insertAt := startOut - 1
-	for insertAt > 0 && isDeepSeekToolCall(items[insertAt-1]) {
-		insertAt--
+	insertAt := startOut
+	if startOut > 0 && isDeepSeekToolCall(items[startOut-1]) {
+		insertAt = startOut - 1
+		for insertAt > 0 && isDeepSeekToolCall(items[insertAt-1]) {
+			insertAt--
+		}
 	}
 	if insertAt > 0 && reasoningItemHasText(items[insertAt-1]) {
 		return 0, false
