@@ -174,6 +174,7 @@ func PrepareResponsesRequest(info *relaycommon.RelayInfo, request *dto.OpenAIRes
 	}
 	applyDeepSeekV4ResponsesThinkingSuffix(info, request)
 	request.Input = dropUnpairedDeepSeekToolCalls(request.Input)
+	request.Input = NormalizeDeepSeekResponsesToolOutputs(request.Input)
 	injectCachedDeepSeekReasoning(info, request)
 }
 
@@ -228,6 +229,92 @@ func dropUnpairedDeepSeekToolCalls(input json.RawMessage) json.RawMessage {
 		return input
 	}
 	raw, err := common.Marshal(kept)
+	if err != nil {
+		return input
+	}
+	return raw
+}
+
+// NormalizeDeepSeekResponsesToolOutputs keeps tool call outputs strictly contiguous
+// with their tool call batch. Any interleaved non-output items (e.g. developer resize notice)
+// are deferred until after the batch's outputs are gathered.
+func NormalizeDeepSeekResponsesToolOutputs(input json.RawMessage) json.RawMessage {
+	if len(input) == 0 {
+		return input
+	}
+	var items []json.RawMessage
+	if err := common.Unmarshal(input, &items); err != nil {
+		return input
+	}
+
+	outputIDs := make(map[string]struct{})
+	for _, item := range items {
+		var peek deepSeekToolPairItem
+		if common.Unmarshal(item, &peek) != nil {
+			continue
+		}
+		if (peek.Type == "function_call_output" || peek.Type == "custom_tool_call_output") && peek.CallID != "" {
+			outputIDs[peek.CallID] = struct{}{}
+		}
+	}
+
+	reordered := make([]json.RawMessage, 0, len(items))
+	changed := false
+	n := len(items)
+	i := 0
+
+	for i < n {
+		var it deepSeekToolPairItem
+		_ = common.Unmarshal(items[i], &it)
+		if it.Type == "function_call" || it.Type == "custom_tool_call" {
+			batchCallIDs := make(map[string]struct{})
+			for i < n {
+				var cur deepSeekToolPairItem
+				_ = common.Unmarshal(items[i], &cur)
+				if cur.Type != "function_call" && cur.Type != "custom_tool_call" {
+					break
+				}
+				reordered = append(reordered, items[i])
+				if cur.CallID != "" {
+					if _, ok := outputIDs[cur.CallID]; ok {
+						batchCallIDs[cur.CallID] = struct{}{}
+					}
+				}
+				i++
+			}
+
+			var deferred []json.RawMessage
+			for i < n && len(batchCallIDs) > 0 {
+				var cur deepSeekToolPairItem
+				_ = common.Unmarshal(items[i], &cur)
+				if (cur.Type == "function_call_output" || cur.Type == "custom_tool_call_output") && cur.CallID != "" {
+					if _, needed := batchCallIDs[cur.CallID]; needed {
+						reordered = append(reordered, items[i])
+						delete(batchCallIDs, cur.CallID)
+						i++
+						continue
+					}
+				}
+				if cur.Type == "function_call" || cur.Type == "custom_tool_call" {
+					break
+				}
+				deferred = append(deferred, items[i])
+				changed = true
+				i++
+			}
+			if len(deferred) > 0 {
+				reordered = append(reordered, deferred...)
+			}
+		} else {
+			reordered = append(reordered, items[i])
+			i++
+		}
+	}
+
+	if !changed {
+		return input
+	}
+	raw, err := common.Marshal(reordered)
 	if err != nil {
 		return input
 	}

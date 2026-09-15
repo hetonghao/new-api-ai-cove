@@ -123,3 +123,37 @@ func inputTypes(t *testing.T, input json.RawMessage) []string {
 	}
 	return types
 }
+
+func TestConvertOpenAIResponsesRequestNormalizesInterleavedToolOutputs(t *testing.T) {
+	req := dto.OpenAIResponsesRequest{
+		Model: "deepseek-v4.1-flash",
+		Input: mustJSON(t, []map[string]any{
+			{"type": "message", "role": "user", "content": "hi"},
+			{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
+			{"type": "function_call", "call_id": "call-2", "name": "view_image", "arguments": "{}"},
+			{"type": "function_call_output", "call_id": "call-1", "output": "ok1"},
+			{"type": "message", "role": "developer", "content": "resize notice"},
+			{"type": "function_call_output", "call_id": "call-2", "output": "ok2"},
+		}),
+	}
+
+	got, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, nil, req)
+	require.NoError(t, err)
+	converted, ok := got.(dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+
+	types := inputTypes(t, converted.Input)
+	require.Equal(t, []string{
+		"message",
+		"function_call",
+		"function_call",
+		"function_call_output",
+		"function_call_output",
+		"message",
+	}, types)
+	require.Equal(t, "call-1", gjson.GetBytes(converted.Input, "1.call_id").String())
+	require.Equal(t, "call-2", gjson.GetBytes(converted.Input, "2.call_id").String())
+	require.Equal(t, "call-1", gjson.GetBytes(converted.Input, "3.call_id").String())
+	require.Equal(t, "call-2", gjson.GetBytes(converted.Input, "4.call_id").String())
+	require.Equal(t, "developer", gjson.GetBytes(converted.Input, "5.role").String())
+}
