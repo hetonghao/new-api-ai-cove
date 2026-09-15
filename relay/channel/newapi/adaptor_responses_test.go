@@ -73,6 +73,36 @@ func TestConvertOpenAIResponsesRequestRegroupsCodexPelicanContinuation(t *testin
 	require.Equal(t, "call-3", gjson.GetBytes(converted.Input, "3.call_id").String())
 }
 
+func TestConvertOpenAIResponsesRequestContinuationDoesNotRegroupOrDrop(t *testing.T) {
+	req := dto.OpenAIResponsesRequest{
+		Model:              "deepseek-v4.1-flash",
+		PreviousResponseID: "resp_pelican",
+		Input: mustJSON(t, []map[string]any{
+			{"type": "message", "role": "user", "content": "Generate an SVG image of a pelican riding a bicycle by the seaside."},
+			{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": `{"command":"cat > pelican-bike.svg <<'EOF'\n<svg/>\nEOF"}`},
+			{"type": "function_call_output", "call_id": "call-1", "output": "exit=0"},
+			{"type": "function_call", "call_id": "call-2", "name": "exec_command", "arguments": "{}"},
+			{"type": "function_call_output", "call_id": "call-2", "output": "ok"},
+			{"type": "function_call", "call_id": "call-3", "name": "exec_command", "arguments": "{}"},
+		}),
+	}
+
+	got, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, nil, req)
+	require.NoError(t, err)
+	converted, ok := got.(dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+	require.Equal(t, "resp_pelican", converted.PreviousResponseID)
+	require.Equal(t, []string{
+		"message",
+		"function_call",
+		"function_call_output",
+		"function_call",
+		"function_call_output",
+		"function_call",
+	}, inputTypes(t, converted.Input))
+	require.Contains(t, gjson.GetBytes(converted.Input, "1.arguments").String(), "pelican-bike.svg")
+}
+
 func TestConvertOpenAIResponsesRequestPreparesDeepSeekLikeNativeAdaptor(t *testing.T) {
 	req := dto.OpenAIResponsesRequest{
 		Model: "deepseek-v4.1-flash",

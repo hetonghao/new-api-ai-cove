@@ -61,6 +61,10 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	}
 	imageCounter.Commit(info)
 
+	if relaycommon.IsDeepSeekReasoningRelay(info, info.OriginModelName) {
+		relaycommon.SaveDeepSeekHistory(c, responsesResponse.ID, responsesResponse.Output)
+	}
+
 	return usage, nil
 }
 
@@ -94,6 +98,10 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			relaycommon.AppendDeepSeekReasoning(&deepSeekReason, streamResponse)
 			if id := relaycommon.CompletedDeepSeekResponseID(streamResponse); id != "" {
 				deepSeekResponseID = id
+			}
+			if (streamResponse.Type == "response.completed" || streamResponse.Type == "response.done") &&
+				streamResponse.Response != nil {
+				relaycommon.SaveDeepSeekHistory(c, streamResponse.Response.ID, streamResponse.Response.Output)
 			}
 		}
 		switch streamResponse.Type {

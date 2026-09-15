@@ -101,3 +101,19 @@ func TestRewriteDeepSeekReasoningInputInjectsBeforeCompactToolOutputs(t *testing
 	require.Equal(t, "need pwd", gjson.GetBytes(got, "0.content.0.text").String())
 	require.Equal(t, "call-1", gjson.GetBytes(got, "1.call_id").String())
 }
+
+func TestFillEmptyDeepSeekReasoningInPlaceDoesNotRegroupOrInsert(t *testing.T) {
+	input := mustJSON(t, []map[string]any{
+		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": `{"command":"cat > pelican-bike.svg <<'EOF'\n<svg/>\nEOF"}`},
+		{"type": "function_call_output", "call_id": "call-1", "output": "exit=0"},
+		{"type": "function_call", "call_id": "call-2", "name": "exec_command", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-2", "output": "ok"},
+		{"type": "reasoning", "content": []map[string]string{{"type": "reasoning_text", "text": ""}}},
+	})
+
+	got := fillEmptyDeepSeekReasoningInPlace(input, "look at existing svg")
+	require.Equal(t, []string{"function_call", "function_call_output", "function_call", "function_call_output", "reasoning"}, inputTypes(t, got))
+	require.Equal(t, "call-1", gjson.GetBytes(got, "0.call_id").String())
+	require.Contains(t, gjson.GetBytes(got, "0.arguments").String(), "pelican-bike.svg")
+	require.Equal(t, "look at existing svg", gjson.GetBytes(got, "4.content.0.text").String())
+}

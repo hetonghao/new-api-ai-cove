@@ -168,10 +168,23 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 	return nil, errors.New("not implemented")
 }
 
-func (a *Adaptor) ConvertOpenAIResponsesRequest(_ *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
+func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
 	applyDeepSeekV4ResponsesThinkingSuffix(info, &request)
+	if prev := strings.TrimSpace(request.PreviousResponseID); prev != "" {
+		// OpenCode does not expand previous_response_id. Replay stored history
+		// for incremental Codex continuations, then stop mutating item identity.
+		if in, out, ok := relaycommon.LoadDeepSeekHistory(prev); ok && shouldExpandDeepSeekHistory(in, request.Input) {
+			request.Input = mergeDeepSeekHistory(in, out, request.Input)
+			request.PreviousResponseID = ""
+		}
+		cached := relaycommon.LoadDeepSeekReasoning(info, prev)
+		request.Input = fillEmptyDeepSeekReasoningInPlace(request.Input, cached)
+		relaycommon.StashDeepSeekResponsesInput(c, request.Input)
+		return request, nil
+	}
 	request.Input = dropUnpairedDeepSeekToolCalls(request.Input)
 	injectCachedDeepSeekReasoning(info, &request)
+	relaycommon.StashDeepSeekResponsesInput(c, request.Input)
 	return request, nil
 }
 

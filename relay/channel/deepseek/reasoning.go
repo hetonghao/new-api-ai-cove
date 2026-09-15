@@ -17,6 +17,35 @@ func injectCachedDeepSeekReasoning(info *relaycommon.RelayInfo, request *dto.Ope
 	request.Input = rewriteDeepSeekReasoningInput(request.Input, cached)
 }
 
+func fillEmptyDeepSeekReasoningInPlace(input json.RawMessage, cached string) json.RawMessage {
+	if len(input) == 0 || strings.TrimSpace(cached) == "" {
+		return input
+	}
+	var items []json.RawMessage
+	if common.Unmarshal(input, &items) != nil {
+		return input
+	}
+	changed := false
+	for i, item := range items {
+		if peekType(item) != "reasoning" || reasoningItemHasText(item) {
+			continue
+		}
+		if filled := reasoningItemJSON(cached); len(filled) > 0 {
+			items[i] = filled
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		return input
+	}
+	raw, err := common.Marshal(items)
+	if err != nil {
+		return input
+	}
+	return raw
+}
+
 func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.RawMessage {
 	if len(input) == 0 {
 		return input
