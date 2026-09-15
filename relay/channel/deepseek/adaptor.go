@@ -168,10 +168,17 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 	return nil, errors.New("not implemented")
 }
 
-func (a *Adaptor) ConvertOpenAIResponsesRequest(_ *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
-	applyDeepSeekV4ResponsesThinkingSuffix(info, &request)
+func PrepareResponsesRequest(info *relaycommon.RelayInfo, request *dto.OpenAIResponsesRequest) {
+	if request == nil {
+		return
+	}
+	applyDeepSeekV4ResponsesThinkingSuffix(info, request)
 	request.Input = dropUnpairedDeepSeekToolCalls(request.Input)
-	injectCachedDeepSeekReasoning(info, &request)
+	injectCachedDeepSeekReasoning(info, request)
+}
+
+func (a *Adaptor) ConvertOpenAIResponsesRequest(_ *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
+	PrepareResponsesRequest(info, &request)
 	return request, nil
 }
 
