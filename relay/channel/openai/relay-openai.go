@@ -25,7 +25,6 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	}
 
 	if !forceFormat && !thinkToContent {
-		data = relaycommon.NormalizeChatStreamDelta(info, data)
 		return helper.StringData(c, data)
 	}
 
@@ -121,8 +120,6 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	var secondLastStreamData string // 保留倒数第二个stream data；部分兼容网关把完整usage放在倒数第二个事件
 	seenStreamToolCalls := make(map[string]struct{})
 	var streamFunctionCallNames []string
-	var deepSeekReason strings.Builder
-	captureDeepSeek := relaycommon.IsDeepSeekReasoningRelay(info, info.OriginModelName)
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		if lastStreamData != "" {
@@ -137,9 +134,6 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			}
 
 			lastStreamData = data
-			if captureDeepSeek {
-				relaycommon.AppendDeepSeekChatReasoning(&deepSeekReason, data)
-			}
 			collectStreamFunctionCallNames(data, seenStreamToolCalls, &streamFunctionCallNames)
 			if err := processTokenData(info.RelayMode, data, &responseTextBuilder, &toolCount); err != nil {
 				logger.LogError(c, "error processing stream token data: "+err.Error())
@@ -196,10 +190,6 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	}
 
 	HandleFinalResponse(c, info, lastStreamData, responseId, createAt, model, systemFingerprint, usage, containStreamUsage)
-
-	if captureDeepSeek {
-		relaycommon.SaveDeepSeekReasoning(info, responseId, deepSeekReason.String())
-	}
 
 	return usage, nil
 }
@@ -359,15 +349,6 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 			return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 		}
 		responseBody = geminiRespStr
-	}
-
-	if relaycommon.IsDeepSeekReasoningRelay(info, info.OriginModelName) {
-		var chatReason strings.Builder
-		for _, choice := range simpleResponse.Choices {
-			chatReason.WriteString(choice.Message.GetReasoningContent())
-		}
-		relaycommon.SaveDeepSeekReasoning(info, simpleResponse.Id, chatReason.String())
-		responseBody = relaycommon.NormalizeChatCompletionsReasoning(responseBody)
 	}
 
 	service.IOCopyBytesGracefully(c, resp, responseBody)

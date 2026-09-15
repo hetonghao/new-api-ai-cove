@@ -117,7 +117,6 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		// General format error (OpenAI, Anthropic, Gemini, etc.)
 		oaiError := errResponse.TryToOpenAIError()
 		if oaiError != nil {
-			logger.LogError(ctx, fmt.Sprintf("upstream error status %d, body: %s", resp.StatusCode, responseBodyPreview))
 			newApiErr = types.WithOpenAIError(*oaiError, resp.StatusCode)
 			if newApiErr.IsUpstreamInvalidPrompt() {
 				types.ErrOptionWithSkipRetry()(newApiErr)

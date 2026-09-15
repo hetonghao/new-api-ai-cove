@@ -122,9 +122,7 @@ async function fetchStatus(): Promise<StatusData | null> {
 
   if (status) {
     try {
-      const store = useSystemConfigStore.getState()
-      store.setConfig(mapStatusDataToConfig(status))
-      store.setLoading(false)
+      useSystemConfigStore.getState().setConfig(mapStatusDataToConfig(status))
     } catch (err) {
       if (import.meta.env.DEV) {
         // eslint-disable-next-line no-console

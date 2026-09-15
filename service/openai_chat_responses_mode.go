@@ -4,7 +4,6 @@ import (
 	"regexp"
 	"sync"
 
-	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 )
 
@@ -52,17 +51,4 @@ func ShouldChatCompletionsUseResponsesGlobal(channelID int, channelType int, mod
 		channelType,
 		model,
 	)
-}
-
-// ShouldPassThroughNewAPIChatCompletionsBody keeps Chat Completions bytes intact
-// when the New API channel talks the same protocol upstream. It yields when the
-// host policy upgrades Chat to Responses instead.
-func ShouldPassThroughNewAPIChatCompletionsBody(channelType int, channelID int, model string) bool {
-	if channelType != constant.ChannelTypeNewAPI {
-		return false
-	}
-	if ShouldChatCompletionsUseResponsesGlobal(channelID, channelType, model) {
-		return false
-	}
-	return true
 }

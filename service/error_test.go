@@ -121,36 +121,6 @@ func TestRelayErrorHandlerKeepsOpenAIErrorMessage(t *testing.T) {
 	require.Equal(t, message, newAPIError.Error())
 }
 
-func TestRelayErrorHandlerLogsStructuredErrorBody(t *testing.T) {
-	withDebugEnabled(t, false)
-
-	body := `{"error":{"code":400,"message":"Request contains an invalid argument.","status":"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"contents","description":"function call too large"}]}]}}`
-	var logBuffer bytes.Buffer
-
-	common.LogWriterMu.Lock()
-	oldWriter := gin.DefaultErrorWriter
-	gin.DefaultErrorWriter = &logBuffer
-	common.LogWriterMu.Unlock()
-	t.Cleanup(func() {
-		common.LogWriterMu.Lock()
-		gin.DefaultErrorWriter = oldWriter
-		common.LogWriterMu.Unlock()
-	})
-
-	resp := &http.Response{
-		StatusCode: http.StatusBadRequest,
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}
-
-	newAPIError := RelayErrorHandler(context.Background(), resp, false)
-
-	require.NotNil(t, newAPIError)
-	require.Equal(t, "Request contains an invalid argument.", newAPIError.Error())
-	require.Contains(t, logBuffer.String(), "upstream error status 400, body:")
-	require.Contains(t, logBuffer.String(), "function call too large")
-	require.Contains(t, logBuffer.String(), "INVALID_ARGUMENT")
-}
-
 func TestRelayErrorHandlerKeepsInvalidJSONBodyInDebugLog(t *testing.T) {
 	withDebugEnabled(t, true)
 

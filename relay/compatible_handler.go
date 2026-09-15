@@ -97,42 +97,17 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 
 	var requestBody io.Reader
 
-	if passThroughGlobal || info.ChannelSetting.PassThroughBodyEnabled ||
-		service.ShouldPassThroughNewAPIChatCompletionsBody(info.ChannelType, info.ChannelId, info.OriginModelName) {
+	if passThroughGlobal || info.ChannelSetting.PassThroughBodyEnabled {
 		storage, err := common.GetBodyStorage(c)
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
-		needTouch := len(info.ParamOverride) > 0 || relaycommon.IsDeepSeekReasoningRelay(info, info.OriginModelName)
-		if needTouch {
-			jsonData, bErr := storage.Bytes()
-			if bErr != nil {
-				return types.NewErrorWithStatusCode(bErr, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		if common.DebugEnabled {
+			if debugBytes, bErr := storage.Bytes(); bErr == nil {
+				logger.LogDebug(c, "requestBody: %s", debugBytes)
 			}
-			if len(info.ParamOverride) > 0 {
-				jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
-				if err != nil {
-					return newAPIErrorFromParamOverride(err)
-				}
-			}
-			jsonData = relaycommon.PrepareChatCompletionsBody(info, jsonData)
-			if common.DebugEnabled {
-				logger.LogDebug(c, "requestBody: %s", jsonData)
-			}
-			body, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
-			if err != nil {
-				return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
-			}
-			defer closer.Close()
-			requestBody = body
-		} else {
-			if common.DebugEnabled {
-				if debugBytes, bErr := storage.Bytes(); bErr == nil {
-					logger.LogDebug(c, "requestBody: %s", debugBytes)
-				}
-			}
-			requestBody = common.NewReplayableBodyReader(storage)
 		}
+		requestBody = common.NewReplayableBodyReader(storage)
 	} else {
 		convertedRequest, err := adaptor.ConvertOpenAIRequest(c, info, request)
 		if err != nil {

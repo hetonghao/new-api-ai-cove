@@ -106,7 +106,6 @@ type RelayInfo struct {
 
 	RequestURLPath       string
 	RequestHeaders       map[string]string
-	OpenCodeSession      string
 	ShouldIncludeUsage   bool
 	DisablePing          bool // 是否禁止向下游发送自定义 Ping
 	IsResponsesWebSocket bool // 非语音 Responses WebSocket；与 Realtime 音频模式分离
@@ -705,7 +704,6 @@ func GenRelayInfo(c *gin.Context, relayFormat types.RelayFormat, request dto.Req
 	}
 
 	info.InitRequestConversionChain()
-	RememberOpenCodeSessionModel(info, nil)
 	return info, nil
 }
 

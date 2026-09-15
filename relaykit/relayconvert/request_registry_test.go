@@ -492,42 +492,6 @@ func TestConvertRequestResponsesToGeminiUsesDirectConverter(t *testing.T) {
 	assert.Empty(t, geminiReq.Contents[1].Parts[0].ThoughtSignature)
 }
 
-func TestConvertRequestResponsesToGeminiDoesNotSynthesizeFunctionCallForOutputOnly(t *testing.T) {
-	info := &convmeta.Values{
-		Options:             &convmeta.Options{Gemini: convmeta.GeminiOptions{FunctionCallThoughtSignatureEnabled: true}},
-		ConversionChain:     []types.RelayFormat{types.RelayFormatOpenAIResponses},
-		ChannelMetaAttached: true,
-		UpstreamModelName:   "gemini-test",
-	}
-	req := &dto.OpenAIResponsesRequest{
-		Model: "gemini-test",
-		Input: mustRawMessage(t, []map[string]any{
-			{
-				"type":    "function_call_output",
-				"call_id": "call_1",
-				"name":    "exec_command",
-				"output":  map[string]any{"ok": true},
-			},
-		}),
-		Tools: mustRawMessage(t, []map[string]any{
-			{"type": "function", "name": "exec_command", "parameters": map[string]any{"type": "object"}},
-		}),
-	}
-
-	result, err := ConvertRequest(nil, info, types.RelayFormatGemini, req)
-
-	require.NoError(t, err)
-	geminiReq, ok := result.Value.(*dto.GeminiChatRequest)
-	require.True(t, ok)
-	require.Len(t, geminiReq.Contents, 1)
-	assert.Equal(t, "user", geminiReq.Contents[0].Role)
-	require.Len(t, geminiReq.Contents[0].Parts, 1)
-	assert.Nil(t, geminiReq.Contents[0].Parts[0].FunctionCall)
-	require.NotNil(t, geminiReq.Contents[0].Parts[0].FunctionResponse)
-	assert.Equal(t, "exec_command", geminiReq.Contents[0].Parts[0].FunctionResponse.Name)
-	assert.Empty(t, geminiReq.Contents[0].Parts[0].ThoughtSignature)
-}
-
 func TestConvertRequestResponsesToGeminiSkipsThoughtSignatureWhenDisabled(t *testing.T) {
 	info := &convmeta.Values{
 		Options:             &convmeta.Options{Gemini: convmeta.GeminiOptions{FunctionCallThoughtSignatureEnabled: false}},

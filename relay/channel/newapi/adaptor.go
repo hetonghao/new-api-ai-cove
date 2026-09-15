@@ -7,7 +7,6 @@ import (
 
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/claude"
-	"github.com/QuantumNous/new-api/relay/channel/deepseek"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -65,12 +64,6 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
-	// ponytail: OpenCode needs missing reasoning_text on tool continue, and contiguous tool outputs.
-	// Do not drop unpaired tools or append a developer continue hint.
-	if relaycommon.IsDeepSeekReasoningRelay(info, request.Model) {
-		request.Input = deepseek.NormalizeDeepSeekResponsesToolOutputs(request.Input)
-	}
-	deepseek.FillMissingOpenCodeReasoning(info, &request)
 	return request, nil
 }
 
