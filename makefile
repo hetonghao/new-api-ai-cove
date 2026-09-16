@@ -8,7 +8,7 @@ DEV_POSTGRES_DB = new-api
 DEV_POSTGRES_USER = root
 DEV_SQLITE_PATH ?= one-api.db
 
-.PHONY: all build-web build-all-web start-api dev dev-api dev-api-rebuild dev-web reset-setup test
+.PHONY: all build-web build-all-web start-api dev dev-api dev-api-rebuild dev-web reset-setup test deepseek-gate
 
 all: build-all-web start-api
 
@@ -47,6 +47,13 @@ test:
 		GOWORK=off go test $$root_packages
 	@echo "Testing relaykit Go module..."
 	@cd relaykit && GOWORK=off go test ./...
+
+# DeepSeek 链路门禁：改 relay/channel/deepseek/、relay/common/deepseek_*、或
+# relay/channel/openai/relay_responses.go 的 DeepSeek 路径都必须先跑通它。
+# 镜像发布工作流会在 build 之前跑同一条命令。
+deepseek-gate:
+	@echo "Running DeepSeek relay gate..."
+	@GOWORK=off go test ./relay/common/... ./relay/channel/deepseek/... ./relay/channel/openai/... -count=1
 
 reset-setup:
 	@echo "Resetting local setup wizard state..."

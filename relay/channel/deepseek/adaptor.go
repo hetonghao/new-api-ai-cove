@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/claude"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
@@ -17,7 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/reasoning"
 	"github.com/gin-gonic/gin"
@@ -184,14 +182,11 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 		request.Input = dropUnpairedDeepSeekToolCalls(request.Input)
 	}
 	// Canonicalize after the replay so an output whose call lives in the replayed
-	// history is not mistaken for an orphan and dropped.
-	request.Input = canonicalizeDeepSeekToolRuns(request.Input)
-	// Both paths share one reasoning pass, and it only touches the trailing tool
-	// run: items that already went upstream stay byte-identical for the cache.
-	injectCachedDeepSeekReasoning(info, &request, previousResponseID)
+	// history is not mistaken for an orphan and dropped. This only reorders,
+	// hoists, and drops items; rewriting anything the upstream already cached
+	// invalidates the prompt cache from that point on.
 	request.Input = canonicalizeDeepSeekToolRuns(request.Input)
 	relaycommon.StashDeepSeekResponsesInput(c, request.Input)
-	relaycommon.StashDeepSeekResponsesRequest(c, request)
 	return request, nil
 }
 
@@ -275,33 +270,7 @@ func applyDeepSeekV4ResponsesThinkingSuffix(info *relaycommon.RelayInfo, request
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
-	resp, err := channel.DoApiRequest(a, c, info, requestBody)
-	if err != nil || resp == nil || resp.StatusCode != http.StatusBadRequest {
-		return resp, err
-	}
-	// The upstream rejects a thinking-mode turn that lost its reasoning_text.
-	// Send that one turn again with the reasoning filled in instead of failing it.
-	retryBody, ok := buildReasoningRetryBody(c, info, resp)
-	if !ok {
-		return resp, nil
-	}
-	body, closer, err := relaycommon.NewOutboundJSONBody(retryBody)
-	if err != nil {
-		return resp, nil
-	}
-	defer closer.Close()
-	retryResp, retryErr := channel.DoApiRequest(a, c, info, body)
-	if retryErr != nil || retryResp == nil {
-		logger.LogError(c, fmt.Sprintf("deepseek_reasoning_retry resend failed: %v", retryErr))
-		return resp, nil
-	}
-	logger.LogWarn(c, fmt.Sprintf("deepseek_reasoning_retry status=%d bytes=%d", retryResp.StatusCode, len(retryBody)))
-	if retryResp.StatusCode != http.StatusOK {
-		// The rebuilt payload is the interesting one when it is refused too.
-		relaycommon.DumpDeepSeekPayload(c, "deepseek_reasoning_retry payload", retryBody)
-	}
-	service.CloseResponseBodyGracefully(resp)
-	return retryResp, nil
+	return channel.DoApiRequest(a, c, info, requestBody)
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {

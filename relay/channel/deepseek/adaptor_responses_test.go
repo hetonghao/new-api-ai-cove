@@ -2,16 +2,10 @@ package deepseek
 
 import (
 	"encoding/json"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -235,58 +229,110 @@ func inputTypes(t *testing.T, input json.RawMessage) []string {
 	return types
 }
 
-func TestDoRequestRetriesRejectedReasoningTurnOnce(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	previousLoad := loadRetryReasoning
-	loadRetryReasoning = func(*relaycommon.RelayInfo, string) string { return "cached reasoning" }
-	t.Cleanup(func() { loadRetryReasoning = previousLoad })
-
-	var sentBodies []string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := io.ReadAll(r.Body)
-		sentBodies = append(sentBodies, string(raw))
-		if len(sentBodies) == 1 {
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`{"error":{"message":"The ` + "`reasoning_text`" + ` in the thinking mode must be passed back to the API."}}`))
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"id":"resp_1","output":[]}`))
-	}))
-	defer server.Close()
-
-	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	info := &relaycommon.RelayInfo{
-		ChannelMeta: &relaycommon.ChannelMeta{
-			ChannelBaseUrl:    server.URL,
-			ApiKey:            "sk-test",
-			UpstreamModelName: "deepseek-chat",
+// DeepSeek 链路门禁：下面每一种形状都是生产上真出过 400 的 payload。转换只允许
+// 重排、提升、丢弃，不允许插入或改写 item。上游把 `assistant message → reasoning`
+// 这种相邻顺序判成 400（The `reasoning_text` in the thinking mode must be passed
+// back to the API.，2026-09-16 用生产 dump 直连上游逐条复现），而工具轮缺 reasoning
+// 或缺 assistant message 都是 200；插入 item 还会改写上游已经缓存的前缀。
+func TestConvertOpenAIResponsesRequestKeepsDeepSeekUpstreamContract(t *testing.T) {
+	cases := []struct {
+		name   string
+		shape  []map[string]any
+		expect []string
+		// stable 表示这段 payload 已经合法，转换必须逐字节保持不变。
+		stable bool
+	}{
+		{
+			name: "工具输出报错：并行轮交错 call/out",
+			shape: []map[string]any{
+				{"type": "message", "role": "user", "content": "跑一下"},
+				{"type": "function_call", "call_id": "call-1", "name": "bash", "arguments": "{}"},
+				{"type": "function_call_output", "call_id": "call-1", "output": "a"},
+				{"type": "function_call", "call_id": "call-2", "name": "bash", "arguments": "{}"},
+				{"type": "function_call_output", "call_id": "call-2", "output": "b"},
+			},
+			expect: []string{"message", "function_call", "function_call", "function_call_output", "function_call_output"},
 		},
-		RelayMode:       relayconstant.RelayModeResponses,
-		RelayFormat:     types.RelayFormatOpenAIResponses,
-		OriginModelName: "deepseek-v4.1-flash",
+		{
+			name: "reasoning_text 400：assistant message 后面直接跟工具轮，客户端没带 reasoning",
+			shape: []map[string]any{
+				{"type": "message", "role": "user", "content": "看看磁盘"},
+				{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "我来扫一遍"}}},
+				{"type": "function_call", "call_id": "call-1", "name": "bash", "arguments": "{}"},
+				{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+			},
+			expect: []string{"message", "message", "function_call", "function_call_output"},
+			stable: true,
+		},
+		{
+			name: "续轮：客户端自己带了 reasoning，message 在 reasoning 之后",
+			shape: []map[string]any{
+				{"type": "message", "role": "user", "content": "继续"},
+				{"type": "reasoning", "id": "rs_1", "summary": []any{}, "content": []map[string]any{{"type": "reasoning_text", "text": "先看 df"}}},
+				{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "开始扫描"}}},
+				{"type": "function_call", "call_id": "call-1", "name": "bash", "arguments": "{}"},
+				{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+			},
+			expect: []string{"message", "reasoning", "message", "function_call", "function_call_output"},
+			stable: true,
+		},
+		{
+			name: "跨模型历史：xAI web_search_call 和孤立 output",
+			shape: []map[string]any{
+				{"type": "message", "role": "user", "content": "查一下"},
+				{"type": "function_call", "call_id": "call-1", "name": "bash", "arguments": "{}"},
+				{"type": "web_search_call", "status": "completed"},
+				{"type": "function_call_output", "call_id": "call-1", "output": "a"},
+				{"type": "function_call_output", "call_id": "call-orphan", "output": "stale"},
+			},
+			expect: []string{"message", "function_call", "function_call_output"},
+		},
+		{
+			name: "工具轮中间夹 assistant message",
+			shape: []map[string]any{
+				{"type": "function_call", "call_id": "call-1", "name": "bash", "arguments": "{}"},
+				{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "读到了"}}},
+				{"type": "function_call", "call_id": "call-2", "name": "bash", "arguments": "{}"},
+				{"type": "function_call_output", "call_id": "call-1", "output": "a"},
+				{"type": "function_call_output", "call_id": "call-2", "output": "b"},
+			},
+			expect: []string{"message", "function_call", "function_call", "function_call_output", "function_call_output"},
+		},
+		{
+			name: "Compact 续轮：calls、outputs、末尾空 reasoning",
+			shape: []map[string]any{
+				{"type": "message", "role": "user", "content": "看看现有 svg"},
+				{"type": "function_call", "call_id": "call-1", "name": "bash", "arguments": "{}"},
+				{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+				{"type": "reasoning", "summary": []any{}, "content": []map[string]any{{"type": "reasoning_text", "text": ""}}},
+			},
+			expect: []string{"message", "function_call", "function_call_output", "reasoning"},
+		},
 	}
-	relaycommon.StashDeepSeekResponsesRequest(c, dto.OpenAIResponsesRequest{
-		Model: "deepseek-v4.1-flash",
-		Input: mustJSON(t, []map[string]any{
-			{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
-			{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
-		}),
-	})
-	body, closer, err := relaycommon.NewOutboundJSONBody(mustJSON(t, []map[string]any{
-		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
-		{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
-	}))
-	require.NoError(t, err)
-	defer closer.Close()
 
-	resp, err := (&Adaptor{}).DoRequest(c, info, body)
-	require.NoError(t, err)
-	httpResp, ok := resp.(*http.Response)
-	require.True(t, ok)
-	require.Equal(t, http.StatusOK, httpResp.StatusCode)
-	require.Len(t, sentBodies, 2)
-	require.Contains(t, sentBodies[1], "cached reasoning")
-	require.Contains(t, sentBodies[1], "reasoning_text")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := dto.OpenAIResponsesRequest{
+				Model: "deepseek-v4.1-flash",
+				Input: mustJSON(t, tc.shape),
+			}
+
+			got, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, nil, req)
+			require.NoError(t, err)
+			converted, ok := got.(dto.OpenAIResponsesRequest)
+			require.True(t, ok)
+			require.Equal(t, tc.expect, inputTypes(t, converted.Input))
+			if tc.stable {
+				require.Equal(t, string(mustJSON(t, tc.shape)), string(converted.Input))
+			}
+
+			// 上游契约：不允许 assistant message → reasoning、落单调用、
+			// 孤立 output，或工具轮里夹别的 item。
+			diagnostics := relaycommon.DeepSeekToolReasoningDiagnosticsOfInput(converted.Input)
+			require.Zero(t, diagnostics.ReasoningAfterMessage, diagnostics.String())
+			require.Zero(t, diagnostics.UnpairedCalls, diagnostics.String())
+			require.Zero(t, diagnostics.OrphanOutputs, diagnostics.String())
+			require.Zero(t, diagnostics.Interleaved, diagnostics.String())
+		})
+	}
 }

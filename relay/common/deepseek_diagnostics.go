@@ -8,14 +8,19 @@ import (
 	napicommon "github.com/QuantumNous/new-api/common"
 )
 
-// deepSeekDiagnosticSampleLimit caps how many offending call sites a single
-// report renders. The counters stay exact; only the sample is truncated.
-const deepSeekDiagnosticSampleLimit = 4
-
-// DeepSeekToolReasoningDiagnostics summarizes the tool-run/reasoning shape of a
-// /responses input payload. DeepSeek rejects a tool run whose reasoning_text is
-// missing or empty with a 400 that never names the offending item, so this
-// report is what keeps such a failure reconstructable from the process log.
+// DeepSeekToolReasoningDiagnostics summarizes the item shape of a /responses
+// input payload against what the DeepSeek upstream actually validates. The 400
+// it answers with never names the offending item, so this report is what keeps a
+// rejection reconstructable from the process log.
+//
+// A tool run without a reasoning item is accepted by the upstream. What it
+// rejects is a reasoning item directly after an assistant message:
+//
+//	message(assistant) -> reasoning
+//
+// which it answers with "The `reasoning_text` in the thinking mode must be
+// passed back to the API." even though the reasoning is present. That adjacency
+// is counted in ReasoningAfterMessage and must stay zero.
 type DeepSeekToolReasoningDiagnostics struct {
 	Items                 int
 	Bytes                 int
@@ -24,27 +29,17 @@ type DeepSeekToolReasoningDiagnostics struct {
 	Outputs               int
 	Reasoning             int
 	EmptyReasoning        int
+	ReasoningAfterMessage int
 	UnpairedCalls         int
 	OrphanOutputs         int
 	Interleaved           int
-	MissingReasoningTotal int
-	MissingReasoning      []string
-}
-
-// NeedsReasoning reports whether the payload carries a tool run that the
-// upstream rejects for a missing reasoning_text item.
-func (d DeepSeekToolReasoningDiagnostics) NeedsReasoning() bool {
-	return d.MissingReasoningTotal > 0
 }
 
 func (d DeepSeekToolReasoningDiagnostics) String() string {
 	var b strings.Builder
 	fmt.Fprintf(&b,
-		"items=%d runs=%d calls=%d outputs=%d reasoning=%d reasoning_empty=%d missing_reasoning=%d",
-		d.Items, d.Runs, d.Calls, d.Outputs, d.Reasoning, d.EmptyReasoning, d.MissingReasoningTotal)
-	if len(d.MissingReasoning) > 0 {
-		fmt.Fprintf(&b, "[%s]", strings.Join(d.MissingReasoning, " "))
-	}
+		"items=%d runs=%d calls=%d outputs=%d reasoning=%d reasoning_empty=%d reasoning_after_message=%d",
+		d.Items, d.Runs, d.Calls, d.Outputs, d.Reasoning, d.EmptyReasoning, d.ReasoningAfterMessage)
 	if d.UnpairedCalls > 0 {
 		fmt.Fprintf(&b, " unpaired_calls=%d", d.UnpairedCalls)
 	}
@@ -91,7 +86,7 @@ func summarizeDeepSeekToolReasoning(items []deepSeekDiagnosticItem) DeepSeekTool
 	diagnostics := DeepSeekToolReasoningDiagnostics{Items: len(items)}
 	diagnostics.summarizeToolRuns(items)
 	diagnostics.summarizeToolPairing(items)
-	for _, item := range items {
+	for i, item := range items {
 		if item.Type != "reasoning" {
 			continue
 		}
@@ -99,12 +94,14 @@ func summarizeDeepSeekToolReasoning(items []deepSeekDiagnosticItem) DeepSeekTool
 		if !item.hasReasoningText() {
 			diagnostics.EmptyReasoning++
 		}
+		if i > 0 && items[i-1].Role == "assistant" {
+			diagnostics.ReasoningAfterMessage++
+		}
 	}
 	return diagnostics
 }
 
-// summarizeToolRuns walks maximal runs of contiguous tool items and records the
-// runs that start without a preceding non-empty reasoning item.
+// summarizeToolRuns counts maximal runs of contiguous tool items.
 func (d *DeepSeekToolReasoningDiagnostics) summarizeToolRuns(items []deepSeekDiagnosticItem) {
 	runStart := -1
 	for i := range len(items) + 1 {
@@ -112,37 +109,10 @@ func (d *DeepSeekToolReasoningDiagnostics) summarizeToolRuns(items []deepSeekDia
 		if insideRun && runStart < 0 {
 			runStart = i
 			d.Runs++
-			if !d.hasReasoningBefore(items, runStart) {
-				d.recordMissingReasoning(items, runStart)
-			}
 			continue
 		}
 		if !insideRun {
 			runStart = -1
-		}
-	}
-}
-
-func (d *DeepSeekToolReasoningDiagnostics) hasReasoningBefore(items []deepSeekDiagnosticItem, runStart int) bool {
-	if runStart == 0 {
-		return false
-	}
-	previous := items[runStart-1]
-	return previous.Type == "reasoning" && previous.hasReasoningText()
-}
-
-func (d *DeepSeekToolReasoningDiagnostics) recordMissingReasoning(items []deepSeekDiagnosticItem, runStart int) {
-	for i := runStart; i < len(items) && items[i].isToolItem(); i++ {
-		if !items[i].isToolCall() {
-			continue
-		}
-		d.MissingReasoningTotal++
-		if len(d.MissingReasoning) < deepSeekDiagnosticSampleLimit {
-			label := fmt.Sprintf("%s@%d", items[i].CallID, i)
-			if items[i].Name != "" {
-				label += ":" + items[i].Name
-			}
-			d.MissingReasoning = append(d.MissingReasoning, label)
 		}
 	}
 }
@@ -190,6 +160,7 @@ func (d *DeepSeekToolReasoningDiagnostics) summarizeToolPairing(items []deepSeek
 
 type deepSeekDiagnosticItem struct {
 	Type    string          `json:"type"`
+	Role    string          `json:"role"`
 	CallID  string          `json:"call_id"`
 	Name    string          `json:"name"`
 	Content json.RawMessage `json:"content"`

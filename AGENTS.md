@@ -115,6 +115,13 @@ Inside `relaykit/`, use `kitutil.*` from `relaykit/relayconvert/kitutil/json.go`
 - Preserve explicit zero values in upstream relay request DTOs: absent client JSON fields must become `nil` and be omitted, while explicit `0`, `0.0`, or `false` values must remain non-`nil` and be sent upstream.
 - Avoid non-pointer scalars with `omitempty` for optional request parameters, because zero values will be silently dropped during marshal.
 
+**DeepSeek relay gate (mandatory):**
+
+- Any change to `relay/channel/deepseek/`, `relay/common/deepseek_*.go`, or the DeepSeek paths of `relay/channel/openai/relay_responses.go` MUST pass `make deepseek-gate`. The AI Cove image workflow runs the same command before `docker build`, so no image is published without it.
+- The gate replays every shape production has already rejected: interleaved tool runs, a foreign `web_search_call` plus orphan outputs from another provider's history, an assistant message that starts a tool run, a tool run without `reasoning_text`, and the compact continuation shape.
+- The DeepSeek chain MUST NOT invent, insert, or rewrite items the client sent. The upstream answers `assistant message → reasoning` with "The `reasoning_text` in the thinking mode must be passed back to the API." even though the reasoning is present, while a tool run without reasoning is accepted; inserting items also invalidates the upstream prompt-cache prefix.
+- A rejected DeepSeek `/responses` turn dumps its whole outbound payload as base64 parts under `deepseek_upstream_failure payload`, with an item-shape report on the `deepseek_upstream_failure status=400` line. Reassemble the base64 parts to recover the exact bytes; never switch that dump back to raw text, because the log writer appends a space to every line and replaces a byte sequence that splits a UTF-8 rune with U+FFFD.
+
 **JavaScript task plugins (mandatory):**
 
 - Before implementing, modifying, or reviewing JavaScript task plugins or their host API/runtime, MUST read [Task Plugin API v1](docs/plugin-api/v1.md), including its description writing and translation conventions. When changing the plugin contract, also check `docs/plugin-api/v1.schema.json` and `docs/plugin-api/v1.d.ts` for consistency.

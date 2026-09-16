@@ -2,11 +2,13 @@ package common
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -16,29 +18,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDeepSeekToolReasoningDiagnosticsFlagToolRunWithoutReasoning(t *testing.T) {
+func TestDeepSeekToolReasoningDiagnosticsSummarizeToolRunShape(t *testing.T) {
 	body := deepSeekResponsesBody(t, []map[string]any{
 		{"type": "message", "role": "user", "content": "hi"},
+		{"type": "message", "role": "assistant", "content": "我先看一下磁盘"},
 		{"type": "reasoning", "content": []map[string]any{{"type": "reasoning_text", "text": "need pwd"}}},
 		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
 		{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
 		{"type": "reasoning", "content": []map[string]any{{"type": "reasoning_text", "text": ""}}},
-		{"type": "function_call", "call_id": "call-2", "name": "apply_patch", "arguments": "{}"},
-		{"type": "function_call_output", "call_id": "call-2", "output": "ok"},
 	})
 
 	diagnostics, ok := DeepSeekToolReasoningDiagnosticsOfBody(body)
 	require.True(t, ok)
-	require.Equal(t, 7, diagnostics.Items)
-	require.Equal(t, 2, diagnostics.Runs)
-	require.Equal(t, 2, diagnostics.Calls)
-	require.Equal(t, 2, diagnostics.Outputs)
+	require.Equal(t, 6, diagnostics.Items)
+	require.Equal(t, 1, diagnostics.Runs)
+	require.Equal(t, 1, diagnostics.Calls)
+	require.Equal(t, 1, diagnostics.Outputs)
 	require.Equal(t, 2, diagnostics.Reasoning)
 	require.Equal(t, 1, diagnostics.EmptyReasoning)
-	require.Equal(t, 1, diagnostics.MissingReasoningTotal)
-	require.Equal(t, []string{"call-2@5:apply_patch"}, diagnostics.MissingReasoning)
-	require.True(t, diagnostics.NeedsReasoning())
-	require.Contains(t, diagnostics.String(), "missing_reasoning=1[call-2@5:apply_patch]")
+	// 上游对 `assistant message → reasoning` 直接 400，reasoning 有没有文本都一样。
+	require.Equal(t, 1, diagnostics.ReasoningAfterMessage)
+	require.Contains(t, diagnostics.String(), "reasoning_after_message=1")
 	require.Contains(t, diagnostics.String(), fmt.Sprintf("bytes=%d", len(body)))
 }
 
@@ -56,7 +56,7 @@ func TestDeepSeekToolReasoningDiagnosticsFlagPairingDefects(t *testing.T) {
 	require.Equal(t, 1, diagnostics.UnpairedCalls)
 	require.Equal(t, 1, diagnostics.Interleaved)
 	require.Equal(t, 2, diagnostics.Runs)
-	require.Equal(t, 2, diagnostics.MissingReasoningTotal)
+	require.Equal(t, 0, diagnostics.ReasoningAfterMessage)
 	require.Contains(t, diagnostics.String(), "unpaired_calls=1 orphan_outputs=1 interleaved=1")
 }
 
@@ -119,15 +119,58 @@ func TestDeepSeekFailureCaptureDumpsPayloadAndKeepsErrorBody(t *testing.T) {
 	require.Contains(t, string(remaining), "No tool call found for tool output call-2")
 
 	out := logs.String()
-	require.Contains(t, out, "deepseek_tool_reasoning precondition")
 	require.Contains(t, out, "deepseek_upstream_failure status=400 channel=7")
 	require.Contains(t, out, `model="deepseek-v4.1-flash" upstream_model="deepseek-chat"`)
 	require.Contains(t, out, "client[items=3")
 	require.Contains(t, out, "sent[items=3")
 	require.Contains(t, out, "No tool call found for tool output call-2")
 	require.Contains(t, out, "deepseek_upstream_failure payload fingerprint=")
-	require.Contains(t, out, `"call_id":"call-2"`)
 	require.Contains(t, out, "deepseek_upstream_failure payload_end")
+	require.Equal(t, string(body), reassembleDeepSeekDump(t, out, "deepseek_upstream_failure payload"))
+}
+
+// 16KB 分片一定会切在多字节字符中间，而日志写入会把被切断的字节换成 U+FFFD
+// 并给每行补一个空格，所以 dump 走 base64：只有这样才能逐字节还原现场。
+func TestDeepSeekFailureCaptureDumpSurvivesChunkBoundaries(t *testing.T) {
+	resetDeepSeekFailureDumpState()
+	logs := captureDeepSeekErrorLogs(t)
+	c := newDeepSeekTestContext(t)
+	info := &RelayInfo{
+		ChannelMeta:     &ChannelMeta{ChannelId: 9, UpstreamModelName: "deepseek-v4.1-flash"},
+		RelayMode:       relayconstant.RelayModeResponses,
+		OriginModelName: "deepseek-v4.1-flash",
+	}
+	body := deepSeekResponsesBody(t, []map[string]any{
+		{"type": "message", "role": "user", "content": "hi"},
+		{"type": "function_call", "call_id": "call-3", "name": "exec_command", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-3", "output": strings.Repeat("磁盘占用分析结论：", 3000)},
+	})
+	require.Greater(t, len(body), 2*deepSeekFailureChunkSize)
+
+	capture := NewDeepSeekFailureCapture(c, info, body)
+	capture.ObserveOutbound(body)
+	capture.ReportFailure(&http.Response{
+		StatusCode: http.StatusBadRequest,
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"invalid request"}}`)),
+	})
+
+	out := logs.String()
+	require.NotContains(t, out, "\uFFFD")
+	require.Equal(t, string(body), reassembleDeepSeekDump(t, out, "deepseek_upstream_failure payload"))
+}
+
+func reassembleDeepSeekDump(t *testing.T, out, tag string) string {
+	t.Helper()
+	pattern := regexp.MustCompile(regexp.QuoteMeta(tag) + ` fingerprint=[0-9a-f]+ part=\d+/\d+ b64=([A-Za-z0-9+/=]+)`)
+	matches := pattern.FindAllStringSubmatch(out, -1)
+	require.NotEmpty(t, matches)
+	decoded := make([]byte, 0, len(out))
+	for _, match := range matches {
+		chunk, err := base64.StdEncoding.DecodeString(match[1])
+		require.NoError(t, err)
+		decoded = append(decoded, chunk...)
+	}
+	return string(decoded)
 }
 
 func TestDeepSeekFailureCaptureDeduplicatesRepeatedPayload(t *testing.T) {

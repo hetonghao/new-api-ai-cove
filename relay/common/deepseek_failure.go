@@ -3,6 +3,7 @@ package common
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -18,10 +19,7 @@ import (
 )
 
 const (
-	deepSeekFailureLogTag = "deepseek_upstream_failure"
-	// deepSeekReasoningLogTag marks a payload that is about to be sent with the
-	// exact shape the upstream answers with a 400, before that answer arrives.
-	deepSeekReasoningLogTag     = "deepseek_tool_reasoning"
+	deepSeekFailureLogTag       = "deepseek_upstream_failure"
 	deepSeekFailureChunkSize    = 16 << 10
 	deepSeekFailurePayloadCap   = 8 << 20
 	deepSeekFailureHourlyCap    = 32 << 20
@@ -30,7 +28,7 @@ const (
 )
 
 // IsDeepSeekResponsesRelay reports whether this relay drives a DeepSeek
-// /responses upstream, the only path where a tool run must carry reasoning_text.
+// /responses upstream, the only path whose rejected payload is worth dumping.
 func IsDeepSeekResponsesRelay(info *RelayInfo) bool {
 	if info == nil {
 		return false
@@ -76,8 +74,8 @@ func NewDeepSeekFailureCapture(c *gin.Context, info *RelayInfo, originalInput js
 	return &DeepSeekFailureCapture{ctx: c, info: info, originalInput: originalInput}
 }
 
-// ObserveOutbound retains the bytes handed to the transport and warns once when
-// they already carry a tool run whose reasoning_text is missing or empty.
+// ObserveOutbound retains the bytes handed to the transport together with their
+// item shape, so a rejection can be reported against what actually went out.
 func (x *DeepSeekFailureCapture) ObserveOutbound(outbound []byte) {
 	if x == nil || len(outbound) == 0 {
 		return
@@ -85,13 +83,6 @@ func (x *DeepSeekFailureCapture) ObserveOutbound(outbound []byte) {
 	x.outbound = outbound
 	sent, ok := DeepSeekToolReasoningDiagnosticsOfBody(outbound)
 	x.sent, x.sentValid = sent, ok
-	if !ok || !sent.NeedsReasoning() || x.ctx == nil {
-		return
-	}
-	logger.LogWarn(x.ctx, fmt.Sprintf(
-		"%s precondition model=%q upstream_model=%q channel=%d sent[%s] client[%s]",
-		deepSeekReasoningLogTag, x.originModel(), x.upstreamModel(), x.channelID(), sent, x.originalDiagnostics(),
-	))
 }
 
 // ReportFailure dumps the request payload and both shape reports once the
@@ -223,35 +214,23 @@ func chunkCount(data []byte) int {
 	return (len(data) + deepSeekFailureChunkSize - 1) / deepSeekFailureChunkSize
 }
 
+// emitDeepSeekFailureChunks writes the payload as base64 parts. The process log
+// appends a trailing space to every line and replaces a byte sequence that cuts
+// a UTF-8 rune with U+FFFD, so a raw slice cannot be reassembled byte-for-byte.
 func emitDeepSeekFailureChunks(c *gin.Context, label, fingerprint string, data []byte) {
-	parts := chunkCount(data)
-	for part := range parts {
-		start := part * deepSeekFailureChunkSize
-		end := min(start+deepSeekFailureChunkSize, len(data))
-		logger.LogError(c, fmt.Sprintf("%s fingerprint=%s part=%d/%d %s", label, fingerprint, part+1, parts, data[start:end]))
+	parts := deepSeekFailureDumpParts(data)
+	for i, part := range parts {
+		logger.LogError(c, fmt.Sprintf("%s fingerprint=%s part=%d/%d b64=%s", label, fingerprint, i+1, len(parts), part))
 	}
 }
 
-// DumpDeepSeekPayload writes one full outbound payload to the process log under
-// its own tag, for the rebuilt payload of a rejected turn.
-func DumpDeepSeekPayload(c *gin.Context, tag string, body []byte) {
-	if c == nil || len(body) == 0 {
-		return
+func deepSeekFailureDumpParts(data []byte) []string {
+	parts := make([]string, 0, chunkCount(data))
+	for start := 0; start < len(data); start += deepSeekFailureChunkSize {
+		end := min(start+deepSeekFailureChunkSize, len(data))
+		parts = append(parts, base64.StdEncoding.EncodeToString(data[start:end]))
 	}
-	fingerprint := deepSeekFailureFingerprint(body)
-	head, tail, omitted := splitDeepSeekFailurePayload(body)
-	if allowed, suppressedReason := reserveDeepSeekFailureDump(fingerprint, len(head)+len(tail)); !allowed {
-		logger.LogError(c, fmt.Sprintf("%s suppressed reason=%s fingerprint=%s bytes=%d", tag, suppressedReason, fingerprint, len(body)))
-		return
-	}
-	emitDeepSeekFailureChunks(c, tag, fingerprint, head)
-	if omitted > 0 {
-		logger.LogError(c, fmt.Sprintf("%s_omitted fingerprint=%s bytes=%d", tag, fingerprint, omitted))
-	}
-	if len(tail) > 0 {
-		emitDeepSeekFailureChunks(c, tag+"_tail", fingerprint, tail)
-	}
-	logger.LogError(c, fmt.Sprintf("%s_end fingerprint=%s bytes=%d", tag, fingerprint, len(body)))
+	return parts
 }
 
 var (
