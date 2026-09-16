@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	deepSeekHistoryTTL        = 2 * time.Hour
-	deepSeekResponsesInputKey = "deepseek_responses_input"
+	deepSeekHistoryTTL          = 2 * time.Hour
+	deepSeekResponsesInputKey   = "deepseek_responses_input"
+	deepSeekResponsesRequestKey = "deepseek_responses_request"
 )
 
 type deepSeekHistorySnapshot struct {
@@ -26,6 +27,28 @@ func StashDeepSeekResponsesInput(c *gin.Context, input json.RawMessage) {
 		return
 	}
 	c.Set(deepSeekResponsesInputKey, append(json.RawMessage(nil), input...))
+}
+
+// StashDeepSeekResponsesRequest keeps the converted /responses request of the
+// current turn so a payload the upstream refuses can be rebuilt once without
+// repeating the whole conversion.
+func StashDeepSeekResponsesRequest(c *gin.Context, request dto.OpenAIResponsesRequest) {
+	if c == nil {
+		return
+	}
+	c.Set(deepSeekResponsesRequestKey, request)
+}
+
+func StashedDeepSeekResponsesRequest(c *gin.Context) (dto.OpenAIResponsesRequest, bool) {
+	if c == nil {
+		return dto.OpenAIResponsesRequest{}, false
+	}
+	value, ok := c.Get(deepSeekResponsesRequestKey)
+	if !ok {
+		return dto.OpenAIResponsesRequest{}, false
+	}
+	request, ok := value.(dto.OpenAIResponsesRequest)
+	return request, ok
 }
 
 func SaveDeepSeekHistory(c *gin.Context, responseID string, output []dto.ResponsesOutput) {

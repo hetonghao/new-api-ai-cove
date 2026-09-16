@@ -2,9 +2,16 @@ package deepseek
 
 import (
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -226,4 +233,60 @@ func inputTypes(t *testing.T, input json.RawMessage) []string {
 		types = append(types, item.Get("type").String())
 	}
 	return types
+}
+
+func TestDoRequestRetriesRejectedReasoningTurnOnce(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	previousLoad := loadRetryReasoning
+	loadRetryReasoning = func(*relaycommon.RelayInfo, string) string { return "cached reasoning" }
+	t.Cleanup(func() { loadRetryReasoning = previousLoad })
+
+	var sentBodies []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		sentBodies = append(sentBodies, string(raw))
+		if len(sentBodies) == 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"The ` + "`reasoning_text`" + ` in the thinking mode must be passed back to the API."}}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"resp_1","output":[]}`))
+	}))
+	defer server.Close()
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelBaseUrl:    server.URL,
+			ApiKey:            "sk-test",
+			UpstreamModelName: "deepseek-chat",
+		},
+		RelayMode:       relayconstant.RelayModeResponses,
+		RelayFormat:     types.RelayFormatOpenAIResponses,
+		OriginModelName: "deepseek-v4.1-flash",
+	}
+	relaycommon.StashDeepSeekResponsesRequest(c, dto.OpenAIResponsesRequest{
+		Model: "deepseek-v4.1-flash",
+		Input: mustJSON(t, []map[string]any{
+			{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
+			{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+		}),
+	})
+	body, closer, err := relaycommon.NewOutboundJSONBody(mustJSON(t, []map[string]any{
+		{"type": "function_call", "call_id": "call-1", "name": "exec_command", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-1", "output": "ok"},
+	}))
+	require.NoError(t, err)
+	defer closer.Close()
+
+	resp, err := (&Adaptor{}).DoRequest(c, info, body)
+	require.NoError(t, err)
+	httpResp, ok := resp.(*http.Response)
+	require.True(t, ok)
+	require.Equal(t, http.StatusOK, httpResp.StatusCode)
+	require.Len(t, sentBodies, 2)
+	require.Contains(t, sentBodies[1], "cached reasoning")
+	require.Contains(t, sentBodies[1], "reasoning_text")
 }

@@ -9,16 +9,22 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
-func injectCachedDeepSeekReasoning(info *relaycommon.RelayInfo, request *dto.OpenAIResponsesRequest) {
+// injectCachedDeepSeekReasoning keeps the upstream contract "thinking mode must
+// receive reasoning_text" satisfied for the turn that is still being continued.
+// It only ever inserts one item directly above the trailing tool run: rewriting
+// items that already went upstream invalidates the prompt cache from that point
+// on, which pinned a production conversation at 62k cached tokens of an 800k
+// context because every turn changed the bytes the upstream had already cached.
+func injectCachedDeepSeekReasoning(info *relaycommon.RelayInfo, request *dto.OpenAIResponsesRequest, previousResponseID string) {
 	if request == nil || !relaycommon.IsDeepSeekReasoningRelay(info, request.Model) {
 		return
 	}
-	cached := relaycommon.LoadDeepSeekReasoning(info, request.PreviousResponseID)
-	request.Input = rewriteDeepSeekReasoningInput(request.Input, cached)
+	cached := relaycommon.LoadDeepSeekReasoning(info, previousResponseID)
+	request.Input = repairDeepSeekTrailingToolRun(request.Input, cached)
 }
 
-func fillEmptyDeepSeekReasoningInPlace(input json.RawMessage, cached string) json.RawMessage {
-	if len(input) == 0 || strings.TrimSpace(cached) == "" {
+func repairDeepSeekTrailingToolRun(input json.RawMessage, cached string) json.RawMessage {
+	if len(input) == 0 {
 		return input
 	}
 	var items []json.RawMessage
@@ -26,14 +32,18 @@ func fillEmptyDeepSeekReasoningInPlace(input json.RawMessage, cached string) jso
 		return input
 	}
 	changed := false
-	for i, item := range items {
-		if peekType(item) != "reasoning" || reasoningItemHasText(item) {
-			continue
-		}
-		if filled := reasoningItemJSON(cached); len(filled) > 0 {
-			items[i] = filled
-			changed = true
-			break
+	if regrouped, ok := regroupDeepSeekToolRuns(items); ok {
+		items, changed = regrouped, true
+	}
+	if strings.TrimSpace(cached) != "" {
+		if insertAt, ok := trailingToolRunMissingReasoning(items); ok {
+			if filled := reasoningItemJSON("", cached); len(filled) > 0 {
+				next := make([]json.RawMessage, 0, len(items)+1)
+				next = append(next, items[:insertAt]...)
+				next = append(next, filled)
+				next = append(next, items[insertAt:]...)
+				items, changed = next, true
+			}
 		}
 	}
 	if !changed {
@@ -46,64 +56,62 @@ func fillEmptyDeepSeekReasoningInPlace(input json.RawMessage, cached string) jso
 	return raw
 }
 
-func rewriteDeepSeekReasoningInput(input json.RawMessage, cached string) json.RawMessage {
-	if len(input) == 0 {
-		return input
+// forceRepairDeepSeekReasoning is the retry-only repair for a payload the
+// upstream refused with the thinking-mode reasoning_text error: it fills every
+// empty reasoning item and puts reasoning_text above every tool run. It rewrites
+// the prefix the upstream already cached, so the happy path never calls it.
+func forceRepairDeepSeekReasoning(input json.RawMessage, cached string) (json.RawMessage, bool) {
+	if len(input) == 0 || strings.TrimSpace(cached) == "" {
+		return input, false
 	}
 	var items []json.RawMessage
 	if common.Unmarshal(input, &items) != nil {
-		return input
+		return input, false
 	}
 	changed := false
-	hadCache := cached != ""
-	kept := make([]json.RawMessage, 0, len(items)+1)
+	if regrouped, ok := regroupDeepSeekToolRuns(items); ok {
+		items, changed = regrouped, true
+	}
+	for i, item := range items {
+		if peekType(item) != "reasoning" || reasoningItemHasText(item) {
+			continue
+		}
+		// Keep the original id: the upstream uses it to associate the reasoning
+		// with the call it belongs to.
+		if filled := reasoningItemJSON(reasoningItemID(item), cached); len(filled) > 0 {
+			items[i], changed = filled, true
+		}
+	}
+	filled := reasoningItemJSON("", cached)
+	if len(filled) == 0 {
+		return input, false
+	}
+	repaired := make([]json.RawMessage, 0, len(items)+4)
+	runChecked := false
 	for _, item := range items {
-		if peekType(item) != "reasoning" {
-			kept = append(kept, item)
+		if !isDeepSeekToolItem(item) {
+			repaired = append(repaired, item)
+			runChecked = false
 			continue
 		}
-		if reasoningItemHasText(item) {
-			kept = append(kept, item)
-			continue
-		}
-		if cached != "" {
-			if filled := reasoningItemJSON(cached); len(filled) > 0 {
-				kept = append(kept, filled)
-				changed = true
-				cached = ""
-				continue
-			}
-		}
-		if hadCache {
-			changed = true
-			continue
-		}
-		kept = append(kept, item)
-	}
-	if regrouped, ok := regroupDeepSeekToolRuns(kept); ok {
-		kept = regrouped
-		changed = true
-	}
-	if cached != "" {
-		if insertAt, ok := lastToolTurnMissingReasoning(kept); ok {
-			if filled := reasoningItemJSON(cached); len(filled) > 0 {
-				next := make([]json.RawMessage, 0, len(kept)+1)
-				next = append(next, kept[:insertAt]...)
-				next = append(next, filled)
-				next = append(next, kept[insertAt:]...)
-				kept = next
+		if !runChecked {
+			previous := len(repaired) - 1
+			if previous < 0 || !reasoningItemHasText(repaired[previous]) {
+				repaired = append(repaired, filled)
 				changed = true
 			}
+			runChecked = true
 		}
+		repaired = append(repaired, item)
 	}
 	if !changed {
-		return input
+		return input, false
 	}
-	raw, err := common.Marshal(kept)
+	raw, err := common.Marshal(repaired)
 	if err != nil {
-		return input
+		return input, false
 	}
-	return raw
+	return raw, true
 }
 
 func regroupDeepSeekToolRuns(items []json.RawMessage) ([]json.RawMessage, bool) {
@@ -125,18 +133,39 @@ func regroupDeepSeekToolRuns(items []json.RawMessage) ([]json.RawMessage, bool) 
 		outs := make([]json.RawMessage, 0, len(run))
 		seenOut := false
 		grouped := true
+		callIDs := make(map[string]struct{}, len(run))
+		outputIDs := make(map[string]struct{}, len(run))
+		var idlessCall bool
 		for _, item := range run {
 			if isDeepSeekToolOutput(item) {
 				seenOut = true
 				outs = append(outs, item)
+				if id := toolCallID(item); id != "" {
+					outputIDs[id] = struct{}{}
+				}
 				continue
 			}
 			if seenOut {
 				grouped = false
 			}
 			calls = append(calls, item)
+			if id := toolCallID(item); id == "" {
+				idlessCall = true
+			} else {
+				callIDs[id] = struct{}{}
+			}
 		}
-		if grouped {
+		// Hoisting a call above the outputs leaves it dangling when its own output
+		// is missing, which the upstream rejects outright: in that case keep the
+		// bytes the client sent.
+		unpairedCall := idlessCall
+		for id := range callIDs {
+			if _, ok := outputIDs[id]; !ok {
+				unpairedCall = true
+				break
+			}
+		}
+		if grouped || unpairedCall {
 			out = append(out, run...)
 		} else {
 			out = append(out, calls...)
@@ -151,7 +180,10 @@ func regroupDeepSeekToolRuns(items []json.RawMessage) ([]json.RawMessage, bool) 
 	return out, true
 }
 
-func lastToolTurnMissingReasoning(items []json.RawMessage) (int, bool) {
+// trailingToolRunMissingReasoning locates the tool run still sitting at the end
+// of the payload, the turn the upstream is being asked to continue. Runs further
+// back belong to the cached prefix and must stay byte-identical.
+func trailingToolRunMissingReasoning(items []json.RawMessage) (int, bool) {
 	lastOut := -1
 	for i := len(items) - 1; i >= 0; i-- {
 		if isDeepSeekToolOutput(items[i]) {
@@ -159,7 +191,7 @@ func lastToolTurnMissingReasoning(items []json.RawMessage) (int, bool) {
 			break
 		}
 	}
-	if lastOut < 0 {
+	if lastOut < 0 || lastOut < len(items)-2 {
 		return 0, false
 	}
 	startOut := lastOut
@@ -337,18 +369,36 @@ func reasoningItemHasText(item json.RawMessage) bool {
 	return false
 }
 
-func reasoningItemJSON(text string) json.RawMessage {
-	raw, err := common.Marshal(map[string]any{
+func reasoningItemJSON(id, text string) json.RawMessage {
+	item := map[string]any{
 		"type": "reasoning",
 		"content": []map[string]string{{
 			"type": "reasoning_text",
 			"text": text,
 		}},
-	})
+	}
+	if strings.TrimSpace(id) != "" {
+		item["id"] = id
+	}
+	raw, err := common.Marshal(item)
 	if err != nil {
 		return nil
 	}
 	return raw
+}
+
+func reasoningItemID(item json.RawMessage) string {
+	var peek struct {
+		ID string `json:"id"`
+	}
+	if common.Unmarshal(item, &peek) != nil {
+		return ""
+	}
+	return peek.ID
+}
+
+func isDeepSeekToolItem(item json.RawMessage) bool {
+	return isDeepSeekToolCall(item) || isDeepSeekToolOutput(item)
 }
 
 func peekType(item json.RawMessage) string {

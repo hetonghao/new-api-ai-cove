@@ -101,7 +101,7 @@ func (x *DeepSeekFailureCapture) ReportFailure(resp *http.Response) {
 	if x == nil || resp == nil {
 		return
 	}
-	upstreamErr := readDeepSeekFailureErrorBody(resp)
+	upstreamErr := ReadAndRestoreResponseBody(resp)
 	if len(x.outbound) == 0 || resp.StatusCode != http.StatusBadRequest || x.ctx == nil {
 		return
 	}
@@ -178,9 +178,10 @@ func (x *DeepSeekFailureCapture) relayMode() int {
 	return x.info.RelayMode
 }
 
-// readDeepSeekFailureErrorBody drains the upstream error body and installs a
-// fresh reader with the same bytes for the regular error path.
-func readDeepSeekFailureErrorBody(resp *http.Response) []byte {
+// ReadAndRestoreResponseBody drains a response body and installs a fresh reader
+// with the same bytes, so a caller can inspect an upstream rejection without
+// taking it away from the regular error path.
+func ReadAndRestoreResponseBody(resp *http.Response) []byte {
 	if resp == nil || resp.Body == nil {
 		return nil
 	}
@@ -229,6 +230,28 @@ func emitDeepSeekFailureChunks(c *gin.Context, label, fingerprint string, data [
 		end := min(start+deepSeekFailureChunkSize, len(data))
 		logger.LogError(c, fmt.Sprintf("%s fingerprint=%s part=%d/%d %s", label, fingerprint, part+1, parts, data[start:end]))
 	}
+}
+
+// DumpDeepSeekPayload writes one full outbound payload to the process log under
+// its own tag, for the rebuilt payload of a rejected turn.
+func DumpDeepSeekPayload(c *gin.Context, tag string, body []byte) {
+	if c == nil || len(body) == 0 {
+		return
+	}
+	fingerprint := deepSeekFailureFingerprint(body)
+	head, tail, omitted := splitDeepSeekFailurePayload(body)
+	if allowed, suppressedReason := reserveDeepSeekFailureDump(fingerprint, len(head)+len(tail)); !allowed {
+		logger.LogError(c, fmt.Sprintf("%s suppressed reason=%s fingerprint=%s bytes=%d", tag, suppressedReason, fingerprint, len(body)))
+		return
+	}
+	emitDeepSeekFailureChunks(c, tag, fingerprint, head)
+	if omitted > 0 {
+		logger.LogError(c, fmt.Sprintf("%s_omitted fingerprint=%s bytes=%d", tag, fingerprint, omitted))
+	}
+	if len(tail) > 0 {
+		emitDeepSeekFailureChunks(c, tag+"_tail", fingerprint, tail)
+	}
+	logger.LogError(c, fmt.Sprintf("%s_end fingerprint=%s bytes=%d", tag, fingerprint, len(body)))
 }
 
 var (
