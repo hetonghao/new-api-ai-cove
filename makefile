@@ -8,7 +8,7 @@ DEV_POSTGRES_DB = new-api
 DEV_POSTGRES_USER = root
 DEV_SQLITE_PATH ?= one-api.db
 
-.PHONY: all build-web build-all-web start-api dev dev-api dev-api-rebuild dev-web reset-setup test deepseek-gate
+.PHONY: all build-web build-all-web start-api dev dev-api dev-api-rebuild dev-web reset-setup test deepseek-gate deepseek-live-e2e
 
 all: build-all-web start-api
 
@@ -54,6 +54,13 @@ test:
 deepseek-gate:
 	@echo "Running DeepSeek relay gate..."
 	@GOWORK=off go test ./relay/common/... ./relay/channel/deepseek/... ./relay/channel/openai/... -count=1
+
+# 打真实上游的端到端检查，默认跳过；需要显式给出地址和密钥：
+#   AI_COVE_DEEPSEEK_E2E_BASE_URL=https://opencode.ai/zen/go/v1/responses
+#   AI_COVE_DEEPSEEK_E2E_API_KEY=sk-...
+deepseek-live-e2e:
+	@echo "Running DeepSeek live upstream end-to-end checks..."
+	@GOWORK=off go test ./relay/channel/deepseek/ -run TestDeepSeekLiveUpstreamContract -count=1 -v
 
 reset-setup:
 	@echo "Resetting local setup wizard state..."
