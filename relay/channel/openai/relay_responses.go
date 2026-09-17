@@ -100,13 +100,19 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		}
 		switch streamResponse.Type {
 		case "response.completed", "response.done":
+			nonBillableStatus := streamResponse.Response != nil && relaycommon.IsNonBillableResponsesStatus(streamResponse.Response.Status)
+			// Responses SSE 没有 [DONE]，成功的终态事件就是正常结束。先记账，客户端随后断开
+			// 就不能把这一轮记成 client_gone；带 failed/incomplete 状态的 completed 不算成功。
+			if !nonBillableStatus {
+				info.StreamStatus.MarkTerminalEventSeen()
+			}
 			if streamResponse.Response != nil {
 				if streamResponse.Response.Usage != nil {
 					incomingUsage := relayconvert.NormalizeResponsesUsage(streamResponse.Response.Usage)
 					usage = dto.MergeUsageNonZero(usage, incomingUsage)
 				}
 				if !imageCommitted {
-					if relaycommon.IsNonBillableResponsesStatus(streamResponse.Response.Status) {
+					if nonBillableStatus {
 						imageCounter.Reset()
 						imageCounter.Commit(info)
 						imageCommitted = true

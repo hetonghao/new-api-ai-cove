@@ -2,11 +2,13 @@ package openai
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -264,4 +266,95 @@ func TestOaiResponsesStreamHandlerDoesNotCountPartialImageEvent(t *testing.T) {
 	)
 
 	assert.Equal(t, 0, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration].CallCount)
+}
+
+func TestOaiResponsesStreamHandlerKeepsCompletedStreamNormalAfterClientDisconnect(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() {
+		constant.StreamingTimeout = oldTimeout
+	})
+
+	// 上游不发 [DONE]，握手后也不关闭连接：response.completed 是唯一结束信号（string.ink 实测如此）。
+	body := "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\n"
+	reader, writer := io.Pipe()
+	t.Cleanup(func() {
+		_ = writer.Close()
+		_ = reader.Close()
+	})
+	go func() {
+		_, _ = writer.Write([]byte(body))
+	}()
+
+	reqCtx, cancelRequest := context.WithCancel(context.Background())
+	t.Cleanup(cancelRequest)
+
+	w := &terminalEventRecorder{
+		ResponseRecorder: httptest.NewRecorder(),
+		terminalWritten:  make(chan struct{}, 1),
+	}
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil).WithContext(reqCtx)
+	c.Set(common.RequestIdKey, "responses-terminal-event-status-test")
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-5.6-luna",
+		DisablePing:     true,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: "gpt-5.6-luna",
+		},
+	}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       reader,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+	}
+
+	go func() {
+		select {
+		case <-w.terminalWritten:
+		case <-time.After(5 * time.Second):
+		}
+		// Turbo 收到终态事件后立刻断开连接，网关随后观察到 context canceled。
+		cancelRequest()
+	}()
+
+	_, apiErr := OaiResponsesStreamHandler(c, info, resp)
+	require.Nil(t, apiErr)
+	require.Equal(t, relaycommon.StreamEndReasonClientGone, info.StreamStatus.EndReason)
+
+	assert.True(t, info.StreamStatus.IsNormalEnd())
+}
+
+// terminalEventRecorder 在终态事件写给客户端后发出信号，
+// 用来复现“客户端收到终态事件后立刻断开连接”的时序。
+type terminalEventRecorder struct {
+	*httptest.ResponseRecorder
+	terminalWritten chan struct{}
+}
+
+func (r *terminalEventRecorder) Write(p []byte) (int, error) {
+	n, err := r.ResponseRecorder.Write(p)
+	if bytes.Contains(p, []byte("response.completed")) {
+		select {
+		case r.terminalWritten <- struct{}{}:
+		default:
+		}
+	}
+	return n, err
+}
+
+func TestOaiResponsesStreamHandlerOnlyMarksSuccessfulTerminalEvent(t *testing.T) {
+	completed := runResponsesImageBillingStream(
+		t,
+		`{"type":"response.completed","response":{"status":"completed","output":[]}}`,
+	)
+	assert.Contains(t, completed.StreamStatus.Summary(), "terminal_event_seen=true")
+
+	// response.completed 也可能带 failed/incomplete 状态，这类终态不能算正常结束。
+	incomplete := runResponsesImageBillingStream(
+		t,
+		`{"type":"response.completed","response":{"status":"incomplete","output":[]}}`,
+	)
+	assert.NotContains(t, incomplete.StreamStatus.Summary(), "terminal_event_seen=true")
 }

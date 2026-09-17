@@ -1,12 +1,44 @@
 package common
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func TestStreamStatus_TerminalEventKeepsLateClientDisconnectNormal(t *testing.T) {
+	t.Parallel()
+
+	s := NewStreamStatus()
+	s.MarkTerminalEventSeen()
+	// 客户端在收到终态事件后立刻断开；这个取消不能把已完成的流记成错误。
+	s.SetEndReason(StreamEndReasonClientGone, context.Canceled)
+
+	assert.Equal(t, StreamEndReasonClientGone, s.EndReason)
+	assert.True(t, s.IsNormalEnd())
+	assert.Contains(t, s.Summary(), "terminal_event_seen=true")
+}
+
+func TestStreamStatus_ClientDisconnectWithoutTerminalEventStaysAbnormal(t *testing.T) {
+	t.Parallel()
+
+	s := NewStreamStatus()
+	s.SetEndReason(StreamEndReasonClientGone, context.Canceled)
+
+	assert.False(t, s.IsNormalEnd())
+}
+
+func TestStreamStatus_MarkTerminalEventSeen_NilSafe(t *testing.T) {
+	t.Parallel()
+
+	var s *StreamStatus
+	s.MarkTerminalEventSeen()
+
+	assert.True(t, s.IsNormalEnd())
+}
 
 func TestStreamStatus_SetEndReason_FirstWins(t *testing.T) {
 	t.Parallel()

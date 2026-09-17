@@ -36,6 +36,8 @@ type StreamStatus struct {
 	mu         sync.Mutex
 	Errors     []StreamErrorEntry
 	ErrorCount int
+	// terminalEventSeen 表示上游已经给出成功终态事件；客户端在这之后断开不算异常结束。
+	terminalEventSeen bool
 }
 
 func NewStreamStatus() *StreamStatus {
@@ -89,6 +91,13 @@ func (s *StreamStatus) IsNormalEnd() bool {
 	if s == nil {
 		return true
 	}
+	s.mu.Lock()
+	terminalEventSeen := s.terminalEventSeen
+	s.mu.Unlock()
+	// 上游已经给出成功终态事件时，客户端随后断开或收尾噪音都不算异常结束；panic 仍按错误记账。
+	if terminalEventSeen && s.EndReason != StreamEndReasonPanic {
+		return true
+	}
 	return s.EndReason == StreamEndReasonDone ||
 		s.EndReason == StreamEndReasonEOF ||
 		s.EndReason == StreamEndReasonHandlerStop
@@ -104,9 +113,24 @@ func (s *StreamStatus) Summary() string {
 		fmt.Fprintf(b, " end_error=%q", s.EndError.Error())
 	}
 	s.mu.Lock()
+	if s.terminalEventSeen {
+		b.WriteString(" terminal_event_seen=true")
+	}
 	if s.ErrorCount > 0 {
 		fmt.Fprintf(b, " soft_errors=%d", s.ErrorCount)
 	}
 	s.mu.Unlock()
 	return b.String()
+}
+
+// MarkTerminalEventSeen 记录上游已经给出成功终态事件（例如 Responses 的
+// response.completed / response.done）。客户端收到终态后立刻断开时，流仍按正常结束记账，
+// 结束原因本身保持原样，便于排查。
+func (s *StreamStatus) MarkTerminalEventSeen() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.terminalEventSeen = true
 }

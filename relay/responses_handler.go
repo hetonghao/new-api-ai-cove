@@ -62,6 +62,12 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		)
 	}
 
+	// 上游已经明确拒绝过这个渠道的状态形态（HTTP 续传 / 空 input）时，直接在本地拒绝，
+	// 不再让注定失败的请求占用一次上游调用。
+	if apiErr := relaycommon.ResponsesStateShapeRejection(info.ChannelId, info.OriginModelName, responsesReq.PreviousResponseID, responsesReq.Input); apiErr != nil {
+		return apiErr
+	}
+
 	request, err := common.DeepCopy(responsesReq)
 	if err != nil {
 		return types.NewError(fmt.Errorf("failed to copy request to GeneralOpenAIRequest: %w", err), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
@@ -139,6 +145,7 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 
 		if httpResp.StatusCode != http.StatusOK {
 			deepSeekCapture.ReportFailure(httpResp)
+			relaycommon.ObserveResponsesUpstreamFailure(c, info.ChannelId, info.OriginModelName, httpResp)
 			newAPIError = service.RelayErrorHandler(c.Request.Context(), httpResp, false)
 			// reset status code 重置状态码
 			service.ResetStatusCode(newAPIError, statusCodeMappingStr)
