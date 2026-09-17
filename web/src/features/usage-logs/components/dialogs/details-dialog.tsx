@@ -68,6 +68,10 @@ import { cn } from '@/lib/utils'
 import { AuditDetailFields } from '../../audit/components/audit-detail-fields'
 import type { UsageLog } from '../../data/schema'
 import {
+  getDisplayPromptTokens,
+  getLogCacheWriteTokens,
+} from '../../lib/display-tokens'
+import {
   parseLogOther,
   getParamOverrideActionLabel,
   parseAuditLine,
@@ -82,10 +86,6 @@ import {
 } from '../../lib/format'
 import { buildQuotaAuditOperation } from '../../lib/quota-audit-operation'
 import {
-  getDisplayPromptTokens,
-  getLogCacheWriteTokens,
-} from '../../lib/display-tokens'
-import {
   getLogTypeConfig,
   isPerCallBilling,
   isTimingLogType,
@@ -93,6 +93,7 @@ import {
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
 import { PluginAuthorLink } from '../plugin-author-link'
 import { DetailRow, DetailSection } from './log-detail-layout'
+import { SettledUnitPrices } from './settled-unit-prices'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
 // to its i18n label key for display in the audit details.
@@ -1172,6 +1173,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
               usageSchema={billingUsageSchema}
               usageFacts={other.usage_facts}
             />
+            <SettledUnitPrices other={other} />
           </DetailSection>
         )}
 

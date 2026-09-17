@@ -36,6 +36,7 @@ import {
 import type { UsageLog } from '../../data/schema'
 import type { LogOtherData } from '../../types'
 import { useCommonLogsColumns } from '../columns/common-logs-columns'
+import { UsageLogsProvider } from '../usage-logs-provider'
 
 vi.mock('@lobehub/icons', () => ({}))
 vi.hoisted(() => {
@@ -120,7 +121,9 @@ function renderPreview(other: LogOtherData, isAdmin = true) {
   render(
     <I18nextProvider i18n={i18n}>
       <QueryClientProvider client={client}>
-        <DetailPreview other={other} isAdmin={isAdmin} />
+        <UsageLogsProvider search={{}} navigateSearch={() => undefined}>
+          <DetailPreview other={other} isAdmin={isAdmin} />
+        </UsageLogsProvider>
       </QueryClientProvider>
     </I18nextProvider>
   )
@@ -364,3 +367,151 @@ test.each(['missing schema', 'unsupported expression', 'unknown tier'])(
     expect(preview.textContent).toBe('Dynamic Pricing · No matching results')
   }
 )
+
+test('settled unit prices apply only recorded matched rules and the group ratio', async () => {
+  const preview = renderPreview(
+    {
+      billing_mode: 'tiered_expr',
+      expr_b64: btoa('tier("base", p * 7 + c * 30 + cr * 0.16)'),
+      matched_tier: 'base',
+      group_ratio: 0.8,
+      cache_tokens: 100,
+      request_rules: [
+        {
+          cond: 'hour("Asia/Shanghai") >= 18',
+          multiplier: 0.5,
+          matched: false,
+        },
+        { cond: 'hour("Asia/Shanghai") >= 12', multiplier: 0.5, matched: true },
+      ],
+    },
+    false
+  )
+  fireEvent.click(preview)
+  const table = within(
+    await screen.findByRole('table', { name: 'Settled unit prices' })
+  )
+  expect(table.getByRole('row', { name: 'Input $7 $2.8' })).toBeVisible()
+  expect(table.getByRole('row', { name: 'Output $30 $12' })).toBeVisible()
+  expect(
+    table.getByRole('row', { name: 'Cache Read $0.16 $0.064' })
+  ).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'View calculation' }))
+  expect(await screen.findByText('$7 × 0.5 × 0.8 = $2.8')).toBeVisible()
+})
+
+test.each([
+  { user_group_ratio: 0.2, group_ratio: 0.8, expected: 'Input $7 $1.4' },
+  { user_group_ratio: 0, group_ratio: 0.8, expected: 'Input $7 $0' },
+  { user_group_ratio: -1, group_ratio: 0.8, expected: 'Input $7 $5.6' },
+])(
+  'settled prices respect the recorded effective group ratio: $expected',
+  async (scenario) => {
+    fireEvent.click(
+      renderPreview({
+        billing_mode: 'tiered_expr',
+        expr_b64: btoa('tier("base", p * 7 + c * 0)'),
+        matched_tier: 'base',
+        group_ratio: scenario.group_ratio,
+        user_group_ratio: scenario.user_group_ratio,
+        request_rules: [
+          { cond: 'param("fast") == true', multiplier: 2, matched: true },
+          {
+            cond: 'hour("Asia/Shanghai") >= 12',
+            multiplier: 0.5,
+            matched: true,
+          },
+        ],
+      })
+    )
+    const table = within(
+      await screen.findByRole('table', { name: 'Settled unit prices' })
+    )
+    expect(table.getByRole('row', { name: scenario.expected })).toBeVisible()
+    expect(table.getByRole('row', { name: 'Output $0 $0' })).toBeVisible()
+  }
+)
+
+test.each([
+  { name: 'missing group ratio', fields: { group_ratio: undefined } },
+  { name: 'unknown tier', fields: { matched_tier: 'unknown' } },
+  {
+    name: 'missing rule traces',
+    fields: {
+      expr_b64: btoa(
+        '(tier("base", p * 7)) * (hour("Asia/Shanghai") >= 12 ? 0.5 : 1)'
+      ),
+    },
+  },
+  {
+    name: 'ambiguous tier',
+    fields: {
+      expr_b64: btoa('len > 100 ? tier("base", p * 9) : tier("base", p * 7)'),
+    },
+  },
+  {
+    name: 'same label with different billing units',
+    fields: {
+      billing_unit: 'token' as const,
+      expr_b64: btoa(
+        'len > 100 ? tier("base", fixed(0.1)) : tier("base", p * 7)'
+      ),
+    },
+  },
+  { name: 'negative ratio', fields: { group_ratio: -2 } },
+])('does not invent settled prices for $name', async ({ fields }) => {
+  fireEvent.click(
+    renderPreview({
+      billing_mode: 'tiered_expr',
+      expr_b64: btoa('tier("base", p * 7)'),
+      matched_tier: 'base',
+      group_ratio: 0.8,
+      ...fields,
+    })
+  )
+  expect(
+    await screen.findByText(
+      'Historical billing data is incomplete; final unit prices are unavailable.'
+    )
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('table', { name: 'Settled unit prices' })
+  ).not.toBeInTheDocument()
+})
+
+test('settled cache-write prices preserve both durations and small nonzero prices', async () => {
+  fireEvent.click(
+    renderPreview({
+      billing_mode: 'tiered_expr',
+      expr_b64: btoa('tier("base", p * 7 + cc * 0.00001 + cc1h * 0.00002)'),
+      matched_tier: 'base',
+      group_ratio: 0.8,
+      cache_creation_tokens_5m: 100,
+      cache_creation_tokens_1h: 100,
+    })
+  )
+  const table = within(
+    await screen.findByRole('table', { name: 'Settled unit prices' })
+  )
+  expect(table.getByRole('row', { name: /\$0.00001 \$0.000008/ })).toBeVisible()
+  expect(table.getByRole('row', { name: /\$0.00002 \$0.000016/ })).toBeVisible()
+})
+
+test('fixed per-image settlement shows unit price without multiplying image count again', async () => {
+  fireEvent.click(
+    renderPreview({
+      billing_mode: 'tiered_expr',
+      expr_b64: btoa('tier("base", fixed(0.1)) * image_count'),
+      matched_tier: 'base',
+      billing_unit: 'request',
+      fixed_price: 0.1,
+      image_count: 4,
+      group_ratio: 0.8,
+    })
+  )
+  const table = within(
+    await screen.findByRole('table', { name: 'Settled unit prices' })
+  )
+  expect(table.getByRole('row', { name: 'Per image $0.1 $0.08' })).toBeVisible()
+  expect(screen.getByText('Unit: USD / image')).toBeVisible()
+})
