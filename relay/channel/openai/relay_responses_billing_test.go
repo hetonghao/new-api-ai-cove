@@ -21,6 +21,10 @@ import (
 )
 
 func TestOaiResponsesHandlerCountsOutputCallsNotDeclarations(t *testing.T) {
+	var logs bytes.Buffer
+	oldWriter := gin.DefaultErrorWriter
+	gin.DefaultErrorWriter = &logs
+	t.Cleanup(func() { gin.DefaultErrorWriter = oldWriter })
 	gin.SetMode(gin.TestMode)
 	operation_setting.SetToolPriceForTest("priced_fn", 5.0)
 	t.Cleanup(func() {
@@ -28,6 +32,7 @@ func TestOaiResponsesHandlerCountsOutputCallsNotDeclarations(t *testing.T) {
 	})
 
 	body, err := common.Marshal(dto.OpenAIResponsesResponse{
+		Model: "unexpected-model",
 		Tools: []map[string]any{
 			{"type": "web_search_preview"},
 			{"type": "file_search"},
@@ -48,6 +53,7 @@ func TestOaiResponsesHandlerCountsOutputCallsNotDeclarations(t *testing.T) {
 
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "gpt-5.1",
+		ChannelMeta:     &relaycommon.ChannelMeta{UpstreamModelName: "gpt-5.1"},
 		ResponsesUsageInfo: &relaycommon.ResponsesUsageInfo{
 			BuiltInTools: map[string]*relaycommon.BuildInToolInfo{
 				dto.BuildInToolWebSearchPreview: {ToolName: dto.BuildInToolWebSearchPreview, CallCount: 0},
@@ -62,6 +68,7 @@ func TestOaiResponsesHandlerCountsOutputCallsNotDeclarations(t *testing.T) {
 	}
 
 	usage, apiErr := OaiResponsesHandler(c, info, resp)
+	assert.Contains(t, logs.String(), `upstream_model_mismatch channel_id=0 request_model="gpt-5.1" response_model="unexpected-model"`)
 	require.Nil(t, apiErr)
 	require.NotNil(t, usage)
 	assert.Equal(t, 2, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolWebSearchPreview].CallCount)

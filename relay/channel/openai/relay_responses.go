@@ -35,6 +35,12 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
 
+	// 临时观测 upstream_model_mismatch：仅比较现有上游请求模型与响应声明，不持久化、不影响计费。
+	// 请求侧使用现有映射值，未另行采集参数覆盖后的请求体；响应声明也不证明实际执行模型。
+	// 后续撤除或改造时，搜索该标记同步处理 HTTP、SSE、WS 三处及对应告警测试。
+	if requested := info.GetUpstreamModelName(); requested != "" && responsesResponse.Model != "" && responsesResponse.Model != requested {
+		logger.LogWarn(c, "upstream_model_mismatch channel_id=%d request_model=%.256q response_model=%.256q", info.GetChannelID(), requested, responsesResponse.Model)
+	}
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
@@ -107,6 +113,10 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 				info.StreamStatus.MarkTerminalEventSeen()
 			}
 			if streamResponse.Response != nil {
+				// 临时观测 upstream_model_mismatch：仅在终态比较，避免逐个 delta 告警；与 HTTP、WS 一并撤除或改造。
+				if requested := info.GetUpstreamModelName(); requested != "" && streamResponse.Response.Model != "" && streamResponse.Response.Model != requested {
+					logger.LogWarn(c, "upstream_model_mismatch channel_id=%d request_model=%.256q response_model=%.256q", info.GetChannelID(), requested, streamResponse.Response.Model)
+				}
 				if streamResponse.Response.Usage != nil {
 					incomingUsage := relayconvert.NormalizeResponsesUsage(streamResponse.Response.Usage)
 					usage = dto.MergeUsageNonZero(usage, incomingUsage)
