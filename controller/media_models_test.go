@@ -995,6 +995,33 @@ func TestMediaModelsCatalogAutoDiscovery(t *testing.T) {
 	assert.Equal(t, float64(2), payload.Get("data.policy.models.#").Float())
 }
 
+func TestMediaModelsCatalogAcceptsEndpointTypeArrays(t *testing.T) {
+	db := setupMediaModelsTestDB(t)
+	withSelfUseModeEnabled(t)
+	seedMediaOrdinaryModel(t, db, "gpt-image-2", `["image-generation","openai"]`)
+	seedMediaChannel(t, db, &model.Channel{Id: 7301, Type: constant.ChannelTypeOpenAI, Name: "img", Key: "k"}, "default", "gpt-image-2")
+	seedMediaOrdinaryModel(t, db, "claude-sonnet-4-6", `["anthropic","openai"]`)
+	seedMediaOrdinaryModel(t, db, "broken-model", "not-json")
+
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.GET("/api/option/media_models", GetMediaModelsPolicy)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/option/media_models", nil))
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	payload := gjson.Parse(recorder.Body.String())
+	require.True(t, payload.Get("success").Bool())
+	ids := make([]string, 0)
+	for _, entry := range payload.Get("data.policy.models.#.id").Array() {
+		ids = append(ids, entry.String())
+	}
+	assert.Equal(t, []string{"gpt-image-2"}, ids)
+	assert.Equal(t, "image", payload.Get("data.policy.models.0.type").String())
+	assert.True(t, payload.Get("data.policy.models.0.operations.text_to_image").Exists())
+	assert.True(t, payload.Get("data.policy.models.0.operations.image_to_image").Exists())
+}
+
 func TestMediaModelsCatalogPresetRecognition(t *testing.T) {
 	db := setupMediaModelsTestDB(t)
 	withSelfUseModeEnabled(t)

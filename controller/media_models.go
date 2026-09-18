@@ -224,14 +224,22 @@ func resolveMediaPolicy(policy model.MediaPolicy) (model.MediaPolicy, error) {
 			endpoints[string(endpoint)] = true
 		}
 		if strings.TrimSpace(row.Endpoints) != "" {
-			var declared map[string]json.RawMessage
-			if err := common.UnmarshalJsonStr(row.Endpoints, &declared); err != nil {
-				return model.MediaPolicy{}, fmt.Errorf("model %q endpoints metadata is malformed", row.ModelName)
-			}
-			for name, raw := range declared {
-				kind := common.GetJsonType(raw)
-				if kind == "string" || kind == "object" {
-					endpoints[name] = true
+			var declared any
+			if err := common.UnmarshalJsonStr(row.Endpoints, &declared); err == nil {
+				switch value := declared.(type) {
+				case []any:
+					for _, item := range value {
+						if name, ok := item.(string); ok && strings.TrimSpace(name) != "" {
+							endpoints[name] = true
+						}
+					}
+				case map[string]any:
+					for name, detail := range value {
+						switch detail.(type) {
+						case string, map[string]any:
+							endpoints[name] = true
+						}
+					}
 				}
 			}
 		}
@@ -258,7 +266,8 @@ func resolveMediaPolicy(policy model.MediaPolicy) (model.MediaPolicy, error) {
 	return resolved, nil
 }
 
-func mediaCatalogUnavailable(c *gin.Context) {
+func mediaCatalogUnavailable(c *gin.Context, err error) {
+	common.SysError("media models: catalog resolution failed: " + err.Error())
 	c.JSON(http.StatusInternalServerError, gin.H{
 		"success": false,
 		"code":    "media_catalog_unavailable",
@@ -270,6 +279,7 @@ func GetMediaModelsPolicy(c *gin.Context) {
 	setNoStore(c)
 	snapshot, err := model.GetMediaPolicy()
 	if err != nil {
+		common.SysError("media models: policy lookup failed: " + err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"code":    "media_policy_unavailable",
@@ -279,7 +289,7 @@ func GetMediaModelsPolicy(c *gin.Context) {
 	}
 	resolved, err := resolveMediaPolicy(snapshot.Policy)
 	if err != nil {
-		mediaCatalogUnavailable(c)
+		mediaCatalogUnavailable(c, err)
 		return
 	}
 	snapshot.Policy = resolved
@@ -320,6 +330,7 @@ func UpdateMediaModelsPolicy(c *gin.Context) {
 	}
 	current, err := model.GetMediaPolicy()
 	if err != nil {
+		common.SysError("media models: policy lookup failed: " + err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"code":    "media_policy_unavailable",
@@ -329,7 +340,7 @@ func UpdateMediaModelsPolicy(c *gin.Context) {
 	}
 	resolved, err := resolveMediaPolicy(current.Policy)
 	if err != nil {
-		mediaCatalogUnavailable(c)
+		mediaCatalogUnavailable(c, err)
 		return
 	}
 	incomingByID := make(map[string]model.MediaModelProfile, len(policy.Models))
@@ -366,6 +377,7 @@ func UpdateMediaModelsPolicy(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		common.SysError("media models: policy save failed: " + err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"code":    "media_policy_unavailable",
@@ -408,6 +420,7 @@ func MediaModels(c *gin.Context) {
 	}
 	snapshot, err := model.GetMediaPolicy()
 	if err != nil {
+		common.SysError("media models: policy lookup failed: " + err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"code":    "media_policy_unavailable",
@@ -417,7 +430,7 @@ func MediaModels(c *gin.Context) {
 	}
 	resolved, err := resolveMediaPolicy(snapshot.Policy)
 	if err != nil {
-		mediaCatalogUnavailable(c)
+		mediaCatalogUnavailable(c, err)
 		return
 	}
 	snapshot.Policy = resolved
