@@ -26,14 +26,24 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { BILLING_PRICING_VARS } from '@/features/pricing/lib/billing-expr'
 import {
   formatBillingCurrencyFromUSD,
   getCurrencyDisplay,
 } from '@/lib/currency'
 
 import type { UsageLog } from '../../data/schema'
+import {
+  billedKeysForFields,
+  resolveBilledTokenCounts,
+} from '../../lib/billed-tokens'
 import type { LogOtherData } from '../../types'
+
+const amountOptions = {
+  digitsLarge: 8,
+  digitsSmall: 8,
+  abbreviate: false,
+  minimumNonZero: 0.00000001,
+}
 
 export function SettledUsageCost(props: {
   log: UsageLog
@@ -41,49 +51,49 @@ export function SettledUsageCost(props: {
   prices: Array<{ field: string; label: string; price: number }>
 }) {
   const { t } = useTranslation()
-  const amountOptions = {
-    digitsLarge: 8,
-    digitsSmall: 8,
-    abbreviate: false,
-    minimumNonZero: 0.00000001,
-  }
+  const pricedKeys = billedKeysForFields(
+    props.prices.map((entry) => entry.field)
+  )
+  const counts = resolveBilledTokenCounts({
+    promptTokens: props.log.prompt_tokens,
+    completionTokens: props.log.completion_tokens,
+    other: props.other,
+    pricedKeys,
+  })
   const recordedCost =
     props.log.quota / getCurrencyDisplay().config.quotaPerUnit
-  const rows = props.prices.flatMap((entry) => {
-    const variable = BILLING_PRICING_VARS.find(
-      (candidate) => candidate.field === entry.field
-    )
-    const count = variable
-      ? props.other.billing_tokens?.[variable.key]
-      : undefined
-    if (typeof count !== 'number' || !Number.isFinite(count) || count < 0) {
-      return []
-    }
-    const subtotal = (entry.price / 1_000_000) * count
-    if (!Number.isFinite(subtotal)) return []
-    return [
-      {
-        ...entry,
-        count,
-        subtotal,
-        formattedPrice: formatBillingCurrencyFromUSD(
-          entry.price,
-          amountOptions
-        ),
-        formattedSubtotal: formatBillingCurrencyFromUSD(
-          subtotal,
-          amountOptions
-        ),
-      },
-    ]
-  })
-  const tokenTotal = rows.reduce((sum, row) => sum + row.subtotal, 0)
   const complete =
-    rows.length > 0 &&
-    rows.length === props.prices.length &&
-    Number.isFinite(tokenTotal)
+    counts !== null &&
+    pricedKeys.length === props.prices.length &&
+    props.prices.length > 0
+  const rows = complete
+    ? props.prices.map((entry, index) => {
+        const count = counts[pricedKeys[index]]
+        const subtotal = (entry.price / 1_000_000) * count
+        return {
+          ...entry,
+          count,
+          subtotal,
+          formattedPrice: formatBillingCurrencyFromUSD(
+            entry.price,
+            amountOptions
+          ),
+          formattedSubtotal: formatBillingCurrencyFromUSD(
+            subtotal,
+            amountOptions
+          ),
+        }
+      })
+    : []
+  const tokenTotal = rows.reduce((sum, row) => sum + row.subtotal, 0)
   const calculated = formatBillingCurrencyFromUSD(tokenTotal, amountOptions)
   const recorded = formatBillingCurrencyFromUSD(recordedCost, amountOptions)
+  // Quota is stored as a rounded integer, so an exact match is not expected;
+  // only a real divergence (tool surcharges, add-ons) is worth calling out.
+  const diverges =
+    complete &&
+    Math.abs(tokenTotal - recordedCost) >
+      Math.max(0.000001, Math.abs(tokenTotal) * 0.01)
 
   return (
     <section
@@ -100,7 +110,7 @@ export function SettledUsageCost(props: {
         <StaticDataTable
           className='rounded-none border-0 bg-transparent'
           tableProps={{ 'aria-label': t('Usage cost') }}
-          tableClassName='table-fixed [&_td]:whitespace-normal [&_td]:break-words [&_td]:text-xs [&_th]:whitespace-normal [&_th]:text-xs'
+          tableClassName='table-fixed [&_td]:break-words [&_td]:whitespace-normal [&_td]:text-xs [&_th]:text-xs [&_th]:whitespace-normal'
           data={rows}
           getRowKey={(row) => row.field}
           columns={[
@@ -188,7 +198,7 @@ export function SettledUsageCost(props: {
                   'Uses recorded billable tokens and final unit prices; multipliers are not applied again.'
                 )}
               </p>
-              {Math.abs(tokenTotal - recordedCost) > 1e-10 && (
+              {diverges && (
                 <p className='text-muted-foreground'>
                   {t(
                     'Token subtotals differ from the recorded charge. Rounding or additional charges may apply; the log charge is authoritative.'

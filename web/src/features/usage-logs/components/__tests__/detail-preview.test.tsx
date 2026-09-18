@@ -48,7 +48,10 @@ vi.hoisted(() => {
 })
 afterAll(() => vi.unstubAllGlobals())
 
-function makeLog(other: LogOtherData): UsageLog {
+function makeLog(
+  other: LogOtherData,
+  overrides: Partial<UsageLog> = {}
+): UsageLog {
   return {
     id: 1,
     user_id: 1,
@@ -71,12 +74,17 @@ function makeLog(other: LogOtherData): UsageLog {
     other: JSON.stringify(other),
     request_id: 'req-1',
     upstream_request_id: '',
+    ...overrides,
   }
 }
 
-function DetailPreview(props: { other: LogOtherData; isAdmin: boolean }) {
+function DetailPreview(props: {
+  other: LogOtherData
+  isAdmin: boolean
+  log?: Partial<UsageLog>
+}) {
   const table = useReactTable({
-    data: [makeLog(props.other)],
+    data: [makeLog(props.other, props.log)],
     columns: useCommonLogsColumns(props.isAdmin, false),
     getCoreRowModel: getCoreRowModel(),
   })
@@ -117,12 +125,16 @@ afterEach(() => {
   client.clear()
   useSystemConfigStore.getState().setConfig(previousConfig)
 })
-function renderPreview(other: LogOtherData, isAdmin = true) {
+function renderPreview(
+  other: LogOtherData,
+  isAdmin = true,
+  log?: Partial<UsageLog>
+) {
   render(
     <I18nextProvider i18n={i18n}>
       <QueryClientProvider client={client}>
         <UsageLogsProvider search={{}} navigateSearch={() => undefined}>
-          <DetailPreview other={other} isAdmin={isAdmin} />
+          <DetailPreview other={other} isAdmin={isAdmin} log={log} />
         </UsageLogsProvider>
       </QueryClientProvider>
     </I18nextProvider>
@@ -432,6 +444,64 @@ test('settled usage cost shows recorded token formula behind a collapsed control
   expect(
     await screen.findByText(/\$2\.8 ÷ 1,000,000 × 1,000 = \$0\.0028/)
   ).toBeVisible()
+})
+
+test('settled usage cost rebuilds the formula from the logged token counts', async () => {
+  // Production log: cache hits are already included in prompt_tokens, so the
+  // billed prompt count must subtract them before applying the final price.
+  const preview = renderPreview(
+    {
+      billing_mode: 'tiered_expr',
+      expr_b64: btoa('tier("base", p * 7 + c * 30 + cr * 0.16)'),
+      matched_tier: 'base',
+      group_ratio: 0.27,
+      cache_tokens: 372736,
+      request_rules: [
+        {
+          cond: 'hour("Asia/Shanghai") >= 18',
+          multiplier: 0.5,
+          matched: false,
+        },
+        {
+          cond: 'hour("Asia/Shanghai") >= 12',
+          multiplier: 0.5,
+          matched: false,
+        },
+      ],
+    },
+    false,
+    { prompt_tokens: 373220, completion_tokens: 1713, quota: 15446 }
+  )
+  fireEvent.click(preview)
+
+  const usageTable = within(
+    await screen.findByRole('table', { name: 'Usage cost' })
+  )
+  expect(
+    usageTable.getByRole('row', { name: /Input 484 \$1\.89/ })
+  ).toBeVisible()
+  expect(
+    usageTable.getByRole('row', { name: /Output 1,713 \$8\.1/ })
+  ).toBeVisible()
+  expect(
+    usageTable.getByRole('row', { name: /Cache Read 372,736 \$0\.0432/ })
+  ).toBeVisible()
+  const usageSection = within(
+    screen.getByRole('region', { name: 'Usage cost' })
+  )
+  expect(usageSection.getByText('$0.030892')).toBeVisible()
+
+  fireEvent.click(
+    screen.getByRole('button', { name: 'View usage cost formula' })
+  )
+  expect(
+    await screen.findByText(/\$1\.89 ÷ 1,000,000 × 484 = \$0\.00091476/)
+  ).toBeVisible()
+  expect(
+    usageSection.queryByText(
+      'Token subtotals differ from the recorded charge. Rounding or additional charges may apply; the log charge is authoritative.'
+    )
+  ).not.toBeInTheDocument()
 })
 
 test.each([
