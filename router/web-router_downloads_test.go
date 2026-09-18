@@ -36,7 +36,7 @@ func newWebRouterTestEngine(t *testing.T) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 
 	engine := gin.New()
-	SetWebRouter(engine, newWebRouterTestAssets(t))
+	SetWebRouter(engine, newWebRouterTestAssets(t), func(c *gin.Context) { c.Next() })
 	return engine
 }
 
