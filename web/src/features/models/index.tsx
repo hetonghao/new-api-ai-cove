@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
@@ -31,6 +31,7 @@ import { listDeployments } from './api'
 import { DeploymentAccessGuard } from './components/deployment-access-guard'
 import { DeploymentsTable } from './components/deployments-table'
 import { CreateDeploymentDrawer } from './components/dialogs/create-deployment-drawer'
+import { MediaModelsPanel } from './components/media-models-panel'
 import { ModelsDialogs } from './components/models-dialogs'
 import { ModelsPrimaryButtons } from './components/models-primary-buttons'
 import { ModelsProvider, useModels } from './components/models-provider'
@@ -55,6 +56,7 @@ const SECTION_META: Record<
     tabKey: 'Models',
   },
   vendors: { titleKey: 'Vendor management', tabKey: 'Vendors' },
+  media: { titleKey: 'Media models', tabKey: 'Media models' },
   deployments: {
     titleKey: 'Deployments',
     tabKey: 'Deployments',
@@ -92,7 +94,7 @@ function ModelsContent() {
 
   const meta = SECTION_META[activeSection] ?? SECTION_META.metadata
 
-  let actions = <ModelsPrimaryButtons />
+  let actions: ReactNode = <ModelsPrimaryButtons />
   let content = <ModelsTable />
   if (activeSection === 'vendors') {
     actions = (
@@ -116,6 +118,9 @@ function ModelsContent() {
       </Button>
     )
     content = <DeploymentsSection />
+  } else if (activeSection === 'media') {
+    actions = null
+    content = <MediaModelsPanel />
   }
 
   return (
