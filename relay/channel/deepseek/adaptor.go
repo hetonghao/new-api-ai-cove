@@ -181,6 +181,10 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	} else {
 		request.Input = dropUnpairedDeepSeekToolCalls(request.Input)
 	}
+	// 上游整条丢掉 agent_message（子代理任务正文就在里面），留下没有 reasoning 的
+	// assistant message 收尾就是 400。先把它改成 user 轮，改写出的 message 再按普通
+	// message 参与下面的工具轮重排。
+	request.Input = normalizeDeepSeekAgentMessages(request.Input)
 	// Canonicalize after the replay so an output whose call lives in the replayed
 	// history is not mistaken for an orphan and dropped. This only reorders,
 	// hoists, and drops items; rewriting anything the upstream already cached

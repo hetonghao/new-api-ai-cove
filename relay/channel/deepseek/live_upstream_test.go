@@ -2,6 +2,7 @@ package deepseek
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -31,19 +32,7 @@ import (
 //   - 上游按 x-opencode-session 维护服务端状态，同一个会话里连着发不同形状会互相影响，
 //     所以每个用例都用自己的会话 id。
 func TestDeepSeekLiveUpstreamContract(t *testing.T) {
-	baseURL := strings.TrimSpace(os.Getenv("AI_COVE_DEEPSEEK_E2E_BASE_URL"))
-	apiKey := strings.TrimSpace(os.Getenv("AI_COVE_DEEPSEEK_E2E_API_KEY"))
-	if baseURL == "" || apiKey == "" {
-		t.Skip("set AI_COVE_DEEPSEEK_E2E_BASE_URL and AI_COVE_DEEPSEEK_E2E_API_KEY to replay the DeepSeek contract against the real upstream")
-	}
-	model := strings.TrimSpace(os.Getenv("AI_COVE_DEEPSEEK_E2E_MODEL"))
-	if model == "" {
-		model = "deepseek-v4.1-flash"
-	}
-	session := strings.TrimSpace(os.Getenv("AI_COVE_DEEPSEEK_E2E_SESSION"))
-	if session == "" {
-		session = "ai-cove-live-e2e"
-	}
+	baseURL, apiKey, model, session := deepSeekLiveTarget(t)
 	client := &http.Client{Timeout: 120 * time.Second}
 
 	user := map[string]any{"type": "message", "role": "user", "content": []map[string]any{{"type": "input_text", "text": "按顺序回复 ok"}}}
@@ -95,25 +84,8 @@ func TestDeepSeekLiveUpstreamContract(t *testing.T) {
 			converted, ok := got.(dto.OpenAIResponsesRequest)
 			require.True(t, ok)
 
-			// 按线上真实请求的形状发：声明 tools、带 include 与 reasoning，
-			// 只有这样才能触发上游的工具轮校验。
-			body := mustJSON(t, map[string]any{
-				"model":             model,
-				"input":             converted.Input,
-				"max_output_tokens": 16,
-				"stream":            true,
-				"include":           []string{"reasoning.encrypted_content"},
-				"store":             false,
-				"reasoning":         map[string]any{"effort": "high", "summary": "auto"},
-				"tools": []map[string]any{{
-					"type":        "function",
-					"name":        "bash",
-					"description": "run a shell command",
-					"parameters":  map[string]any{"type": "object", "properties": map[string]any{"command": map[string]any{"type": "string"}}, "required": []string{"command"}},
-				}},
-			})
 			caseSession := fmt.Sprintf("%s-%d-%d", session, time.Now().UnixNano(), index)
-			status, responseBody := postDeepSeekLiveUpstream(t, client, baseURL, apiKey, caseSession, body)
+			status, responseBody := postDeepSeekLiveUpstream(t, client, baseURL, apiKey, caseSession, deepSeekLiveBody(t, model, converted.Input))
 
 			if tc.reject {
 				require.Equal(t, http.StatusBadRequest, status, "上游不再拒绝 assistant message → reasoning，规则已变：%s", responseBody)
@@ -124,6 +96,71 @@ func TestDeepSeekLiveUpstreamContract(t *testing.T) {
 			require.True(t, status >= 200 && status < 300, "上游返回 %d：%s", status, responseBody)
 		})
 	}
+}
+
+// 子代理形状（2026-09-18 生产 7 次 400 的现场）：上游把 agent_message 整条丢掉，
+// 剩下没有 reasoning 的 assistant message 收尾就 400；改写成 user 轮后必须 200。
+func TestDeepSeekLiveUpstreamAgentMessage(t *testing.T) {
+	baseURL, apiKey, model, session := deepSeekLiveTarget(t)
+	client := &http.Client{Timeout: 120 * time.Second}
+
+	shape := []map[string]any{
+		{"type": "message", "role": "user", "content": []map[string]any{{"type": "input_text", "text": "按顺序回复 ok"}}},
+		{"type": "message", "role": "assistant", "phase": "final_answer", "content": []map[string]any{{"type": "output_text", "text": "你还没给我任务"}}},
+		{"type": "agent_message", "author": "/root", "recipient": "/root/w", "id": "amsg_live_1", "content": []map[string]any{
+			{"type": "input_text", "text": "Message Type: NEW_TASK\nTask name: /root/w\nSender: /root\nPayload:\n"},
+			{"type": "encrypted_content", "encrypted_content": "Reply with exactly one word: BANANA"},
+		}},
+	}
+	raw := mustJSON(t, shape)
+
+	status, responseBody := postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
+		fmt.Sprintf("%s-agent-raw-%d", session, time.Now().UnixNano()), deepSeekLiveBody(t, model, raw))
+	require.Equal(t, http.StatusBadRequest, status, "上游不再拒绝尾部 assistant message，规则已变：%s", responseBody)
+	require.Contains(t, responseBody, "reasoning_text")
+
+	normalized := normalizeDeepSeekAgentMessages(raw)
+	status, responseBody = postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
+		fmt.Sprintf("%s-agent-fix-%d", session, time.Now().UnixNano()), deepSeekLiveBody(t, model, normalized))
+	require.True(t, status >= 200 && status < 300, "上游拒绝了规范化后的 payload：%s", responseBody)
+}
+
+func deepSeekLiveTarget(t *testing.T) (baseURL, apiKey, model, session string) {
+	t.Helper()
+	baseURL = strings.TrimSpace(os.Getenv("AI_COVE_DEEPSEEK_E2E_BASE_URL"))
+	apiKey = strings.TrimSpace(os.Getenv("AI_COVE_DEEPSEEK_E2E_API_KEY"))
+	if baseURL == "" || apiKey == "" {
+		t.Skip("set AI_COVE_DEEPSEEK_E2E_BASE_URL and AI_COVE_DEEPSEEK_E2E_API_KEY to replay the DeepSeek contract against the real upstream")
+	}
+	model = strings.TrimSpace(os.Getenv("AI_COVE_DEEPSEEK_E2E_MODEL"))
+	if model == "" {
+		model = "deepseek-v4.1-flash"
+	}
+	session = strings.TrimSpace(os.Getenv("AI_COVE_DEEPSEEK_E2E_SESSION"))
+	if session == "" {
+		session = "ai-cove-live-e2e"
+	}
+	return baseURL, apiKey, model, session
+}
+
+// 按线上真实请求的形状发：声明 tools、带 include 与 reasoning，只有这样才能触发上游的校验。
+func deepSeekLiveBody(t *testing.T, model string, input json.RawMessage) []byte {
+	t.Helper()
+	return mustJSON(t, map[string]any{
+		"model":             model,
+		"input":             input,
+		"max_output_tokens": 16,
+		"stream":            true,
+		"include":           []string{"reasoning.encrypted_content"},
+		"store":             false,
+		"reasoning":         map[string]any{"effort": "high", "summary": "auto"},
+		"tools": []map[string]any{{
+			"type":        "function",
+			"name":        "bash",
+			"description": "run a shell command",
+			"parameters":  map[string]any{"type": "object", "properties": map[string]any{"command": map[string]any{"type": "string"}}, "required": []string{"command"}},
+		}},
+	})
 }
 
 func postDeepSeekLiveUpstream(t *testing.T, client *http.Client, url, apiKey, session string, body []byte) (int, string) {

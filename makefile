@@ -60,7 +60,7 @@ deepseek-gate:
 #   AI_COVE_DEEPSEEK_E2E_API_KEY=sk-...
 deepseek-live-e2e:
 	@echo "Running DeepSeek live upstream end-to-end checks..."
-	@GOWORK=off go test ./relay/channel/deepseek/ -run TestDeepSeekLiveUpstreamContract -count=1 -v
+	@GOWORK=off go test ./relay/channel/deepseek/ -run TestDeepSeekLiveUpstream -count=1 -v
 
 reset-setup:
 	@echo "Resetting local setup wizard state..."

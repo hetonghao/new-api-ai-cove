@@ -118,6 +118,26 @@ func TestConvertOpenAIResponsesRequestPreparesDeepSeekLikeNativeAdaptor(t *testi
 	require.Equal(t, []string{"message"}, inputTypes(t, converted.Input))
 }
 
+// D-2 / D-7 这类 type 60 渠道走 newapi adaptor，但 DeepSeek 上游的 responses 规范化
+// 必须照样生效：agent_message 会被 zen 上游整条丢掉，留下 assistant message 收尾即 400。
+func TestConvertOpenAIResponsesRequestRewritesAgentMessageForDeepSeek(t *testing.T) {
+	req := dto.OpenAIResponsesRequest{
+		Model: "deepseek-v4.1-flash",
+		Input: mustJSON(t, []map[string]any{
+			{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "你还没给我任务"}}},
+			{"type": "agent_message", "author": "/root", "recipient": "/root/x", "id": "amsg_1",
+				"content": []map[string]any{{"type": "input_text", "text": "Message Type: NEW_TASK\nPayload:\n"}}},
+		}),
+	}
+
+	got, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, nil, req)
+	require.NoError(t, err)
+	converted, ok := got.(dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+	require.Equal(t, []string{"message", "message"}, inputTypes(t, converted.Input))
+	require.Equal(t, "user", gjson.GetBytes(converted.Input, "1.role").String())
+}
+
 func TestConvertOpenAIResponsesRequestSkipsNonDeepSeek(t *testing.T) {
 	req := dto.OpenAIResponsesRequest{
 		Model: "gpt-4.1",
