@@ -20,3 +20,14 @@ func TestTransportCapabilitiesRouteRequiresTokenAuth(t *testing.T) {
 	engine.ServeHTTP(recorder, request)
 	require.Equal(t, http.StatusUnauthorized, recorder.Code)
 }
+
+func TestMediaModelsRouteRequiresTokenAuth(t *testing.T) {
+	setupTransportAckRouteTestDB(t)
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	SetRelayRouter(engine)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/media/models", nil)
+	engine.ServeHTTP(recorder, request)
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+}

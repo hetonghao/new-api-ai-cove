@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"maps"
 	"strconv"
 	"strings"
@@ -205,6 +206,9 @@ func loadOptionsFromDatabase() {
 			passkeyOptions[option.Key] = option.Value
 			continue
 		}
+		if option.Key == MediaModelsPolicyOption {
+			continue
+		}
 		err := updateOptionMap(option.Key, option.Value)
 		if err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
@@ -222,6 +226,9 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if key == MediaModelsPolicyOption {
+		return errors.New("use the media model policy endpoint")
+	}
 	if key == operation_setting.ToolPriceOptionKey {
 		return operation_setting.ValidateToolPricesJSON(value)
 	}

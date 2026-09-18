@@ -29,6 +29,11 @@ func SetRelayRouter(router *gin.Engine) {
 	{
 		transportCapabilitiesRouter.GET("", controller.TransportCapabilities)
 	}
+	mediaRouter := router.Group("/v1/media/models")
+	mediaRouter.Use(middleware.RouteTag("relay"), middleware.TokenAuth())
+	{
+		mediaRouter.GET("", controller.MediaModels)
+	}
 	// https://platform.openai.com/docs/api-reference/introduction
 	modelsRouter := router.Group("/v1/models")
 	modelsRouter.Use(middleware.RouteTag("relay"))
