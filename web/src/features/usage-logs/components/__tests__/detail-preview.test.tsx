@@ -400,6 +400,40 @@ test('settled unit prices apply only recorded matched rules and the group ratio'
   expect(await screen.findByText('$7 × 0.5 × 0.8 = $2.8')).toBeVisible()
 })
 
+test('settled usage cost shows recorded token formula behind a collapsed control', async () => {
+  const preview = renderPreview(
+    {
+      billing_mode: 'tiered_expr',
+      expr_b64: btoa('tier("base", p * 7 + c * 30 + cr * 0.16)'),
+      matched_tier: 'base',
+      group_ratio: 0.8,
+      billing_tokens: { p: 1000, c: 200, cr: 500 },
+      request_rules: [
+        { cond: 'hour("Asia/Shanghai") >= 12', multiplier: 0.5, matched: true },
+      ],
+    },
+    false
+  )
+  fireEvent.click(preview)
+
+  const usageTable = within(
+    await screen.findByRole('table', { name: 'Usage cost' })
+  )
+  expect(usageTable.getByRole('row', { name: /Input 1,000/ })).toBeVisible()
+  expect(usageTable.getByRole('row', { name: /Output 200/ })).toBeVisible()
+  expect(usageTable.getByRole('row', { name: /Cache Read 500/ })).toBeVisible()
+  expect(screen.getByText('Total usage cost')).toBeVisible()
+  expect(screen.queryByText(/1,000,000 × 1,000/)).not.toBeInTheDocument()
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+
+  fireEvent.click(
+    screen.getByRole('button', { name: 'View usage cost formula' })
+  )
+  expect(
+    await screen.findByText(/\$2\.8 ÷ 1,000,000 × 1,000 = \$0\.0028/)
+  ).toBeVisible()
+})
+
 test.each([
   { user_group_ratio: 0.2, group_ratio: 0.8, expected: 'Input $7 $1.4' },
   { user_group_ratio: 0, group_ratio: 0.8, expected: 'Input $7 $0' },

@@ -30,10 +30,15 @@ import { normalizeTierLabel } from '@/features/pricing/lib/billing-expr'
 import { compileBillingExpression } from '@/features/pricing/lib/billing-expression/parser'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 
+import type { UsageLog } from '../../data/schema'
 import { decodeBillingExprB64, getTieredBillingSummary } from '../../lib/format'
 import type { LogOtherData } from '../../types'
+import { SettledUsageCost } from './settled-usage-cost'
 
-export function SettledUnitPrices(props: { other: LogOtherData }) {
+export function SettledUnitPrices(props: {
+  other: LogOtherData
+  log: UsageLog
+}) {
   const { t } = useTranslation()
   const other = props.other
   if (other.is_task) return null
@@ -194,6 +199,17 @@ export function SettledUnitPrices(props: { other: LogOtherData }) {
           </div>
         </CollapsibleContent>
       </Collapsible>
+      {props.log.type === 2 && summary.tier.billingUnit !== 'request' && (
+        <SettledUsageCost
+          log={props.log}
+          other={other}
+          prices={rows.map((row) => ({
+            field: row.field,
+            label: row.shortLabel,
+            price: row.price * conditionRatio * groupRatio,
+          }))}
+        />
+      )}
     </section>
   )
 }

@@ -344,6 +344,11 @@ export function hasAnyCacheTokens(
 ): boolean {
   if (!other) return false
   return (
+    BILLING_PRICING_VARS.some(
+      (variable) =>
+        variable.group === 'cache' &&
+        (other.billing_tokens?.[variable.key] ?? 0) > 0
+    ) ||
     (other.cache_tokens || 0) > 0 ||
     (other.image_cache_tokens || 0) > 0 ||
     (other.cache_creation_tokens || 0) > 0 ||
