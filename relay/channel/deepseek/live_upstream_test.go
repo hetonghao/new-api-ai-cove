@@ -179,3 +179,26 @@ func postDeepSeekLiveUpstream(t *testing.T, client *http.Client, url, apiKey, se
 	require.NoError(t, err)
 	return response.StatusCode, string(payload)
 }
+
+// 侧边会话投递形状（2026-09-18 23:01 生产 422 现场）：Codex 会发出没有 call_id 的
+// function_call_output，上游对这种缺字段是硬拒（不是静默忽略）；改写成 user 轮后必须放行。
+// 只断"被拒 + 拒的理由是 call_id"，具体 4xx 码不锁死。
+func TestDeepSeekLiveUpstreamCallLessToolOutput(t *testing.T) {
+	baseURL, apiKey, model, session := deepSeekLiveTarget(t)
+	client := &http.Client{Timeout: 120 * time.Second}
+
+	raw := mustJSON(t, []map[string]any{
+		{"type": "message", "role": "user", "content": []map[string]any{{"type": "input_text", "text": "按顺序回复 ok"}}},
+		{"type": "function_call_output", "id": "fco_live_1", "name": "send_message_to_thread", "namespace": "codex_app",
+			"output": "<codex_delegation><input>Reply with exactly one word: BANANA</input></codex_delegation>"},
+	})
+
+	status, responseBody := postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
+		fmt.Sprintf("%s-idless-raw-%d", session, time.Now().UnixNano()), deepSeekLiveBody(t, model, raw))
+	require.GreaterOrEqual(t, status, http.StatusBadRequest, "上游不再拒绝缺 call_id 的 tool output，规则已变：%s", responseBody)
+	require.Contains(t, responseBody, "call_id")
+
+	status, responseBody = postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
+		fmt.Sprintf("%s-idless-fix-%d", session, time.Now().UnixNano()), deepSeekLiveBody(t, model, normalizeDeepSeekAgentMessages(raw)))
+	require.True(t, status >= 200 && status < 300, "上游拒绝了规范化后的 payload：%s", responseBody)
+}

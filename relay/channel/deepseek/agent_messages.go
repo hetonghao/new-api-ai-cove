@@ -17,7 +17,12 @@ import (
 // normalizeDeepSeekAgentMessages 把这类 item 改写成 user 轮，一次解决两件事。
 // encrypted_content 字段实测装的是任务明文（2026-09-18 生产 dump 逐字节还原 + 真上游
 // 直连复现），因此按 input_text 传；author / recipient / id 上游不认，丢掉。没有可读
-// 文本的项原样留下，不凭空造内容。
+// 文本的 agent_message 原样留下，不凭空造内容。
+//
+// 同类第二件：侧边会话往主会话投递消息时，Codex 会记一条没有 call_id 的
+// function_call_output（主会话里没有配对的 send_message_to_thread 调用）。上游对这种
+// 缺字段是硬失败而不是静默忽略（422 + input: missing field call_id），
+// 且这条 item 进了历史就每轮重放，整条线程从此打不通。正文照旧改写成 user 轮。
 func normalizeDeepSeekAgentMessages(input json.RawMessage) json.RawMessage {
 	if len(input) == 0 {
 		return input
@@ -29,13 +34,20 @@ func normalizeDeepSeekAgentMessages(input json.RawMessage) json.RawMessage {
 	changed := false
 	out := make([]json.RawMessage, 0, len(items))
 	for _, item := range items {
-		converted, ok := deepSeekAgentMessageAsUser(item)
-		if !ok {
-			out = append(out, item)
+		if converted, ok := deepSeekAgentMessageAsUser(item); ok {
+			changed = true
+			out = append(out, converted)
 			continue
 		}
-		changed = true
-		out = append(out, converted)
+		if isDeepSeekToolOutput(item) && toolCallID(item) == "" {
+			changed = true
+			// 缺 call_id 的工具输出上游直接 422，改写不出正文时只能丢。
+			if converted, ok := deepSeekCallLessToolOutputAsUser(item); ok {
+				out = append(out, converted)
+			}
+			continue
+		}
+		out = append(out, item)
 	}
 	if !changed {
 		return input
@@ -96,6 +108,25 @@ func deepSeekAgentMessageAsUser(item json.RawMessage) (json.RawMessage, bool) {
 		return nil, false
 	}
 	raw, err := common.Marshal(deepSeekUserMessage{Type: "message", Role: "user", Content: blocks})
+	if err != nil {
+		return nil, false
+	}
+	return raw, true
+}
+
+// 缺 call_id 的工具输出（2026-09-18 23:01 生产 422 现场，渠道 Console Go）：正文是别的
+// 会话投递进来的内容，改写成 user 轮保住，不再让上游按缺字段拒收整条请求。
+func deepSeekCallLessToolOutputAsUser(item json.RawMessage) (json.RawMessage, bool) {
+	var parsed struct {
+		Output string `json:"output"`
+	}
+	// ponytail: 只认字符串正文；Responses 规格允许的 content parts 数组形态当没有正文丢掉，
+	// 真在流量里见到再补解析。
+	if common.Unmarshal(item, &parsed) != nil || strings.TrimSpace(parsed.Output) == "" {
+		return nil, false
+	}
+	raw, err := common.Marshal(deepSeekUserMessage{Type: "message", Role: "user",
+		Content: []deepSeekInputTextBlock{{Type: "input_text", Text: parsed.Output}}})
 	if err != nil {
 		return nil, false
 	}
