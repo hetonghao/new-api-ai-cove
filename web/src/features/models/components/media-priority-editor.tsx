@@ -4,18 +4,142 @@ import {
   Cancel01Icon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { useId, useMemo, type KeyboardEvent } from 'react'
+import type { TFunction } from 'i18next'
+import { ChevronDown } from 'lucide-react'
+import { useId, useMemo, useState, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import { Combobox } from '@/components/ui/combobox'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 
-import type { MediaModelProfile, MediaModelType } from '../lib/media-policy'
+import type {
+  MediaModelProfile,
+  MediaModelType,
+  MediaOperation,
+  MediaParameter,
+  MediaReference,
+} from '../lib/media-policy'
 
 export const MEDIA_SELECTION_HINT_MAX = 2000
+
+function describeMediaParameter(
+  name: string,
+  parameter: MediaParameter
+): string {
+  if (parameter.type === 'integer') {
+    return `${name}: ${parameter.minimum}–${parameter.maximum}`
+  }
+  if (parameter.enum && parameter.enum.length > 0) {
+    return `${name}: ${parameter.enum.join(' | ')}`
+  }
+  return `${name}: ${parameter.type}`
+}
+
+function describeMediaParameters(
+  t: TFunction,
+  operation: MediaOperation
+): string {
+  const entries = Object.entries(operation.parameters)
+  if (entries.length === 0) return t('None')
+  return entries
+    .map(([name, parameter]) => describeMediaParameter(name, parameter))
+    .join(', ')
+}
+
+function describeMediaReference(
+  t: TFunction,
+  reference: MediaReference
+): string {
+  if (reference.input === 'none') return t('Not accepted')
+  return t('{{mode}} input, max {{count}}', {
+    mode: reference.input,
+    count: reference.max_images,
+  })
+}
+
+export function MediaCapabilityDetails(props: {
+  type: MediaModelType
+  models: MediaModelProfile[]
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const typeModels = useMemo(
+    () => props.models.filter((profile) => profile.type === props.type),
+    [props.models, props.type]
+  )
+  if (typeModels.length === 0) return null
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className='rounded-lg border'
+    >
+      <CollapsibleTrigger
+        render={
+          <Button
+            type='button'
+            variant='ghost'
+            className='h-auto w-full justify-between rounded-lg px-3 py-2.5 text-sm'
+          />
+        }
+      >
+        <span>
+          <span className='block text-left font-medium'>
+            {t('Generated capabilities')}
+          </span>
+          <span className='text-muted-foreground block text-left text-xs font-normal'>
+            {t(
+              'Read-only. Resolved from model endpoints and channel routing support.'
+            )}
+          </span>
+        </span>
+        <ChevronDown
+          className={open ? 'size-4 rotate-180' : 'size-4'}
+          aria-hidden='true'
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent className='border-t px-3 py-2.5'>
+        <ul className='space-y-3'>
+          {typeModels.map((profile) => (
+            <li key={profile.id} className='space-y-1'>
+              <p className='font-mono text-xs font-medium break-all'>
+                {profile.id}
+              </p>
+              <ul className='space-y-1.5'>
+                {Object.entries(profile.operations).map(([name, operation]) => (
+                  <li key={name} className='border-border border-l-2 pl-2'>
+                    <p className='text-xs'>
+                      <span className='font-medium'>{name}</span>{' '}
+                      <span className='text-muted-foreground'>
+                        {operation.protocol} · {operation.path}
+                      </span>
+                    </p>
+                    <p className='text-muted-foreground text-xs'>
+                      {t('Parameters')}:{' '}
+                      {describeMediaParameters(t, operation)}
+                    </p>
+                    <p className='text-muted-foreground text-xs'>
+                      {t('Reference images')}:{' '}
+                      {describeMediaReference(t, operation.reference)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
 
 export function MediaSelectionHintField(props: {
   id: string
@@ -244,6 +368,7 @@ export function MediaPriorityEditor(props: {
           })}
         </ol>
       )}
+      <MediaCapabilityDetails type={props.type} models={props.models} />
     </div>
   )
 }

@@ -22,6 +22,7 @@ import {
   parseMediaModelsJson,
   validateMediaPolicyDraft,
   type MediaModelProfile,
+  type MediaParameter,
   type MediaPolicy,
   type MediaPolicySnapshot,
 } from '../lib/media-policy'
@@ -50,6 +51,18 @@ function imageProfile(id: string, hint = ''): MediaModelProfile {
 }
 
 function videoProfile(id: string): MediaModelProfile {
+  const parameters: Record<string, MediaParameter> = {
+    seconds: { type: 'integer', minimum: 1, maximum: 15 },
+    size: {
+      type: 'string',
+      enum: ['720x1280', '1280x720', '1024x1792', '1792x1024'],
+    },
+    aspect_ratio: {
+      type: 'string',
+      enum: ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3'],
+    },
+    resolution: { type: 'string', enum: ['480p', '720p'] },
+  }
   return {
     id,
     type: 'video',
@@ -57,8 +70,14 @@ function videoProfile(id: string): MediaModelProfile {
       text_to_video: {
         protocol: 'openai_video',
         path: '/v1/videos',
-        parameters: {},
+        parameters,
         reference: { input: 'none', max_images: 0 },
+      },
+      image_to_video: {
+        protocol: 'openai_video',
+        path: '/v1/videos',
+        parameters,
+        reference: { input: 'url', max_images: 1 },
       },
     },
   }
@@ -452,6 +471,34 @@ it('renders localized empty states without raw media type text', async () => {
   ).toBeInTheDocument()
   expect(screen.getByText(/没有可用的视频模型。请先在/)).toBeInTheDocument()
   expect(screen.queryByText(/No (Image|Video) models found/)).toBeNull()
+})
+
+it('shows generated capabilities in a read-only collapsible per media type', async () => {
+  mount(registered)
+  await screen.findByLabelText('Add image model')
+  const triggers = screen.getAllByRole('button', {
+    name: /Generated capabilities/,
+  })
+  expect(triggers).toHaveLength(2)
+  expect(screen.queryByText('image_to_video')).toBeNull()
+  await userEvent.click(triggers[1])
+  expect(await screen.findByText('image_to_video')).toBeInTheDocument()
+  expect(screen.getAllByText(/seconds: 1–15/)).toHaveLength(2)
+  expect(screen.getAllByText(/resolution: 480p \| 720p/)).toHaveLength(2)
+  expect(screen.getByText(/url input, max 1/)).toBeInTheDocument()
+  await userEvent.click(triggers[0])
+  expect((await screen.findAllByText('text_to_image')).length).toBeGreaterThan(
+    0
+  )
+  expect(screen.getAllByText(/Not accepted/).length).toBeGreaterThan(0)
+})
+
+it('hides capability details when no media models of that type exist', async () => {
+  mount(empty)
+  await screen.findByLabelText('Add image model')
+  expect(
+    screen.queryByRole('button', { name: /Generated capabilities/ })
+  ).toBeNull()
 })
 
 it('shows a policy load error and can retry', async () => {
