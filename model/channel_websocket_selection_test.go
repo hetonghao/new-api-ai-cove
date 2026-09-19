@@ -140,7 +140,8 @@ func insertWebSocketSelectionChannel(t *testing.T, id int, channelType int, supp
 		Priority: common.GetPointer(int64(0)),
 		Weight:   common.GetPointer(uint(100)),
 	}
-	otherSettings := dto.ChannelOtherSettings{SupportsWebSockets: supportsWebSockets}
+	channel.SetSetting(dto.ChannelSettings{ResponsesWebSocketEnabled: supportsWebSockets})
+	otherSettings := dto.ChannelOtherSettings{}
 	if channelType == constant.ChannelTypeAdvancedCustom {
 		otherSettings.AdvancedCustom = &dto.AdvancedCustomConfig{
 			Routes: []dto.AdvancedCustomRoute{{

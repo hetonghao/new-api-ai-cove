@@ -376,6 +376,10 @@ func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBod
 	return resp, nil
 }
 
+// DoWssRequest dials the adaptor's upstream over WebSocket for the realtime
+// and Responses WebSocket relays. It honors the channel proxy, is bound to the
+// request context, and reports a rejected handshake as a *types.NewAPIError
+// carrying the upstream status code (types.NewError preserves it).
 func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody io.Reader) (*websocket.Conn, error) {
 	fullRequestURL, err := a.GetRequestURL(info)
 	if err != nil {

@@ -22,6 +22,7 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -110,13 +111,12 @@ func prepareResponsesWebSocketRequestWithInheritedState(baseCtx *gin.Context, pa
 		inheritResponsesWebSocketBillingInfo(inheritedBillingInfo, state.info)
 	}
 
-	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
-	needCountToken := constant.CountToken
 	var meta *types.TokenCountMeta
-	if needSensitiveCheck || needCountToken {
+	if setting.ShouldCheckPromptSensitive() || constant.CountToken {
 		meta = request.GetTokenCountMeta()
 	} else {
-		meta = fastTokenCountMetaForPricing(request)
+		// Avoid building CombineText when only the pricing quantities are needed.
+		meta = &types.TokenCountMeta{TokenType: types.TokenTypeTokenizer, MaxTokens: int(lo.FromPtr(request.MaxOutputTokens))}
 	}
 	if apiErr := applyRelaySensitiveWordGate(requestCtx, meta); apiErr != nil {
 		common.CleanupBodyStorage(requestCtx)

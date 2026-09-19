@@ -13,13 +13,13 @@ func TestStreamStatus_TerminalEventKeepsLateClientDisconnectNormal(t *testing.T)
 	t.Parallel()
 
 	s := NewStreamStatus()
-	s.MarkTerminalEventSeen()
+	s.MarkCompleted()
 	// 客户端在收到终态事件后立刻断开；这个取消不能把已完成的流记成错误。
 	s.SetEndReason(StreamEndReasonClientGone, context.Canceled)
 
 	assert.Equal(t, StreamEndReasonClientGone, s.EndReason)
 	assert.True(t, s.IsNormalEnd())
-	assert.Contains(t, s.Summary(), "terminal_event_seen=true")
+	assert.Contains(t, s.Summary(), "response=completed")
 }
 
 func TestStreamStatus_ClientDisconnectWithoutTerminalEventStaysAbnormal(t *testing.T) {
@@ -31,11 +31,11 @@ func TestStreamStatus_ClientDisconnectWithoutTerminalEventStaysAbnormal(t *testi
 	assert.False(t, s.IsNormalEnd())
 }
 
-func TestStreamStatus_MarkTerminalEventSeen_NilSafe(t *testing.T) {
+func TestStreamStatus_MarkCompleted_NilSafe(t *testing.T) {
 	t.Parallel()
 
 	var s *StreamStatus
-	s.MarkTerminalEventSeen()
+	s.MarkCompleted()
 
 	assert.True(t, s.IsNormalEnd())
 }

@@ -11,6 +11,8 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/wsmanager"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -51,6 +53,33 @@ func BeginResponsesWebSocketDrain() {
 	if state.draining.CompareAndSwap(false, true) {
 		close(state.notify)
 	}
+}
+
+// responsesWebSocketChannelDrain follows the pinned upstream channel in
+// wsmanager so a disabled or deleted channel drains the session.
+type responsesWebSocketChannelDrain struct {
+	notify     chan string
+	unregister func()
+}
+
+func newResponsesWebSocketChannelDrain() *responsesWebSocketChannelDrain {
+	return &responsesWebSocketChannelDrain{notify: make(chan string, 1)}
+}
+
+func (d *responsesWebSocketChannelDrain) bind(channel *model.Channel) {
+	if d.unregister != nil {
+		d.unregister()
+		d.unregister = nil
+	}
+	if channel == nil {
+		return
+	}
+	d.unregister = wsmanager.Register(channel.Id, wsmanager.KindResponses, func(reason string) {
+		select {
+		case d.notify <- reason:
+		default:
+		}
+	})
 }
 
 type responsesWebSocketFrame struct {
@@ -113,7 +142,7 @@ func cleanupResponsesWebSocketSession(active **responsesWebSocketRequestState, u
 			common.SetContextKey((*active).ctx, constant.ContextKeyWebSocketCloseReason, reason)
 		}
 		if reason == responsesWebSocketCleanupClientDisconnected {
-			finalizeFailedResponsesWebSocketRequest(*active)
+			finalizeFailedResponsesWebSocketRequest(*active, nil)
 		} else {
 			failResponsesWebSocketRequest(*active, nil, reason)
 		}

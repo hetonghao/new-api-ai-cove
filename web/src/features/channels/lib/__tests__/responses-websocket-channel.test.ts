@@ -19,15 +19,18 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { RESPONSES_WEBSOCKET_CHANNEL_TYPES } from '../../constants'
 import { channelSchema } from '../../types'
 import {
   CHANNEL_FORM_DEFAULT_VALUES,
   transformChannelToFormDefaults,
   transformFormDataToCreatePayload,
 } from '../channel-form'
+import {
+  RESPONSES_WEBSOCKET_CHANNEL_TYPES,
+  supportsResponsesWebSocket,
+} from '../responses-websocket'
 
-function channelWithSettings(type: number, settings: string) {
+function channelWithSetting(type: number, setting: string) {
   return channelSchema.parse({
     id: 1,
     type,
@@ -38,26 +41,26 @@ function channelWithSettings(type: number, settings: string) {
     test_time: 0,
     response_time: 0,
     balance_updated_time: 0,
-    settings,
+    setting,
   })
 }
 
 describe('Responses WebSocket channel settings', () => {
   test('includes xAI as a supported channel type', () => {
-    assert.equal(RESPONSES_WEBSOCKET_CHANNEL_TYPES.has(48), true)
+    assert.equal(supportsResponsesWebSocket(48), true)
   })
 
   test('defaults to disabled and restores enabled OpenAI settings', () => {
-    assert.equal(CHANNEL_FORM_DEFAULT_VALUES.supports_websockets, false)
+    assert.equal(CHANNEL_FORM_DEFAULT_VALUES.responses_websocket_enabled, false)
     assert.equal(
       transformChannelToFormDefaults(
-        channelWithSettings(1, '{"supports_websockets":true}')
-      ).supports_websockets,
+        channelWithSetting(1, '{"responses_websocket_enabled":true}')
+      ).responses_websocket_enabled,
       true
     )
   })
 
-  test('serializes the capability for all Responses WebSocket channel types', () => {
+  test('serializes the toggle for all Responses WebSocket channel types', () => {
     for (const type of RESPONSES_WEBSOCKET_CHANNEL_TYPES) {
       const channel = transformFormDataToCreatePayload({
         ...CHANNEL_FORM_DEFAULT_VALUES,
@@ -65,11 +68,12 @@ describe('Responses WebSocket channel settings', () => {
         type,
         key: 'test-key',
         models: 'gpt-5.4',
-        supports_websockets: true,
+        responses_websocket_enabled: true,
       })
       assert.equal(
-        JSON.parse(String(channel.channel.settings)).supports_websockets,
-        true
+        JSON.parse(String(channel.channel.setting)).responses_websocket_enabled,
+        true,
+        `channel type ${type}`
       )
     }
 
@@ -79,11 +83,10 @@ describe('Responses WebSocket channel settings', () => {
       type: 14,
       key: 'test-key',
       models: 'claude-sonnet-4-5',
-      settings: '{"supports_websockets":true}',
-      supports_websockets: true,
+      responses_websocket_enabled: true,
     })
     assert.equal(
-      'supports_websockets' in JSON.parse(String(nonOpenAI.channel.settings)),
+      JSON.parse(String(nonOpenAI.channel.setting)).responses_websocket_enabled,
       false
     )
   })

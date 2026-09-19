@@ -25,6 +25,10 @@ import {
   DataTableRow,
   useDataTable,
 } from '@/components/data-table'
+import {
+  getAdminPlans,
+  getSelfSubscriptionFull,
+} from '@/features/subscriptions/api'
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { createServerError } from '@/lib/server-error-message'
@@ -129,6 +133,21 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   } = useUsageLogsContext()
   const canUseAdminControls = adminControls ?? isAdminView
   const canHideSelf = hideSelfControl ?? isAdminView
+  const { data: showWalletSource = false } = useQuery({
+    queryKey: ['usage-log-wallet-source', isAdminView, currentUserId],
+    enabled: logCategory === 'common' && currentUserId != null,
+    queryFn: async () => {
+      if (isAdminView) {
+        const result = await getAdminPlans()
+        return result.success && (result.data?.length ?? 0) > 0
+      }
+
+      const result = await getSelfSubscriptionFull()
+      const subscriptions =
+        result.data?.all_subscriptions ?? result.data?.subscriptions
+      return result.success && (subscriptions?.length ?? 0) > 0
+    },
+  })
 
   const {
     columnFilters,
@@ -222,7 +241,12 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   const logs = showPrototypePreview
     ? [PROTOTYPE_SOURCE_MARKER_LOG]
     : fetchedLogs
-  const columns = useColumnsByCategory(logCategory, canUseAdminControls, isRoot)
+  const columns = useColumnsByCategory(
+    logCategory,
+    canUseAdminControls,
+    isRoot,
+    showWalletSource
+  )
   const isLoadingData = isLoading || (isFetching && !data)
 
   const { table } = useDataTable({

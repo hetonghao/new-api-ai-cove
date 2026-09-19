@@ -35,8 +35,8 @@ func TestPreserveCapacityAttemptErrorWhenFinalAttemptLosesAuth(t *testing.T) {
 		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 		capacity := types.NewErrorWithStatusCode(errors.New(string(code)), code, 503)
 		authUnavailable := types.NewErrorWithStatusCode(errors.New("auth unavailable"), types.ErrorCodeAuthUnavailable, 503)
-		recordRelayAttemptError(ctx, capacity)
-		recordRelayAttemptError(ctx, authUnavailable)
+		service.RecordRelayAttemptError(ctx, capacity)
+		service.RecordRelayAttemptError(ctx, authUnavailable)
 		require.Same(t, capacity, preserveCapacityAttemptError(ctx, types.RelayFormatOpenAI, authUnavailable))
 	}
 	realtimeCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
@@ -48,8 +48,8 @@ func TestPreserveCapacityAttemptErrorKeepsEvidenceOverInternalChannelExhaustion(
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	capacity := types.NewErrorWithStatusCode(errors.New("model capacity"), types.ErrorCodeModelCapacity, 503)
 	channelExhausted := types.NewError(errors.New("no channel"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
-	recordRelayAttemptError(ctx, capacity)
-	recordRelayAttemptError(ctx, channelExhausted)
+	service.RecordRelayAttemptError(ctx, capacity)
+	service.RecordRelayAttemptError(ctx, channelExhausted)
 	require.Same(t, capacity, preserveCapacityAttemptError(ctx, types.RelayFormatOpenAI, channelExhausted))
 }
 
@@ -57,8 +57,8 @@ func TestPreserveCapacityAttemptErrorRecognizesSanitizedOverloadMessage(t *testi
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	capacity := types.NewErrorWithStatusCode(errors.New("Our servers are currently overloaded."), types.ErrorCode("unknown_error"), 503)
 	authUnavailable := types.NewErrorWithStatusCode(errors.New("auth unavailable"), types.ErrorCodeAuthUnavailable, 503)
-	recordRelayAttemptError(ctx, capacity)
-	recordRelayAttemptError(ctx, authUnavailable)
+	service.RecordRelayAttemptError(ctx, capacity)
+	service.RecordRelayAttemptError(ctx, authUnavailable)
 	require.Same(t, capacity, preserveCapacityAttemptError(ctx, types.RelayFormatOpenAI, authUnavailable))
 }
 
@@ -74,11 +74,11 @@ func TestPreserveCapacityAttemptErrorRecognizesSelectedModelCapacityMessage(t *t
 		types.ErrorCodeAuthUnavailable,
 		http.StatusUnauthorized,
 	)
-	recordRelayAttemptError(ctx, capacity)
-	recordRelayAttemptError(ctx, authUnavailable)
+	service.RecordRelayAttemptError(ctx, capacity)
+	service.RecordRelayAttemptError(ctx, authUnavailable)
 
 	retryCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	require.True(t, shouldRetry(retryCtx, capacity, 1))
+	require.True(t, service.ShouldRetryRelayError(retryCtx, capacity, 1))
 	require.Same(t, capacity, preserveCapacityAttemptError(ctx, types.RelayFormatOpenAI, authUnavailable))
 }
 
@@ -94,8 +94,8 @@ func TestPreserveCapacityAttemptErrorKeepsEvidenceOverUpstream429(t *testing.T) 
 		types.ErrorCode("rate_limit_exceeded"),
 		http.StatusTooManyRequests,
 	)
-	recordRelayAttemptError(ctx, capacity)
-	recordRelayAttemptError(ctx, rateLimited)
+	service.RecordRelayAttemptError(ctx, capacity)
+	service.RecordRelayAttemptError(ctx, rateLimited)
 
 	require.Same(t, capacity, preserveCapacityAttemptError(ctx, types.RelayFormatOpenAI, rateLimited))
 }
@@ -113,8 +113,8 @@ func TestPreserveCapacityAttemptErrorDoesNotReplaceSkipRetry429(t *testing.T) {
 		http.StatusTooManyRequests,
 		types.ErrOptionWithSkipRetry(),
 	)
-	recordRelayAttemptError(ctx, capacity)
-	recordRelayAttemptError(ctx, skipRetry429)
+	service.RecordRelayAttemptError(ctx, capacity)
+	service.RecordRelayAttemptError(ctx, skipRetry429)
 
 	require.Same(t, skipRetry429, preserveCapacityAttemptError(ctx, types.RelayFormatOpenAI, skipRetry429))
 }
@@ -167,7 +167,7 @@ func TestGetChannelSyntheticRetainsCachedRouteIdentity(t *testing.T) {
 func TestShouldRetryHonorsExhaustedBudgetForChannelError(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	channelErr := types.NewError(errors.New("channel failure"), types.ErrorCodeChannelNoAvailableKey)
-	require.False(t, shouldRetry(ctx, channelErr, 0))
+	require.False(t, service.ShouldRetryRelayError(ctx, channelErr, 0))
 }
 
 func TestShouldRetryHonorsSkipRetryForChannelError(t *testing.T) {
@@ -177,5 +177,5 @@ func TestShouldRetryHonorsSkipRetryForChannelError(t *testing.T) {
 		types.ErrorCodeChannelNoAvailableKey,
 		types.ErrOptionWithSkipRetry(),
 	)
-	require.False(t, shouldRetry(ctx, channelErr, 1))
+	require.False(t, service.ShouldRetryRelayError(ctx, channelErr, 1))
 }

@@ -147,7 +147,7 @@ func insertResponsesWebSocketTestChannel(t *testing.T, db *gorm.DB, spec respons
 		Group:    group,
 		Priority: &spec.priority,
 	}
-	channel.SetOtherSettings(dto.ChannelOtherSettings{SupportsWebSockets: true})
+	channel.SetSetting(dto.ChannelSettings{ResponsesWebSocketEnabled: true})
 	require.NoError(t, db.Create(&channel).Error)
 	for _, modelName := range models {
 		require.NoError(t, db.Create(&model.Ability{

@@ -289,7 +289,7 @@ func filterAbilitiesByWebSocketCapability(abilities []Ability, excludedChannelID
 	}
 	enabled := make(map[int]struct{}, len(channels))
 	for _, channel := range channels {
-		if isResponsesWebSocketChannelType(channel.Type) && channel.GetOtherSettings().SupportsWebSockets {
+		if isResponsesWebSocketChannelType(channel.Type) && channel.GetSetting().ResponsesWebSocketEnabled {
 			enabled[channel.Id] = struct{}{}
 		}
 	}

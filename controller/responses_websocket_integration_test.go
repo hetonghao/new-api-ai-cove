@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/pkg/wsmanager"
 	"net/http"
 	"testing"
 	"time"
@@ -69,6 +70,62 @@ func TestResponsesWebSocket_drains_active_session_after_terminal_frame(t *testin
 	close(release)
 	require.Equal(t, "response.created", gjson.GetBytes(readResponsesWebSocketTestEvent(t, client), "type").String())
 	require.Equal(t, "response.completed", gjson.GetBytes(readResponsesWebSocketTestEvent(t, client), "type").String())
+	require.Equal(t, websocket.CloseServiceRestart, readResponsesWebSocketTestClose(t, client).Code)
+}
+
+func TestResponsesWebSocket_channel_disable_drains_active_session_after_terminal_frame(t *testing.T) {
+	db := setupResponsesWebSocketHandlerTest(t)
+	requestReceived := make(chan struct{})
+	release := make(chan struct{})
+	upstream := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			assert.NoError(t, err, "read upstream request")
+			return
+		}
+		close(requestReceived)
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.created","response":{"id":"resp-channel-drain"}}`)); err != nil {
+			assert.NoError(t, err, "write response.created")
+			return
+		}
+		<-release
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.completed","response":{"status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`)); err != nil {
+			assert.NoError(t, err, "write response.completed")
+		}
+	})
+	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 302, baseURL: upstream.server.URL, priority: 0})
+	client := dialResponsesWebSocketTestClient(t)
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"gpt-4o-mini","input":[]}`)))
+	select {
+	case <-requestReceived:
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "timeout waiting for upstream request")
+	}
+
+	// 渠道被禁用：活动响应必须跑完，然后以 1012 关闭，让 Turbo 透明重连。
+	require.Equal(t, 1, wsmanager.CloseChannel(302, "channel disabled"))
+	close(release)
+	require.Equal(t, "response.created", gjson.GetBytes(readResponsesWebSocketTestEvent(t, client), "type").String())
+	require.Equal(t, "response.completed", gjson.GetBytes(readResponsesWebSocketTestEvent(t, client), "type").String())
+	closeFrame := readResponsesWebSocketTestClose(t, client)
+	require.Equal(t, websocket.CloseServiceRestart, closeFrame.Code)
+	require.Equal(t, "channel disabled", closeFrame.Text)
+}
+
+func TestResponsesWebSocket_channel_disable_closes_idle_session_with_service_restart(t *testing.T) {
+	db := setupResponsesWebSocketHandlerTest(t)
+	upstream := newResponsesWebSocketTestUpstream(t, func(conn *websocket.Conn) {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			return
+		}
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.completed","response":{"status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`))
+		_, _, _ = conn.ReadMessage()
+	})
+	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 303, baseURL: upstream.server.URL, priority: 0})
+	client := dialResponsesWebSocketTestClient(t)
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"gpt-4o-mini","input":[]}`)))
+	require.Equal(t, "response.completed", gjson.GetBytes(readResponsesWebSocketTestEvent(t, client), "type").String())
+
+	require.Eventually(t, func() bool { return wsmanager.CloseChannel(303, "channel disabled") == 1 }, 5*time.Second, 10*time.Millisecond)
 	require.Equal(t, websocket.CloseServiceRestart, readResponsesWebSocketTestClose(t, client).Code)
 }
 
@@ -347,7 +404,7 @@ func TestResponsesWebSocket_signals_http_fallback_when_no_websocket_channel_befo
 	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 106, baseURL: upstream.server.URL, priority: 0})
 	var httpOnlyChannel model.Channel
 	require.NoError(t, db.First(&httpOnlyChannel, 106).Error)
-	httpOnlyChannel.SetOtherSettings(dto.ChannelOtherSettings{SupportsWebSockets: false})
+	httpOnlyChannel.SetSetting(dto.ChannelSettings{ResponsesWebSocketEnabled: false})
 	require.NoError(t, db.Save(&httpOnlyChannel).Error)
 	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 107, baseURL: upstream.server.URL, priority: 0, models: []string{"other-model"}})
 	client := dialResponsesWebSocketTestClient(t)

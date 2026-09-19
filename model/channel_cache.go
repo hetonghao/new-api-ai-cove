@@ -269,7 +269,7 @@ func filterChannelsByWebSocketCapability(channels []int, required bool) []int {
 	filtered := make([]int, 0, len(channels))
 	for _, channelID := range channels {
 		channel, ok := channelsIDM[channelID]
-		if ok && isResponsesWebSocketChannelType(channel.Type) && channel.GetOtherSettings().SupportsWebSockets {
+		if ok && isResponsesWebSocketChannelType(channel.Type) && channel.GetSetting().ResponsesWebSocketEnabled {
 			filtered = append(filtered, channelID)
 		}
 	}
@@ -280,7 +280,7 @@ func ChannelSupportsResponsesWebSocket(channel *Channel) bool {
 	return channel != nil &&
 		channel.Status == common.ChannelStatusEnabled &&
 		isResponsesWebSocketChannelType(channel.Type) &&
-		channel.GetOtherSettings().SupportsWebSockets
+		channel.GetSetting().ResponsesWebSocketEnabled
 }
 
 func HasEnabledResponsesWebSocketChannel() (bool, error) {

@@ -387,6 +387,9 @@ func migrateDB() error {
 	if err := migrateRiskData(DB); err != nil {
 		return err
 	}
+	if err := migrateChannelResponsesWebSocketSetting(DB); err != nil {
+		return err
+	}
 	if err := InitializeUserAuthVersions(); err != nil {
 		return err
 	}

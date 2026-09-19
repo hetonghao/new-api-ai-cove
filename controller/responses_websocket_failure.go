@@ -86,10 +86,13 @@ func failPreparedResponsesWebSocketRequest(state *responsesWebSocketRequestState
 			recordRelayErrorLog(state.ctx, apiErr)
 		}
 	}
-	finalizeFailedResponsesWebSocketRequest(state)
+	finalizeFailedResponsesWebSocketRequest(state, apiErr)
 }
 
-func finalizeFailedResponsesWebSocketRequest(state *responsesWebSocketRequestState) {
+// finalizeFailedResponsesWebSocketRequest refunds and samples one failed
+// response.create. A nil apiErr means the client went away, which the shared
+// outcome classifier ignores just like an HTTP client cancellation.
+func finalizeFailedResponsesWebSocketRequest(state *responsesWebSocketRequestState, apiErr *types.NewAPIError) {
 	if state == nil {
 		return
 	}
@@ -97,8 +100,11 @@ func finalizeFailedResponsesWebSocketRequest(state *responsesWebSocketRequestSta
 		state.info.Billing.Refund(state.ctx)
 	}
 	common.CleanupBodyStorage(state.ctx)
+	if apiErr == nil {
+		apiErr = types.NewError(context.Canceled, types.ErrorCodeDoRequestFailed)
+	}
 	gopool.Go(func() {
-		perfmetrics.RecordRelaySample(state.info, false, 0)
+		perfmetrics.RecordRelayResult(context.Background(), state.info, apiErr)
 	})
 }
 

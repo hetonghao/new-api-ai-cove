@@ -50,10 +50,17 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 	drainState := responsesWebSocketDrain.Load()
 	drainCh := drainState.notify
 	draining := drainState.draining.Load()
+	drainReason := responsesWebSocketDrainReason
 	if draining {
-		_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
+		_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, drainReason)
 		return nil
 	}
+
+	// A disabled or deleted pinned channel drains this session the same way a
+	// release does: the active response finishes, then the client gets 1012 so
+	// Turbo reconnects transparently instead of surfacing a hard failure.
+	channelDrain := newResponsesWebSocketChannelDrain()
+	defer channelDrain.bind(nil)
 
 	clientFrames := startResponsesWebSocketReader(clientConn, sessionCtx.Done(), clientCodec, observability, false)
 
@@ -63,7 +70,14 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			drainCh = nil
 			draining = true
 			if active == nil {
-				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
+				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, drainReason)
+				return nil
+			}
+		case reason := <-channelDrain.notify:
+			draining = true
+			drainReason = reason
+			if active == nil {
+				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, drainReason)
 				return nil
 			}
 		case frame, ok := <-clientFrames:
@@ -72,7 +86,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				return nil
 			}
 			if draining && active == nil {
-				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
+				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, drainReason)
 				return nil
 			}
 			if frame.controlType == websocket.PongMessage {
@@ -111,11 +125,11 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				return apiErr
 			}
 			if drainState.shouldRejectNewResponse(active, eventType) {
-				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
+				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, drainReason)
 				return nil
 			}
 			if draining && (active == nil || eventType != "response.cancel") {
-				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
+				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, drainReason)
 				return nil
 			}
 
@@ -147,6 +161,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					upstreamFrames = nil
 					pinnedCtx = nil
 					pinnedChannel = nil
+					channelDrain.bind(nil)
 					sessionModel = ""
 				}
 				observability.acceptResponseCreate()
@@ -164,6 +179,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 						observability.upstreamDial(common.GetContextKeyString(state.ctx, common.ResponsesWebSocketUpstreamTraceKey))
 						pinnedCtx = state.ctx
 						sessionModel = state.info.OriginModelName
+						channelDrain.bind(pinnedChannel)
 						common.SetContextKey(state.ctx, constant.ContextKeyWebSocketUpstreamConnectMs, connectMs)
 					}
 				} else {
@@ -237,7 +253,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 			}
 			observability.upstreamQueue.dequeue(len(frame.payload))
 			if draining && active == nil {
-				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
+				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, drainReason)
 				return nil
 			}
 			if frame.controlType == websocket.PongMessage {
@@ -254,7 +270,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					return nil
 				}
 				if draining {
-					common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, responsesWebSocketDrainReason)
+					common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCloseReason, drainReason)
 					failPreparedResponsesWebSocketRequest(active, pinnedChannel, nil)
 					refundResponsesWebSocketBillingIfPending(baseCtx, active.info.Billing)
 					active = nil
@@ -262,7 +278,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					logicalAttempts = 0
 					attemptedChannels = nil
 					capacityEvidence = ""
-					_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
+					_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, drainReason)
 					return nil
 				}
 				capacityCode, capacityRejected := responsesWebSocketCapacityCode(frame.err)
@@ -272,7 +288,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				preOutputSwitchErr := responsesWebSocketPreOutputSwitchError(frame.err, capacityRejected, capacityCode)
 				canSwitchPreOutput := preOutputSwitchErr != nil &&
 					responsesWebSocketCanSwitchPreOutput(active, activePayload, draining, logicalAttempts, sessionCtx.Err(), baseCtx.Request.Context().Err()) &&
-					(capacityRejected || shouldRetry(active.ctx, preOutputSwitchErr, common.RetryTimes-logicalAttempts+1))
+					(capacityRejected || service.ShouldRetryRelayError(active.ctx, preOutputSwitchErr, common.RetryTimes-logicalAttempts+1))
 				var retryParam *service.RetryParam
 				excludedRetryChannels := map[int]bool(nil)
 				if canSwitchPreOutput {
@@ -327,6 +343,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 						logicalAttempts = retryState.logicalAttempts
 						pinnedCtx = retryState.ctx
 						pinnedChannel = retryChannel
+						channelDrain.bind(pinnedChannel)
 						for _, rawChannelID := range retryState.ctx.GetStringSlice("use_channel") {
 							if channelID, parseErr := strconv.Atoi(rawChannelID); parseErr == nil {
 								attemptedChannels[channelID] = true
@@ -484,7 +501,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				}
 			}
 			if terminalActive && draining {
-				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, responsesWebSocketDrainReason)
+				_ = writeResponsesWebSocketClose(clientConn, websocket.CloseServiceRestart, drainReason)
 				return nil
 			}
 		}

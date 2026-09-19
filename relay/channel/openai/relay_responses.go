@@ -4,18 +4,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
@@ -35,17 +36,15 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
 
-	// 临时观测 upstream_model_mismatch：仅比较现有上游请求模型与响应声明，不持久化、不影响计费。
-	// 请求侧使用现有映射值，未另行采集参数覆盖后的请求体；响应声明也不证明实际执行模型。
-	// 后续撤除或改造时，搜索该标记同步处理 HTTP、SSE、WS 三处及对应告警测试。
-	if requested := info.GetUpstreamModelName(); requested != "" && responsesResponse.Model != "" && responsesResponse.Model != requested {
-		logger.LogWarn(c, "upstream_model_mismatch channel_id=%d request_model=%.256q response_model=%.256q", info.GetChannelID(), requested, responsesResponse.Model)
-	}
+	info.ObserveResponseModel(responsesResponse.Model)
+	responseBody = rewriteSGLangResponsesCreatedAt(info, responseBody, "created_at", responsesResponse.CreatedAt)
+
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
 	// compute usage
-	usage := relayconvert.NormalizeResponsesUsage(responsesResponse.Usage)
+	usage := &dto.Usage{}
+	service.ApplyResponsesUsage(usage, responsesResponse.Usage)
 	// Count actual tool invocations from Output (not tool declarations).
 	for _, output := range responsesResponse.Output {
 		switch output.Type {
@@ -82,10 +81,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 
 	defer service.CloseResponseBodyGracefully(resp)
 
-	var usage = &dto.Usage{}
-	var responseTextBuilder strings.Builder
-	imageCounter := &relaycommon.ImageGenerationCallCounter{}
-	imageCommitted := false
+	accumulator := service.NewResponsesUsageAccumulator(info)
 	captureDeepSeek := relaycommon.IsDeepSeekReasoningRelay(info, info.OriginModelName)
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
@@ -97,93 +93,32 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sr.Error(err)
 			return
 		}
+		if streamResponse.Response != nil {
+			data = string(rewriteSGLangResponsesCreatedAt(info, []byte(data), "response.created_at", streamResponse.Response.CreatedAt))
+		}
 		sendResponsesStreamData(c, streamResponse, data)
-		if captureDeepSeek {
-			if (streamResponse.Type == "response.completed" || streamResponse.Type == "response.done") &&
-				streamResponse.Response != nil {
-				relaycommon.SaveDeepSeekHistory(c, streamResponse.Response.ID, streamResponse.Response.Output)
-			}
+		if captureDeepSeek && streamResponse.Response != nil &&
+			(streamResponse.Type == "response.completed" || streamResponse.Type == "response.done") {
+			relaycommon.SaveDeepSeekHistory(c, streamResponse.Response.ID, streamResponse.Response.Output)
 		}
-		switch streamResponse.Type {
-		case "response.completed", "response.done":
-			nonBillableStatus := streamResponse.Response != nil && relaycommon.IsNonBillableResponsesStatus(streamResponse.Response.Status)
-			// Responses SSE 没有 [DONE]，成功的终态事件就是正常结束。先记账，客户端随后断开
-			// 就不能把这一轮记成 client_gone；带 failed/incomplete 状态的 completed 不算成功。
-			if !nonBillableStatus {
-				info.StreamStatus.MarkTerminalEventSeen()
-			}
-			if streamResponse.Response != nil {
-				// 临时观测 upstream_model_mismatch：仅在终态比较，避免逐个 delta 告警；与 HTTP、WS 一并撤除或改造。
-				if requested := info.GetUpstreamModelName(); requested != "" && streamResponse.Response.Model != "" && streamResponse.Response.Model != requested {
-					logger.LogWarn(c, "upstream_model_mismatch channel_id=%d request_model=%.256q response_model=%.256q", info.GetChannelID(), requested, streamResponse.Response.Model)
-				}
-				if streamResponse.Response.Usage != nil {
-					incomingUsage := relayconvert.NormalizeResponsesUsage(streamResponse.Response.Usage)
-					usage = dto.MergeUsageNonZero(usage, incomingUsage)
-				}
-				if !imageCommitted {
-					if nonBillableStatus {
-						imageCounter.Reset()
-						imageCounter.Commit(info)
-						imageCommitted = true
-					} else {
-						for i := range streamResponse.Response.Output {
-							idx := i
-							imageCounter.Observe(&streamResponse.Response.Output[i], &idx)
-						}
-						imageCounter.Commit(info)
-						imageCommitted = true
-					}
-				}
-			} else if !imageCommitted {
-				imageCounter.Commit(info)
-				imageCommitted = true
-			}
-		case "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
-			if !imageCommitted {
-				imageCounter.Reset()
-				imageCounter.Commit(info)
-				imageCommitted = true
-			}
-		case "response.output_text.delta":
-			// 处理输出文本
-			responseTextBuilder.WriteString(streamResponse.Delta)
-		case dto.ResponsesOutputTypeItemDone:
-			if streamResponse.Item != nil {
-				switch streamResponse.Item.Type {
-				case dto.BuildInCallWebSearchCall:
-					info.CountBillableToolCall(dto.BuildInCallWebSearchCall, "")
-				case dto.BuildInCallFileSearchCall:
-					info.CountBillableToolCall(dto.BuildInCallFileSearchCall, "")
-				case dto.BuildInCallFunctionCall:
-					info.CountBillableToolCall(dto.BuildInCallFunctionCall, streamResponse.Item.Name)
-				case dto.ResponsesOutputTypeImageGenerationCall:
-					if !imageCommitted {
-						imageCounter.Observe(streamResponse.Item, streamResponse.OutputIndex)
-					}
-				}
-			}
-		}
+		accumulator.Observe(&streamResponse)
 	})
 
-	if usage.CompletionTokens == 0 {
-		// 计算输出文本的 token 数量
-		tempStr := responseTextBuilder.String()
-		if len(tempStr) > 0 {
-			// 非正常结束，使用输出文本的 token 数量
-			completionTokens := service.CountTextToken(tempStr, info.UpstreamModelName)
-			usage.CompletionTokens = completionTokens
-		}
-	}
+	common.SetContextKey(c, constant.ContextKeyResponseStreamStatus, info.StreamStatus)
+	info.StreamStatus.RequireTerminal()
+	return accumulator.Finish(), nil
+}
 
-	if usage.PromptTokens == 0 && usage.CompletionTokens != 0 {
-		usage.PromptTokens = info.GetEstimatePromptTokens()
+func rewriteSGLangResponsesCreatedAt(info *relaycommon.RelayInfo, payload []byte, path string, createdAt dto.IntValue) []byte {
+	if info.GetChannelType() != constant.ChannelTypeSGLang {
+		return payload
 	}
-
-	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
-	if usage.BillingUsage != nil {
-		usage.BillingUsage = dto.CloneBillingUsageWithEstimatedCompletion(usage.BillingUsage, usage.CompletionTokens)
+	if !gjson.GetBytes(payload, path).Exists() {
+		return payload
 	}
-
-	return usage, nil
+	patched, err := sjson.SetBytes(payload, path, int(createdAt))
+	if err != nil {
+		return payload
+	}
+	return patched
 }

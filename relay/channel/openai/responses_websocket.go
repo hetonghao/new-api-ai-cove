@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
@@ -61,10 +60,7 @@ func (t *ResponsesWebSocketUsageTracker) observeCompletedResponse(response *dto.
 	if response == nil {
 		return
 	}
-	// 临时观测 upstream_model_mismatch：每轮完成响应时比较；与 HTTP、SSE 一并撤除或改造。
-	if requested := t.info.GetUpstreamModelName(); requested != "" && response.Model != "" && response.Model != requested {
-		logger.LogWarn(nil, "upstream_model_mismatch request_id=%q channel_id=%d request_model=%.256q response_model=%.256q", t.info.RequestId, t.info.GetChannelID(), requested, response.Model)
-	}
+	t.info.ObserveResponseModel(response.Model)
 	for i := range response.Output {
 		index := i
 		t.observeOutput(&response.Output[i], &index)

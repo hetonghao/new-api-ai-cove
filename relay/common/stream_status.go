@@ -21,6 +21,18 @@ const (
 	StreamEndReasonPingFail    StreamEndReason = "ping_fail"
 )
 
+// ResponseOutcome is the protocol-level result of one response, independent of
+// how the transport ended. Adaptors mark it from the events they already parse.
+type ResponseOutcome string
+
+const (
+	ResponseOutcomeUnknown    ResponseOutcome = ""
+	ResponseOutcomeCompleted  ResponseOutcome = "completed"
+	ResponseOutcomeFailed     ResponseOutcome = "failed"
+	ResponseOutcomeIncomplete ResponseOutcome = "incomplete"
+	ResponseOutcomeCancelled  ResponseOutcome = "cancelled"
+)
+
 const maxStreamErrorEntries = 20
 
 type StreamErrorEntry struct {
@@ -36,8 +48,26 @@ type StreamStatus struct {
 	mu         sync.Mutex
 	Errors     []StreamErrorEntry
 	ErrorCount int
-	// terminalEventSeen 表示上游已经给出成功终态事件；客户端在这之后断开不算异常结束。
-	terminalEventSeen bool
+
+	response         ResponseOutcome
+	errorCode        string
+	errorType        string
+	errorStatus      int
+	incompleteReason string
+	expectsTerminal  bool
+}
+
+// StreamOutcome holds classification facts only; upstream messages never
+// enter it because they may contain credentials or request content.
+type StreamOutcome struct {
+	EndReason        StreamEndReason
+	HasErrors        bool
+	ExpectsTerminal  bool
+	Response         ResponseOutcome
+	ErrorCode        string
+	ErrorType        string
+	ErrorStatus      int
+	IncompleteReason string
 }
 
 func NewStreamStatus() *StreamStatus {
@@ -69,6 +99,95 @@ func (s *StreamStatus) RecordError(msg string) {
 	}
 }
 
+// RequireTerminal declares that the protocol always ends with an explicit
+// terminal event, so a stream that ends without one was cut short.
+func (s *StreamStatus) RequireTerminal() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.expectsTerminal = true
+}
+
+// MarkCompleted, MarkIncomplete and MarkCancelled keep the first terminal seen;
+// MarkFailed always wins because an error after completion is still a failure.
+func (s *StreamStatus) MarkCompleted() {
+	s.markTerminal(ResponseOutcomeCompleted, "")
+}
+
+func (s *StreamStatus) MarkIncomplete(reason string) {
+	s.markTerminal(ResponseOutcomeIncomplete, reason)
+}
+
+func (s *StreamStatus) MarkCancelled() {
+	s.markTerminal(ResponseOutcomeCancelled, "")
+}
+
+func (s *StreamStatus) markTerminal(outcome ResponseOutcome, incompleteReason string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.response != ResponseOutcomeUnknown {
+		return
+	}
+	s.response = outcome
+	s.incompleteReason = incompleteReason
+}
+
+// MarkFailed records a protocol failure. Empty details never erase details
+// recorded earlier, so a bare error envelope keeps the structured error.
+func (s *StreamStatus) MarkFailed(code, errorType string, status int) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.response = ResponseOutcomeFailed
+	if code != "" {
+		s.errorCode = code
+	}
+	if errorType != "" {
+		s.errorType = errorType
+	}
+	if status != 0 {
+		s.errorStatus = status
+	}
+}
+
+func (s *StreamStatus) ResponseOutcome() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return string(s.response)
+}
+
+func (s *StreamStatus) ResponseFailed() bool {
+	return s.ResponseOutcome() == string(ResponseOutcomeFailed)
+}
+
+func (s *StreamStatus) OutcomeSnapshot() StreamOutcome {
+	if s == nil {
+		return StreamOutcome{}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return StreamOutcome{
+		EndReason:        s.EndReason,
+		HasErrors:        s.ErrorCount > 0,
+		ExpectsTerminal:  s.expectsTerminal,
+		Response:         s.response,
+		ErrorCode:        s.errorCode,
+		ErrorType:        s.errorType,
+		ErrorStatus:      s.errorStatus,
+		IncompleteReason: s.incompleteReason,
+	}
+}
+
 func (s *StreamStatus) HasErrors() bool {
 	if s == nil {
 		return false
@@ -91,11 +210,8 @@ func (s *StreamStatus) IsNormalEnd() bool {
 	if s == nil {
 		return true
 	}
-	s.mu.Lock()
-	terminalEventSeen := s.terminalEventSeen
-	s.mu.Unlock()
-	// 上游已经给出成功终态事件时，客户端随后断开或收尾噪音都不算异常结束；panic 仍按错误记账。
-	if terminalEventSeen && s.EndReason != StreamEndReasonPanic {
+	// 上游已经给出成功终态事件（response == completed）时，客户端随后断开或收尾噪音都不算异常结束；panic 仍按错误记账。
+	if s.ResponseOutcome() == string(ResponseOutcomeCompleted) && s.EndReason != StreamEndReasonPanic {
 		return true
 	}
 	return s.EndReason == StreamEndReasonDone ||
@@ -113,24 +229,12 @@ func (s *StreamStatus) Summary() string {
 		fmt.Fprintf(b, " end_error=%q", s.EndError.Error())
 	}
 	s.mu.Lock()
-	if s.terminalEventSeen {
-		b.WriteString(" terminal_event_seen=true")
+	if s.response != ResponseOutcomeUnknown {
+		fmt.Fprintf(b, " response=%s", s.response)
 	}
 	if s.ErrorCount > 0 {
 		fmt.Fprintf(b, " soft_errors=%d", s.ErrorCount)
 	}
 	s.mu.Unlock()
 	return b.String()
-}
-
-// MarkTerminalEventSeen 记录上游已经给出成功终态事件（例如 Responses 的
-// response.completed / response.done）。客户端收到终态后立刻断开时，流仍按正常结束记账，
-// 结束原因本身保持原样，便于排查。
-func (s *StreamStatus) MarkTerminalEventSeen() {
-	if s == nil {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.terminalEventSeen = true
 }

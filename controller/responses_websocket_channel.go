@@ -87,7 +87,7 @@ func prepareFirstResponsesWebSocketRequestWithBilling(baseCtx *gin.Context, payl
 		if retryParam != nil {
 			retryParam.RecordChannel(selectedChannel)
 		}
-		addUsedChannel(state.ctx, selectedChannel.Id)
+		service.AppendUsedChannel(state.ctx, selectedChannel.Id)
 		if billingErr := prepareResponsesWebSocketBilling(state); billingErr != nil {
 			if refundOnFailure {
 				failPreparedResponsesWebSocketRequest(state, nil, billingErr)
@@ -136,7 +136,7 @@ func prepareFirstResponsesWebSocketRequestWithBilling(baseCtx *gin.Context, payl
 		if target != nil {
 			_ = target.Close()
 		}
-		if !shouldRetry(state.ctx, dialErr, common.RetryTimes-attempt) {
+		if !service.ShouldRetryRelayError(state.ctx, dialErr, common.RetryTimes-attempt) {
 			if refundOnFailure {
 				failPreparedResponsesWebSocketRequest(state, nil, dialErr)
 			} else {

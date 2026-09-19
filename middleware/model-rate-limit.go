@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/common/limiter"
 	"github.com/QuantumNous/new-api/constant"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting"
 
@@ -19,13 +20,32 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
+// ModelRequestRateLimitTicket is one admitted request. HTTP requests hold an
+// in-memory reservation until their outcome is known; WebSocket sessions take a
+// non-reserving ticket because their many exit paths cannot guarantee a release.
 type ModelRequestRateLimitTicket struct {
 	recordSuccess func()
+	reservation   *common.RateLimitReservation
 }
 
 func (t *ModelRequestRateLimitTicket) RecordSuccess() {
-	if t != nil && t.recordSuccess != nil {
+	if t == nil {
+		return
+	}
+	if t.reservation != nil {
+		t.reservation.Complete(true)
+		return
+	}
+	if t.recordSuccess != nil {
 		t.recordSuccess()
+	}
+}
+
+// Release frees a reservation whose request failed; it is a no-op for
+// non-reserving tickets and after RecordSuccess.
+func (t *ModelRequestRateLimitTicket) Release() {
+	if t != nil && t.reservation != nil {
+		t.reservation.Complete(false)
 	}
 }
 
@@ -149,7 +169,7 @@ func takeRedisModelRequestRateLimit(c *gin.Context, config modelRequestRateLimit
 	}}, nil
 }
 
-func takeMemoryModelRequestRateLimit(config modelRequestRateLimitConfig) (*ModelRequestRateLimitTicket, *types.NewAPIError) {
+func takeMemoryModelRequestRateLimit(config modelRequestRateLimitConfig, reserve bool) (*ModelRequestRateLimitTicket, *types.NewAPIError) {
 	inMemoryRateLimiter.Init(time.Duration(setting.ModelRequestRateLimitDurationMinutes) * time.Minute)
 	totalKey := ModelRequestRateLimitCountMark + config.userID
 	if config.totalMaxCount > 0 && !inMemoryRateLimiter.Request(totalKey, config.totalMaxCount, config.duration) {
@@ -158,9 +178,16 @@ func takeMemoryModelRequestRateLimit(config modelRequestRateLimitConfig) (*Model
 	}
 
 	successKey := ModelRequestRateLimitSuccessCountMark + config.userID
+	successLimited := fmt.Sprintf("您已达到请求数限制：%d分钟内最多请求%d次", setting.ModelRequestRateLimitDurationMinutes, config.successMaxCount)
+	if reserve && config.successMaxCount > 0 {
+		reservation := inMemoryRateLimiter.Reserve(successKey, config.successMaxCount, config.duration)
+		if reservation == nil {
+			return nil, types.NewErrorWithStatusCode(errors.New(successLimited), types.ErrorCode("rate_limit_exceeded"), http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
+		}
+		return &ModelRequestRateLimitTicket{reservation: reservation}, nil
+	}
 	if !inMemoryRateLimiter.CanRequest(successKey, config.successMaxCount, config.duration) {
-		message := fmt.Sprintf("您已达到请求数限制：%d分钟内最多请求%d次", setting.ModelRequestRateLimitDurationMinutes, config.successMaxCount)
-		return nil, types.NewErrorWithStatusCode(errors.New(message), types.ErrorCode("rate_limit_exceeded"), http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
+		return nil, types.NewErrorWithStatusCode(errors.New(successLimited), types.ErrorCode("rate_limit_exceeded"), http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
 	}
 
 	return &ModelRequestRateLimitTicket{recordSuccess: func() {
@@ -170,6 +197,8 @@ func takeMemoryModelRequestRateLimit(config modelRequestRateLimitConfig) (*Model
 	}}, nil
 }
 
+// TakeModelRequestRateLimit admits one WebSocket-driven request without holding
+// an in-memory reservation; the caller records success explicitly.
 func TakeModelRequestRateLimit(c *gin.Context) (*ModelRequestRateLimitTicket, *types.NewAPIError) {
 	if !setting.ModelRequestRateLimitEnabled {
 		return &ModelRequestRateLimitTicket{}, nil
@@ -178,21 +207,46 @@ func TakeModelRequestRateLimit(c *gin.Context) (*ModelRequestRateLimitTicket, *t
 	if common.RedisEnabled {
 		return takeRedisModelRequestRateLimit(c, config)
 	}
-	return takeMemoryModelRequestRateLimit(config)
+	return takeMemoryModelRequestRateLimit(config, false)
+}
+
+func modelRequestSucceeded(c *gin.Context) bool {
+	status, _ := common.GetContextKeyType[*relaycommon.StreamStatus](c, constant.ContextKeyResponseStreamStatus)
+	return c.Writer.Status() < http.StatusBadRequest && !status.ResponseFailed()
+}
+
+// modelRequestRateLimitHandler admits one HTTP request against config; the
+// in-memory backend holds a reservation until the response outcome is known.
+func modelRequestRateLimitHandler(config modelRequestRateLimitConfig, useRedis bool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		config.userID = strconv.Itoa(c.GetInt("id"))
+		var ticket *ModelRequestRateLimitTicket
+		var apiErr *types.NewAPIError
+		if useRedis {
+			ticket, apiErr = takeRedisModelRequestRateLimit(c, config)
+		} else {
+			ticket, apiErr = takeMemoryModelRequestRateLimit(config, true)
+		}
+		if apiErr != nil {
+			abortWithOpenAiMessage(c, apiErr.StatusCode, apiErr.Error(), apiErr.GetErrorCode())
+			return
+		}
+		defer ticket.Release()
+		c.Next()
+		if modelRequestSucceeded(c) {
+			ticket.RecordSuccess()
+		}
+	}
 }
 
 // ModelRequestRateLimit 模型请求限流中间件
 func ModelRequestRateLimit() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		ticket, apiErr := TakeModelRequestRateLimit(c)
-		if apiErr != nil {
-			abortWithOpenAiMessage(c, apiErr.StatusCode, apiErr.Error(), apiErr.GetErrorCode())
+		if !setting.ModelRequestRateLimitEnabled {
+			c.Next()
 			return
 		}
-		c.Next()
-		if c.Writer.Status() < http.StatusBadRequest {
-			ticket.RecordSuccess()
-		}
+		modelRequestRateLimitHandler(getModelRequestRateLimitConfig(c), common.RedisEnabled)(c)
 	}
 }
 

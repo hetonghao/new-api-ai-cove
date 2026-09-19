@@ -97,7 +97,7 @@ func TestResponsesWebSocketPreflight_accepts_supported_responses_websocket_chann
 				Status: common.ChannelStatusEnabled,
 				Key:    "test-key",
 			}
-			channel.SetOtherSettings(dto.ChannelOtherSettings{SupportsWebSockets: true})
+			channel.SetSetting(dto.ChannelSettings{ResponsesWebSocketEnabled: true})
 			require.NoError(t, db.Create(&channel).Error)
 
 			recorder := runResponsesWebSocketPreflight(t, nil)

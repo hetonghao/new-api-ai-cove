@@ -47,7 +47,7 @@ func TestTransportCapabilitiesReturnsOrderedTTLAndOpenAIResponsesHint(t *testing
 		{Id: 993, Type: constant.ChannelTypeCodex, Key: "local-ws", Status: common.ChannelStatusEnabled, Name: "ws", Models: "cap-http", Group: "default"},
 		{Id: 996, Type: constant.ChannelTypeCodex, Key: "http-only", Status: common.ChannelStatusEnabled, Name: "http-only", Models: "cap-http-only", Group: "default"},
 	} {
-		channel.SetOtherSettings(dto.ChannelOtherSettings{SupportsWebSockets: channel.Id == 993})
+		channel.SetSetting(dto.ChannelSettings{ResponsesWebSocketEnabled: channel.Id == 993})
 		require.NoError(t, db.Create(channel).Error)
 		abilityModel := "cap-http"
 		if channel.Id == 996 {
