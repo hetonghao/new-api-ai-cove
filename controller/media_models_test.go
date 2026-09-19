@@ -979,7 +979,7 @@ func TestMediaModelsCatalogAutoDiscovery(t *testing.T) {
 	assert.Equal(t, "opaque-image", payload.Get("data.policy.models.0.id").String())
 	assert.Equal(t, "image", payload.Get("data.policy.models.0.type").String())
 	assert.True(t, payload.Get("data.policy.models.0.operations.text_to_image").Exists())
-	assert.False(t, payload.Get("data.policy.models.0.operations.image_to_image").Exists())
+	assert.True(t, payload.Get("data.policy.models.0.operations.image_to_image").Exists())
 
 	context, pubRecorder := newMediaCatalogContext(t, user.Id, "")
 	MediaModels(context)
@@ -1161,6 +1161,8 @@ func TestMediaPresetProfilesAreValid(t *testing.T) {
 	}))
 	assert.Equal(t, "/v1/images/edits", gpt2.Operations["image_to_image"].Path)
 	assert.Equal(t, "/v1/images/generations", gpt2.Operations["text_to_image"].Path)
+	opaque := profiles[0]
+	assert.Equal(t, "/v1/images/edits", opaque.Operations["image_to_image"].Path, "any image model defaults to image edits")
 	_, ok := mediaPresetProfile("gemini-unknown-image", map[string]bool{"gemini": true}, nil)
 	assert.False(t, ok)
 	_, ok = mediaPresetProfile("chat-model", map[string]bool{"openai": true}, nil)

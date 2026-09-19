@@ -60,13 +60,6 @@ type mediaPolicyUpdateRequest struct {
 	Policy          json.RawMessage `json:"policy"`
 }
 
-var mediaPresetOpenAIImageIDs = map[string]bool{
-	"gpt-image-1":      true,
-	"gpt-image-1-mini": true,
-	"gpt-image-1.5":    true,
-	"gpt-image-2":      true,
-}
-
 var mediaPresetGeminiImageIDs = map[string]bool{
 	"gemini-2.5-flash-image":         true,
 	"gemini-3-pro-image":             true,
@@ -125,26 +118,6 @@ func mediaPresetProfile(id string, endpoints map[string]bool, generation *jsplug
 			},
 		}, true
 	}
-	if mediaPresetOpenAIImageIDs[id] && endpoints[string(constant.EndpointTypeImageGeneration)] {
-		return model.MediaModelProfile{
-			ID:   id,
-			Type: "image",
-			Operations: map[string]model.MediaOperation{
-				"text_to_image": {
-					Protocol:   "openai_images",
-					Path:       "/v1/images/generations",
-					Parameters: map[string]model.MediaParameter{},
-					Reference:  mediaNoReference(),
-				},
-				"image_to_image": {
-					Protocol:   "openai_images",
-					Path:       "/v1/images/edits",
-					Parameters: map[string]model.MediaParameter{},
-					Reference:  mediaInlineReference(),
-				},
-			},
-		}, true
-	}
 	hasImage := endpoints[string(constant.EndpointTypeImageGeneration)]
 	hasVideo := endpoints[string(constant.EndpointTypeOpenAIVideo)]
 	if hasVideo && (!hasImage || len(mediaVideoBindingList(generation, id)) > 0) {
@@ -171,6 +144,12 @@ func mediaPresetProfile(id string, endpoints map[string]bool, generation *jsplug
 					Path:       "/v1/images/generations",
 					Parameters: map[string]model.MediaParameter{},
 					Reference:  mediaNoReference(),
+				},
+				"image_to_image": {
+					Protocol:   "openai_images",
+					Path:       "/v1/images/edits",
+					Parameters: map[string]model.MediaParameter{},
+					Reference:  mediaInlineReference(),
 				},
 			},
 		}, true
