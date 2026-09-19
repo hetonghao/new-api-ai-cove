@@ -1168,6 +1168,17 @@ func TestMediaPresetProfilesAreValid(t *testing.T) {
 	assert.Equal(t, "/v1/videos", videoEdit.Path, "any video model defaults to image-to-video")
 	assert.Equal(t, "url", videoEdit.Reference.Input)
 	assert.Equal(t, 1, videoEdit.Reference.MaxImages)
+	for _, opName := range []string{"text_to_video", "image_to_video"} {
+		params := video.Operations[opName].Parameters
+		require.NotNil(t, params["seconds"].Minimum, opName)
+		require.NotNil(t, params["seconds"].Maximum, opName)
+		assert.Equal(t, "integer", params["seconds"].Type, opName)
+		assert.Equal(t, 1, *params["seconds"].Minimum, opName)
+		assert.Equal(t, 15, *params["seconds"].Maximum, opName)
+		assert.Equal(t, []string{"720x1280", "1280x720", "1024x1792", "1792x1024"}, params["size"].Enum, opName)
+		assert.Equal(t, []string{"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"}, params["aspect_ratio"].Enum, opName)
+		assert.Equal(t, []string{"480p", "720p"}, params["resolution"].Enum, opName)
+	}
 	_, ok := mediaPresetProfile("gemini-unknown-image", map[string]bool{"gemini": true}, nil)
 	assert.False(t, ok)
 	_, ok = mediaPresetProfile("chat-model", map[string]bool{"openai": true}, nil)

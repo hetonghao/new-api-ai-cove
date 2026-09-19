@@ -96,6 +96,16 @@ func mediaGeminiParameters(id string) map[string]model.MediaParameter {
 	return parameters
 }
 
+func mediaVideoParameters() map[string]model.MediaParameter {
+	secondsMin, secondsMax := 1, 15
+	return map[string]model.MediaParameter{
+		"seconds":      {Type: "integer", Minimum: &secondsMin, Maximum: &secondsMax},
+		"size":         {Type: "string", Enum: []string{"720x1280", "1280x720", "1024x1792", "1792x1024"}},
+		"aspect_ratio": {Type: "string", Enum: []string{"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"}},
+		"resolution":   {Type: "string", Enum: []string{"480p", "720p"}},
+	}
+}
+
 func mediaPresetProfile(id string, endpoints map[string]bool, generation *jsplugin.RoutingGeneration) (model.MediaModelProfile, bool) {
 	if mediaPresetGeminiImageIDs[id] && endpoints[string(constant.EndpointTypeGemini)] {
 		parameters := mediaGeminiParameters(id)
@@ -128,13 +138,13 @@ func mediaPresetProfile(id string, endpoints map[string]bool, generation *jsplug
 				"text_to_video": {
 					Protocol:   "openai_video",
 					Path:       "/v1/videos",
-					Parameters: map[string]model.MediaParameter{},
+					Parameters: mediaVideoParameters(),
 					Reference:  mediaNoReference(),
 				},
 				"image_to_video": {
 					Protocol:   "openai_video",
 					Path:       "/v1/videos",
-					Parameters: map[string]model.MediaParameter{},
+					Parameters: mediaVideoParameters(),
 					Reference:  model.MediaReference{Input: "url", MaxImages: 1},
 				},
 			},
