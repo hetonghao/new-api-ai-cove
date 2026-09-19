@@ -131,6 +131,12 @@ func mediaPresetProfile(id string, endpoints map[string]bool, generation *jsplug
 					Parameters: map[string]model.MediaParameter{},
 					Reference:  mediaNoReference(),
 				},
+				"image_to_video": {
+					Protocol:   "openai_video",
+					Path:       "/v1/videos",
+					Parameters: map[string]model.MediaParameter{},
+					Reference:  model.MediaReference{Input: "url", MaxImages: 1},
+				},
 			},
 		}, true
 	}

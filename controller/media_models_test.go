@@ -1163,6 +1163,11 @@ func TestMediaPresetProfilesAreValid(t *testing.T) {
 	assert.Equal(t, "/v1/images/generations", gpt2.Operations["text_to_image"].Path)
 	opaque := profiles[0]
 	assert.Equal(t, "/v1/images/edits", opaque.Operations["image_to_image"].Path, "any image model defaults to image edits")
+	video := profiles[1]
+	videoEdit := video.Operations["image_to_video"]
+	assert.Equal(t, "/v1/videos", videoEdit.Path, "any video model defaults to image-to-video")
+	assert.Equal(t, "url", videoEdit.Reference.Input)
+	assert.Equal(t, 1, videoEdit.Reference.MaxImages)
 	_, ok := mediaPresetProfile("gemini-unknown-image", map[string]bool{"gemini": true}, nil)
 	assert.False(t, ok)
 	_, ok = mediaPresetProfile("chat-model", map[string]bool{"openai": true}, nil)
