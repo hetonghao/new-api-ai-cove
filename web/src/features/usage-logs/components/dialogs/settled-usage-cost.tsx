@@ -32,11 +32,7 @@ import {
 } from '@/lib/currency'
 
 import type { UsageLog } from '../../data/schema'
-import {
-  billedKeysForFields,
-  resolveBilledTokenCounts,
-} from '../../lib/billed-tokens'
-import type { LogOtherData } from '../../types'
+import type { SettledUsageRow } from '../../lib/settled-ratio-prices'
 
 const amountOptions = {
   digitsLarge: 8,
@@ -45,46 +41,36 @@ const amountOptions = {
   minimumNonZero: 0.00000001,
 }
 
+/**
+ * Usage behind a settled charge: the billed token counts resolved for the log,
+ * paired with the final unit prices the settlement applied. Callers pass null
+ * when those counts cannot be rebuilt from the log entry.
+ */
 export function SettledUsageCost(props: {
   log: UsageLog
-  other: LogOtherData
-  prices: Array<{ field: string; label: string; price: number }>
+  rows: SettledUsageRow[] | null
 }) {
   const { t } = useTranslation()
-  const pricedKeys = billedKeysForFields(
-    props.prices.map((entry) => entry.field)
-  )
-  const counts = resolveBilledTokenCounts({
-    promptTokens: props.log.prompt_tokens,
-    completionTokens: props.log.completion_tokens,
-    other: props.other,
-    pricedKeys,
-  })
-  const recordedCost =
-    props.log.quota / getCurrencyDisplay().config.quotaPerUnit
-  const complete =
-    counts !== null &&
-    pricedKeys.length === props.prices.length &&
-    props.prices.length > 0
-  const rows = complete
-    ? props.prices.map((entry, index) => {
-        const count = counts[pricedKeys[index]]
-        const subtotal = (entry.price / 1_000_000) * count
-        return {
-          ...entry,
-          count,
-          subtotal,
-          formattedPrice: formatBillingCurrencyFromUSD(
-            entry.price,
-            amountOptions
-          ),
-          formattedSubtotal: formatBillingCurrencyFromUSD(
+  const recordedCost = props.log.quota / getCurrencyDisplay().config.quotaPerUnit
+  const rows =
+    props.rows === null
+      ? []
+      : props.rows.map((row) => {
+          const subtotal = (row.price / 1_000_000) * row.count
+          return {
+            ...row,
             subtotal,
-            amountOptions
-          ),
-        }
-      })
-    : []
+            formattedPrice: formatBillingCurrencyFromUSD(
+              row.price,
+              amountOptions
+            ),
+            formattedSubtotal: formatBillingCurrencyFromUSD(
+              subtotal,
+              amountOptions
+            ),
+          }
+        })
+  const complete = props.rows !== null && rows.length > 0
   const tokenTotal = rows.reduce((sum, row) => sum + row.subtotal, 0)
   const calculated = formatBillingCurrencyFromUSD(tokenTotal, amountOptions)
   const recorded = formatBillingCurrencyFromUSD(recordedCost, amountOptions)
@@ -112,7 +98,7 @@ export function SettledUsageCost(props: {
           tableProps={{ 'aria-label': t('Usage cost') }}
           tableClassName='table-fixed [&_td]:break-words [&_td]:whitespace-normal [&_td]:text-xs [&_th]:text-xs [&_th]:whitespace-normal'
           data={rows}
-          getRowKey={(row) => row.field}
+          getRowKey={(row) => row.id}
           columns={[
             {
               id: 'item',
@@ -178,7 +164,7 @@ export function SettledUsageCost(props: {
               </p>
               {rows.map((row) => (
                 <div
-                  key={row.field}
+                  key={row.id}
                   className='flex flex-wrap justify-between gap-x-4 gap-y-1'
                 >
                   <span>{t(row.label)}</span>

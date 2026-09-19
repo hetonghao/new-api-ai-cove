@@ -16,25 +16,32 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { StaticDataTable } from '@/components/data-table'
-import { Button } from '@/components/ui/button'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
 import { normalizeTierLabel } from '@/features/pricing/lib/billing-expr'
 import { compileBillingExpression } from '@/features/pricing/lib/billing-expression/parser'
-import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 
 import type { UsageLog } from '../../data/schema'
+import {
+  billedKeysForFields,
+  resolveBilledTokenCounts,
+} from '../../lib/billed-tokens'
 import { decodeBillingExprB64, getTieredBillingSummary } from '../../lib/format'
+import {
+  resolveRatioSettledPlan,
+  type SettledUsageRow,
+} from '../../lib/settled-ratio-prices'
 import type { LogOtherData } from '../../types'
-import { SettledUsageCost } from './settled-usage-cost'
+import { SettledPricePanel } from './settled-price-panel'
 
+/**
+ * Final unit prices of a settled log entry.
+ *
+ * Expression-billed requests rebuild them from the matched tier and the
+ * multipliers the settlement recorded. Ratio-billed requests rebuild them from
+ * the model ratios their log entry recorded; when that is not reproducible the
+ * panel stays absent instead of showing guessed prices.
+ */
 export function SettledUnitPrices(props: {
   other: LogOtherData
   log: UsageLog
@@ -42,6 +49,32 @@ export function SettledUnitPrices(props: {
   const { t } = useTranslation()
   const other = props.other
   if (other.is_task) return null
+
+  if (other.billing_mode !== 'tiered_expr') {
+    const plan = resolveRatioSettledPlan({
+      other,
+      promptTokens: props.log.prompt_tokens,
+      completionTokens: props.log.completion_tokens,
+      withUsageCost: props.log.type === 2,
+    })
+    if (!plan) return null
+
+    return (
+      <SettledPricePanel
+        log={props.log}
+        unitLabel={t(plan.unitLabel)}
+        baseHeader={t('Base unit price')}
+        appliedNote={t('Applied: {{groupLabel}} {{group}}×', {
+          groupLabel: t(plan.groupLabel),
+          group: plan.groupRatio,
+        })}
+        formulaNote={t('Base unit price × group ratio = final unit price')}
+        multipliers={[plan.groupRatio]}
+        rows={plan.rows}
+        usage={plan.usage}
+      />
+    )
+  }
 
   const summary = getTieredBillingSummary(other)
   const compiled = compileBillingExpression(
@@ -101,115 +134,55 @@ export function SettledUnitPrices(props: {
   }
 
   const groupLabel = hasUserRatio ? t('User Exclusive Ratio') : t('Group Ratio')
-  const priceOptions = {
-    digitsLarge: 4,
-    digitsSmall: 6,
-    abbreviate: false,
-    minimumNonZero: 0.000001,
-  }
   const rows = summary.priceEntries.map((entry) => ({
-    ...entry,
-    base: formatBillingCurrencyFromUSD(entry.price, priceOptions),
-    final: formatBillingCurrencyFromUSD(
-      entry.price * conditionRatio * groupRatio,
-      priceOptions
-    ),
+    id: entry.field,
+    label: entry.shortLabel,
+    base: entry.price,
+    final: entry.price * conditionRatio * groupRatio,
   }))
   const unit = summary.priceEntries[0].unit
-  const unitLabel = unit ? t(unit) : t('1M token')
+  const pricedKeys = billedKeysForFields(rows.map((row) => row.id))
+  const counts =
+    pricedKeys.length === rows.length && rows.length > 0
+      ? resolveBilledTokenCounts({
+          promptTokens: props.log.prompt_tokens,
+          completionTokens: props.log.completion_tokens,
+          other,
+          pricedKeys,
+        })
+      : null
+  const usageRows: SettledUsageRow[] | null = counts
+    ? rows.map((row, index) => ({
+        id: row.id,
+        label: row.label,
+        count: counts[pricedKeys[index]],
+        price: row.final,
+      }))
+    : null
 
   return (
-    <section className='mt-4 min-w-0 space-y-3 border-t pt-4'>
-      <div className='flex flex-wrap items-baseline justify-between gap-2'>
-        <h3 className='text-xs font-semibold'>{t('Settled unit prices')}</h3>
-        <span className='text-muted-foreground text-[10px]'>
-          {t('Unit')}: USD / {unitLabel}
-        </span>
-      </div>
-      <p className='text-muted-foreground text-xs'>
-        {t(
-          'Applied: conditional multiplier {{condition}}× · {{groupLabel}} {{group}}×',
-          {
-            condition: conditionRatio,
-            groupLabel,
-            group: groupRatio,
-          }
-        )}
-      </p>
-      <StaticDataTable
-        className='rounded-none border-0 bg-transparent'
-        tableProps={{ 'aria-label': t('Settled unit prices') }}
-        tableClassName='table-fixed [&_tbody_tr]:h-10 [&_td]:text-xs [&_th]:text-xs [&_td:last-child]:font-semibold'
-        data={rows}
-        getRowKey={(row) => row.field}
-        columns={[
-          {
-            id: 'item',
-            header: t('Billing item'),
-            className: 'w-[40%]',
-            cell: (row) => t(row.shortLabel),
-          },
-          {
-            id: 'base',
-            header: t('Tier unit price'),
-            className: 'text-right text-muted-foreground',
-            cellClassName: 'text-right font-mono text-muted-foreground',
-            cell: (row) => row.base,
-          },
-          {
-            id: 'final',
-            header: t('Final unit price'),
-            className:
-              'bg-emerald-500/10 text-right text-emerald-700 dark:text-emerald-300',
-            cellClassName:
-              'bg-emerald-500/10 text-right font-mono text-emerald-700 dark:text-emerald-300',
-            cell: (row) => row.final,
-          },
-        ]}
-      />
-      <Collapsible>
-        <CollapsibleTrigger
-          render={<Button variant='ghost' size='sm' />}
-          className='group text-muted-foreground -ml-2 text-xs'
-        >
-          <ChevronDown
-            className='size-3 transition-transform group-data-[panel-open]:rotate-180'
-            aria-hidden='true'
-          />
-          {t('View calculation')}
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className='bg-muted/50 mt-2 space-y-2 rounded-md p-3 text-xs'>
-            <p className='text-muted-foreground'>
-              {t(
-                'Tier unit price × conditional multiplier × group ratio = final unit price'
-              )}
-            </p>
-            {rows.map((row) => (
-              <div
-                key={row.field}
-                className='flex flex-wrap justify-between gap-x-4 gap-y-1'
-              >
-                <span>{t(row.shortLabel)}</span>
-                <span className='font-mono break-all tabular-nums'>
-                  {row.base} × {conditionRatio} × {groupRatio} = {row.final}
-                </span>
-              </div>
-            ))}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
-      {props.log.type === 2 && summary.tier.billingUnit !== 'request' && (
-        <SettledUsageCost
-          log={props.log}
-          other={other}
-          prices={rows.map((row) => ({
-            field: row.field,
-            label: row.shortLabel,
-            price: row.price * conditionRatio * groupRatio,
-          }))}
-        />
+    <SettledPricePanel
+      log={props.log}
+      unitLabel={unit ? t(unit) : t('1M token')}
+      baseHeader={t('Tier unit price')}
+      appliedNote={t(
+        'Applied: conditional multiplier {{condition}}× · {{groupLabel}} {{group}}×',
+        {
+          condition: conditionRatio,
+          groupLabel,
+          group: groupRatio,
+        }
       )}
-    </section>
+      formulaNote={t(
+        'Tier unit price × conditional multiplier × group ratio = final unit price'
+      )}
+      multipliers={[conditionRatio, groupRatio]}
+      rows={rows}
+      usage={
+        props.log.type === 2 && summary.tier.billingUnit !== 'request'
+          ? usageRows
+          : undefined
+      }
+    />
   )
 }

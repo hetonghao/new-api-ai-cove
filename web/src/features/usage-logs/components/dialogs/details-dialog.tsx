@@ -1194,6 +1194,11 @@ export function DetailsDialog(props: DetailsDialogProps) {
           </DetailSection>
         )}
 
+        {/* Settled unit prices for ratio-billed requests (per-token / per-call) */}
+        {isConsume && !isViolation && other && !isTieredBilling && (
+          <SettledUnitPrices other={other} log={props.log} />
+        )}
+
         {/* Admin billing mode indicator for non-consume */}
         {props.isAdmin &&
           !isConsume &&
