@@ -20,6 +20,9 @@ const (
 	accountPasswordTime      = 2
 	accountPasswordSaltBytes = 16
 	accountPasswordKeyBytes  = 32
+	// argon2idPHCPrefix is the algorithm identifier of the modular PHC string
+	// format. Verification dispatches on it, so every Argon2id hash must carry it.
+	argon2idPHCPrefix = "$argon2id$"
 )
 
 var (
@@ -38,9 +41,10 @@ func ValidateNewAccountPassword(password string) error {
 	return nil
 }
 
-// HashAccountPassword is for account passwords, not MFA backup codes. The
-// temporary bcrypt mode permits rolling out dual-format readers to all nodes
-// before enabling Argon2id writes. Existing hashes are never rewritten in bulk.
+// HashAccountPassword is for account passwords, not MFA backup codes. Argon2id
+// is the default write format; ACCOUNT_PASSWORD_HASH_ALGORITHM=bcrypt keeps the
+// legacy writer available for rollback. Existing hashes are never rewritten in
+// bulk, and ValidatePasswordAndHash reads both formats.
 func HashAccountPassword(password string) (string, error) {
 	if err := ValidateNewAccountPassword(password); err != nil {
 		return "", err
@@ -60,7 +64,7 @@ func HashAccountPassword(password string) (string, error) {
 		return "", fmt.Errorf("generate account password salt: %w", err)
 	}
 	key := argon2.IDKey([]byte(password), salt, accountPasswordTime, accountPasswordMemory, 1, accountPasswordKeyBytes)
-	return fmt.Sprintf("$argon2id$v=19$m=19456,t=2,p=1$%s$%s", base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key)), nil
+	return fmt.Sprintf("%sv=19$m=19456,t=2,p=1$%s$%s", argon2idPHCPrefix, base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key)), nil
 }
 
 func validateArgon2AccountPassword(password, encoded string) bool {

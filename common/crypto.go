@@ -38,7 +38,15 @@ func Password2Hash(password string) (string, error) {
 	return string(hashedPassword), err
 }
 
+// ValidatePasswordAndHash accepts every account password format this service
+// has written. The stored PHC string / bcrypt prefix identifies its own
+// algorithm, so Argon2id writes and historical bcrypt hashes stay verifiable
+// side by side. MFA backup codes and email verification codes use bcrypt and
+// keep taking the bcrypt branch.
 func ValidatePasswordAndHash(password string, hash string) bool {
+	if strings.HasPrefix(hash, argon2idPHCPrefix) {
+		return validateArgon2AccountPassword(password, hash)
+	}
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 	return err == nil
 }
