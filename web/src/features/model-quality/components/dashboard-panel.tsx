@@ -63,9 +63,11 @@ type DashboardPanelProps = {
 
 function MetricCell(props: { label: string; value: string }) {
   return (
-    <div className='bg-card rounded-lg border p-3'>
+    <div className='bg-card rounded-lg border px-2.5 py-2'>
       <div className='text-muted-foreground text-xs'>{props.label}</div>
-      <div className='mt-1 text-lg font-medium tabular-nums'>{props.value}</div>
+      <div className='mt-0.5 text-base font-medium tabular-nums'>
+        {props.value}
+      </div>
     </div>
   )
 }
@@ -389,47 +391,49 @@ export function DashboardPanel(props: DashboardPanelProps) {
           ))}
       </div>
 
-      {selectedBucket && (
-        <div className='flex items-center gap-2'>
-          <StatusBadge
-            variant='info'
-            copyable={false}
-            label={t('{{start}} – {{end}}', {
-              start: formatTimestampToDate(
-                selectedBucket.start,
-                'milliseconds'
-              ),
-              end: formatTimestampToDate(selectedBucket.end, 'milliseconds'),
-            })}
-          />
-          <Button
-            size='sm'
-            variant='ghost'
-            onClick={() => setSelectedBucket(null)}
-          >
-            <X data-icon='inline-start' />
-            {t('Clear filter')}
-          </Button>
+      <div className='flex min-h-7 flex-wrap items-center gap-2'>
+        {selectedBucket && (
+          <>
+            <StatusBadge
+              variant='info'
+              copyable={false}
+              label={t('{{start}} – {{end}}', {
+                start: formatTimestampToDate(
+                  selectedBucket.start,
+                  'milliseconds'
+                ),
+                end: formatTimestampToDate(selectedBucket.end, 'milliseconds'),
+              })}
+            />
+            <Button
+              size='sm'
+              variant='ghost'
+              className='h-7'
+              onClick={() => setSelectedBucket(null)}
+            >
+              <X data-icon='inline-start' />
+              {t('Clear filter')}
+            </Button>
+          </>
+        )}
+        <div className='ml-auto flex items-center gap-1'>
+          <span className='text-muted-foreground text-xs'>
+            {t('Cards per row')}
+          </span>
+          {[2, 4, 6, 8].map((count) => (
+            <Button
+              key={count}
+              size='sm'
+              variant={cardsPerRow === count ? 'secondary' : 'ghost'}
+              className='h-7 w-8 px-0 tabular-nums'
+              onClick={() => setCardsPerRow(count)}
+              aria-label={t('{{count}} cards per row', { count })}
+              aria-pressed={cardsPerRow === count}
+            >
+              {count}
+            </Button>
+          ))}
         </div>
-      )}
-
-      <div className='flex items-center justify-end gap-1'>
-        <span className='text-muted-foreground text-xs'>
-          {t('Cards per row')}
-        </span>
-        {[2, 4, 6, 8].map((count) => (
-          <Button
-            key={count}
-            size='sm'
-            variant={cardsPerRow === count ? 'secondary' : 'ghost'}
-            className='h-7 w-8 px-0 tabular-nums'
-            onClick={() => setCardsPerRow(count)}
-            aria-label={t('{{count}} cards per row', { count })}
-            aria-pressed={cardsPerRow === count}
-          >
-            {count}
-          </Button>
-        ))}
       </div>
 
       {samplesContent()}
