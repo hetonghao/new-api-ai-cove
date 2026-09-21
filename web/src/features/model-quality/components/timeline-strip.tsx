@@ -77,9 +77,10 @@ export function TimelineStrip(props: TimelineStripProps) {
               aria-pressed={selected}
               onClick={() => props.onSelect(selected ? null : bucket)}
               className={cn(
-                'focus-visible:ring-ring h-full min-w-0 flex-1 rounded-sm focus-visible:ring-2 focus-visible:outline-none',
+                'focus-visible:ring-ring h-full min-w-0 flex-1 rounded-sm transition-opacity focus-visible:ring-2 focus-visible:outline-none',
                 toneClass[tone],
-                selected && 'ring-ring ring-2'
+                props.selectedBucket && !selected && 'opacity-50',
+                selected && 'ring-ring ring-2 ring-inset'
               )}
             />
           )
