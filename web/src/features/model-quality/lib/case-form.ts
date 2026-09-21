@@ -52,7 +52,7 @@ export type QualityCaseFormValues = {
   top_p?: number
   samples_per_target: number
   timeout_seconds: number
-  daily_limit: number
+  daily_limit?: number
   schedule_enabled: boolean
   schedule_kind: 'interval' | 'daily' | 'weekly'
   interval_minutes: number
@@ -140,7 +140,8 @@ export function getQualityCaseFormSchema(t: TFunction) {
         .number()
         .int()
         .min(1, t('Daily limit must be 1-10000'))
-        .max(10000, t('Daily limit must be 1-10000')),
+        .max(10000, t('Daily limit must be 1-10000'))
+        .optional(),
       schedule_enabled: z.boolean(),
       schedule_kind: z.enum(['interval', 'daily', 'weekly']),
       interval_minutes: z
@@ -280,7 +281,7 @@ export function viewToFormValues(view: QualityCaseView): QualityCaseFormValues {
     top_p: config.top_p,
     samples_per_target: config.samples_per_target,
     timeout_seconds: config.timeout_seconds,
-    daily_limit: config.daily_limit,
+    daily_limit: config.daily_limit > 0 ? config.daily_limit : undefined,
     schedule_enabled: schedule.enabled,
     schedule_kind: schedule.kind,
     interval_minutes: schedule.interval_minutes,
@@ -325,7 +326,7 @@ export function formValuesToWrite(
       top_p: values.top_p,
       samples_per_target: values.samples_per_target,
       timeout_seconds: values.timeout_seconds,
-      daily_limit: values.daily_limit,
+      daily_limit: values.daily_limit ?? 0,
     },
     schedule,
   }

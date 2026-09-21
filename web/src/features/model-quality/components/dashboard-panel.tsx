@@ -75,6 +75,7 @@ export function DashboardPanel(props: DashboardPanelProps) {
   const navigate = useNavigate({ from: '/model-quality/' })
   const search = route.useSearch()
   const qualityCase = props.qualityCase
+  const [cardsPerRow, setCardsPerRow] = useState(4)
   const [selectedBucket, setSelectedBucket] = useState<QualityBucket | null>(
     null
   )
@@ -248,6 +249,7 @@ export function DashboardPanel(props: DashboardPanelProps) {
         samples={samples}
         selectedIds={selectedIds}
         showChannel={canViewChannels}
+        columns={cardsPerRow}
         onToggleSelect={toggleSelect}
         onOpen={setDetailSample}
         hasMore={samplesQuery.hasNextPage}
@@ -315,58 +317,63 @@ export function DashboardPanel(props: DashboardPanelProps) {
         />
       )}
 
-      <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6'>
-        <MetricCell label={t('Succeeded')} value={String(summary.success)} />
-        <MetricCell label={t('Failed')} value={String(summary.failure)} />
-        <MetricCell
-          label={t('Terminal samples')}
-          value={String(summary.total)}
-        />
-        <MetricCell
-          label={t('Success rate')}
-          value={
-            summary.success_rate == null
-              ? '—'
-              : `${Math.round(summary.success_rate * 100)}%`
-          }
-        />
-        <MetricCell
-          label={t('P50 duration')}
-          value={formatPercentileMs(summary.p50_ms, summary.total, 'p50', t)}
-        />
-        <MetricCell
-          label={t('P95 duration')}
-          value={formatPercentileMs(summary.p95_ms, summary.total, 'p95', t)}
-        />
-      </div>
-
-      <div className='bg-card space-y-2 rounded-lg border p-3'>
-        <div className='flex items-center justify-between gap-2 text-xs'>
-          <span className='text-muted-foreground truncate'>
-            {t('Window {{start}} – {{end}}', {
-              start: formatTimestampToDate(
-                dashboard.window_start,
-                'milliseconds'
-              ),
-              end: formatTimestampToDate(dashboard.window_end, 'milliseconds'),
-            })}
-          </span>
-          <span className='text-muted-foreground shrink-0 tabular-nums'>
-            {t(
-              '{{success}} succeeded · {{failure}} failed · {{total}} terminal',
-              {
-                success: summary.success,
-                failure: summary.failure,
-                total: summary.total,
-              }
-            )}
-          </span>
+      <div className='flex flex-col gap-3 xl:flex-row'>
+        <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 xl:w-[42%]'>
+          <MetricCell label={t('Succeeded')} value={String(summary.success)} />
+          <MetricCell label={t('Failed')} value={String(summary.failure)} />
+          <MetricCell
+            label={t('Terminal samples')}
+            value={String(summary.total)}
+          />
+          <MetricCell
+            label={t('Success rate')}
+            value={
+              summary.success_rate == null
+                ? '—'
+                : `${Math.round(summary.success_rate * 100)}%`
+            }
+          />
+          <MetricCell
+            label={t('P50 duration')}
+            value={formatPercentileMs(summary.p50_ms, summary.total, 'p50', t)}
+          />
+          <MetricCell
+            label={t('P95 duration')}
+            value={formatPercentileMs(summary.p95_ms, summary.total, 'p95', t)}
+          />
         </div>
-        <TimelineStrip
-          buckets={dashboard.buckets}
-          selectedBucket={selectedBucket}
-          onSelect={setSelectedBucket}
-        />
+
+        <div className='bg-card min-w-0 flex-1 space-y-2 rounded-lg border p-3'>
+          <div className='flex items-center justify-between gap-2 text-xs'>
+            <span className='text-muted-foreground truncate'>
+              {t('Window {{start}} – {{end}}', {
+                start: formatTimestampToDate(
+                  dashboard.window_start,
+                  'milliseconds'
+                ),
+                end: formatTimestampToDate(
+                  dashboard.window_end,
+                  'milliseconds'
+                ),
+              })}
+            </span>
+            <span className='text-muted-foreground shrink-0 tabular-nums'>
+              {t(
+                '{{success}} succeeded · {{failure}} failed · {{total}} terminal',
+                {
+                  success: summary.success,
+                  failure: summary.failure,
+                  total: summary.total,
+                }
+              )}
+            </span>
+          </div>
+          <TimelineStrip
+            buckets={dashboard.buckets}
+            selectedBucket={selectedBucket}
+            onSelect={setSelectedBucket}
+          />
+        </div>
       </div>
 
       <div className='flex flex-wrap items-center gap-2'>
@@ -405,6 +412,25 @@ export function DashboardPanel(props: DashboardPanelProps) {
           </Button>
         </div>
       )}
+
+      <div className='flex items-center justify-end gap-1'>
+        <span className='text-muted-foreground text-xs'>
+          {t('Cards per row')}
+        </span>
+        {[2, 4, 6, 8].map((count) => (
+          <Button
+            key={count}
+            size='sm'
+            variant={cardsPerRow === count ? 'secondary' : 'ghost'}
+            className='h-7 w-8 px-0 tabular-nums'
+            onClick={() => setCardsPerRow(count)}
+            aria-label={t('{{count}} cards per row', { count })}
+            aria-pressed={cardsPerRow === count}
+          >
+            {count}
+          </Button>
+        ))}
+      </div>
 
       {samplesContent()}
 

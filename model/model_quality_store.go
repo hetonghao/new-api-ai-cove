@@ -568,9 +568,12 @@ func reserveQualityBudgetTx(tx *gorm.DB, caseID int64, day string, count int, gl
 		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; err != nil {
 			return err
 		}
-		res := tx.Model(&ModelQualityBudget{}).
-			Where("id = ? AND reserved + started + ? <= ?", scope.id, count, scope.limit).
-			Update("reserved", gorm.Expr("reserved + ?", count))
+		// limit <= 0 means uncapped; the counters still track usage.
+		query := tx.Model(&ModelQualityBudget{}).Where("id = ?", scope.id)
+		if scope.limit > 0 {
+			query = query.Where("reserved + started + ? <= ?", count, scope.limit)
+		}
+		res := query.Update("reserved", gorm.Expr("reserved + ?", count))
 		if res.Error != nil {
 			return res.Error
 		}
@@ -616,9 +619,11 @@ func consumeQualityBudgetTx(tx *gorm.DB, caseID int64, sampleDay string, now tim
 			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; err != nil {
 				return "", err
 			}
-			res := tx.Model(&ModelQualityBudget{}).
-				Where("id = ? AND reserved + started + 1 <= ?", scope.id, scope.limit).
-				Update("started", gorm.Expr("started + 1"))
+			query := tx.Model(&ModelQualityBudget{}).Where("id = ?", scope.id)
+			if scope.limit > 0 {
+				query = query.Where("reserved + started + 1 <= ?", scope.limit)
+			}
+			res := query.Update("started", gorm.Expr("started + 1"))
 			if res.Error != nil {
 				return "", res.Error
 			}
@@ -632,12 +637,15 @@ func consumeQualityBudgetTx(tx *gorm.DB, caseID int64, sampleDay string, now tim
 		id    string
 		limit int
 	}{{qualityGlobalBudgetID(today), globalLimit}, {qualityCaseBudgetID(caseID, today), caseLimit}} {
-		res := tx.Model(&ModelQualityBudget{}).
-			Where("id = ? AND reserved >= 1 AND started < ?", scope.id, scope.limit).
-			Updates(map[string]any{
-				"reserved": gorm.Expr("reserved - 1"),
-				"started":  gorm.Expr("started + 1"),
-			})
+		query := tx.Model(&ModelQualityBudget{}).
+			Where("id = ? AND reserved >= 1", scope.id)
+		if scope.limit > 0 {
+			query = query.Where("started < ?", scope.limit)
+		}
+		res := query.Updates(map[string]any{
+			"reserved": gorm.Expr("reserved - 1"),
+			"started":  gorm.Expr("started + 1"),
+		})
 		if res.Error != nil {
 			return "", res.Error
 		}

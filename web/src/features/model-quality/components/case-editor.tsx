@@ -671,8 +671,18 @@ export function CaseEditor(props: CaseEditorProps) {
                     min={1}
                     max={10000}
                     aria-invalid={Boolean(errors.daily_limit)}
-                    {...form.register('daily_limit', { valueAsNumber: true })}
+                    {...form.register('daily_limit', {
+                      setValueAs: (value) =>
+                        value === '' ||
+                        value == null ||
+                        Number.isNaN(Number(value))
+                          ? undefined
+                          : Number(value),
+                    })}
                   />
+                  <FieldDescription>
+                    {t('Leave empty for no case daily cap.')}
+                  </FieldDescription>
                   <FieldError errors={[errors.daily_limit]} />
                 </Field>
                 <FieldDescription className='sm:col-span-3'>

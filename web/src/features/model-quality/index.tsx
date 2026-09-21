@@ -250,7 +250,7 @@ export function ModelQuality() {
             </TabsList>
             <TabsContent
               value='panel'
-              className='-mx-1 mt-3 -mb-1 min-h-0 overflow-x-hidden overflow-y-auto p-1'
+              className='-mx-1 mt-3 -mb-1 min-h-0 overflow-x-hidden overflow-y-auto p-1 [scrollbar-gutter:stable]'
             >
               {panelContent()}
             </TabsContent>
@@ -258,7 +258,7 @@ export function ModelQuality() {
               <>
                 <TabsContent
                   value='cases'
-                  className='-mx-1 mt-3 -mb-1 min-h-0 overflow-x-hidden overflow-y-auto p-1'
+                  className='-mx-1 mt-3 -mb-1 min-h-0 overflow-x-hidden overflow-y-auto p-1 [scrollbar-gutter:stable]'
                 >
                   {tabContent(
                     <CaseManager
@@ -270,7 +270,7 @@ export function ModelQuality() {
                 </TabsContent>
                 <TabsContent
                   value='batches'
-                  className='-mx-1 mt-3 -mb-1 min-h-0 overflow-x-hidden overflow-y-auto p-1'
+                  className='-mx-1 mt-3 -mb-1 min-h-0 overflow-x-hidden overflow-y-auto p-1 [scrollbar-gutter:stable]'
                 >
                   {tabContent(
                     <RunsTable

@@ -249,11 +249,19 @@ type SampleWallProps = {
   samples: readonly ModelQualitySample[]
   selectedIds: ReadonlySet<number>
   showChannel: boolean
+  columns: number
   onToggleSelect: (sample: ModelQualitySample) => void
   onOpen: (sample: ModelQualitySample) => void
   hasMore: boolean
   isFetchingMore: boolean
   onLoadMore: () => void
+}
+
+const WALL_COLUMN_CLASS: Record<number, string> = {
+  2: 'sm:grid-cols-2 lg:grid-cols-2',
+  4: 'sm:grid-cols-2 lg:grid-cols-4',
+  6: 'sm:grid-cols-3 lg:grid-cols-6',
+  8: 'sm:grid-cols-4 lg:grid-cols-8',
 }
 
 export function SampleWall(props: SampleWallProps) {
@@ -272,7 +280,12 @@ export function SampleWall(props: SampleWallProps) {
   }
   return (
     <div className='space-y-3'>
-      <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4'>
+      <div
+        className={cn(
+          'grid grid-cols-1 gap-3',
+          WALL_COLUMN_CLASS[props.columns] ?? WALL_COLUMN_CLASS[4]
+        )}
+      >
         {props.samples.map((sample) => (
           <SampleCard
             key={sample.id}
