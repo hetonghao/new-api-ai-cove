@@ -230,6 +230,22 @@ func ExtractSafeSVG(text string) (string, string) {
 				if name == "aria-label" && len(attr.Value) <= 512 {
 					continue
 				}
+				if name == "aria-labelledby" || name == "aria-describedby" {
+					fields := strings.Fields(attr.Value)
+					if len(fields) == 0 || len(attr.Value) > 512 {
+						return "", "unsafe_svg"
+					}
+					for _, ref := range fields {
+						if !svgIdentifier.MatchString(ref) {
+							return "", "unsafe_svg"
+						}
+						refs = append(refs, ref)
+					}
+					continue
+				}
+				if (name == "aria-hidden" || name == "focusable") && (attr.Value == "true" || attr.Value == "false") {
+					continue
+				}
 				if slices.Contains(svgPaintProperties, name) {
 					if !safePaintValue(name, attr.Value, &refs) {
 						return "", "unsafe_svg"
