@@ -75,7 +75,7 @@ export function DashboardPanel(props: DashboardPanelProps) {
   const navigate = useNavigate({ from: '/model-quality/' })
   const search = route.useSearch()
   const qualityCase = props.qualityCase
-  const [cardsPerRow, setCardsPerRow] = useState(4)
+  const [cardsPerRow, setCardsPerRow] = useState(6)
   const [selectedBucket, setSelectedBucket] = useState<QualityBucket | null>(
     null
   )
