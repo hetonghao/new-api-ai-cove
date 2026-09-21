@@ -346,7 +346,7 @@ export function DashboardPanel(props: DashboardPanelProps) {
         </div>
 
         <div className='bg-card min-w-0 flex-1 space-y-2 rounded-lg border p-3'>
-          <div className='flex items-center justify-between gap-2 text-xs'>
+          <div className='flex min-h-6 items-center justify-between gap-2 text-xs'>
             <span className='text-muted-foreground truncate'>
               {t('Window {{start}} – {{end}}', {
                 start: formatTimestampToDate(
@@ -359,21 +359,69 @@ export function DashboardPanel(props: DashboardPanelProps) {
                 ),
               })}
             </span>
-            <span className='text-muted-foreground shrink-0 tabular-nums'>
-              {t(
-                '{{success}} succeeded · {{failure}} failed · {{total}} terminal',
-                {
-                  success: summary.success,
-                  failure: summary.failure,
-                  total: summary.total,
-                }
-              )}
-            </span>
+            {selectedBucket ? (
+              <span className='flex shrink-0 items-center gap-1'>
+                <StatusBadge
+                  variant='info'
+                  copyable={false}
+                  label={t('{{start}} – {{end}}', {
+                    start: formatTimestampToDate(
+                      selectedBucket.start,
+                      'milliseconds'
+                    ),
+                    end: formatTimestampToDate(
+                      selectedBucket.end,
+                      'milliseconds'
+                    ),
+                  })}
+                />
+                <Button
+                  size='sm'
+                  variant='ghost'
+                  className='h-6 px-1.5'
+                  onClick={() => setSelectedBucket(null)}
+                >
+                  <X data-icon='inline-start' />
+                  {t('Clear filter')}
+                </Button>
+              </span>
+            ) : (
+              <span className='text-muted-foreground shrink-0 tabular-nums'>
+                {t(
+                  '{{success}} succeeded · {{failure}} failed · {{total}} terminal',
+                  {
+                    success: summary.success,
+                    failure: summary.failure,
+                    total: summary.total,
+                  }
+                )}
+              </span>
+            )}
           </div>
           <TimelineStrip
             buckets={dashboard.buckets}
             selectedBucket={selectedBucket}
             onSelect={setSelectedBucket}
+            legendExtra={
+              <>
+                <span className='text-muted-foreground'>
+                  {t('Cards per row')}
+                </span>
+                {[2, 4, 6, 8].map((count) => (
+                  <Button
+                    key={count}
+                    size='sm'
+                    variant={cardsPerRow === count ? 'secondary' : 'ghost'}
+                    className='h-6 w-7 px-0 text-xs tabular-nums'
+                    onClick={() => setCardsPerRow(count)}
+                    aria-label={t('{{count}} cards per row', { count })}
+                    aria-pressed={cardsPerRow === count}
+                  >
+                    {count}
+                  </Button>
+                ))}
+              </>
+            }
           />
         </div>
       </div>
@@ -389,51 +437,6 @@ export function DashboardPanel(props: DashboardPanelProps) {
               label={`${t(sampleStatusLabel(entry.status))} ${entry.count}`}
             />
           ))}
-      </div>
-
-      <div className='flex min-h-7 flex-wrap items-center gap-2'>
-        {selectedBucket && (
-          <>
-            <StatusBadge
-              variant='info'
-              copyable={false}
-              label={t('{{start}} – {{end}}', {
-                start: formatTimestampToDate(
-                  selectedBucket.start,
-                  'milliseconds'
-                ),
-                end: formatTimestampToDate(selectedBucket.end, 'milliseconds'),
-              })}
-            />
-            <Button
-              size='sm'
-              variant='ghost'
-              className='h-7'
-              onClick={() => setSelectedBucket(null)}
-            >
-              <X data-icon='inline-start' />
-              {t('Clear filter')}
-            </Button>
-          </>
-        )}
-        <div className='ml-auto flex items-center gap-1'>
-          <span className='text-muted-foreground text-xs'>
-            {t('Cards per row')}
-          </span>
-          {[2, 4, 6, 8].map((count) => (
-            <Button
-              key={count}
-              size='sm'
-              variant={cardsPerRow === count ? 'secondary' : 'ghost'}
-              className='h-7 w-8 px-0 tabular-nums'
-              onClick={() => setCardsPerRow(count)}
-              aria-label={t('{{count}} cards per row', { count })}
-              aria-pressed={cardsPerRow === count}
-            >
-              {count}
-            </Button>
-          ))}
-        </div>
       </div>
 
       {samplesContent()}

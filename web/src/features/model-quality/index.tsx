@@ -237,17 +237,15 @@ export function ModelQuality() {
             onValueChange={(value) => setSearch({ tab: value })}
             className='h-full min-h-0 min-w-0'
           >
-            <TabsList className='h-auto max-w-full flex-wrap justify-start gap-y-2 pb-1 group-data-horizontal/tabs:h-auto'>
-              <TabsTrigger value='panel'>{t('Test Panel')}</TabsTrigger>
-              {canOperate && (
-                <>
-                  <TabsTrigger value='cases'>{t('Test Cases')}</TabsTrigger>
-                  <TabsTrigger value='batches'>
-                    {t('Batch Records')}
-                  </TabsTrigger>
-                </>
-              )}
-            </TabsList>
+            {canOperate && (
+              <TabsList className='h-auto max-w-full flex-wrap justify-start gap-y-2 pb-1 group-data-horizontal/tabs:h-auto'>
+                <TabsTrigger value='panel'>{t('Test Panel')}</TabsTrigger>
+                <TabsTrigger value='cases'>{t('Test Cases')}</TabsTrigger>
+                <TabsTrigger value='batches'>
+                  {t('Batch Records')}
+                </TabsTrigger>
+              </TabsList>
+            )}
             <TabsContent
               value='panel'
               className='-mx-1 mt-3 -mb-1 min-h-0 overflow-x-hidden overflow-y-auto p-1 [scrollbar-gutter:stable]'

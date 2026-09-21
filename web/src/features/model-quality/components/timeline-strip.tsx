@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { ReactNode } from 'react'
+
 import { useTranslation } from 'react-i18next'
 
 import { formatTimestampToDate } from '@/lib/format'
@@ -28,6 +30,7 @@ type TimelineStripProps = {
   buckets: readonly QualityBucket[]
   selectedBucket: QualityBucket | null
   onSelect: (bucket: QualityBucket | null) => void
+  legendExtra?: ReactNode
 }
 
 const toneClass: Record<string, string> = {
@@ -101,6 +104,11 @@ export function TimelineStrip(props: TimelineStripProps) {
             {t(item.labelKey)}
           </span>
         ))}
+        {props.legendExtra && (
+          <span className='ml-auto flex items-center gap-1'>
+            {props.legendExtra}
+          </span>
+        )}
       </div>
     </div>
   )
