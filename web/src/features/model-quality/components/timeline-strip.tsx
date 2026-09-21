@@ -79,7 +79,7 @@ export function TimelineStrip(props: TimelineStripProps) {
               className={cn(
                 'focus-visible:ring-ring h-full min-w-0 flex-1 rounded-sm transition-opacity focus-visible:ring-2 focus-visible:outline-none',
                 toneClass[tone],
-                props.selectedBucket && !selected && 'opacity-50',
+                props.selectedBucket && !selected && 'opacity-75',
                 selected && 'ring-ring ring-2 ring-inset'
               )}
             />

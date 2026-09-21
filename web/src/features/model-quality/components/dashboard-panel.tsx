@@ -318,7 +318,7 @@ export function DashboardPanel(props: DashboardPanelProps) {
       )}
 
       <div className='flex flex-col gap-3 xl:flex-row'>
-        <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 xl:w-[42%]'>
+        <div className='grid grid-cols-2 gap-2 sm:grid-cols-3 xl:w-[30%]'>
           <MetricCell label={t('Succeeded')} value={String(summary.success)} />
           <MetricCell label={t('Failed')} value={String(summary.failure)} />
           <MetricCell
