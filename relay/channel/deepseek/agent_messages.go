@@ -59,6 +59,22 @@ func normalizeDeepSeekAgentMessages(input json.RawMessage) json.RawMessage {
 	return raw
 }
 
+// NormalizeResponsesInput applies the whole DeepSeek /responses item contract to a
+// raw input array: agent_message 与缺 call_id 的工具输出先改写成 user 轮，再把工具轮
+// 规范化（插在工具轮中间的非工具 item 提到 call 之前、丢掉孤立 output）。
+//
+// 规范化不能只挂在 DeepSeek adaptor 的 ConvertOpenAIResponsesRequest 上：只要某条
+// 入口没走到它（渠道类型委托、直通路由、宿主工具转换各不相同），客户端插在
+// call 与它自己的 output 之间的 developer message 就会原样发出去，上游整轮回
+// "No tool output found for tool call ..."。因此所有会打到 DeepSeek /responses 上游的
+// 入口都要先过这一层；本函数幂等，adaptor 再跑一次不会二次改动。
+func NormalizeResponsesInput(input json.RawMessage) json.RawMessage {
+	if len(input) == 0 {
+		return input
+	}
+	return canonicalizeDeepSeekToolRuns(normalizeDeepSeekAgentMessages(input))
+}
+
 type deepSeekInputTextBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text"`

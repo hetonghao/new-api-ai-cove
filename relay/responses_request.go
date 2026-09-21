@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	relaychannel "github.com/QuantumNous/new-api/relay/channel"
+	"github.com/QuantumNous/new-api/relay/channel/deepseek"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -65,6 +66,16 @@ func PrepareResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, req *d
 		body := common.NewReplayableBodyReader(storage)
 		return adaptor, body, io.NopCloser(body), deepSeekCapture, nil
 	}
+
+	// 规范化不能只挂在 DeepSeek adaptor 上：委托条件、宿主工具转换、路由差异都可能让
+	// 某条入口跳过它，客户端插在 call 与自己的 output 之间的 message 就会原样发出，
+	// 上游整轮回 "No tool output found for tool call ..."。这里对所有 DeepSeek
+	// /responses 上游统一先规范化（幂等，adaptor 内部再跑一次无副作用）。
+	deepSeekNormalized := relaycommon.IsDeepSeekResponsesRelay(info)
+	if deepSeekNormalized {
+		request.Input = deepseek.NormalizeResponsesInput(request.Input)
+	}
+	deepSeekCapture.NotePreparation(fmt.Sprintf("%T", adaptor), deepSeekNormalized)
 
 	convertedRequest, err := adaptor.ConvertOpenAIResponsesRequest(c, info, *request)
 	if err != nil {

@@ -125,6 +125,63 @@ func TestDeepSeekLiveUpstreamAgentMessage(t *testing.T) {
 	require.True(t, status >= 200 && status < 300, "上游拒绝了规范化后的 payload：%s", responseBody)
 }
 
+// 2026-09-21 11:22 生产 400 现场（call_00_GLi6SIHQhqISBhtuwGpG3282，channel 59 D-6）：
+// Codex 把 `<image_resize_notice>` 这条 developer message 发在 view_image 的 call 与它
+// 自己的 output 之间，上游整轮回 "No tool output found for tool call ..."。把这条 message
+// 提到 call 之前即放行；数组型 input_image output 本身无害（第 3、4 条用例已分别锁定）。
+func TestDeepSeekLiveUpstreamNoticeBetweenCallAndOutput(t *testing.T) {
+	baseURL, apiKey, model, session := deepSeekLiveTarget(t)
+	client := &http.Client{Timeout: 120 * time.Second}
+
+	imageOutput := []map[string]any{{
+		"type":      "input_image",
+		"image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+		"detail":    "high",
+	}}
+	shape := []map[string]any{
+		{"type": "message", "role": "user", "content": []map[string]any{{"type": "input_text", "text": "看这两张图"}}},
+		{"type": "function_call", "call_id": "call_00_GLi6SIHQhqISBhtuwGpG3282", "name": "view_image", "arguments": `{"path":"/tmp/a.png"}`},
+		{"type": "message", "role": "developer", "content": []map[string]any{{"type": "input_text", "text": "<image_resize_notice>\nImage 1 of 1 was resized.\n</image_resize_notice>"}}},
+		{"type": "function_call", "call_id": "call_01_0SUCSgUYWTDdcW0GlNmX3093", "name": "view_image", "arguments": `{"path":"/tmp/b.png"}`},
+		{"type": "function_call_output", "call_id": "call_00_GLi6SIHQhqISBhtuwGpG3282", "output": imageOutput},
+		{"type": "function_call_output", "call_id": "call_01_0SUCSgUYWTDdcW0GlNmX3093", "output": imageOutput},
+	}
+	raw := mustJSON(t, shape)
+
+	status, responseBody := postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
+		fmt.Sprintf("%s-notice-raw-%d", session, time.Now().UnixNano()), deepSeekLiveViewImageBody(t, model, raw))
+	require.Equal(t, http.StatusBadRequest, status, "上游不再拒绝插在工具轮中间的 developer message，规则已变：%s", responseBody)
+	require.Contains(t, responseBody, "No tool output found for tool call")
+
+	status, responseBody = postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
+		fmt.Sprintf("%s-notice-fix-%d", session, time.Now().UnixNano()), deepSeekLiveViewImageBody(t, model, NormalizeResponsesInput(raw)))
+	require.True(t, status >= 200 && status < 300, "上游拒绝了规范化后的 payload：%s", responseBody)
+}
+
+// view_image 形状必须声明同名工具，否则上游不会把 function_call 映射成工具轮。
+func deepSeekLiveViewImageBody(t *testing.T, model string, input json.RawMessage) []byte {
+	t.Helper()
+	return mustJSON(t, map[string]any{
+		"model":             model,
+		"input":             input,
+		"max_output_tokens": 16,
+		"stream":            true,
+		"include":           []string{"reasoning.encrypted_content"},
+		"store":             false,
+		"reasoning":         map[string]any{"effort": "high", "summary": "auto"},
+		"tools": []map[string]any{{
+			"type":        "function",
+			"name":        "view_image",
+			"description": "view an image file",
+			"parameters": map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"path": map[string]any{"type": "string"}},
+				"required":   []string{"path"},
+			},
+		}},
+	})
+}
+
 func deepSeekLiveTarget(t *testing.T) (baseURL, apiKey, model, session string) {
 	t.Helper()
 	baseURL = strings.TrimSpace(os.Getenv("AI_COVE_DEEPSEEK_E2E_BASE_URL"))

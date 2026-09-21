@@ -65,6 +65,7 @@ type DeepSeekFailureCapture struct {
 	sentValid    bool
 	original     DeepSeekToolReasoningDiagnostics
 	originalDone bool
+	prep         string
 }
 
 func NewDeepSeekFailureCapture(c *gin.Context, info *RelayInfo, originalInput json.RawMessage) *DeepSeekFailureCapture {
@@ -83,6 +84,21 @@ func (x *DeepSeekFailureCapture) ObserveOutbound(outbound []byte) {
 	x.outbound = outbound
 	sent, ok := DeepSeekToolReasoningDiagnosticsOfBody(outbound)
 	x.sent, x.sentValid = sent, ok
+}
+
+// NotePreparation records which adaptor prepared this attempt and whether the
+// DeepSeek item normalization ran before it. The 400 log carries it so a request
+// that skipped normalization can be told apart from one that ran it and still
+// failed, without turning on DEBUG.
+func (x *DeepSeekFailureCapture) NotePreparation(adaptor string, normalized bool) {
+	if x == nil {
+		return
+	}
+	apiType, channelType := 0, 0
+	if x.info != nil {
+		apiType, channelType = x.info.ApiType, x.info.ChannelType
+	}
+	x.prep = fmt.Sprintf("api_type=%d channel_type=%d adaptor=%s normalized=%t", apiType, channelType, adaptor, normalized)
 }
 
 // ReportFailure dumps the request payload and both shape reports once the
@@ -112,9 +128,9 @@ func (x *DeepSeekFailureCapture) ReportFailure(resp *http.Response) {
 		payload = fmt.Sprintf("suppressed reason=%s %s", suppressedReason, payload)
 	}
 	logger.LogError(x.ctx, fmt.Sprintf(
-		"%s status=%d channel=%d model=%q upstream_model=%q relay_mode=%d sent[%s] client[%s] payload=%s upstream_error=%q",
+		"%s status=%d channel=%d model=%q upstream_model=%q relay_mode=%d sent[%s] client[%s] prep[%s] payload=%s upstream_error=%q",
 		deepSeekFailureLogTag, resp.StatusCode, x.channelID(), x.originModel(), x.upstreamModel(), x.relayMode(),
-		sent, x.originalDiagnostics().String(), payload,
+		sent, x.originalDiagnostics().String(), x.preparation(), payload,
 		deepSeekFailurePreview(upstreamErr, deepSeekFailurePreviewLimit),
 	))
 	if !allowed {
@@ -130,6 +146,13 @@ func (x *DeepSeekFailureCapture) ReportFailure(resp *http.Response) {
 	}
 	logger.LogError(x.ctx, fmt.Sprintf("%s payload_end fingerprint=%s bytes=%d",
 		deepSeekFailureLogTag, fingerprint, len(x.outbound)))
+}
+
+func (x *DeepSeekFailureCapture) preparation() string {
+	if x == nil || x.prep == "" {
+		return "unavailable"
+	}
+	return x.prep
 }
 
 func (x *DeepSeekFailureCapture) originalDiagnostics() DeepSeekToolReasoningDiagnostics {

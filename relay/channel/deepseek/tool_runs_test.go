@@ -3,6 +3,7 @@ package deepseek
 import (
 	"testing"
 
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -141,4 +142,31 @@ func TestCanonicalizeDeepSeekToolRunsHoistsTextBetweenParallelCalls(t *testing.T
 		"function_call_output",
 	}, inputTypes(t, got))
 	require.Equal(t, "searching", gjson.GetBytes(got, "0.content.0.text").String())
+}
+
+// 共享入口：agent_message 改写与工具轮规整一次做完，并且幂等——relay/controller 两层
+// 与 adaptor 都会调它，任一层漏掉就会出现 2026-09-21 那种“sent 与 client 完全一致”的漏网。
+func TestNormalizeResponsesInputComposesAndIsIdempotent(t *testing.T) {
+	input := mustJSON(t, []map[string]any{
+		{"type": "message", "role": "user", "content": []map[string]any{{"type": "input_text", "text": "看两张图"}}},
+		{"type": "function_call", "call_id": "call-1", "name": "view_image", "arguments": "{}"},
+		{"type": "message", "role": "developer", "content": []map[string]any{{"type": "input_text", "text": "<image_resize_notice>1 of 1 resized</image_resize_notice>"}}},
+		{"type": "function_call", "call_id": "call-2", "name": "view_image", "arguments": "{}"},
+		{"type": "function_call_output", "call_id": "call-1", "output": []map[string]any{{"type": "input_image", "image_url": "data:image/png;base64,iVBORw0KGgo="}}},
+		{"type": "function_call_output", "call_id": "call-2", "output": []map[string]any{{"type": "input_image", "image_url": "data:image/png;base64,iVBORw0KGgo="}}},
+	})
+
+	once := NormalizeResponsesInput(input)
+	require.Equal(t, []string{
+		"message",
+		"message",
+		"function_call",
+		"function_call",
+		"function_call_output",
+		"function_call_output",
+	}, inputTypes(t, once))
+	require.Equal(t, "developer", gjson.GetBytes(once, "1.role").String())
+	require.Equal(t, 0, relaycommon.DeepSeekToolReasoningDiagnosticsOfInput(once).Interleaved)
+
+	require.Equal(t, string(once), string(NormalizeResponsesInput(once)))
 }

@@ -53,7 +53,8 @@ test:
 # 镜像发布工作流会在 build 之前跑同一条命令。
 deepseek-gate:
 	@echo "Running DeepSeek relay gate..."
-	@GOWORK=off go test ./relay/common/... ./relay/channel/deepseek/... ./relay/channel/openai/... -count=1
+	@GOWORK=off go test ./relay/ ./relay/common/... ./relay/channel/deepseek/... ./relay/channel/openai/... -count=1
+	@GOWORK=off go test ./controller/ -run 'ResponsesWebSocket' -count=1
 
 # 打真实上游的端到端检查，默认跳过；需要显式给出地址和密钥：
 #   AI_COVE_DEEPSEEK_E2E_BASE_URL=https://opencode.ai/zen/go/v1/responses

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relay/channel"
+	"github.com/QuantumNous/new-api/relay/channel/deepseek"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -198,6 +200,17 @@ func prepareResponsesWebSocketPayload(c *gin.Context, info *relaycommon.RelayInf
 
 	if model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
 		return payload, adaptor, nil
+	}
+	// WS 这条路只用 sjson 打补丁、其余字段照抄客户端 payload，因此 adaptor 里那层
+	// DeepSeek /responses 规范化在这里必须显式补上，否则插在工具轮中间的 message 会
+	// 原样发给上游（"No tool output found for tool call ..."）。
+	if relaycommon.IsDeepSeekResponsesRelay(info) {
+		if normalized := deepseek.NormalizeResponsesInput(requestCopy.Input); !bytes.Equal(normalized, requestCopy.Input) {
+			payload, err = sjson.SetRawBytes(payload, "input", normalized)
+			if err != nil {
+				return nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+			}
+		}
 	}
 	convertedValue, err := adaptor.ConvertOpenAIResponsesRequest(c, info, *requestCopy)
 	if err != nil {

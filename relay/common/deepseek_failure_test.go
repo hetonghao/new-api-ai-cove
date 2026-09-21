@@ -91,7 +91,7 @@ func TestDeepSeekFailureCaptureDumpsPayloadAndKeepsErrorBody(t *testing.T) {
 	logs := captureDeepSeekErrorLogs(t)
 	c := newDeepSeekTestContext(t)
 	info := &RelayInfo{
-		ChannelMeta:     &ChannelMeta{ChannelId: 7, UpstreamModelName: "deepseek-chat"},
+		ChannelMeta:     &ChannelMeta{ChannelId: 7, ChannelType: 60, ApiType: 37, UpstreamModelName: "deepseek-chat"},
 		RelayMode:       relayconstant.RelayModeResponses,
 		OriginModelName: "deepseek-v4.1-flash",
 	}
@@ -107,6 +107,7 @@ func TestDeepSeekFailureCaptureDumpsPayloadAndKeepsErrorBody(t *testing.T) {
 	})
 	capture := NewDeepSeekFailureCapture(c, info, clientInput)
 	capture.ObserveOutbound(body)
+	capture.NotePreparation("*newapi.Adaptor", true)
 
 	resp := &http.Response{
 		StatusCode: http.StatusBadRequest,
@@ -123,6 +124,9 @@ func TestDeepSeekFailureCaptureDumpsPayloadAndKeepsErrorBody(t *testing.T) {
 	require.Contains(t, out, `model="deepseek-v4.1-flash" upstream_model="deepseek-chat"`)
 	require.Contains(t, out, "client[items=3")
 	require.Contains(t, out, "sent[items=3")
+	// prep[] 是那次“sent 与 client 形状完全一致”之后补的定位字段：能区分
+	// “规范化没跑到”和“规范化跑了但上游仍拒”。
+	require.Contains(t, out, "prep[api_type=37 channel_type=60 adaptor=*newapi.Adaptor normalized=true]")
 	require.Contains(t, out, "No tool call found for tool output call-2")
 	require.Contains(t, out, "deepseek_upstream_failure payload fingerprint=")
 	require.Contains(t, out, "deepseek_upstream_failure payload_end")
