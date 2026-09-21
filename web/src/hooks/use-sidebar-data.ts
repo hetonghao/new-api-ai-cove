@@ -23,6 +23,7 @@ import {
   CreditCard,
   FileText,
   FlaskConical,
+  Gauge,
   Handshake,
   Key,
   LayoutDashboard,
@@ -161,6 +162,11 @@ export function useSidebarData(): SidebarData {
             title: t('Models'),
             url: '/models/metadata',
             icon: Box,
+          },
+          {
+            title: t('Model Quality'),
+            url: '/model-quality',
+            icon: Gauge,
           },
           {
             title: t('Users'),

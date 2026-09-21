@@ -380,8 +380,18 @@ func migrateDB() error {
 		&SystemTaskLock{},
 		&CasbinRule{},
 		&AuthzRole{},
+		&ModelQualitySettings{},
+		&ModelQualityCase{},
+		&ModelQualityRevision{},
+		&ModelQualityRun{},
+		&ModelQualitySample{},
+		&ModelQualityArtifact{},
+		&ModelQualityBudget{},
 	)
 	if err != nil {
+		return err
+	}
+	if err := seedQualitySettings(DB); err != nil {
 		return err
 	}
 	if err := migrateRiskData(DB); err != nil {

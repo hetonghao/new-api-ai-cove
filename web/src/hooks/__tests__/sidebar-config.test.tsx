@@ -180,3 +180,13 @@ describe('audit log sidebar entry', () => {
     expect(titles).toContain('Audit Logs')
   })
 })
+
+describe('model quality sidebar entry', () => {
+  it('the admin group exposes Model Quality at /model-quality', () => {
+    const { result } = sidebarFor()
+    const admin = result.current.find((group) => group.id === 'admin')
+    const item = admin?.items.find((entry) => entry.title === 'Model Quality')
+    expect(item).toBeDefined()
+    expect(item?.url).toBe('/model-quality')
+  })
+})
