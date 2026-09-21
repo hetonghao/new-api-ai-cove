@@ -43,6 +43,7 @@ export interface QualityConfig {
     | 'medium'
     | 'high'
     | 'xhigh'
+    | 'max'
   temperature?: number
   top_p?: number
   samples_per_target: number

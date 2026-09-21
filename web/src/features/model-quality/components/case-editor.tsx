@@ -551,6 +551,7 @@ export function CaseEditor(props: CaseEditorProps) {
                         'medium',
                         'high',
                         'xhigh',
+                        'max',
                       ] as const
                     ).map((effort) => (
                       <NativeSelectOption key={effort} value={effort}>

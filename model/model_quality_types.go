@@ -233,7 +233,7 @@ func ValidateQualityConfig(c QualityConfig) error {
 	if c.Instruction != "" && c.InstructionRole != "system" && c.InstructionRole != "developer" {
 		return errors.New("invalid instruction role")
 	}
-	if !slices.Contains([]string{"", "none", "minimal", "low", "medium", "high", "xhigh"}, c.ReasoningEffort) {
+	if !slices.Contains([]string{"", "none", "minimal", "low", "medium", "high", "xhigh", "max"}, c.ReasoningEffort) {
 		return errors.New("invalid reasoning effort")
 	}
 	if c.Temperature != nil && (math.IsNaN(*c.Temperature) || math.IsInf(*c.Temperature, 0) || *c.Temperature < 0 || *c.Temperature > 2) {

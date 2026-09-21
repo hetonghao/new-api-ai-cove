@@ -48,6 +48,7 @@ export type QualityCaseFormValues = {
     | 'medium'
     | 'high'
     | 'xhigh'
+    | 'max'
   temperature?: number
   top_p?: number
   samples_per_target: number
@@ -115,6 +116,7 @@ export function getQualityCaseFormSchema(t: TFunction) {
         'medium',
         'high',
         'xhigh',
+        'max',
       ]),
       temperature: z
         .number()
