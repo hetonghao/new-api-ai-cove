@@ -278,12 +278,23 @@ func testModelQualityStoreLeaseLossCannotClaimOrOverwriteRecovery(t *testing.T, 
 	assert.ErrorIs(t, FinishQualitySample(sample.ID, "executor", QualityResult{Status: "succeeded"}, now), ErrQualityOwnership)
 	_, samples, err := GetQualityRun(run.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "interrupted", samples[0].Status)
+	// Orphaned in-flight samples requeue instead of failing, so restarts do
+	// not lose samples; the consumed budget slot returns to reserved.
+	assert.Equal(t, "pending", samples[0].Status)
+	assert.Empty(t, samples[0].ExecutorID)
+	assert.Empty(t, samples[0].ErrorCode)
+	assert.Zero(t, samples[0].StartedAt)
 	assert.Equal(t, "pending", samples[1].Status)
 	var budget ModelQualityBudget
 	require.NoError(t, DB.First(&budget, "id = ?", qualityGlobalBudgetID(qualityBudgetDay(now))).Error)
-	assert.Equal(t, 1, budget.Started)
-	assert.Equal(t, 1, budget.Reserved)
+	assert.Equal(t, 0, budget.Started)
+	assert.Equal(t, 2, budget.Reserved)
+	require.NoError(t, DB.Create(&SystemTask{TaskID: "next-executor", Type: ModelQualityExecuteTask, Status: SystemTaskStatusRunning, LockedBy: "runner"}).Error)
+	require.NoError(t, DB.Model(&SystemTaskLock{}).Where("type = ?", ModelQualityExecuteTask).
+		Updates(map[string]any{"task_id": "next-executor", "locked_until": now.Add(48 * time.Hour).Unix()}).Error)
+	reclaimed, _, err := ClaimQualitySample("next-executor", nil, now)
+	require.NoError(t, err)
+	assert.Equal(t, samples[0].ID, reclaimed.ID)
 }
 
 func testModelQualityStorePreflightSkipRefundsOnlyUnsentSample(t *testing.T, dialect string) {

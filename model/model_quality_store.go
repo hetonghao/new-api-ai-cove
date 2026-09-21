@@ -1260,9 +1260,10 @@ func closeQualityRunIfDoneTx(tx *gorm.DB, runID string, now time.Time) error {
 	return releaseQualityActiveRunTx(tx, run.CaseID, runID)
 }
 
-// RecoverQualityWork marks orphaned requesting samples interrupted when their
-// executor's system task is terminal or its lock expired. Pending samples are
-// left eligible; in-flight runs are reconciled to terminal states.
+// RecoverQualityWork requeues samples whose executor died (terminal task or
+// expired lock) instead of failing them, so deploys and restarts do not lose
+// samples. Pending samples are left eligible; in-flight runs are reconciled to
+// terminal states.
 func RecoverQualityWork(executorID string, now time.Time) error {
 	var executors []string
 	if err := DB.Model(&ModelQualitySample{}).
@@ -1293,17 +1294,93 @@ func RecoverQualityWork(executorID string, now time.Time) error {
 		if !orphan {
 			continue
 		}
-		if err := DB.Model(&ModelQualitySample{}).
-			Where("status = ? AND executor_id = ?", qualitySampleStatusRequesting, owner).
-			Updates(map[string]any{
-				"status":      qualitySampleStatusInterrupted,
-				"error_code":  "interrupted_unknown",
-				"finished_at": now.UnixMilli(),
-			}).Error; err != nil {
+		if err := qualityTransaction(func(tx *gorm.DB) error {
+			var stuck []ModelQualitySample
+			if err := tx.Where("executor_id = ? AND (status = ? OR (status = ? AND error_code IN ?))",
+				owner, qualitySampleStatusRequesting, qualitySampleStatusInterrupted,
+				[]string{"executor_interrupted", "interrupted_unknown"}).
+				Select("id", "case_id", "budget_day").Find(&stuck).Error; err != nil {
+				return err
+			}
+			if len(stuck) == 0 {
+				return nil
+			}
+			ids := make([]int64, 0, len(stuck))
+			type scope struct {
+				caseID int64
+				day    string
+			}
+			consumed := map[scope]int{}
+			for _, sample := range stuck {
+				ids = append(ids, sample.ID)
+				if sample.BudgetDay != "" {
+					consumed[scope{sample.CaseID, sample.BudgetDay}]++
+				}
+			}
+			if err := tx.Where("sample_id IN ?", ids).Delete(&ModelQualityArtifact{}).Error; err != nil {
+				return err
+			}
+			res := tx.Model(&ModelQualitySample{}).
+				Where("id IN ? AND executor_id = ?", ids, owner).
+				Updates(map[string]any{
+					"status":          qualitySampleStatusPending,
+					"executor_id":     "",
+					"error_code":      "",
+					"validation":      "",
+					"finish_reason":   "",
+					"request_id":      "",
+					"request_success": false,
+					"started_at":      0,
+					"finished_at":     0,
+					"duration_ms":     0,
+					"first_text_ms":   0,
+					"input_tokens":    0,
+					"output_tokens":   0,
+				})
+			if res.Error != nil {
+				return res.Error
+			}
+			// Route samples attribute the actual channel at finish; a partial
+			// interrupted result may have stamped one already.
+			if err := tx.Model(&ModelQualitySample{}).
+				Where("id IN ? AND target_channel_id = 0", ids).
+				Updates(map[string]any{"channel_id": 0, "channel_name": "", "response_model": ""}).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&ModelQualitySample{}).
+				Where("id IN ? AND target_channel_id <> 0", ids).
+				Update("response_model", "").Error; err != nil {
+				return err
+			}
+			for s, count := range consumed {
+				if err := unconsumeQualityBudgetTx(tx, s.caseID, s.day, count); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
 			return err
 		}
 	}
 	return reconcileQualityRuns(now)
+}
+
+// unconsumeQualityBudgetTx moves consumed slots back to reserved when in-flight
+// samples are requeued after their executor died. A missing row or a smaller
+// started count means the slot was already released; tolerate 0 rows.
+func unconsumeQualityBudgetTx(tx *gorm.DB, caseID int64, day string, count int) error {
+	for _, id := range []string{qualityGlobalBudgetID(day), qualityCaseBudgetID(caseID, day)} {
+		res := tx.Model(&ModelQualityBudget{}).
+			Where("id = ? AND started >= ?", id, count).
+			Updates(map[string]any{
+				"started":  gorm.Expr("started - ?", count),
+				"reserved": gorm.Expr("reserved + ?", count),
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+	}
+	return nil
 }
 
 func reconcileQualityRuns(now time.Time) error {

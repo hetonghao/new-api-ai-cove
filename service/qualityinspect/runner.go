@@ -94,7 +94,9 @@ func BuildRequest(cfg model.QualityConfig) (string, []byte, error) {
 	path := "/v1/responses"
 	if cfg.Protocol == "responses" {
 		body["input"] = messages
-		body["max_output_tokens"] = cfg.MaxOutputTokens
+		if cfg.MaxOutputTokens > 0 {
+			body["max_output_tokens"] = cfg.MaxOutputTokens
+		}
 		body["store"] = false
 		if cfg.ReasoningEffort != "" {
 			body["reasoning"] = map[string]string{"effort": cfg.ReasoningEffort}
@@ -110,7 +112,9 @@ func BuildRequest(cfg model.QualityConfig) (string, []byte, error) {
 				break
 			}
 		}
-		body[limitKey] = cfg.MaxOutputTokens
+		if cfg.MaxOutputTokens > 0 {
+			body[limitKey] = cfg.MaxOutputTokens
+		}
 		if cfg.ReasoningEffort != "" {
 			body["reasoning_effort"] = cfg.ReasoningEffort
 		}

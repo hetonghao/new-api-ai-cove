@@ -62,6 +62,7 @@ type QualitySchedule struct {
 
 type QualitySettingsConfig struct {
 	Enabled          bool  `json:"enabled"`
+	PublicPanel      bool  `json:"public_panel"`
 	TokenIDs         []int `json:"token_ids"`
 	DailyLimit       int   `json:"daily_limit"`
 	Concurrency      int   `json:"concurrency"`
@@ -226,7 +227,7 @@ func ValidateQualityConfig(c QualityConfig) error {
 	if !slices.Contains([]string{"svg", "text"}, c.OutputType) || !slices.Contains([]string{"route", "channel"}, c.Mode) || !slices.Contains([]string{"responses", "chat"}, c.Protocol) {
 		return errors.New("invalid output type, mode or protocol")
 	}
-	if c.TokenID < 1 || c.SamplesPerTarget < 1 || c.SamplesPerTarget > 10 || c.TimeoutSeconds < 10 || c.TimeoutSeconds > 600 || c.MaxOutputTokens < 1 || c.MaxOutputTokens > QualityMaxOutputTokens || c.DailyLimit < 1 || c.DailyLimit > 10000 {
+	if c.TokenID < 1 || c.SamplesPerTarget < 1 || c.SamplesPerTarget > 10 || c.TimeoutSeconds < 10 || c.TimeoutSeconds > 600 || c.MaxOutputTokens < 0 || c.MaxOutputTokens > QualityMaxOutputTokens || c.DailyLimit < 1 || c.DailyLimit > 10000 {
 		return errors.New("execution limits are out of range")
 	}
 	if c.Instruction != "" && c.InstructionRole != "system" && c.InstructionRole != "developer" {

@@ -15,7 +15,6 @@ import (
 var svgOpening = regexp.MustCompile(`<svg(?:\s|/?>)`)
 var svgIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]{0,127}$`)
 var svgLocalRef = regexp.MustCompile(`^#([A-Za-z_][A-Za-z0-9_.-]{0,127})$`)
-var svgLocalPaint = regexp.MustCompile(`^url\(\s*#([A-Za-z_][A-Za-z0-9_.-]{0,127})\s*\)$`)
 var svgStyleSelector = regexp.MustCompile(`^[.#]?[A-Za-z_][A-Za-z0-9_-]*(?:\s*,\s*[.#]?[A-Za-z_][A-Za-z0-9_-]*)*$`)
 var svgPlainValue = regexp.MustCompile(`^[A-Za-z0-9#.,%+\-\s"']{1,512}$`)
 var svgColorFunction = regexp.MustCompile(`^(?:rgb|rgba|hsl|hsla)\([0-9.,%+\-\s/]+\)$`)
@@ -32,30 +31,66 @@ func boundedSVGNumbers(value string, limit float64) bool {
 	return true
 }
 
-var svgElements = []string{"svg", "g", "defs", "title", "desc", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "text", "tspan", "textPath", "linearGradient", "radialGradient", "stop", "style", "pattern", "use", "clipPath", "mask", "marker", "symbol", "filter", "feGaussianBlur", "feDropShadow", "feOffset", "feFlood", "feColorMatrix", "feBlend", "feComposite", "feMerge", "feMergeNode", "feMorphology", "feTurbulence", "feDisplacementMap", "feConvolveMatrix", "feDiffuseLighting", "feSpecularLighting", "feDistantLight", "fePointLight", "feSpotLight", "feTile", "animate", "animateTransform", "animateMotion", "set", "mpath"}
-var svgPaintProperties = []string{"fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "stroke-miterlimit", "fill-rule", "opacity", "fill-opacity", "stroke-opacity", "font-family", "font-size", "font-weight", "font-style", "text-anchor", "dominant-baseline", "letter-spacing", "word-spacing", "paint-order", "stroke-dasharray", "stroke-dashoffset", "stop-color", "stop-opacity", "marker-start", "marker-mid", "marker-end", "clip-path", "mask", "filter", "color", "vector-effect", "shape-rendering", "text-rendering", "image-rendering", "display", "visibility", "transform", "transform-origin", "mask-type", "flood-color", "flood-opacity", "lighting-color"}
-var svgURLPaintProperties = []string{"fill", "stroke", "marker-start", "marker-mid", "marker-end", "clip-path", "mask", "filter"}
-var svgGeometryAttributes = []string{"viewBox", "preserveAspectRatio", "x", "y", "z", "x1", "y1", "x2", "y2", "dx", "dy", "cx", "cy", "r", "rx", "ry", "width", "height", "d", "points", "path", "gradientTransform", "gradientUnits", "spreadMethod", "offset", "fx", "fy", "fr", "rotate", "textLength", "lengthAdjust", "version", "patternUnits", "patternContentUnits", "patternTransform", "clipPathUnits", "maskUnits", "maskContentUnits", "markerUnits", "markerWidth", "markerHeight", "refX", "refY", "orient", "filterUnits", "primitiveUnits", "in", "in2", "result", "stdDeviation", "type", "values", "mode", "scale", "baseFrequency", "numOctaves", "seed", "startOffset", "method", "spacing", "side", "slope", "intercept", "amplitude", "exponent", "tableValues", "kernelMatrix", "kernelUnitLength", "order", "targetX", "targetY", "stitchTiles", "radius", "k1", "k2", "k3", "k4", "operator", "surfaceScale", "diffuseConstant", "specularConstant", "specularExponent", "limitingConeAngle", "azimuth", "elevation", "pointsAtX", "pointsAtY", "pointsAtZ", "keyPoints", "keyTimes", "keySplines", "from", "to", "by", "additive", "accumulate", "attributeName", "attributeType", "begin", "dur", "end", "min", "max", "restart", "repeatCount", "repeatDur", "calcMode", "xChannelSelector", "yChannelSelector", "divisor", "bias", "edgeMode", "preserveAlpha"}
+// svgElements is the complete safe SVG element set: all shape, gradient,
+// pattern, filter-primitive, animation, structural and descriptive elements.
+// Anything capable of scripts, external resources or navigation is excluded:
+// script, foreignObject, a, image, feImage, iframe, video, audio, handler,
+// listener, prefetch, cursor, font-face-uri, font-face-src, animation, ...
+var svgElements = []string{"svg", "g", "defs", "title", "desc", "metadata", "style", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "text", "tspan", "textPath", "linearGradient", "radialGradient", "stop", "pattern", "use", "clipPath", "mask", "marker", "symbol", "switch", "view", "hatch", "hatchpath", "solidcolor", "meshgradient", "mesh", "meshrow", "meshpatch", "font", "font-face", "font-face-name", "font-face-format", "glyph", "missing-glyph", "hkern", "vkern", "filter", "feBlend", "feColorMatrix", "feComponentTransfer", "feFuncA", "feFuncR", "feFuncG", "feFuncB", "feComposite", "feConvolveMatrix", "feDiffuseLighting", "feDisplacementMap", "feDistantLight", "feDropShadow", "feFlood", "feGaussianBlur", "feMerge", "feMergeNode", "feMorphology", "feOffset", "fePointLight", "feSpecularLighting", "feSpotLight", "feTile", "feTurbulence", "animate", "animateTransform", "animateMotion", "set", "mpath", "discard"}
+var svgStyleProperty = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
+var svgDangerousStyleProperty = []string{"behavior", "binding", "-moz-binding", "-webkit-binding", "-ms-behavior"}
 
-func safePaintValue(property, value string, refs *[]string) bool {
-	if !slices.Contains(svgPaintProperties, property) {
-		return false
-	}
-	value = strings.TrimSpace(value)
-	if match := svgLocalPaint.FindStringSubmatch(value); match != nil {
-		if !slices.Contains(svgURLPaintProperties, property) {
-			return false
+// stripSVGURLRefs removes url(...) segments, requiring each to be a local
+// url(#id) reference; collected ids are appended to refs. Returns false on any
+// non-local or malformed reference.
+func stripSVGURLRefs(value string, refs *[]string) (string, bool) {
+	for {
+		i := strings.Index(strings.ToLower(value), "url(")
+		if i < 0 {
+			return value, true
+		}
+		j := strings.IndexByte(value[i:], ')')
+		if j < 0 {
+			return "", false
+		}
+		inner := strings.Trim(strings.TrimSpace(value[i+4:i+j]), `'"`)
+		match := svgLocalRef.FindStringSubmatch(inner)
+		if match == nil {
+			return "", false
 		}
 		*refs = append(*refs, match[1])
+		value = value[:i] + " " + value[i+j+1:]
+	}
+}
+
+// svgValueDangerous rejects values that can carry URLs, schemes or CSS
+// execution vectors no matter which attribute they appear in. A bare ':' kills
+// every protocol scheme (javascript:, data:, file:, http:...); '//', '@', '{',
+// '}', '<', '>' and '\\' never appear in legitimate attribute values.
+func svgValueDangerous(value string) bool {
+	if strings.ContainsAny(value, ":{}<>@\\`") || strings.Contains(value, "//") {
 		return true
 	}
-	if property == "transform" || property == "transform-origin" {
-		return len(value) <= 1024 && svgGeometryValue.MatchString(value) && boundedSVGNumbers(value, 1_000_000)
+	lower := strings.ToLower(value)
+	return strings.Contains(lower, "expression(") || strings.Contains(lower, "eval(") || strings.Contains(lower, "-moz-binding")
+}
+
+var svgHexColor = regexp.MustCompile(`#[0-9a-fA-F]{3,8}\b`)
+
+// checkSVGAttrValue returns "" for safe values or the rejection code. Local
+// url(#id) refs are collected; everything else is a charset/number bound check.
+func checkSVGAttrValue(value string, refs *[]string, numberBound float64) string {
+	rest, ok := stripSVGURLRefs(value, refs)
+	if !ok || svgValueDangerous(rest) {
+		return "unsafe_svg"
 	}
-	if !slices.Contains([]string{"fill", "stroke", "stop-color", "font-family"}, property) && !boundedSVGNumbers(value, 8192) {
-		return false
+	// Strip hex colors before bounding numbers: "#2C3E50" otherwise parses
+	// "3E50" as 3e50 and overflows the bound.
+	rest = svgHexColor.ReplaceAllString(rest, "")
+	if svgGeometryValue.MatchString(rest) && !boundedSVGNumbers(rest, numberBound) {
+		return "svg_too_complex"
 	}
-	return svgPlainValue.MatchString(value) || (len(value) <= 128 && svgColorFunction.MatchString(value))
+	return ""
 }
 
 func safeStyleDeclarations(text string, refs *[]string) bool {
@@ -67,7 +102,26 @@ func safeStyleDeclarations(text string, refs *[]string) bool {
 			continue
 		}
 		property, value, ok := strings.Cut(declaration, ":")
-		if !ok || !safePaintValue(strings.TrimSpace(property), value, refs) {
+		property = strings.TrimSpace(property)
+		if !ok || !svgStyleProperty.MatchString(property) || slices.Contains(svgDangerousStyleProperty, strings.ToLower(property)) {
+			return false
+		}
+		value = strings.TrimSpace(value)
+		if len(value) > 1024 {
+			return false
+		}
+		rest, ok := stripSVGURLRefs(value, refs)
+		if !ok || svgValueDangerous(rest) {
+			return false
+		}
+		rest = strings.TrimSpace(svgHexColor.ReplaceAllString(rest, ""))
+		if rest == "" {
+			continue
+		}
+		if svgGeometryValue.MatchString(rest) && !boundedSVGNumbers(rest, 8192) {
+			return false
+		}
+		if !svgPlainValue.MatchString(rest) && !svgColorFunction.MatchString(rest) && !svgGeometryValue.MatchString(rest) {
 			return false
 		}
 	}
@@ -246,27 +300,28 @@ func ExtractSafeSVG(text string) (string, string) {
 				if (name == "aria-hidden" || name == "focusable") && (attr.Value == "true" || attr.Value == "false") {
 					continue
 				}
-				if slices.Contains(svgPaintProperties, name) {
-					if !safePaintValue(name, attr.Value, &refs) {
-						return "", "unsafe_svg"
-					}
-					continue
+				// Event handlers are always unsafe regardless of the element.
+				if strings.HasPrefix(strings.ToLower(name), "on") {
+					return "", "unsafe_svg"
 				}
-				if slices.Contains(svgGeometryAttributes, name) {
-					limit := 1024
-					if name == "d" || name == "points" || name == "path" {
-						limit = 65536
-					}
-					maxNumber := float64(1_000_000)
-					if depth == 1 && (name == "width" || name == "height") {
-						maxNumber = 8192
-					}
-					if len(attr.Value) > limit || !svgGeometryValue.MatchString(attr.Value) || !boundedSVGNumbers(attr.Value, maxNumber) {
-						return "", "svg_too_complex"
-					}
-					continue
+				// Generic attributes: the name vocabulary is unbounded, so the
+				// value is constrained instead — local url(#id) refs only, no
+				// schemes/delimiters, bounded numbers, generous length caps for
+				// path data.
+				limit := 1024
+				if name == "d" || name == "points" || name == "path" {
+					limit = 65536
 				}
-				return "", "unsafe_svg"
+				if len(attr.Value) > limit {
+					return "", "svg_too_complex"
+				}
+				maxNumber := float64(1_000_000)
+				if depth == 1 && (name == "width" || name == "height") {
+					maxNumber = 8192
+				}
+				if code := checkSVGAttrValue(attr.Value, &refs, maxNumber); code != "" {
+					return "", code
+				}
 			}
 		case xml.EndElement:
 			if styleDepth == depth {

@@ -39,7 +39,7 @@ export type QualityCaseFormValues = {
   instruction: string
   instruction_role: 'system' | 'developer'
   protocol: 'responses' | 'chat'
-  max_output_tokens: number
+  max_output_tokens?: number
   reasoning_effort:
     | ''
     | 'none'
@@ -105,7 +105,8 @@ export function getQualityCaseFormSchema(t: TFunction) {
         .number()
         .int()
         .min(1, t('Max output tokens must be 1-32768'))
-        .max(32768, t('Max output tokens must be 1-32768')),
+        .max(32768, t('Max output tokens must be 1-32768'))
+        .optional(),
       reasoning_effort: z.enum([
         '',
         'none',
@@ -238,7 +239,7 @@ export function defaultQualityCaseValues(input?: {
     instruction: '',
     instruction_role: 'system',
     protocol: 'responses',
-    max_output_tokens: 16384,
+    max_output_tokens: undefined,
     reasoning_effort: '',
     temperature: undefined,
     top_p: undefined,
@@ -272,7 +273,8 @@ export function viewToFormValues(view: QualityCaseView): QualityCaseFormValues {
     instruction_role:
       config.instruction_role === 'developer' ? 'developer' : 'system',
     protocol: config.protocol,
-    max_output_tokens: config.max_output_tokens,
+    max_output_tokens:
+      config.max_output_tokens > 0 ? config.max_output_tokens : undefined,
     reasoning_effort: config.reasoning_effort,
     temperature: config.temperature,
     top_p: config.top_p,
@@ -317,7 +319,7 @@ export function formValuesToWrite(
       instruction: values.instruction,
       instruction_role:
         values.instruction === '' ? '' : values.instruction_role,
-      max_output_tokens: values.max_output_tokens,
+      max_output_tokens: values.max_output_tokens ?? 0,
       reasoning_effort: values.reasoning_effort,
       temperature: values.temperature,
       top_p: values.top_p,
