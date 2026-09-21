@@ -84,6 +84,7 @@ function renderCard(sample: ModelQualitySample) {
         sample={sample}
         selectable
         selected={false}
+        showChannel
         onToggleSelect={vi.fn()}
         onOpen={vi.fn()}
       />

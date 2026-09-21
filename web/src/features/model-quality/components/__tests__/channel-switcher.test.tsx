@@ -36,10 +36,27 @@ describe('ChannelSwitcher', () => {
     )
     const tablist = screen.getByRole('tablist')
     expect(tablist).toBeInTheDocument()
-    expect(screen.getAllByRole('tab')).toHaveLength(2)
+    expect(screen.getAllByRole('tab')).toHaveLength(3)
+    expect(screen.getByRole('tab', { name: 'All' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('tab', { name: 'beta' }))
     expect(onChange).toHaveBeenCalledWith(22)
+  })
+
+  test('the All tab reports the aggregate sentinel', () => {
+    const onChange = vi.fn()
+    render(
+      <ChannelSwitcher
+        channels={[
+          { id: 11, name: 'alpha' },
+          { id: 22, name: 'beta' },
+        ]}
+        value={11}
+        onChange={onChange}
+      />
+    )
+    fireEvent.click(screen.getByRole('tab', { name: 'All' }))
+    expect(onChange).toHaveBeenCalledWith(-2)
   })
 
   test('a single channel renders its name without a tablist', () => {

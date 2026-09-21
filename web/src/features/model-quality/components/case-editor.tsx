@@ -43,20 +43,13 @@ import {
   FieldLabel,
 } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from '@/components/ui/native-select'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { formatTimestampToDate } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 
-import {
-  createQualityCase,
-  deleteQualityCase,
-  updateQualityCase,
-} from '../api'
+import { createQualityCase, deleteQualityCase, updateQualityCase } from '../api'
 import {
   defaultQualityCaseValues,
   formValuesToWrite,
@@ -149,8 +142,6 @@ export function CaseEditor(props: CaseEditorProps) {
       if (!props.qualityCase) throw new Error('no case to duplicate')
       const body = formValuesToWrite(viewToFormValues(props.qualityCase), 0)
       body.name = `${body.name} (copy)`
-      body.enabled = false
-      body.schedule.enabled = false
       return createQualityCase(body)
     },
     retry: false,
@@ -211,14 +202,14 @@ export function CaseEditor(props: CaseEditorProps) {
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const advancedHasError = Boolean(
     errors.instruction_role ||
-      errors.protocol ||
-      errors.reasoning_effort ||
-      errors.max_output_tokens ||
-      errors.temperature ||
-      errors.top_p ||
-      errors.samples_per_target ||
-      errors.timeout_seconds ||
-      errors.daily_limit
+    errors.protocol ||
+    errors.reasoning_effort ||
+    errors.max_output_tokens ||
+    errors.temperature ||
+    errors.top_p ||
+    errors.samples_per_target ||
+    errors.timeout_seconds ||
+    errors.daily_limit
   )
   useEffect(() => {
     if (advancedHasError) setAdvancedOpen(true)
@@ -257,7 +248,7 @@ export function CaseEditor(props: CaseEditorProps) {
     <FormProvider {...form}>
       <form
         onSubmit={form.handleSubmit((values) => saveMutation.mutate(values))}
-        className='border space-y-4 rounded-lg p-3 sm:p-4'
+        className='space-y-4 rounded-lg border p-3 sm:p-4'
       >
         <fieldset disabled={!canOperate} className='space-y-4'>
           {form.formState.isDirty && (
@@ -369,9 +360,7 @@ export function CaseEditor(props: CaseEditorProps) {
               <FieldError errors={[errors.model]} />
             </Field>
             <Field data-invalid={Boolean(errors.token_id)}>
-              <FieldLabel htmlFor='mq-token'>
-                {t('Execution token')}
-              </FieldLabel>
+              <FieldLabel htmlFor='mq-token'>{t('Execution token')}</FieldLabel>
               <NativeSelect
                 id='mq-token'
                 className='w-full'
@@ -503,170 +492,193 @@ export function CaseEditor(props: CaseEditorProps) {
               />
               {t('Advanced settings')}
               <span className='text-muted-foreground ml-2 text-xs'>
-                {`${protocol} · ${maxOutputTokens} tokens · ${timeoutSeconds}s`}
+                {`${protocol} · ${maxOutputTokens ? `${maxOutputTokens} tokens` : t('Unlimited')} · ${timeoutSeconds}s`}
               </span>
             </CollapsibleTrigger>
             <CollapsibleContent className='space-y-4 pt-3'>
-          <FieldGroup className='grid gap-4 sm:grid-cols-2'>
-            <Field data-invalid={Boolean(errors.instruction_role)}>
-              <FieldLabel htmlFor='mq-instruction-role'>
-                {t('Instruction role')}
-              </FieldLabel>
-              <NativeSelect
-                id='mq-instruction-role'
-                className='w-full'
-                {...form.register('instruction_role')}
-              >
-                <NativeSelectOption value='system'>system</NativeSelectOption>
-                <NativeSelectOption value='developer'>
-                  developer
-                </NativeSelectOption>
-              </NativeSelect>
-              <FieldError errors={[errors.instruction_role]} />
-            </Field>
-            <Field data-invalid={Boolean(errors.protocol)}>
-              <FieldLabel htmlFor='mq-protocol'>{t('Protocol')}</FieldLabel>
-              <NativeSelect
-                id='mq-protocol'
-                className='w-full'
-                {...form.register('protocol')}
-              >
-                <NativeSelectOption value='responses'>
-                  Responses
-                </NativeSelectOption>
-                <NativeSelectOption value='chat'>
-                  Chat Completions
-                </NativeSelectOption>
-              </NativeSelect>
-              <FieldError errors={[errors.protocol]} />
-            </Field>
-            <Field data-invalid={Boolean(errors.reasoning_effort)}>
-              <FieldLabel htmlFor='mq-effort'>
-                {t('Reasoning effort')}
-              </FieldLabel>
-              <NativeSelect
-                id='mq-effort'
-                className='w-full'
-                {...form.register('reasoning_effort')}
-              >
-                <NativeSelectOption value=''>
-                  {t('Upstream default')}
-                </NativeSelectOption>
-                {(['none', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const).map(
-                  (effort) => (
-                    <NativeSelectOption key={effort} value={effort}>
-                      {effort}
+              <FieldGroup className='grid gap-4 sm:grid-cols-2'>
+                <Field data-invalid={Boolean(errors.instruction_role)}>
+                  <FieldLabel htmlFor='mq-instruction-role'>
+                    {t('Instruction role')}
+                  </FieldLabel>
+                  <NativeSelect
+                    id='mq-instruction-role'
+                    className='w-full'
+                    {...form.register('instruction_role')}
+                  >
+                    <NativeSelectOption value='system'>
+                      system
                     </NativeSelectOption>
-                  )
-                )}
-              </NativeSelect>
-              <FieldError errors={[errors.reasoning_effort]} />
-            </Field>
-            <Field data-invalid={Boolean(errors.max_output_tokens)}>
-              <FieldLabel htmlFor='mq-max-tokens'>
-                {t('Max output tokens')}
-              </FieldLabel>
-              <Input
-                id='mq-max-tokens'
-                type='number'
-                min={1}
-                max={32768}
-                aria-invalid={Boolean(errors.max_output_tokens)}
-                {...form.register('max_output_tokens', {
-                  valueAsNumber: true,
-                })}
-              />
-              <FieldError errors={[errors.max_output_tokens]} />
-            </Field>
-            <Field data-invalid={Boolean(errors.temperature)}>
-              <FieldLabel htmlFor='mq-temperature'>
-                {t('Temperature')}
-              </FieldLabel>
-              <Input
-                id='mq-temperature'
-                type='number'
-                step='0.1'
-                min={0}
-                max={2}
-                aria-invalid={Boolean(errors.temperature)}
-                {...form.register('temperature', {
-                  setValueAs: (value) =>
-                    value === '' || value == null || Number.isNaN(Number(value))
-                      ? undefined
-                      : Number(value),
-                })}
-              />
-              <FieldError errors={[errors.temperature]} />
-            </Field>
-            <Field data-invalid={Boolean(errors.top_p)}>
-              <FieldLabel htmlFor='mq-topp'>{t('Top P')}</FieldLabel>
-              <Input
-                id='mq-topp'
-                type='number'
-                step='0.05'
-                min={0}
-                max={1}
-                aria-invalid={Boolean(errors.top_p)}
-                {...form.register('top_p', {
-                  setValueAs: (value) =>
-                    value === '' || value == null || Number.isNaN(Number(value))
-                      ? undefined
-                      : Number(value),
-                })}
-              />
-              <FieldError errors={[errors.top_p]} />
-            </Field>
-          </FieldGroup>
+                    <NativeSelectOption value='developer'>
+                      developer
+                    </NativeSelectOption>
+                  </NativeSelect>
+                  <FieldError errors={[errors.instruction_role]} />
+                </Field>
+                <Field data-invalid={Boolean(errors.protocol)}>
+                  <FieldLabel htmlFor='mq-protocol'>{t('Protocol')}</FieldLabel>
+                  <NativeSelect
+                    id='mq-protocol'
+                    className='w-full'
+                    {...form.register('protocol')}
+                  >
+                    <NativeSelectOption value='responses'>
+                      Responses
+                    </NativeSelectOption>
+                    <NativeSelectOption value='chat'>
+                      Chat Completions
+                    </NativeSelectOption>
+                  </NativeSelect>
+                  <FieldError errors={[errors.protocol]} />
+                </Field>
+                <Field data-invalid={Boolean(errors.reasoning_effort)}>
+                  <FieldLabel htmlFor='mq-effort'>
+                    {t('Reasoning effort')}
+                  </FieldLabel>
+                  <NativeSelect
+                    id='mq-effort'
+                    className='w-full'
+                    {...form.register('reasoning_effort')}
+                  >
+                    <NativeSelectOption value=''>
+                      {t('Upstream default')}
+                    </NativeSelectOption>
+                    {(
+                      [
+                        'none',
+                        'minimal',
+                        'low',
+                        'medium',
+                        'high',
+                        'xhigh',
+                      ] as const
+                    ).map((effort) => (
+                      <NativeSelectOption key={effort} value={effort}>
+                        {effort}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                  <FieldError errors={[errors.reasoning_effort]} />
+                </Field>
+                <Field data-invalid={Boolean(errors.max_output_tokens)}>
+                  <FieldLabel htmlFor='mq-max-tokens'>
+                    {t('Max output tokens')}
+                  </FieldLabel>
+                  <Input
+                    id='mq-max-tokens'
+                    type='number'
+                    min={1}
+                    max={32768}
+                    aria-invalid={Boolean(errors.max_output_tokens)}
+                    {...form.register('max_output_tokens', {
+                      setValueAs: (value) =>
+                        value === '' ||
+                        value == null ||
+                        Number.isNaN(Number(value))
+                          ? undefined
+                          : Number(value),
+                    })}
+                  />
+                  <FieldDescription>
+                    {t('Leave empty for no upstream output limit.')}
+                  </FieldDescription>
+                  <FieldError errors={[errors.max_output_tokens]} />
+                </Field>
+                <Field data-invalid={Boolean(errors.temperature)}>
+                  <FieldLabel htmlFor='mq-temperature'>
+                    {t('Temperature')}
+                  </FieldLabel>
+                  <Input
+                    id='mq-temperature'
+                    type='number'
+                    step='0.1'
+                    min={0}
+                    max={2}
+                    aria-invalid={Boolean(errors.temperature)}
+                    {...form.register('temperature', {
+                      setValueAs: (value) =>
+                        value === '' ||
+                        value == null ||
+                        Number.isNaN(Number(value))
+                          ? undefined
+                          : Number(value),
+                    })}
+                  />
+                  <FieldError errors={[errors.temperature]} />
+                </Field>
+                <Field data-invalid={Boolean(errors.top_p)}>
+                  <FieldLabel htmlFor='mq-topp'>{t('Top P')}</FieldLabel>
+                  <Input
+                    id='mq-topp'
+                    type='number'
+                    step='0.05'
+                    min={0}
+                    max={1}
+                    aria-invalid={Boolean(errors.top_p)}
+                    {...form.register('top_p', {
+                      setValueAs: (value) =>
+                        value === '' ||
+                        value == null ||
+                        Number.isNaN(Number(value))
+                          ? undefined
+                          : Number(value),
+                    })}
+                  />
+                  <FieldError errors={[errors.top_p]} />
+                </Field>
+              </FieldGroup>
 
-          <FieldGroup className='grid gap-4 sm:grid-cols-3'>
-            <Field data-invalid={Boolean(errors.samples_per_target)}>
-              <FieldLabel htmlFor='mq-samples'>
-                {t('Samples per target')}
-              </FieldLabel>
-              <Input
-                id='mq-samples'
-                type='number'
-                min={1}
-                max={10}
-                aria-invalid={Boolean(errors.samples_per_target)}
-                {...form.register('samples_per_target', {
-                  valueAsNumber: true,
-                })}
-              />
-              <FieldError errors={[errors.samples_per_target]} />
-            </Field>
-            <Field data-invalid={Boolean(errors.timeout_seconds)}>
-              <FieldLabel htmlFor='mq-timeout'>
-                {t('Timeout (seconds)')}
-              </FieldLabel>
-              <Input
-                id='mq-timeout'
-                type='number'
-                min={10}
-                max={600}
-                aria-invalid={Boolean(errors.timeout_seconds)}
-                {...form.register('timeout_seconds', { valueAsNumber: true })}
-              />
-              <FieldError errors={[errors.timeout_seconds]} />
-            </Field>
-            <Field data-invalid={Boolean(errors.daily_limit)}>
-              <FieldLabel htmlFor='mq-daily-limit'>
-                {t('Daily sample limit')}
-              </FieldLabel>
-              <Input
-                id='mq-daily-limit'
-                type='number'
-                min={1}
-                max={10000}
-                aria-invalid={Boolean(errors.daily_limit)}
-                {...form.register('daily_limit', { valueAsNumber: true })}
-              />
-              <FieldError errors={[errors.daily_limit]} />
-            </Field>
-            <FieldDescription className='sm:col-span-3'>
-              {t('Each run: {{count}} samples', { count: runCount })}
-            </FieldDescription>
-          </FieldGroup>
+              <FieldGroup className='grid gap-4 sm:grid-cols-3'>
+                <Field data-invalid={Boolean(errors.samples_per_target)}>
+                  <FieldLabel htmlFor='mq-samples'>
+                    {t('Samples per target')}
+                  </FieldLabel>
+                  <Input
+                    id='mq-samples'
+                    type='number'
+                    min={1}
+                    max={10}
+                    aria-invalid={Boolean(errors.samples_per_target)}
+                    {...form.register('samples_per_target', {
+                      valueAsNumber: true,
+                    })}
+                  />
+                  <FieldError errors={[errors.samples_per_target]} />
+                </Field>
+                <Field data-invalid={Boolean(errors.timeout_seconds)}>
+                  <FieldLabel htmlFor='mq-timeout'>
+                    {t('Timeout (seconds)')}
+                  </FieldLabel>
+                  <Input
+                    id='mq-timeout'
+                    type='number'
+                    min={10}
+                    max={600}
+                    aria-invalid={Boolean(errors.timeout_seconds)}
+                    {...form.register('timeout_seconds', {
+                      valueAsNumber: true,
+                    })}
+                  />
+                  <FieldError errors={[errors.timeout_seconds]} />
+                </Field>
+                <Field data-invalid={Boolean(errors.daily_limit)}>
+                  <FieldLabel htmlFor='mq-daily-limit'>
+                    {t('Daily sample limit')}
+                  </FieldLabel>
+                  <Input
+                    id='mq-daily-limit'
+                    type='number'
+                    min={1}
+                    max={10000}
+                    aria-invalid={Boolean(errors.daily_limit)}
+                    {...form.register('daily_limit', { valueAsNumber: true })}
+                  />
+                  <FieldError errors={[errors.daily_limit]} />
+                </Field>
+                <FieldDescription className='sm:col-span-3'>
+                  {t('Each run: {{count}} samples', { count: runCount })}
+                </FieldDescription>
+              </FieldGroup>
             </CollapsibleContent>
           </Collapsible>
 
@@ -833,9 +845,7 @@ export function CaseEditor(props: CaseEditorProps) {
                 size='sm'
                 variant='outline'
                 className='text-destructive'
-                disabled={
-                  !canOperate || props.qualityCase.active_run_id !== ''
-                }
+                disabled={!canOperate || props.qualityCase.active_run_id !== ''}
                 title={
                   props.qualityCase.active_run_id !== ''
                     ? t('Stop the active run first')

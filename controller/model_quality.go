@@ -98,7 +98,40 @@ type qualityTokenCapability struct {
 	Group string `json:"group"`
 }
 
+func qualityCanOperate(c *gin.Context) bool {
+	return authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelOperate)
+}
+
+// qualityChannelScoped reports whether channel identity may be exposed to this
+// requester. Public-panel viewers get aggregates without channel details.
+func qualityChannelScoped(c *gin.Context) bool {
+	return authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelRead)
+}
+
+// qualityCanView reports whether the requester may see the test panel:
+// operators always can; other authenticated users can when public_panel is on.
+func qualityCanView(c *gin.Context) bool {
+	if qualityChannelScoped(c) {
+		return true
+	}
+	settings, _, err := model.GetQualitySettings()
+	return err == nil && settings.PublicPanel
+}
+
 func GetQualityCapabilities(c *gin.Context) {
+	if !qualityChannelScoped(c) {
+		// Public viewers only need the visibility flags — channel and token
+		// inventories stay operator-only.
+		common.ApiSuccess(c, gin.H{
+			"channels":          []qualityChannelCapability{},
+			"tokens":            []qualityTokenCapability{},
+			"can_operate":       false,
+			"can_configure":     false,
+			"can_view":          qualityCanView(c),
+			"can_view_channels": false,
+		})
+		return
+	}
 	var channels []*model.Channel
 	if err := model.DB.Select("id", "name", "models", "group").Order("id ASC").Find(&channels).Error; err != nil {
 		qualityError(c, err)
@@ -134,13 +167,14 @@ func GetQualityCapabilities(c *gin.Context) {
 		tokens = append(tokens, qualityTokenCapability{ID: token.Id, Name: token.Name, Group: token.Group})
 	}
 
-	userID := c.GetInt("id")
 	role := c.GetInt("role")
 	common.ApiSuccess(c, gin.H{
-		"channels":      channelViews,
-		"tokens":        tokens,
-		"can_operate":   authz.Can(userID, role, authz.ChannelOperate),
-		"can_configure": role == common.RoleRootUser,
+		"channels":          channelViews,
+		"tokens":            tokens,
+		"can_operate":       qualityCanOperate(c),
+		"can_configure":     role == common.RoleRootUser,
+		"can_view":          true,
+		"can_view_channels": true,
 	})
 }
 
@@ -156,6 +190,13 @@ func GetQualityCases(c *gin.Context) {
 	}
 	if views == nil {
 		views = []model.QualityCaseView{}
+	}
+	if !qualityChannelScoped(c) {
+		// Public viewers see the panel without channel or token internals.
+		for i := range views {
+			views[i].Config.TokenID = 0
+			views[i].Config.ChannelIDs = nil
+		}
 	}
 	common.ApiSuccess(c, views)
 }
@@ -412,16 +453,23 @@ func GetQualityDashboard(c *gin.Context) {
 	channelID := -1 // server autoselects the default channel
 	if raw := c.Query("channel_id"); raw != "" {
 		v, err := strconv.Atoi(raw)
-		if err != nil || v < 0 {
+		if err != nil || v < -2 {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid channel_id"})
 			return
 		}
 		channelID = v
 	}
+	channelScoped := qualityChannelScoped(c)
+	if !channelScoped {
+		channelID = -2 // public viewers always see the aggregated view
+	}
 	data, err := model.QualityDashboard(id, version, channelID, time.Now())
 	if err != nil {
 		qualityError(c, err)
 		return
+	}
+	if !channelScoped {
+		data.Channels = []model.QualityChannelView{}
 	}
 	common.ApiSuccess(c, data)
 }
@@ -447,18 +495,18 @@ func GetQualitySamples(c *gin.Context) {
 	if !ok {
 		return
 	}
-	channelID := int64(-1)
+	channelID := int64(-2) // -2 aggregates all channels
 	if raw := c.Query("channel_id"); raw != "" {
 		v, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || v < 0 {
+		if err != nil || v < -2 {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid channel_id"})
 			return
 		}
 		channelID = v
 	}
-	if channelID < 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "channel_id is required"})
-		return
+	channelScoped := qualityChannelScoped(c)
+	if !channelScoped {
+		channelID = -2
 	}
 	fromMS, ok := parseInt("from_ms", 0)
 	if !ok {
@@ -487,6 +535,14 @@ func GetQualitySamples(c *gin.Context) {
 	}
 	if samples == nil {
 		samples = []model.ModelQualitySample{}
+	}
+	if !channelScoped {
+		// Channel attribution is operator-only; strip it for public viewers.
+		for i := range samples {
+			samples[i].ChannelID = 0
+			samples[i].ChannelName = ""
+			samples[i].TargetChannelID = 0
+		}
 	}
 	common.ApiSuccess(c, samples)
 }

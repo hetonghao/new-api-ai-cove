@@ -101,6 +101,8 @@ const CAPABILITIES: QualityCapabilities = {
   tokens: [],
   can_operate: true,
   can_configure: false,
+      can_view: true,
+      can_view_channels: true,
 }
 
 describe('RunsTable mobile row', () => {

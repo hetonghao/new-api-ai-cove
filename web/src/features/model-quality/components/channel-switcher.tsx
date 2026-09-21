@@ -54,13 +54,14 @@ export function ChannelSwitcher(props: ChannelSwitcherProps) {
   }
   return (
     <Tabs
-      value={String(props.value ?? props.channels[0].id)}
+      value={String(props.value ?? -2)}
       onValueChange={(value) => props.onChange(Number(value))}
     >
       <TabsList
         variant='line'
-        className='group-data-horizontal/tabs:h-auto h-auto max-w-full flex-wrap justify-start gap-y-2 pb-1'
+        className='h-auto max-w-full flex-wrap justify-start gap-y-2 pb-1 group-data-horizontal/tabs:h-auto'
       >
+        <TabsTrigger value='-2'>{t('All')}</TabsTrigger>
         {props.channels.map((channel) => (
           <TabsTrigger key={channel.id} value={String(channel.id)}>
             {channelLabel(channel.id, channel.name, t)}

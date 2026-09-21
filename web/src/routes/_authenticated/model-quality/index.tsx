@@ -20,23 +20,22 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import z from 'zod'
 
 import { ModelQuality } from '@/features/model-quality'
-import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 const modelQualitySearchSchema = z.object({
   tab: z.enum(['panel', 'cases', 'batches']).catch('panel'),
   case: z.number().int().positive().optional().catch(undefined),
-  channel: z.number().int().min(0).optional().catch(undefined),
+  // -2 = all channels aggregated; >= 0 selects one channel
+  channel: z.number().int().min(-2).optional().catch(undefined),
 })
 
 export const Route = createFileRoute('/_authenticated/model-quality/')({
   beforeLoad: () => {
+    // Any authenticated user may enter; the page itself hides operator-only
+    // tabs and renders an unavailable state when the public panel is off.
     const { auth } = useAuthStore.getState()
-
-    if (!auth.user || auth.user.role < ROLE.ADMIN) {
-      throw redirect({
-        to: '/403',
-      })
+    if (!auth.user) {
+      throw redirect({ to: '/403' })
     }
   },
   validateSearch: modelQualitySearchSchema,

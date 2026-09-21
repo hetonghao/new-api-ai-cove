@@ -54,6 +54,7 @@ type SampleCardProps = {
   sample: ModelQualitySample
   selectable: boolean
   selected: boolean
+  showChannel: boolean
   onToggleSelect: (sample: ModelQualitySample) => void
   onOpen: (sample: ModelQualitySample) => void
 }
@@ -135,7 +136,7 @@ function SampleCardBody(props: { sample: ModelQualitySample }) {
         <AlertTriangle className='text-warning size-6' aria-hidden='true' />
         <span className='text-center text-xs break-all'>{label}</span>
         {sample.error_code !== '' && (
-          <span className='font-mono text-muted-foreground text-xs break-all'>
+          <span className='text-muted-foreground font-mono text-xs break-all'>
             {sample.error_code}
           </span>
         )}
@@ -181,7 +182,7 @@ function SampleTextPreview(props: { sample: ModelQualitySample }) {
     )
   }
   return (
-    <p className='text-foreground line-clamp-5 w-full break-words px-3 text-xs whitespace-pre-wrap'>
+    <p className='text-foreground line-clamp-5 w-full px-3 text-xs break-words whitespace-pre-wrap'>
       {artifactQuery.data.text}
     </p>
   )
@@ -202,11 +203,13 @@ export function SampleCard(props: SampleCardProps) {
           <SampleCardBody sample={sample} />
         </div>
         <div className='flex items-center gap-2 px-3 py-2 text-xs'>
-          <span className='truncate' title={sample.channel_name}>
-            {sample.channel_id === 0
-              ? t('Unattributed channel')
-              : sample.channel_name || `#${sample.channel_id}`}
-          </span>
+          {props.showChannel && (
+            <span className='truncate' title={sample.channel_name}>
+              {sample.channel_id === 0
+                ? t('Unattributed channel')
+                : sample.channel_name || `#${sample.channel_id}`}
+            </span>
+          )}
           <span
             className='text-muted-foreground shrink-0 tabular-nums'
             title={formatTimestampToDate(sample.created_at, 'milliseconds')}
@@ -245,6 +248,7 @@ export function SampleCard(props: SampleCardProps) {
 type SampleWallProps = {
   samples: readonly ModelQualitySample[]
   selectedIds: ReadonlySet<number>
+  showChannel: boolean
   onToggleSelect: (sample: ModelQualitySample) => void
   onOpen: (sample: ModelQualitySample) => void
   hasMore: boolean
@@ -275,6 +279,7 @@ export function SampleWall(props: SampleWallProps) {
             sample={sample}
             selectable={isTerminalSample(sample)}
             selected={props.selectedIds.has(sample.id)}
+            showChannel={props.showChannel}
             onToggleSelect={props.onToggleSelect}
             onOpen={props.onOpen}
           />

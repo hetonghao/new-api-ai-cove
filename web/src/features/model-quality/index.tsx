@@ -64,9 +64,7 @@ export function ModelQuality() {
       return response.data
     },
     refetchInterval: (query) =>
-      query.state.data?.some(
-        (qualityCase) => qualityCase.active_run_id !== ''
-      )
+      query.state.data?.some((qualityCase) => qualityCase.active_run_id !== '')
         ? 2000
         : 30000,
     refetchIntervalInBackground: false,
@@ -76,6 +74,8 @@ export function ModelQuality() {
   const enabledCases = cases.filter(
     (qualityCase) => qualityCase.enabled && !qualityCase.archived
   )
+  const canOperate = capabilitiesQuery.data?.can_operate ?? false
+  const canView = capabilitiesQuery.data?.can_view ?? canOperate
 
   const setSearch = (patch: Record<string, unknown>) => {
     void navigate({
@@ -101,6 +101,18 @@ export function ModelQuality() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search.tab, search.case, enabledCases.length])
+
+  // Public viewers only see the panel tab.
+  useEffect(() => {
+    if (
+      capabilitiesQuery.data !== undefined &&
+      !canOperate &&
+      search.tab !== 'panel'
+    ) {
+      setSearch({ tab: 'panel' })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [capabilitiesQuery.data, canOperate, search.tab])
 
   const loading = capabilitiesQuery.isPending || casesQuery.isPending
   const failed = capabilitiesQuery.isError || casesQuery.isError
@@ -167,7 +179,7 @@ export function ModelQuality() {
       >
         <TabsList
           variant='line'
-          className='group-data-horizontal/tabs:h-auto h-auto max-w-full flex-wrap justify-start gap-y-2 pb-1'
+          className='h-auto max-w-full flex-wrap justify-start gap-y-2 pb-1 group-data-horizontal/tabs:h-auto'
         >
           {enabledCases.map((qualityCase) => (
             <TabsTrigger key={qualityCase.id} value={String(qualityCase.id)}>
@@ -208,52 +220,70 @@ export function ModelQuality() {
             onClick={() => setSettingsOpen(true)}
           >
             <Settings data-icon='inline-start' />
-            {t('Execution settings')}
+            {t('Global settings')}
           </Button>
         )}
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
-        <Tabs
-          value={search.tab}
-          onValueChange={(value) => setSearch({ tab: value })}
-          className='h-full min-h-0 min-w-0'
-        >
-          <TabsList className='group-data-horizontal/tabs:h-auto h-auto max-w-full flex-wrap justify-start gap-y-2 pb-1'>
-            <TabsTrigger value='panel'>{t('Test Panel')}</TabsTrigger>
-            <TabsTrigger value='cases'>{t('Test Cases')}</TabsTrigger>
-            <TabsTrigger value='batches'>{t('Batch Records')}</TabsTrigger>
-          </TabsList>
-          <TabsContent
-            value='panel'
-            className='-mx-1 -mb-1 mt-3 min-h-0 overflow-x-hidden overflow-y-auto p-1'
+        {!loading && !canView ? (
+          <EmptyState
+            bordered
+            title={t('Model Quality')}
+            description={t('Model quality is not available for your account.')}
+          />
+        ) : (
+          <Tabs
+            value={search.tab}
+            onValueChange={(value) => setSearch({ tab: value })}
+            className='h-full min-h-0 min-w-0'
           >
-            {panelContent()}
-          </TabsContent>
-          <TabsContent
-            value='cases'
-            className='-mx-1 -mb-1 mt-3 min-h-0 overflow-x-hidden overflow-y-auto p-1'
-          >
-            {tabContent(
-              <CaseManager
-                cases={cases}
-                capabilities={capabilitiesQuery.data}
-              />,
-              'h-64 w-full'
+            <TabsList className='h-auto max-w-full flex-wrap justify-start gap-y-2 pb-1 group-data-horizontal/tabs:h-auto'>
+              <TabsTrigger value='panel'>{t('Test Panel')}</TabsTrigger>
+              {canOperate && (
+                <>
+                  <TabsTrigger value='cases'>{t('Test Cases')}</TabsTrigger>
+                  <TabsTrigger value='batches'>
+                    {t('Batch Records')}
+                  </TabsTrigger>
+                </>
+              )}
+            </TabsList>
+            <TabsContent
+              value='panel'
+              className='-mx-1 mt-3 -mb-1 min-h-0 overflow-x-hidden overflow-y-auto p-1'
+            >
+              {panelContent()}
+            </TabsContent>
+            {canOperate && (
+              <>
+                <TabsContent
+                  value='cases'
+                  className='-mx-1 mt-3 -mb-1 min-h-0 overflow-x-hidden overflow-y-auto p-1'
+                >
+                  {tabContent(
+                    <CaseManager
+                      cases={cases}
+                      capabilities={capabilitiesQuery.data}
+                    />,
+                    'h-64 w-full'
+                  )}
+                </TabsContent>
+                <TabsContent
+                  value='batches'
+                  className='-mx-1 mt-3 -mb-1 min-h-0 overflow-x-hidden overflow-y-auto p-1'
+                >
+                  {tabContent(
+                    <RunsTable
+                      cases={cases}
+                      capabilities={capabilitiesQuery.data}
+                    />,
+                    'h-64 w-full'
+                  )}
+                </TabsContent>
+              </>
             )}
-          </TabsContent>
-          <TabsContent
-            value='batches'
-            className='-mx-1 -mb-1 mt-3 min-h-0 overflow-x-hidden overflow-y-auto p-1'
-          >
-            {tabContent(
-              <RunsTable
-                cases={cases}
-                capabilities={capabilitiesQuery.data}
-              />,
-              'h-64 w-full'
-            )}
-          </TabsContent>
-        </Tabs>
+          </Tabs>
+        )}
         <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       </SectionPageLayout.Content>
     </SectionPageLayout>

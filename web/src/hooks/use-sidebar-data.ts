@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -43,7 +44,9 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import type { SidebarData } from '@/components/layout/types'
+import { getQualityCapabilities } from '@/features/model-quality/api'
 import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 /**
  * Root navigation groups for the application sidebar.
@@ -53,6 +56,67 @@ import { ROLE } from '@/lib/roles'
  */
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
+  const userRole = useAuthStore((s) => s.auth.user?.role)
+  const isAdmin = (userRole ?? ROLE.GUEST) >= ROLE.ADMIN
+
+  // Non-admin users see the Model Quality entry only when the root-enabled
+  // public panel is on; operators keep the Admin-group entry below.
+  const publicPanelQuery = useQuery({
+    queryKey: ['model-quality', 'capabilities'],
+    queryFn: async () => {
+      const response = await getQualityCapabilities()
+      if (!response.success || !response.data) {
+        throw new Error(response.message)
+      }
+      return response.data
+    },
+    enabled: !isAdmin && userRole !== undefined,
+    staleTime: 60_000,
+    retry: false,
+  })
+  const showPublicPanel = !isAdmin && publicPanelQuery.data?.can_view === true
+
+  const generalItems = [
+    {
+      title: t('Overview'),
+      url: '/dashboard/overview',
+      icon: Activity,
+    },
+    {
+      title: t('Dashboard'),
+      url: '/dashboard/models',
+      icon: LayoutDashboard,
+    },
+    {
+      title: t('API Keys'),
+      url: '/keys',
+      icon: Key,
+    },
+    {
+      title: t('Usage Logs'),
+      url: '/usage-logs/common',
+      icon: FileText,
+    },
+    {
+      title: t('Audit Logs'),
+      url: '/usage-logs/audit',
+      icon: ClipboardList,
+    },
+    {
+      title: t('Task Logs'),
+      url: '/usage-logs/task',
+      activeUrls: ['/usage-logs/drawing'],
+      configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
+      icon: ListTodo,
+    },
+  ]
+  if (showPublicPanel) {
+    generalItems.push({
+      title: t('Model Quality'),
+      url: '/model-quality',
+      icon: Gauge,
+    })
+  }
 
   return {
     navGroups: [
@@ -82,40 +146,7 @@ export function useSidebarData(): SidebarData {
       {
         id: 'general',
         title: t('General'),
-        items: [
-          {
-            title: t('Overview'),
-            url: '/dashboard/overview',
-            icon: Activity,
-          },
-          {
-            title: t('Dashboard'),
-            url: '/dashboard/models',
-            icon: LayoutDashboard,
-          },
-          {
-            title: t('API Keys'),
-            url: '/keys',
-            icon: Key,
-          },
-          {
-            title: t('Usage Logs'),
-            url: '/usage-logs/common',
-            icon: FileText,
-          },
-          {
-            title: t('Audit Logs'),
-            url: '/usage-logs/audit',
-            icon: ClipboardList,
-          },
-          {
-            title: t('Task Logs'),
-            url: '/usage-logs/task',
-            activeUrls: ['/usage-logs/drawing'],
-            configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
-            icon: ListTodo,
-          },
-        ],
+        items: generalItems,
       },
       {
         id: 'personal',

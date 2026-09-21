@@ -50,6 +50,7 @@ type SettingsForm = QualitySettingsConfig & { extraTokenId: string }
 
 const EMPTY_FORM: SettingsForm = {
   enabled: false,
+  public_panel: false,
   token_ids: [],
   daily_limit: 200,
   concurrency: 2,
@@ -102,6 +103,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
       updateQualitySettings({
         config: {
           enabled: form.enabled,
+          public_panel: form.public_panel,
           token_ids: form.token_ids,
           daily_limit: form.daily_limit,
           concurrency: form.concurrency,
@@ -174,7 +176,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     <Dialog
       open={props.open}
       onOpenChange={props.onOpenChange}
-      title={t('Execution settings')}
+      title={t('Global settings')}
       description={t(
         'Only approved, finite-quota administrator tokens may execute quality runs.'
       )}
@@ -219,157 +221,174 @@ export function SettingsDialog(props: SettingsDialogProps) {
       )
     }
     return (
-        <FieldGroup className='space-y-4'>
-          <Field>
-            <FieldLabel htmlFor='mqs-enabled'>{t('Enabled')}</FieldLabel>
-            <div className='flex items-center gap-2'>
-              <Switch
-                id='mqs-enabled'
-                checked={form.enabled}
-                onCheckedChange={(checked) =>
-                  setForm((prev) => ({ ...prev, enabled: checked === true }))
-                }
-              />
-              {!form.enabled && (
-                <span className='text-muted-foreground text-xs'>
-                  {t('Execution is disabled; scheduled and manual runs will not start.')}
-                </span>
+      <FieldGroup className='space-y-4'>
+        <Field>
+          <FieldLabel htmlFor='mqs-enabled'>{t('Enabled')}</FieldLabel>
+          <div className='flex items-center gap-2'>
+            <Switch
+              id='mqs-enabled'
+              checked={form.enabled}
+              onCheckedChange={(checked) =>
+                setForm((prev) => ({ ...prev, enabled: checked === true }))
+              }
+            />
+            {!form.enabled && (
+              <span className='text-muted-foreground text-xs'>
+                {t(
+                  'Execution is disabled; scheduled and manual runs will not start.'
+                )}
+              </span>
+            )}
+          </div>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor='mqs-public'>{t('Public panel')}</FieldLabel>
+          <div className='flex items-center gap-2'>
+            <Switch
+              id='mqs-public'
+              checked={form.public_panel}
+              onCheckedChange={(checked) =>
+                setForm((prev) => ({
+                  ...prev,
+                  public_panel: checked === true,
+                }))
+              }
+            />
+            <span className='text-muted-foreground text-xs'>
+              {t(
+                'When on, non-admin users can view the Test Panel without channel details.'
               )}
-            </div>
-          </Field>
-          <Field>
-            <FieldLabel>{t('Approved execution tokens')}</FieldLabel>
-            <div className='grid gap-1 sm:grid-cols-2'>
-              {(tokensQuery.data ?? []).map((token) => (
-                <label
-                  key={token.id}
-                  className='flex items-center gap-2 text-sm'
-                >
+            </span>
+          </div>
+        </Field>
+        <Field>
+          <FieldLabel>{t('Approved execution tokens')}</FieldLabel>
+          <div className='grid gap-1 sm:grid-cols-2'>
+            {(tokensQuery.data ?? []).map((token) => (
+              <label key={token.id} className='flex items-center gap-2 text-sm'>
+                <Checkbox
+                  checked={form.token_ids.includes(token.id)}
+                  onCheckedChange={(checked) =>
+                    toggleToken(token.id, checked === true)
+                  }
+                />
+                <span className='truncate'>
+                  {token.name} (#{token.id})
+                </span>
+              </label>
+            ))}
+            {form.token_ids
+              .filter(
+                (id) =>
+                  !(tokensQuery.data ?? []).some((token) => token.id === id)
+              )
+              .map((id) => (
+                <label key={id} className='flex items-center gap-2 text-sm'>
                   <Checkbox
-                    checked={form.token_ids.includes(token.id)}
+                    checked
                     onCheckedChange={(checked) =>
-                      toggleToken(token.id, checked === true)
+                      toggleToken(id, checked === true)
                     }
                   />
-                  <span className='truncate'>
-                    {token.name} (#{token.id})
-                  </span>
+                  <span className='text-muted-foreground truncate'>#{id}</span>
                 </label>
               ))}
-              {form.token_ids
-                .filter(
-                  (id) =>
-                    !(tokensQuery.data ?? []).some((token) => token.id === id)
-                )
-                .map((id) => (
-                  <label key={id} className='flex items-center gap-2 text-sm'>
-                    <Checkbox
-                      checked
-                      onCheckedChange={(checked) =>
-                        toggleToken(id, checked === true)
-                      }
-                    />
-                    <span className='text-muted-foreground truncate'>
-                      #{id}
-                    </span>
-                  </label>
-                ))}
-            </div>
-            <div className='mt-2 flex items-center gap-2'>
-              <Input
-                type='number'
-                min={1}
-                value={form.extraTokenId}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    extraTokenId: event.target.value,
-                  }))
-                }
-                placeholder={t('Token ID')}
-                aria-label={t('Token ID')}
-                className='w-36'
-              />
-              <Button
-                size='sm'
-                variant='outline'
-                type='button'
-                onClick={addTokenId}
-              >
-                {t('Add token ID')}
-              </Button>
-            </div>
-            <FieldDescription>
-              {t(
-                'Token secrets are never displayed; approval stores only token IDs.'
-              )}
-            </FieldDescription>
-          </Field>
-          <div className='grid gap-4 sm:grid-cols-2'>
-            {numberField(
-              'mqs-daily-limit',
-              t('Global daily sample limit'),
-              form.daily_limit,
-              1,
-              10000,
-              (value) => setForm((prev) => ({ ...prev, daily_limit: value }))
-            )}
-            {numberField(
-              'mqs-concurrency',
-              t('Concurrency'),
-              form.concurrency,
-              1,
-              2,
-              (value) => setForm((prev) => ({ ...prev, concurrency: value }))
-            )}
           </div>
-          <Field>
-            <FieldLabel htmlFor='mqs-retention'>
-              {t('Retention cleanup')}
-            </FieldLabel>
-            <div className='flex items-center gap-2'>
-              <Switch
-                id='mqs-retention'
-                checked={form.retention_enabled}
-                onCheckedChange={(checked) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    retention_enabled: checked === true,
-                  }))
-                }
-              />
-            </div>
-          </Field>
-          <div className='grid gap-4 sm:grid-cols-2'>
-            {numberField(
-              'mqs-artifact-days',
-              t('Artifact retention (days)'),
-              form.artifact_days,
-              1,
-              90,
-              (value) => setForm((prev) => ({ ...prev, artifact_days: value }))
-            )}
-            {numberField(
-              'mqs-metadata-days',
-              t('Metadata retention (days)'),
-              form.metadata_days,
-              1,
-              365,
-              (value) => setForm((prev) => ({ ...prev, metadata_days: value }))
-            )}
-          </div>
-          {form.metadata_days < form.artifact_days && (
-            <FieldError
-              errors={[
-                {
-                  message: t(
-                    'Metadata retention must be at least artifact retention'
-                  ),
-                },
-              ]}
+          <div className='mt-2 flex items-center gap-2'>
+            <Input
+              type='number'
+              min={1}
+              value={form.extraTokenId}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  extraTokenId: event.target.value,
+                }))
+              }
+              placeholder={t('Token ID')}
+              aria-label={t('Token ID')}
+              className='w-36'
             />
+            <Button
+              size='sm'
+              variant='outline'
+              type='button'
+              onClick={addTokenId}
+            >
+              {t('Add token ID')}
+            </Button>
+          </div>
+          <FieldDescription>
+            {t(
+              'Token secrets are never displayed; approval stores only token IDs.'
+            )}
+          </FieldDescription>
+        </Field>
+        <div className='grid gap-4 sm:grid-cols-2'>
+          {numberField(
+            'mqs-daily-limit',
+            t('Global daily sample limit'),
+            form.daily_limit,
+            1,
+            10000,
+            (value) => setForm((prev) => ({ ...prev, daily_limit: value }))
           )}
-        </FieldGroup>
+          {numberField(
+            'mqs-concurrency',
+            t('Concurrency'),
+            form.concurrency,
+            1,
+            2,
+            (value) => setForm((prev) => ({ ...prev, concurrency: value }))
+          )}
+        </div>
+        <Field>
+          <FieldLabel htmlFor='mqs-retention'>
+            {t('Retention cleanup')}
+          </FieldLabel>
+          <div className='flex items-center gap-2'>
+            <Switch
+              id='mqs-retention'
+              checked={form.retention_enabled}
+              onCheckedChange={(checked) =>
+                setForm((prev) => ({
+                  ...prev,
+                  retention_enabled: checked === true,
+                }))
+              }
+            />
+          </div>
+        </Field>
+        <div className='grid gap-4 sm:grid-cols-2'>
+          {numberField(
+            'mqs-artifact-days',
+            t('Artifact retention (days)'),
+            form.artifact_days,
+            1,
+            90,
+            (value) => setForm((prev) => ({ ...prev, artifact_days: value }))
+          )}
+          {numberField(
+            'mqs-metadata-days',
+            t('Metadata retention (days)'),
+            form.metadata_days,
+            1,
+            365,
+            (value) => setForm((prev) => ({ ...prev, metadata_days: value }))
+          )}
+        </div>
+        {form.metadata_days < form.artifact_days && (
+          <FieldError
+            errors={[
+              {
+                message: t(
+                  'Metadata retention must be at least artifact retention'
+                ),
+              },
+            ]}
+          />
+        )}
+      </FieldGroup>
     )
   }
 }

@@ -169,15 +169,20 @@ func QualityDashboard(caseID int64, version int, channelID int, asOf time.Time) 
 	if channelID == -1 && len(out.Channels) > 0 {
 		channelID = out.Channels[0].ID
 	}
-	if channelID < 0 {
+	if channelID < -2 {
 		return out, errors.New("invalid channel filter")
 	}
-	if _, ok := names[channelID]; !ok {
-		return out, errors.New("channel does not belong to this case version")
+	if channelID >= 0 {
+		if _, ok := names[channelID]; !ok {
+			return out, errors.New("channel does not belong to this case version")
+		}
 	}
 	out.ChannelID = channelID
 	var samples []ModelQualitySample
-	query := DB.Where("case_id = ? AND channel_id = ?", caseID, channelID)
+	query := DB.Where("case_id = ?", caseID)
+	if channelID >= 0 {
+		query = query.Where("channel_id = ?", channelID)
+	}
 	if !allVersions {
 		query = query.Where("version = ?", version)
 	}
@@ -191,8 +196,10 @@ func QualityDashboard(caseID int64, version int, channelID int, asOf time.Time) 
 	return out, nil
 }
 
+// channelID -2 aggregates every channel (the "all" panel view); -1 is invalid
+// here because samples must be explicitly scoped.
 func QualitySamples(caseID int64, version int, channelID int, fromMS, toMS, beforeMS, beforeID int64, limit int) ([]ModelQualitySample, error) {
-	if caseID < 1 || channelID < 0 || fromMS < 0 || toMS < 0 || (toMS > 0 && toMS <= fromMS) {
+	if caseID < 1 || channelID < -2 || fromMS < 0 || toMS < 0 || (toMS > 0 && toMS <= fromMS) {
 		return nil, errors.New("invalid sample filters")
 	}
 	var c ModelQualityCase
@@ -202,7 +209,10 @@ func QualitySamples(caseID int64, version int, channelID int, fromMS, toMS, befo
 	if version == 0 {
 		version = c.Version
 	}
-	query := DB.Where("case_id = ? AND channel_id = ?", caseID, channelID)
+	query := DB.Where("case_id = ?", caseID)
+	if channelID >= 0 {
+		query = query.Where("channel_id = ?", channelID)
+	}
 	if version > 0 {
 		query = query.Where("version = ?", version)
 	}

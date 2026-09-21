@@ -191,6 +191,7 @@ export function RunDetailDialog(props: RunDetailDialogProps) {
         open={detailSample !== null}
         onOpenChange={(open) => !open && setDetailSample(null)}
         canOperate={props.canOperate}
+        showChannel={props.canOperate}
       />
     </>
   )

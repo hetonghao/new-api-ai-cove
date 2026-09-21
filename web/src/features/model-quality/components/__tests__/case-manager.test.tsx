@@ -92,6 +92,8 @@ const CAPABILITIES: QualityCapabilities = {
   tokens: [{ id: 1, name: 'exec', group: 'default' }],
   can_operate: true,
   can_configure: false,
+      can_view: true,
+      can_view_channels: true,
 }
 
 function renderManager(cases: QualityCaseView[], search = {}) {

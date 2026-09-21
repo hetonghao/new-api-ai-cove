@@ -40,11 +40,7 @@ import {
   SAMPLE_STATUS_VARIANT,
   sampleStatusLabel,
 } from '../constants'
-import {
-  formatDurationMs,
-  sanitizeSvg,
-  svgDataUri,
-} from '../lib/quality-view'
+import { formatDurationMs, sanitizeSvg, svgDataUri } from '../lib/quality-view'
 import type { ModelQualitySample } from '../types'
 
 type SampleDetailDialogProps = {
@@ -52,6 +48,7 @@ type SampleDetailDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   canOperate: boolean
+  showChannel: boolean
 }
 
 function MetaRow(props: { label: string; children: React.ReactNode }) {
@@ -88,8 +85,7 @@ export function SampleDetailDialog(props: SampleDetailDialogProps) {
       }
       return response.data
     },
-    enabled:
-      props.open && sample !== null && sample.status === 'succeeded',
+    enabled: props.open && sample !== null && sample.status === 'succeeded',
     staleTime: Infinity,
     retry: false,
   })
@@ -276,11 +272,13 @@ export function SampleDetailDialog(props: SampleDetailDialogProps) {
                 <CopyButton value={sample.run_id} />
               </span>
             </MetaRow>
-            <MetaRow label={t('Channel')}>
-              {sample.channel_id === 0
-                ? t('Unattributed channel')
-                : sample.channel_name || `#${sample.channel_id}`}
-            </MetaRow>
+            {props.showChannel && (
+              <MetaRow label={t('Channel')}>
+                {sample.channel_id === 0
+                  ? t('Unattributed channel')
+                  : sample.channel_name || `#${sample.channel_id}`}
+              </MetaRow>
+            )}
             <MetaRow label={t('Status')}>
               <StatusBadge
                 variant={SAMPLE_STATUS_VARIANT[sample.status] ?? 'neutral'}

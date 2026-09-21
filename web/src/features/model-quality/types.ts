@@ -35,7 +35,14 @@ export interface QualityConfig {
   instruction: string
   instruction_role: 'system' | 'developer' | ''
   max_output_tokens: number
-  reasoning_effort: '' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+  reasoning_effort:
+    | ''
+    | 'none'
+    | 'minimal'
+    | 'low'
+    | 'medium'
+    | 'high'
+    | 'xhigh'
   temperature?: number
   top_p?: number
   samples_per_target: number
@@ -195,6 +202,8 @@ export interface QualityCapabilities {
   tokens: { id: number; name: string; group: string }[]
   can_operate: boolean
   can_configure: boolean
+  can_view: boolean
+  can_view_channels: boolean
 }
 
 export interface QualityArtifact {
@@ -208,6 +217,7 @@ export interface QualityArtifact {
 
 export interface QualitySettingsConfig {
   enabled: boolean
+  public_panel: boolean
   token_ids: number[]
   daily_limit: number
   concurrency: number

@@ -63,7 +63,7 @@ type DashboardPanelProps = {
 
 function MetricCell(props: { label: string; value: string }) {
   return (
-    <div className='bg-card border rounded-lg p-3'>
+    <div className='bg-card rounded-lg border p-3'>
       <div className='text-muted-foreground text-xs'>{props.label}</div>
       <div className='mt-1 text-lg font-medium tabular-nums'>{props.value}</div>
     </div>
@@ -91,18 +91,21 @@ export function DashboardPanel(props: DashboardPanelProps) {
     })
   }
 
+  const canOperate = props.capabilities?.can_operate ?? false
+  const canViewChannels = props.capabilities?.can_view_channels ?? canOperate
+
   const dashboardQuery = useQuery({
     queryKey: [
       'model-quality',
       'dashboard',
       qualityCase.id,
-      search.channel ?? 'auto',
+      search.channel ?? -2,
     ],
     queryFn: async () => {
       const response = await getQualityDashboard({
         caseId: qualityCase.id,
         version: -1,
-        channel_id: search.channel,
+        channel_id: search.channel ?? -2,
       })
       if (!response.success || !response.data) {
         throw new Error(response.message)
@@ -116,10 +119,14 @@ export function DashboardPanel(props: DashboardPanelProps) {
   const dashboard = dashboardQuery.data
   const channelId = dashboard?.channel_id
 
-  // Keep the URL channel in sync with the server-selected default.
+  // Keep the URL channel in sync with the server-selected default; -2 (all
+  // channels) stays implicit so the URL stays clean.
   useEffect(() => {
-    if (dashboard && search.channel !== dashboard.channel_id) {
-      setSearch({ channel: dashboard.channel_id })
+    if (!dashboard) return
+    const effective =
+      dashboard.channel_id === -2 ? undefined : dashboard.channel_id
+    if (search.channel !== effective) {
+      setSearch({ channel: effective })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboard?.channel_id])
@@ -240,6 +247,7 @@ export function DashboardPanel(props: DashboardPanelProps) {
       <SampleWall
         samples={samples}
         selectedIds={selectedIds}
+        showChannel={canViewChannels}
         onToggleSelect={toggleSelect}
         onOpen={setDetailSample}
         hasMore={samplesQuery.hasNextPage}
@@ -251,7 +259,7 @@ export function DashboardPanel(props: DashboardPanelProps) {
 
   return (
     <div className='space-y-4'>
-      <div className='bg-card border rounded-lg p-3'>
+      <div className='bg-card rounded-lg border p-3'>
         <div className='flex flex-wrap items-center gap-x-3 gap-y-2'>
           <span className='text-sm font-medium'>{qualityCase.name}</span>
           <span className='font-mono text-xs'>{qualityCase.config.model}</span>
@@ -273,7 +281,7 @@ export function DashboardPanel(props: DashboardPanelProps) {
           <div className='ml-auto'>
             <RunControls
               qualityCase={qualityCase}
-              canOperate={props.capabilities?.can_operate ?? false}
+              canOperate={canOperate}
               onEdit={props.onEdit}
             />
           </div>
@@ -299,16 +307,21 @@ export function DashboardPanel(props: DashboardPanelProps) {
         </p>
       </div>
 
-      <ChannelSwitcher
-        channels={dashboard.channels}
-        value={channelId}
-        onChange={(id) => setSearch({ channel: id })}
-      />
+      {canViewChannels && dashboard.channels.length > 0 && (
+        <ChannelSwitcher
+          channels={dashboard.channels}
+          value={channelId}
+          onChange={(id) => setSearch({ channel: id === -2 ? undefined : id })}
+        />
+      )}
 
       <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6'>
         <MetricCell label={t('Succeeded')} value={String(summary.success)} />
         <MetricCell label={t('Failed')} value={String(summary.failure)} />
-        <MetricCell label={t('Terminal samples')} value={String(summary.total)} />
+        <MetricCell
+          label={t('Terminal samples')}
+          value={String(summary.total)}
+        />
         <MetricCell
           label={t('Success rate')}
           value={
@@ -327,7 +340,7 @@ export function DashboardPanel(props: DashboardPanelProps) {
         />
       </div>
 
-      <div className='bg-card border space-y-2 rounded-lg p-3'>
+      <div className='bg-card space-y-2 rounded-lg border p-3'>
         <div className='flex items-center justify-between gap-2 text-xs'>
           <span className='text-muted-foreground truncate'>
             {t('Window {{start}} – {{end}}', {
@@ -404,12 +417,14 @@ export function DashboardPanel(props: DashboardPanelProps) {
         samples={selectedSamples}
         open={compareOpen}
         onOpenChange={setCompareOpen}
+        showChannel={canViewChannels}
       />
       <SampleDetailDialog
         sample={detailSample}
         open={detailSample !== null}
         onOpenChange={(open) => !open && setDetailSample(null)}
-        canOperate={props.capabilities?.can_operate ?? false}
+        canOperate={canOperate}
+        showChannel={canViewChannels}
       />
     </div>
   )

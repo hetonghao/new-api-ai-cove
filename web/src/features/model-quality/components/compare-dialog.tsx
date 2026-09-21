@@ -26,17 +26,14 @@ import { cn } from '@/lib/utils'
 
 import { getQualityArtifact } from '../api'
 import { SAMPLE_STATUS_VARIANT, sampleStatusLabel } from '../constants'
-import {
-  formatDurationMs,
-  sanitizeSvg,
-  svgDataUri,
-} from '../lib/quality-view'
+import { formatDurationMs, sanitizeSvg, svgDataUri } from '../lib/quality-view'
 import type { ModelQualitySample } from '../types'
 
 type CompareDialogProps = {
   samples: readonly ModelQualitySample[]
   open: boolean
   onOpenChange: (open: boolean) => void
+  showChannel: boolean
 }
 
 function ComparePreview(props: { sample: ModelQualitySample }) {
@@ -95,7 +92,7 @@ function ComparePreview(props: { sample: ModelQualitySample }) {
     )
   }
   return (
-    <p className='bg-muted line-clamp-6 aspect-[3/2] break-words overflow-hidden p-3 text-xs whitespace-pre-wrap'>
+    <p className='bg-muted line-clamp-6 aspect-[3/2] overflow-hidden p-3 text-xs break-words whitespace-pre-wrap'>
       {artifact.text}
     </p>
   )
@@ -121,22 +118,21 @@ export function CompareDialog(props: CompareDialogProps) {
       <div className='space-y-3'>
         <div className={cn('grid grid-cols-1 gap-3', cols)}>
           {samples.map((sample) => (
-            <div
-              key={sample.id}
-              className='border space-y-1 rounded-lg'
-            >
+            <div key={sample.id} className='space-y-1 rounded-lg border'>
               <ComparePreview sample={sample} />
               <div className='space-y-0.5 px-2 pb-2 text-xs'>
-                <div className='flex items-center justify-between gap-2'>
-                  <span
-                    className='truncate'
-                    title={sample.channel_name || `#${sample.channel_id}`}
-                  >
-                    {sample.channel_id === 0
-                      ? t('Unattributed channel')
-                      : sample.channel_name || `#${sample.channel_id}`}
-                  </span>
-                </div>
+                {props.showChannel && (
+                  <div className='flex items-center justify-between gap-2'>
+                    <span
+                      className='truncate'
+                      title={sample.channel_name || `#${sample.channel_id}`}
+                    >
+                      {sample.channel_id === 0
+                        ? t('Unattributed channel')
+                        : sample.channel_name || `#${sample.channel_id}`}
+                    </span>
+                  </div>
+                )}
                 <div className='flex items-center justify-between gap-2'>
                   <span className='tabular-nums'>
                     {formatDurationMs(sample.duration_ms)}

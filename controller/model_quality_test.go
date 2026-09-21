@@ -143,3 +143,82 @@ func TestModelQualityQueueCancellationDoesNotReplayInFlight(t *testing.T) {
 	assert.Equal(t, "interrupted", samples[0].Status)
 	assert.Equal(t, "pending", samples[1].Status)
 }
+
+func callQualityHandler(t *testing.T, role int, handler gin.HandlerFunc, path string) map[string]any {
+	t.Helper()
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("id", 7)
+		c.Set("role", role)
+		c.Next()
+	})
+	router.GET("/probe", handler)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest("GET", path, nil))
+	var response struct {
+		Success bool           `json:"success"`
+		Data    map[string]any `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	return response.Data
+}
+
+func TestModelQualityCapabilitiesRespectPublicPanel(t *testing.T) {
+	setupQualityQueueTest(t, []int{7}, 1)
+	setPublicPanel := func(on bool) {
+		settings, version, err := model.GetQualitySettings()
+		require.NoError(t, err)
+		settings.PublicPanel = on
+		require.NoError(t, model.SaveQualitySettings(settings, version, time.Now()))
+	}
+
+	// Common user, panel off: no view access, no channel/token inventory.
+	setPublicPanel(false)
+	data := callQualityHandler(t, common.RoleCommonUser, GetQualityCapabilities, "/probe")
+	assert.Equal(t, false, data["can_view"])
+	assert.Equal(t, false, data["can_operate"])
+	assert.Equal(t, false, data["can_view_channels"])
+
+	// Common user, panel on: panel visible, inventory still hidden.
+	setPublicPanel(true)
+	data = callQualityHandler(t, common.RoleCommonUser, GetQualityCapabilities, "/probe")
+	assert.Equal(t, true, data["can_view"])
+	assert.Equal(t, false, data["can_operate"])
+	assert.Equal(t, false, data["can_view_channels"])
+	assert.Empty(t, data["channels"])
+	assert.Empty(t, data["tokens"])
+
+	// Root always sees everything.
+	data = callQualityHandler(t, common.RoleRootUser, GetQualityCapabilities, "/probe")
+	assert.Equal(t, true, data["can_view"])
+	assert.Equal(t, true, data["can_operate"])
+	assert.Equal(t, true, data["can_view_channels"])
+}
+
+func TestModelQualityCasesRedactChannelInternalsForPublicViewers(t *testing.T) {
+	setupQualityQueueTest(t, []int{7, 8}, 1)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("id", 7)
+		c.Set("role", common.RoleCommonUser)
+		c.Next()
+	})
+	router.GET("/cases", GetQualityCases)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest("GET", "/cases", nil))
+	var response struct {
+		Success bool `json:"success"`
+		Data    []struct {
+			Config struct {
+				TokenID    int   `json:"token_id"`
+				ChannelIDs []int `json:"channel_ids"`
+			} `json:"config"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Len(t, response.Data, 1)
+	assert.Equal(t, 0, response.Data[0].Config.TokenID)
+	assert.Empty(t, response.Data[0].Config.ChannelIDs)
+}

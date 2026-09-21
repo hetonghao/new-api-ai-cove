@@ -92,15 +92,17 @@ export function RunControls(props: RunControlsProps) {
 
   return (
     <div className='flex flex-wrap items-center gap-2'>
-      <Button
-        size='sm'
-        variant='outline'
-        onClick={props.onEdit}
-        aria-label={t('Edit')}
-      >
-        <Pencil data-icon='inline-start' />
-        {t('Edit')}
-      </Button>
+      {props.canOperate && (
+        <Button
+          size='sm'
+          variant='outline'
+          onClick={props.onEdit}
+          aria-label={t('Edit')}
+        >
+          <Pencil data-icon='inline-start' />
+          {t('Edit')}
+        </Button>
+      )}
       {running ? (
         <>
           <StatusBadge
