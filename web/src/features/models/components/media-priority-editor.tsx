@@ -107,15 +107,15 @@ export function MediaCapabilityDetails(props: {
         />
       </CollapsibleTrigger>
       <CollapsibleContent className='border-t px-3 py-2.5'>
-        <ul className='space-y-3'>
+        <ul className='grid gap-x-6 gap-y-4 md:grid-cols-2'>
           {typeModels.map((profile) => (
-            <li key={profile.id} className='space-y-1'>
+            <li key={profile.id} className='min-w-0 space-y-1'>
               <p className='font-mono text-xs font-medium break-all'>
                 {profile.id}
               </p>
               <ul className='space-y-1.5'>
                 {Object.entries(profile.operations).map(([name, operation]) => (
-                  <li key={name} className='border-border border-l-2 pl-2'>
+                  <li key={name} className='break-words border-border border-l-2 pl-2'>
                     <p className='text-xs'>
                       <span className='font-medium'>{name}</span>{' '}
                       <span className='text-muted-foreground'>
