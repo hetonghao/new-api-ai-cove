@@ -53,6 +53,7 @@ func setModelQualityRouter(api *gin.RouterGroup) {
 	admin.GET("/runs/:id", controller.GetQualityRun)
 	operate := group.Group("", middleware.AdminAuth(), middleware.RequirePermission(authz.ChannelOperate))
 	operate.POST("/cases", controller.CreateQualityCase)
+	operate.PUT("/cases/order", controller.ReorderQualityCases)
 	operate.PUT("/cases/:id", controller.UpdateQualityCase)
 	operate.DELETE("/cases/:id", controller.DeleteQualityCase)
 	operate.PUT("/cases/:id/state", controller.SetQualityCaseState)

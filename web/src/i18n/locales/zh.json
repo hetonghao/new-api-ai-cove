@@ -2451,6 +2451,7 @@
     "Failed to save FAQ": "保存 FAQ 失败",
     "Failed to save Uptime Kuma groups": "保存 Uptime Kuma 组失败",
     "Failed to save announcements": "保存公告失败",
+    "Failed to save case order": "保存用例排序失败",
     "Failed to save media models.": "保存媒体模型失败。",
     "Failed to save model pricing": "保存模型定价失败",
     "Failed to save settings": "设置保存失败",

@@ -18,37 +18,22 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { cn } from '@/lib/utils'
 
 import type { QualityCapabilities, QualityCaseView } from '../types'
 import { CaseEditor } from './case-editor'
+import { CaseList } from './case-list'
 
 const route = getRouteApi('/_authenticated/model-quality/')
 
 type CaseManagerProps = {
   cases: readonly QualityCaseView[]
   capabilities: QualityCapabilities | undefined
-}
-
-type CaseStatus = 'enabled' | 'archived' | 'disabled'
-
-function caseStatus(qualityCase: QualityCaseView): CaseStatus {
-  if (qualityCase.enabled && !qualityCase.archived) return 'enabled'
-  if (qualityCase.archived) return 'archived'
-  return 'disabled'
-}
-
-function statusLabel(status: CaseStatus, t: (key: string) => string): string {
-  if (status === 'enabled') return t('Enabled')
-  if (status === 'archived') return t('Archived')
-  return t('Disabled')
 }
 
 export function CaseManager(props: CaseManagerProps) {
@@ -60,16 +45,6 @@ export function CaseManager(props: CaseManagerProps) {
   const [pendingSelection, setPendingSelection] = useState<number | 'new' | null>(
     null
   )
-
-  const filtered = useMemo(() => {
-    const needle = filter.trim().toLowerCase()
-    if (needle === '') return props.cases
-    return props.cases.filter(
-      (qualityCase) =>
-        qualityCase.name.toLowerCase().includes(needle) ||
-        qualityCase.config.model.toLowerCase().includes(needle)
-    )
-  }, [props.cases, filter])
 
   const selectedId = search.case
   const selectedCase =
@@ -125,44 +100,14 @@ export function CaseManager(props: CaseManagerProps) {
           placeholder={t('Search cases')}
           aria-label={t('Search cases')}
         />
-        <div className='border divide-border divide-y rounded-lg'>
-          {filtered.length === 0 && (
-            <div className='text-muted-foreground p-3 text-sm'>
-              {t('No cases')}
-            </div>
-          )}
-          {filtered.map((qualityCase) => {
-            const status = caseStatus(qualityCase)
-            const selected =
-              !newCaseMode && selectedCase?.id === qualityCase.id
-            return (
-              <button
-                key={qualityCase.id}
-                type='button'
-                aria-current={selected ? 'true' : undefined}
-                onClick={() => select(qualityCase.id)}
-                className={cn(
-                  'hover:bg-muted/50 flex w-full items-center gap-2 px-3 py-2 text-left',
-                  selected && 'bg-muted'
-                )}
-              >
-                <span className='min-w-0 flex-1'>
-                  <span className='block truncate text-sm font-medium'>
-                    {qualityCase.name}
-                  </span>
-                  <span className='text-muted-foreground block truncate text-xs'>
-                    {qualityCase.config.model}
-                  </span>
-                </span>
-                <StatusBadge
-                  variant={status === 'enabled' ? 'success' : 'neutral'}
-                  copyable={false}
-                  label={statusLabel(status, t)}
-                />
-              </button>
-            )
-          })}
-        </div>
+        <CaseList
+          cases={props.cases}
+          filter={filter}
+          selectedId={selectedId}
+          newCaseMode={newCaseMode}
+          canOperate={props.capabilities?.can_operate ?? false}
+          onSelect={select}
+        />
       </div>
       <div className='min-w-0'>
         {showEditor ? (

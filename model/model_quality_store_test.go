@@ -353,12 +353,69 @@ func TestModelQualityStoreDialects(t *testing.T) {
 		{"list_runs_filters_and_paginates", testModelQualityStoreListQualityRuns},
 		{"delete_keeps_history_and_guards_active_run", testModelQualityStoreDeleteCase},
 		{"all_versions_scope_covers_every_revision", testModelQualityStoreAllVersionsScope},
+		{"reorder_persists_and_rejects_non_permutation", testModelQualityStoreReorderCases},
 	}
 	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
 			for _, tc := range cases {
 				t.Run(tc.name, func(t *testing.T) { tc.run(t, dialect) })
 			}
+		})
+	}
+}
+
+// legacyModelQualityCase shadows model_quality_cases as it existed before the
+// sort column was introduced.
+type legacyModelQualityCase struct {
+	ID   int64  `gorm:"primaryKey"`
+	Name string `gorm:"size:128"`
+}
+
+func (legacyModelQualityCase) TableName() string { return "model_quality_cases" }
+
+// TestModelQualitySortColumnUpgradeBackfill simulates upgrading a database
+// created before the sort column existed: the migrated rows must land at
+// sort=id after backfill, never NULL.
+func TestModelQualitySortColumnUpgradeBackfill(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			var driver gorm.Dialector
+			switch dialect {
+			case "sqlite":
+				driver = sqlite.Open(":memory:")
+			case "mysql":
+				dsn := os.Getenv("TEST_MYSQL_DSN")
+				if dsn == "" {
+					t.Skip("TEST_MYSQL_DSN is not configured")
+				}
+				driver = mysql.Open(dsn)
+			case "postgres":
+				dsn := os.Getenv("TEST_POSTGRES_DSN")
+				if dsn == "" {
+					t.Skip("TEST_POSTGRES_DSN is not configured")
+				}
+				driver = postgres.Open(dsn)
+			}
+			db, err := gorm.Open(driver, &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+			require.NoError(t, err)
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			sqlDB.SetMaxOpenConns(1)
+			t.Cleanup(func() {
+				if dialect != "sqlite" {
+					_ = db.Migrator().DropTable("model_quality_cases")
+				}
+				require.NoError(t, sqlDB.Close())
+			})
+
+			require.NoError(t, db.AutoMigrate(&legacyModelQualityCase{}))
+			require.NoError(t, db.Exec("INSERT INTO model_quality_cases (name) VALUES (?)", "legacy").Error)
+
+			require.NoError(t, db.AutoMigrate(&ModelQualityCase{}))
+			require.NoError(t, backfillQualityCaseSort(db))
+			var row ModelQualityCase
+			require.NoError(t, db.First(&row).Error)
+			assert.Equal(t, row.ID, row.Sort)
 		})
 	}
 }
@@ -509,4 +566,31 @@ func testModelQualityStoreAllVersionsScope(t *testing.T, dialect string) {
 	require.NoError(t, err)
 	require.Len(t, samples, 1)
 	assert.Equal(t, 1, samples[0].Version)
+}
+
+func testModelQualityStoreReorderCases(t *testing.T, dialect string) {
+	now := setupQualityStoreTest(t, dialect)
+	a := createQualityStoreCase(t, now, 1)
+	b := createQualityStoreCase(t, now, 1)
+	c := createQualityStoreCase(t, now, 1)
+
+	// Legacy rows with sort=0 backfill to id order.
+	require.NoError(t, backfillQualityCaseSort(DB))
+	cases, err := ListQualityCases()
+	require.NoError(t, err)
+	require.Len(t, cases, 3)
+	assert.Equal(t, []int64{a.ID, b.ID, c.ID}, []int64{cases[0].ID, cases[1].ID, cases[2].ID})
+
+	require.NoError(t, ReorderQualityCases([]int64{c.ID, a.ID, b.ID}, 1))
+	cases, err = ListQualityCases()
+	require.NoError(t, err)
+	assert.Equal(t, []int64{c.ID, a.ID, b.ID}, []int64{cases[0].ID, cases[1].ID, cases[2].ID})
+
+	// Partial sets and foreign ids are rejected without disturbing the order.
+	assert.ErrorIs(t, ReorderQualityCases([]int64{a.ID, b.ID}, 1), ErrQualityConflict)
+	assert.ErrorIs(t, ReorderQualityCases([]int64{a.ID, b.ID, 9999}, 1), ErrQualityConflict)
+	assert.ErrorIs(t, ReorderQualityCases([]int64{a.ID, a.ID, c.ID}, 1), ErrQualityConflict)
+	cases, err = ListQualityCases()
+	require.NoError(t, err)
+	assert.Equal(t, []int64{c.ID, a.ID, b.ID}, []int64{cases[0].ID, cases[1].ID, cases[2].ID})
 }

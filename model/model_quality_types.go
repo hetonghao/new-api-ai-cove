@@ -95,6 +95,7 @@ type ModelQualityCase struct {
 	NextRunAt          int64  `json:"next_run_at" gorm:"index"`
 	LastScheduleReason string `json:"last_schedule_reason" gorm:"size:64"`
 	ActiveRunID        string `json:"active_run_id" gorm:"size:64"`
+	Sort               int64  `json:"sort" gorm:"not null;default:0"`
 	CreatedBy          int    `json:"created_by"`
 	UpdatedBy          int    `json:"updated_by"`
 	CreatedAt          int64  `json:"created_at"`

@@ -2451,6 +2451,7 @@
     "Failed to save FAQ": "FAQの保存に失敗しました",
     "Failed to save Uptime Kuma groups": "Uptime Kumaグループの保存に失敗しました",
     "Failed to save announcements": "お知らせの保存に失敗しました",
+    "Failed to save case order": "ケースの順序の保存に失敗しました",
     "Failed to save media models.": "メディアモデルを保存できませんでした。",
     "Failed to save model pricing": "モデル料金の保存に失敗しました",
     "Failed to save settings": "設定の保存に失敗しました",

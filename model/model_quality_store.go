@@ -75,6 +75,14 @@ func seedQualitySettings(db *gorm.DB) error {
 	return db.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
 }
 
+// backfillQualityCaseSort assigns sort=id to legacy rows created before the
+// sort column existed (sort=0), preserving their previous id order.
+func backfillQualityCaseSort(db *gorm.DB) error {
+	return db.Model(&ModelQualityCase{}).
+		Where("sort = ?", 0).
+		Update("sort", gorm.Expr("id")).Error
+}
+
 func GetQualitySettings() (QualitySettingsConfig, int64, error) {
 	var row ModelQualitySettings
 	err := DB.First(&row, qualitySettingsRowID).Error
@@ -171,7 +179,7 @@ func decodeQualityCase(c *ModelQualityCase) (*QualityCaseView, error) {
 
 func ListQualityCases() ([]QualityCaseView, error) {
 	var rows []ModelQualityCase
-	if err := DB.Order("id ASC").Find(&rows).Error; err != nil {
+	if err := DB.Order("sort ASC, id ASC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	views := make([]QualityCaseView, 0, len(rows))
@@ -317,6 +325,10 @@ func SaveQualityCase(id int64, input QualityCaseWrite, actor int, now time.Time)
 				UpdatedAt:       nowMs,
 			}
 			if err := tx.Create(&row).Error; err != nil {
+				return err
+			}
+			// sort=id keeps appended cases after every explicit reorder position.
+			if err := tx.Model(&row).Update("sort", row.ID).Error; err != nil {
 				return err
 			}
 			revision := ModelQualityRevision{
@@ -530,6 +542,44 @@ func SetQualityCaseState(id int64, enabled, archived bool, expectedEditVersion i
 	if prev.Enabled != enabled || prev.Archived != archived {
 		auditQualityCase(actor, fmt.Sprintf("quality case %d state: enabled=%t archived=%t", id, enabled, archived))
 	}
+	return nil
+}
+
+// ReorderQualityCases persists an explicit display order. The request must be
+// an exact permutation of every existing case id so a stale client cannot
+// silently drop or duplicate entries.
+func ReorderQualityCases(ids []int64, actor int) error {
+	err := qualityTransaction(func(tx *gorm.DB) error {
+		var existing []int64
+		if err := tx.Model(&ModelQualityCase{}).Pluck("id", &existing).Error; err != nil {
+			return err
+		}
+		if len(ids) != len(existing) {
+			return ErrQualityConflict
+		}
+		want := make(map[int64]struct{}, len(existing))
+		for _, id := range existing {
+			want[id] = struct{}{}
+		}
+		seen := make(map[int64]struct{}, len(ids))
+		for i, id := range ids {
+			if _, ok := want[id]; !ok {
+				return ErrQualityConflict
+			}
+			if _, dup := seen[id]; dup {
+				return ErrQualityConflict
+			}
+			seen[id] = struct{}{}
+			if err := tx.Model(&ModelQualityCase{}).Where("id = ?", id).Update("sort", i+1).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	auditQualityCase(actor, fmt.Sprintf("reorder %d quality cases", len(ids)))
 	return nil
 }
 

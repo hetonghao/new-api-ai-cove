@@ -25,6 +25,7 @@ func TestModelQualityRoutesRejectUnauthenticatedAndCookieOnlyRequests(t *testing
 		{"GET", "/runs/fixture"},
 		{"GET", "/samples/1/artifact"},
 		{"POST", "/cases"},
+		{"PUT", "/cases/order"},
 		{"PUT", "/cases/1"},
 		{"DELETE", "/cases/1"},
 		{"PUT", "/cases/1/state"},

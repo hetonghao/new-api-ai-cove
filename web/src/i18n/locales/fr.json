@@ -2451,6 +2451,7 @@
     "Failed to save FAQ": "Échec de la sauvegarde de la FAQ",
     "Failed to save Uptime Kuma groups": "Échec de la sauvegarde des groupes Uptime Kuma",
     "Failed to save announcements": "Échec de la sauvegarde des annonces",
+    "Failed to save case order": "Échec de la sauvegarde de l’ordre des cas",
     "Failed to save media models.": "Échec de la sauvegarde des modèles multimédias.",
     "Failed to save model pricing": "Échec de l’enregistrement des tarifs",
     "Failed to save settings": "Échec de l’enregistrement des paramètres",

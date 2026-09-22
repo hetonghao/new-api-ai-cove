@@ -394,6 +394,9 @@ func migrateDB() error {
 	if err := seedQualitySettings(DB); err != nil {
 		return err
 	}
+	if err := backfillQualityCaseSort(DB); err != nil {
+		return err
+	}
 	if err := migrateRiskData(DB); err != nil {
 		return err
 	}

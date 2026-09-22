@@ -78,6 +78,13 @@ export async function updateQualityCase(
   return res.data
 }
 
+export async function reorderQualityCases(
+  ids: number[]
+): Promise<ApiResponse<null>> {
+  const res = await api.put<ApiResponse<null>>(`${BASE}/cases/order`, { ids })
+  return res.data
+}
+
 export async function deleteQualityCase(
   id: number,
   expectedEditVersion: number

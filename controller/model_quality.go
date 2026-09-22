@@ -251,6 +251,22 @@ type qualityCaseStateRequest struct {
 	ExpectedEditVersion int64 `json:"expected_edit_version"`
 }
 
+type qualityCaseOrderRequest struct {
+	IDs []int64 `json:"ids"`
+}
+
+func ReorderQualityCases(c *gin.Context) {
+	var req qualityCaseOrderRequest
+	if !qualityBindJSON(c, &req) {
+		return
+	}
+	if err := model.ReorderQualityCases(req.IDs, qualityActor(c)); err != nil {
+		qualityError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
 func SetQualityCaseState(c *gin.Context) {
 	id, ok := qualityParseID(c, "id")
 	if !ok {
