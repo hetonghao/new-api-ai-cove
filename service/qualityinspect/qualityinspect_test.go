@@ -432,6 +432,7 @@ func TestQualityHTTPExecutorDistinguishesRequestAndArtifactSuccess(t *testing.T)
 				require.NoError(t, err)
 				assert.Equal(t, string(payload), string(body))
 				assert.Equal(t, "Bearer local-test-token", r.Header.Get("Authorization"))
+				assert.Equal(t, "1", r.Header.Get(common.QualityInspectionHeader))
 				w.Header().Set("Content-Type", "text/event-stream")
 				w.Header().Set(common.RequestIdKey, "quality-test-request")
 				data, err := common.Marshal(map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed", "output": []any{map[string]any{"type": "message", "content": []any{map[string]any{"type": "output_text", "text": tc.text}}}}}})
@@ -446,6 +447,47 @@ func TestQualityHTTPExecutorDistinguishesRequestAndArtifactSuccess(t *testing.T)
 			assert.True(t, result.RequestSuccess)
 			assert.Equal(t, tc.text, string(result.Text))
 			assert.Equal(t, "quality-test-request", result.RequestID)
+		})
+	}
+}
+
+func TestQualityHTTPExecutorRetriesTransientFailureOnce(t *testing.T) {
+	previous := qualityRetryDelay
+	qualityRetryDelay = time.Millisecond
+	t.Cleanup(func() { qualityRetryDelay = previous })
+	cfg := configFixture()
+	_, payload, err := BuildRequest(cfg)
+	require.NoError(t, err)
+	okEvent := func(w http.ResponseWriter) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		data, err := common.Marshal(map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed", "output": []any{map[string]any{"type": "message", "content": []any{map[string]any{"type": "output_text", "text": `<svg xmlns="http://www.w3.org/2000/svg"><rect width="5" height="5"/></svg>`}}}}}})
+		require.NoError(t, err)
+		_, err = w.Write(append(append([]byte("data: "), data...), []byte("\n\n")...))
+		require.NoError(t, err)
+	}
+	for _, tc := range []struct {
+		name         string
+		failWith     int
+		wantAttempts int
+		wantStatus   string
+	}{
+		{"http 503 retried then succeeds", http.StatusServiceUnavailable, 2, "succeeded"},
+		{"http 400 not retried", http.StatusBadRequest, 1, "failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			attempts := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				attempts++
+				if attempts == 1 {
+					w.WriteHeader(tc.failWith)
+					return
+				}
+				okEvent(w)
+			}))
+			defer server.Close()
+			result := execute(context.Background(), server.Client(), server.URL, "local-test-token", payload, cfg)
+			assert.Equal(t, tc.wantAttempts, attempts)
+			assert.Equal(t, tc.wantStatus, result.Status)
 		})
 	}
 }

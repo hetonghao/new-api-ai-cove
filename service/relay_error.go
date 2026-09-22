@@ -103,6 +103,9 @@ func ProcessChannelFailure(c *gin.Context, channelError types.ChannelError, err 
 		return
 	}
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, common.LocalLogPreview(err.MaskSensitiveErrorWithStatusCode())))
+	if c != nil && c.Request != nil && c.GetHeader(common.QualityInspectionHeader) != "" {
+		return
+	}
 	if ShouldDisableChannel(err) && channelError.AutoBan {
 		reason := err.MaskSensitiveErrorWithStatusCode()
 		gopool.Go(func() {

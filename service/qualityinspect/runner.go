@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -168,7 +169,32 @@ func RunSample(ctx context.Context, cfg model.QualityConfig, target int) model.Q
 	return result
 }
 
+var qualityRetryDelay = 10 * time.Second
+
+// transientQualityError covers failures caused by upstream instability rather
+// than model output: retriable HTTP 5xx and broken streams. Timeouts are not
+// retried — a timed-out model would likely just burn the full budget again.
+func transientQualityError(code string) bool {
+	return strings.HasPrefix(code, "http_5") || code == "stream_error" || code == "stream_interrupted"
+}
+
 func execute(parent context.Context, client *http.Client, url, key string, body []byte, cfg model.QualityConfig) model.QualityResult {
+	result := executeOnce(parent, client, url, key, body, cfg)
+	if result.Status == "cancelled" || !transientQualityError(result.ErrorCode) {
+		return result
+	}
+	firstCode := result.ErrorCode
+	select {
+	case <-time.After(qualityRetryDelay):
+	case <-parent.Done():
+		return result
+	}
+	retried := executeOnce(parent, client, url, key, body, cfg)
+	common.SysLog(fmt.Sprintf("quality sample transient retry: first=%s final=%s", firstCode, retried.ErrorCode))
+	return retried
+}
+
+func executeOnce(parent context.Context, client *http.Client, url, key string, body []byte, cfg model.QualityConfig) model.QualityResult {
 	result := model.QualityResult{Status: "failed", ErrorCode: "upstream_error"}
 	ctx, cancel := context.WithTimeout(parent, time.Duration(cfg.TimeoutSeconds)*time.Second)
 	defer cancel()
@@ -181,6 +207,7 @@ func execute(parent context.Context, client *http.Client, url, key string, body 
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "text/event-stream")
 	request.Header.Set("Authorization", "Bearer "+key)
+	request.Header.Set(common.QualityInspectionHeader, "1")
 	response, err := client.Do(request)
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
