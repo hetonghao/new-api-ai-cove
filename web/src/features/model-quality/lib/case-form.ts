@@ -105,8 +105,8 @@ export function getQualityCaseFormSchema(t: TFunction) {
       max_output_tokens: z
         .number()
         .int()
-        .min(1, t('Max output tokens must be 1-32768'))
-        .max(32768, t('Max output tokens must be 1-32768'))
+        .min(1, t('Max output tokens must be 1-131072'))
+        .max(131072, t('Max output tokens must be 1-131072'))
         .optional(),
       reasoning_effort: z.enum([
         '',

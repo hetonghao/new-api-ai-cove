@@ -3386,7 +3386,7 @@
     "Max context tokens": "Tokens de contexte maximum",
     "Max output": "Sortie max",
     "Max output tokens": "Jetons de sortie max",
-    "Max output tokens must be 1-32768": "Les jetons de sortie max doivent être entre 1 et 32768",
+    "Max output tokens must be 1-131072": "Les jetons de sortie max doivent être entre 1 et 131072",
     "Max requests per period": "Nombre max de requêtes par période",
     "Max successful requests": "Nombre max de requêtes réussies",
     "Maximum 1000 characters. Supports Markdown and HTML.": "Maximum 1000 caractères. Prend en charge Markdown et HTML.",

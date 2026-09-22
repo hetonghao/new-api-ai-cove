@@ -19,7 +19,7 @@ const (
 	QualityMaxSVGBytes             = 512 << 10
 	QualityMaxStreamBytes          = 64 << 20
 	QualityMaxEventBytes           = 8 << 20
-	QualityMaxOutputTokens         = 32768
+	QualityMaxOutputTokens         = 131072
 	QualityTimelineBuckets         = 144
 	QualityBucketMillis      int64 = 10 * 60 * 1000
 )

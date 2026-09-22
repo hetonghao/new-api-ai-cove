@@ -3386,7 +3386,7 @@
     "Max context tokens": "最大上下文 Token 數",
     "Max output": "最大輸出",
     "Max output tokens": "最大輸出 token",
-    "Max output tokens must be 1-32768": "最大輸出 token 須為 1–32768",
+    "Max output tokens must be 1-131072": "最大輸出 token 須為 1–131072",
     "Max requests per period": "每周期最大請求數",
     "Max successful requests": "最大成功請求數",
     "Maximum 1000 characters. Supports Markdown and HTML.": "最多 1000 個字元。支援 Markdown 和 HTML。",

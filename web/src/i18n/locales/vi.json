@@ -3386,7 +3386,7 @@
     "Max context tokens": "Số token ngữ cảnh tối đa",
     "Max output": "Đầu ra tối đa",
     "Max output tokens": "Token đầu ra tối đa",
-    "Max output tokens must be 1-32768": "Token đầu ra tối đa phải từ 1–32768",
+    "Max output tokens must be 1-131072": "Token đầu ra tối đa phải từ 1–131072",
     "Max requests per period": "Yêu cầu tối đa mỗi khoảng thời gian",
     "Max successful requests": "Số yêu cầu thành công tối đa",
     "Maximum 1000 characters. Supports Markdown and HTML.": "Tối đa 1000 ký tự. Hỗ trợ Markdown và HTML.",

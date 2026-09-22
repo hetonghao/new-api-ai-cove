@@ -3386,7 +3386,7 @@
     "Max context tokens": "最大コンテキストトークン数",
     "Max output": "最大出力",
     "Max output tokens": "最大出力トークン",
-    "Max output tokens must be 1-32768": "最大出力トークンは 1〜32768 でなければなりません",
+    "Max output tokens must be 1-131072": "最大出力トークンは 1〜131072 でなければなりません",
     "Max requests per period": "期間あたりの最大リクエスト数",
     "Max successful requests": "最大成功リクエスト数",
     "Maximum 1000 characters. Supports Markdown and HTML.": "最大1000文字。MarkdownとHTMLをサポートしています。",

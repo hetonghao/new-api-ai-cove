@@ -3386,7 +3386,7 @@
     "Max context tokens": "Max context tokens",
     "Max output": "Max output",
     "Max output tokens": "Max output tokens",
-    "Max output tokens must be 1-32768": "Max output tokens must be 1-32768",
+    "Max output tokens must be 1-131072": "Max output tokens must be 1-131072",
     "Max requests per period": "Max requests per period",
     "Max successful requests": "Max successful requests",
     "Maximum 1000 characters. Supports Markdown and HTML.": "Maximum 1000 characters. Supports Markdown and HTML.",

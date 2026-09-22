@@ -3386,7 +3386,7 @@
     "Max context tokens": "Максимум токенов контекста",
     "Max output": "Макс. вывод",
     "Max output tokens": "Макс. выходных токенов",
-    "Max output tokens must be 1-32768": "Макс. выходных токенов: 1–32768",
+    "Max output tokens must be 1-131072": "Макс. выходных токенов: 1–131072",
     "Max requests per period": "Макс. запросов за период",
     "Max successful requests": "Макс. успешных запросов",
     "Maximum 1000 characters. Supports Markdown and HTML.": "Максимум 1000 символов. Поддерживает Markdown и HTML.",
