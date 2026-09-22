@@ -166,6 +166,44 @@ func TestAdaptorSetupRequestHeaderAddsClaudeDefaultHeaders(t *testing.T) {
 	assert.Equal(t, "2023-06-01", header.Get("anthropic-version"))
 }
 
+func TestAdaptorSetupRequestHeaderAddsClaudeApiKeyWithoutRouteAuth(t *testing.T) {
+	adaptor := &Adaptor{}
+	info := advancedCustomRelayInfo(&dto.AdvancedCustomConfig{
+		Routes: []dto.AdvancedCustomRoute{
+			{
+				IncomingPath: "/v1/messages",
+				UpstreamPath: "https://upstream.example/v1/messages",
+				Converter:    relayconvert.ConverterNone,
+			},
+		},
+	})
+	info.RelayFormat = types.RelayFormatClaude
+	c := advancedCustomGinContext("/v1/messages")
+	header := http.Header{}
+
+	require.NoError(t, adaptor.SetupRequestHeader(c, &header, info))
+	assert.Equal(t, "Bearer sk-test", header.Get("Authorization"))
+	assert.Equal(t, "sk-test", header.Get("x-api-key"))
+}
+
+func TestAdaptorSetupRequestHeaderAddsClaudeApiKeyForChatToMessagesRoute(t *testing.T) {
+	adaptor := &Adaptor{}
+	info := advancedCustomRelayInfo(&dto.AdvancedCustomConfig{
+		Routes: []dto.AdvancedCustomRoute{
+			{
+				IncomingPath: "/v1/chat/completions",
+				UpstreamPath: "https://upstream.example/v1/messages",
+				Converter:    relayconvert.ConverterOpenAIChatToClaudeMessages,
+			},
+		},
+	})
+	c := advancedCustomGinContext("/v1/chat/completions")
+	header := http.Header{}
+
+	require.NoError(t, adaptor.SetupRequestHeader(c, &header, info))
+	assert.Equal(t, "sk-test", header.Get("x-api-key"))
+}
+
 func TestAdaptorReturnsErrorWhenNoRouteMatchesPath(t *testing.T) {
 	adaptor := &Adaptor{}
 	info := advancedCustomRelayInfo(&dto.AdvancedCustomConfig{

@@ -240,6 +240,10 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, header *http.Header, info *
 	auth := a.route.Auth
 	if auth == nil {
 		header.Set("Authorization", "Bearer "+info.ApiKey)
+		if shouldApplyClaudeHeaders(a.converter, info) {
+			// Anthropic upstreams authenticate with x-api-key, not Bearer.
+			header.Set("x-api-key", info.ApiKey)
+		}
 	} else {
 		switch strings.TrimSpace(auth.Type) {
 		case dto.AdvancedCustomAuthTypeNone:
