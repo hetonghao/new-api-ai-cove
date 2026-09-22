@@ -86,10 +86,20 @@ func finishResponse(result *model.QualityResult, response *responseObject) {
 	result.FinishReason = response.Status
 	readUsage(result, response.Usage, "responses")
 	var text strings.Builder
+	sawMessage, sawToolCall := false, false
 	for _, item := range response.Output {
-		if item.Type != "message" || (item.Role != "assistant" && item.Role != "") {
+		if item.Type != "message" {
+			// Agentic upstreams can end a turn with tool/function calls and no
+			// assistant message at all; distinguish that from an empty reply.
+			if strings.HasSuffix(item.Type, "_call") || item.Type == "function_call" {
+				sawToolCall = true
+			}
 			continue
 		}
+		if item.Role != "assistant" && item.Role != "" {
+			continue
+		}
+		sawMessage = true
 		for _, part := range item.Content {
 			if part.Type == "refusal" || part.Refusal != "" {
 				result.ErrorCode = "refusal"
@@ -109,7 +119,14 @@ func finishResponse(result *model.QualityResult, response *responseObject) {
 		return
 	}
 	if strings.TrimSpace(text.String()) == "" {
-		result.ErrorCode = "empty_output"
+		switch {
+		case !sawMessage && sawToolCall:
+			result.ErrorCode = "tool_call_turn"
+		case !sawMessage:
+			result.ErrorCode = "no_message"
+		default:
+			result.ErrorCode = "empty_output"
+		}
 		return
 	}
 	result.Status, result.ErrorCode, result.RequestSuccess = "succeeded", "", true
@@ -157,6 +174,10 @@ func ParseResponse(reader io.Reader, contentType, protocol string, start time.Ti
 				}
 				if result.FinishReason == "length" {
 					result.ErrorCode = "truncated"
+					return result
+				}
+				if result.FinishReason == "tool_calls" {
+					result.ErrorCode = "tool_call_turn"
 					return result
 				}
 				if result.FinishReason != "stop" {
@@ -256,6 +277,10 @@ func ParseResponse(reader io.Reader, contentType, protocol string, start time.Ti
 				result.FinishReason = *choice.FinishReason
 				if *choice.FinishReason == "length" {
 					result.ErrorCode = "truncated"
+					return false
+				}
+				if *choice.FinishReason == "tool_calls" {
+					result.ErrorCode = "tool_call_turn"
 					return false
 				}
 				if *choice.FinishReason != "stop" {

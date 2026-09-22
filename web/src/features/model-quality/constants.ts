@@ -65,6 +65,8 @@ export const ERROR_CODE_LABEL: Record<string, string> = {
   timeout: 'Request timed out',
   upstream_error: 'Upstream error',
   empty_output: 'Empty output',
+  no_message: 'No assistant message in the response',
+  tool_call_turn: 'Model entered a tool call turn',
   missing_terminal: 'Response ended without a terminal event',
   svg_too_large: 'SVG output too large',
   svg_too_complex: 'SVG rejected by safety checks',

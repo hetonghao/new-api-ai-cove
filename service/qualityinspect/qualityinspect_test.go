@@ -324,7 +324,12 @@ func TestQualityProtocolTerminalCases(t *testing.T) {
 		{"chat missing DONE", "chat", "text/event-stream", "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hello\"},\"finish_reason\":\"stop\"}]}\n\n", "failed", "missing_terminal", "hello"},
 		{"chat length", "chat", "text/event-stream", "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"},\"finish_reason\":\"length\"}]}\n\n", "failed", "truncated", "partial"},
 		{"chat refusal", "chat", "application/json", `{"choices":[{"index":0,"message":{"refusal":"No"},"finish_reason":"stop"}]}`, "failed", "refusal", ""},
-		{"JSON empty", "responses", "application/json", `{"status":"completed","output":[]}`, "failed", "empty_output", ""},
+		{"JSON empty", "responses", "application/json", `{"status":"completed","output":[]}`, "failed", "no_message", ""},
+		{"JSON empty message", "responses", "application/json", `{"status":"completed","output":[{"type":"reasoning"},{"type":"message","role":"assistant","content":[]},{"type":"function_call"}]}`, "failed", "empty_output", ""},
+		{"JSON reasoning only", "responses", "application/json", `{"status":"completed","output":[{"type":"reasoning"}]}`, "failed", "no_message", ""},
+		{"JSON tool call turn", "responses", "application/json", `{"status":"completed","output":[{"type":"reasoning"},{"type":"function_call","name":"exec"}]}`, "failed", "tool_call_turn", ""},
+		{"chat tool calls", "chat", "application/json", `{"choices":[{"index":0,"message":{"content":""},"finish_reason":"tool_calls"}]}`, "failed", "tool_call_turn", ""},
+		{"chat tool calls stream", "chat", "text/event-stream", "data: {\"choices\":[{\"index\":0,\"finish_reason\":\"tool_calls\"}]}\n\n", "failed", "tool_call_turn", ""},
 		{"JSON text", "responses", "application/json", `{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}]}`, "succeeded", "", "ok"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
