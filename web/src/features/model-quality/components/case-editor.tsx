@@ -569,7 +569,7 @@ export function CaseEditor(props: CaseEditorProps) {
                     id='mq-max-tokens'
                     type='number'
                     min={1}
-                    max={32768}
+                    max={131072}
                     aria-invalid={Boolean(errors.max_output_tokens)}
                     {...form.register('max_output_tokens', {
                       setValueAs: (value) =>
