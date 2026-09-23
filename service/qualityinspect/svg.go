@@ -158,15 +158,43 @@ func ExtractSafeSVG(text string) (string, string) {
 	if len(locations) == 0 {
 		return "", "missing_svg"
 	}
-	if len(locations) != 1 {
+	// Track element depth so a nested <svg> inside the first candidate does
+	// not count as a second one; only a top-level <svg after the balanced
+	// close is genuinely ambiguous.
+	start := locations[0][0]
+	depth := 0
+	cursor := start
+	end := -1
+	for {
+		openRel := svgOpening.FindStringIndex(text[cursor:])
+		closeRel := strings.Index(text[cursor:], "</svg>")
+		if closeRel < 0 {
+			return "", "invalid_xml"
+		}
+		if openRel != nil && openRel[0] < closeRel {
+			absOpen := cursor + openRel[0]
+			tagEnd := strings.IndexByte(text[absOpen:], '>')
+			selfClosing := tagEnd >= 0 && text[absOpen+tagEnd-1] == '/'
+			if !selfClosing {
+				depth++
+			}
+			if tagEnd >= 0 {
+				cursor = absOpen + tagEnd + 1
+			} else {
+				cursor += openRel[1]
+			}
+			continue
+		}
+		depth--
+		if depth == 0 {
+			end = cursor + closeRel + len("</svg>")
+			break
+		}
+		cursor += closeRel + len("</svg>")
+	}
+	if svgOpening.MatchString(text[end:]) {
 		return "", "ambiguous_svg"
 	}
-	start := locations[0][0]
-	end := strings.Index(text[start:], "</svg>")
-	if end < 0 {
-		return "", "invalid_xml"
-	}
-	end += start + len("</svg>")
 	candidate := text[start:end]
 	if len(candidate) > model.QualityMaxSVGBytes {
 		return "", "svg_too_large"
@@ -198,7 +226,7 @@ func ExtractSafeSVG(text string) (string, string) {
 			if value.Name.Space != "http://www.w3.org/2000/svg" && value.Name.Space != "" {
 				return "", "unsafe_svg"
 			}
-			if !slices.Contains(svgElements, value.Name.Local) || (depth == 1 && value.Name.Local != "svg") || (depth > 1 && value.Name.Local == "svg") {
+			if !slices.Contains(svgElements, value.Name.Local) || (depth == 1 && value.Name.Local != "svg") {
 				return "", "unsafe_svg"
 			}
 			if styleDepth != 0 {
