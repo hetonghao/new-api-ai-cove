@@ -101,8 +101,66 @@ func channelRetryRouteKey(channel *model.Channel) string {
 	return strings.TrimRight(strings.TrimSpace(channel.GetBaseURL()), "/")
 }
 
-func orderRetryCandidates(candidates []*model.Channel, lastChannelID int, lastRoute string) []*model.Channel {
-	if len(candidates) == 0 || lastChannelID == 0 {
+const (
+	retryFailureScopeKey   = "key"
+	retryFailureScopeRoute = "route"
+)
+
+// classifyRetryFailureScope decides whether the last failed attempt blames the
+// credential ("key") or the route ("route"). Same-base-url channels with
+// different keys are independent failure domains for credential errors, so a
+// key-scoped failure must not demote same-route siblings; a route-scoped
+// failure (dead upstream, transport error) keeps the existing route-bucket
+// failover. An empty result preserves the default bucketing.
+func classifyRetryFailureScope(err *types.NewAPIError) string {
+	if err == nil {
+		return ""
+	}
+	if types.IsChannelError(err) {
+		switch err.GetErrorCode() {
+		case types.ErrorCodeChannelResponseTimeExceeded, types.ErrorCodeChannelAwsClientError:
+			return retryFailureScopeRoute
+		}
+		return retryFailureScopeKey
+	}
+	if err.GetErrorCode() == types.ErrorCodeDoRequestFailed {
+		return retryFailureScopeRoute
+	}
+	switch err.StatusCode {
+	case http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusForbidden, http.StatusTooManyRequests:
+		return retryFailureScopeKey
+	}
+	if retryFailureKeyScopedMessage(err) {
+		return retryFailureScopeKey
+	}
+	if err.StatusCode >= http.StatusInternalServerError || err.StatusCode == 0 {
+		return retryFailureScopeRoute
+	}
+	return ""
+}
+
+var retryFailureKeyScopedKeywords = []string{
+	"rate limit", "rate_limit", "ratelimit", "too many requests", "limit exceeded",
+	"quota", "insufficient", "balance", "credit",
+	"invalid api key", "invalid key", "incorrect api key", "wrong api key",
+	"api key", "apikey", "api_key", "unauthorized", "authentication",
+}
+
+func retryFailureKeyScopedMessage(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	for _, keyword := range retryFailureKeyScopedKeywords {
+		if strings.Contains(message, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func orderRetryCandidates(candidates []*model.Channel, lastChannelID int, lastRoute string, failureScope string) []*model.Channel {
+	if len(candidates) == 0 || lastChannelID == 0 || failureScope == retryFailureScopeKey {
 		return append([]*model.Channel(nil), candidates...)
 	}
 	ordered := make([]*model.Channel, 0, len(candidates))
@@ -199,7 +257,7 @@ func selectRetryCandidateAcrossGroups(param *RetryParam, groups []string, startG
 			groupIndexByChannelID[candidate.Id] = index
 		}
 	}
-	ordered := orderRetryCandidates(candidates, param.LastChannelID, param.LastChannelRoute)
+	ordered := orderRetryCandidates(candidates, param.LastChannelID, param.LastChannelRoute, RequestPolicy(param.Ctx).LastFailureScope)
 	if len(ordered) == 0 {
 		return nil, "", -1, nil
 	}
@@ -216,7 +274,7 @@ func selectRetryChannel(param *RetryParam, group string, priorityRetry int, allo
 		return nil, err
 	}
 	if len(candidates) > 0 {
-		ordered := orderRetryCandidates(candidates, param.LastChannelID, param.LastChannelRoute)
+		ordered := orderRetryCandidates(candidates, param.LastChannelID, param.LastChannelRoute, RequestPolicy(param.Ctx).LastFailureScope)
 		return ordered[0], nil
 	}
 	if !allowSameChannelFallback {

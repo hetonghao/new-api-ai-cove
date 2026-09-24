@@ -1,7 +1,9 @@
 package service
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -9,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
@@ -243,7 +246,7 @@ func TestRetryCandidateOrderPrefersDifferentRouteBeforeSameRoute(t *testing.T) {
 		{Id: 2203, Type: constant.ChannelTypeNewAPI, BaseURL: &baseB},
 	}
 
-	ordered := orderRetryCandidates(candidates, 2201, channelRetryRouteKey(candidates[0]))
+	ordered := orderRetryCandidates(candidates, 2201, channelRetryRouteKey(candidates[0]), "")
 	require.Len(t, ordered, 3)
 	assert.Equal(t, 2203, ordered[0].Id)
 	assert.Equal(t, 2202, ordered[1].Id)
@@ -252,7 +255,7 @@ func TestRetryCandidateOrderPrefersDifferentRouteBeforeSameRoute(t *testing.T) {
 
 func TestRetryCandidateOrderKeepsUnknownRouteLastChannelAsFinalFallback(t *testing.T) {
 	candidates := []*model.Channel{{Id: 2211}, {Id: 2212}, {Id: 2213}}
-	ordered := orderRetryCandidates(candidates, 2211, "")
+	ordered := orderRetryCandidates(candidates, 2211, "", "")
 	require.Len(t, ordered, 3)
 	assert.Equal(t, 2212, ordered[0].Id)
 	assert.Equal(t, 2213, ordered[1].Id)
@@ -267,7 +270,7 @@ func TestRetryCandidateOrderDoesNotPromoteUnknownRoute(t *testing.T) {
 		{Id: 2223, Type: constant.ChannelTypeOpenAI, BaseURL: &baseA},
 	}
 
-	ordered := orderRetryCandidates(candidates, 2221, baseA)
+	ordered := orderRetryCandidates(candidates, 2221, baseA, "")
 	require.Len(t, ordered, 3)
 	assert.Equal(t, 2223, ordered[0].Id)
 	assert.Equal(t, 2222, ordered[1].Id)
@@ -331,4 +334,146 @@ func TestCacheGetRandomSatisfiedChannelRetryPrefersAnotherRouteAndAllowsLastFall
 	require.NoError(t, err)
 	require.NotNil(t, fourth)
 	assert.Equal(t, third.Id, fourth.Id, "same-channel fallback must retry the most recent channel deterministically")
+}
+
+func TestOrderRetryCandidatesKeepsCollectionOrderForKeyScopedFailure(t *testing.T) {
+	baseA := "https://cpa-a.example"
+	baseB := "https://cpa-b.example"
+	candidates := []*model.Channel{
+		{Id: 2202, Type: constant.ChannelTypeNewAPI, BaseURL: &baseA},
+		{Id: 2203, Type: constant.ChannelTypeNewAPI, BaseURL: &baseB},
+	}
+
+	ordered := orderRetryCandidates(candidates, 2201, baseA, retryFailureScopeKey)
+	require.Len(t, ordered, 2)
+	assert.Equal(t, 2202, ordered[0].Id, "a key-scoped failure must not demote the same-route sibling")
+	assert.Equal(t, 2203, ordered[1].Id)
+}
+
+func TestClassifyRetryFailureScope(t *testing.T) {
+	upstreamErr := func(status int) *types.NewAPIError {
+		return types.NewOpenAIError(errors.New("upstream failed"), types.ErrorCodeBadResponseStatusCode, status)
+	}
+	for _, tc := range []struct {
+		name string
+		err  *types.NewAPIError
+		want string
+	}{
+		{"nil", nil, ""},
+		{"401 unauthorized", upstreamErr(http.StatusUnauthorized), retryFailureScopeKey},
+		{"402 payment required", upstreamErr(http.StatusPaymentRequired), retryFailureScopeKey},
+		{"403 forbidden", upstreamErr(http.StatusForbidden), retryFailureScopeKey},
+		{"429 rate limit", upstreamErr(http.StatusTooManyRequests), retryFailureScopeKey},
+		{"500 internal", upstreamErr(http.StatusInternalServerError), retryFailureScopeRoute},
+		{"503 unavailable", upstreamErr(http.StatusServiceUnavailable), retryFailureScopeRoute},
+		{"503 with quota message", types.NewOpenAIError(errors.New("quota exceeded"), types.ErrorCodeBadResponseStatusCode, http.StatusServiceUnavailable), retryFailureScopeKey},
+		{"500 with invalid key message", types.NewOpenAIError(errors.New("invalid api key for account"), types.ErrorCodeBadResponseStatusCode, http.StatusInternalServerError), retryFailureScopeKey},
+		{"transport failure", types.NewError(errors.New("dial tcp timeout"), types.ErrorCodeDoRequestFailed), retryFailureScopeRoute},
+		{"channel invalid key", types.NewError(errors.New("bad key"), types.ErrorCodeChannelInvalidKey), retryFailureScopeKey},
+		{"channel no available key", types.NewError(errors.New("none"), types.ErrorCodeChannelNoAvailableKey), retryFailureScopeKey},
+		{"channel timeout", types.NewError(errors.New("slow"), types.ErrorCodeChannelResponseTimeExceeded), retryFailureScopeRoute},
+		{"plain 400", upstreamErr(http.StatusBadRequest), ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, classifyRetryFailureScope(tc.err))
+		})
+	}
+}
+
+func TestRecordPolicyFailureStoresFailureScope(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	state := RequestPolicy(ctx)
+	state.BeginAttempt(&model.Channel{Id: 2401}, "default")
+	apiErr := types.NewOpenAIError(errors.New("rate limit"), types.ErrorCodeBadResponseStatusCode, http.StatusTooManyRequests)
+	RecordPolicyFailure(ctx, 2401, apiErr, DecideRelayRetry(ctx, apiErr, 1))
+
+	assert.Equal(t, retryFailureScopeKey, state.LastFailureScope)
+	events := state.Events()
+	require.GreaterOrEqual(t, len(events), 2)
+	assert.Equal(t, retryFailureScopeKey, events[1].FailureScope)
+}
+
+func TestCacheGetRandomSatisfiedChannelKeyScopedFailurePrefersSameRouteSibling(t *testing.T) {
+	db := setupChannelSelectAutoGroupsTest(t)
+	const modelName = "retry-key-scope-model"
+	createChannelSelectAutoGroupsChannel(t, db, 2401, "default", modelName)
+	createChannelSelectAutoGroupsChannel(t, db, 2402, "default", modelName)
+	createChannelSelectAutoGroupsChannel(t, db, 2403, "default", modelName)
+	baseA := "https://cpa-a.example"
+	baseB := "https://cpa-b.example"
+	topPriority := int64(10)
+	require.NoError(t, db.Model(&model.Channel{}).Where("id IN ?", []int{2401, 2402}).Updates(map[string]any{"base_url": baseA, "priority": &topPriority}).Error)
+	require.NoError(t, db.Model(&model.Ability{}).Where("channel_id IN ?", []int{2401, 2402}).Update("priority", &topPriority).Error)
+	require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 2403).Update("base_url", baseB).Error)
+	model.InitChannelCache()
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	retry := 0
+	param := &RetryParam{
+		Ctx:         ctx,
+		TokenGroup:  "default",
+		ModelName:   modelName,
+		RequestPath: "/v1/chat/completions",
+		Retry:       &retry,
+	}
+
+	first, _, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, first)
+	require.Equal(t, baseA, channelRetryRouteKey(first), "the top-priority tier must be picked first")
+	param.RecordChannel(first)
+
+	apiErr := types.NewOpenAIError(errors.New("rate limit exceeded"), types.ErrorCodeBadResponseStatusCode, http.StatusTooManyRequests)
+	RecordPolicyFailure(ctx, first.Id, apiErr, DecideRelayRetry(ctx, apiErr, 1))
+	param.IncreaseRetry()
+
+	second, _, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, second)
+	assert.Equal(t, baseA, channelRetryRouteKey(second), "a credential failure must retry the sibling key on the same route before a different route")
+	assert.NotEqual(t, first.Id, second.Id)
+}
+
+func TestCacheGetRandomSatisfiedChannelRouteScopedFailurePrefersDifferentRoute(t *testing.T) {
+	db := setupChannelSelectAutoGroupsTest(t)
+	const modelName = "retry-route-scope-model"
+	createChannelSelectAutoGroupsChannel(t, db, 2411, "default", modelName)
+	createChannelSelectAutoGroupsChannel(t, db, 2412, "default", modelName)
+	createChannelSelectAutoGroupsChannel(t, db, 2413, "default", modelName)
+	baseA := "https://cpa-a.example"
+	baseB := "https://cpa-b.example"
+	topPriority := int64(10)
+	require.NoError(t, db.Model(&model.Channel{}).Where("id IN ?", []int{2411, 2412}).Updates(map[string]any{"base_url": baseA, "priority": &topPriority}).Error)
+	require.NoError(t, db.Model(&model.Ability{}).Where("channel_id IN ?", []int{2411, 2412}).Update("priority", &topPriority).Error)
+	require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 2413).Update("base_url", baseB).Error)
+	model.InitChannelCache()
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	retry := 0
+	param := &RetryParam{
+		Ctx:         ctx,
+		TokenGroup:  "default",
+		ModelName:   modelName,
+		RequestPath: "/v1/chat/completions",
+		Retry:       &retry,
+	}
+
+	first, _, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, first)
+	require.Equal(t, baseA, channelRetryRouteKey(first), "the top-priority tier must be picked first")
+	param.RecordChannel(first)
+
+	apiErr := types.NewOpenAIError(errors.New("upstream unavailable"), types.ErrorCodeBadResponseStatusCode, http.StatusServiceUnavailable)
+	RecordPolicyFailure(ctx, first.Id, apiErr, DecideRelayRetry(ctx, apiErr, 1))
+	param.IncreaseRetry()
+
+	second, _, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, second)
+	assert.Equal(t, baseB, channelRetryRouteKey(second), "a route failure must keep preferring a different route")
+	assert.NotEqual(t, first.Id, second.Id)
 }

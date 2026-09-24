@@ -23,16 +23,17 @@ type PolicyDecision struct {
 }
 
 type PolicyEvent struct {
-	Attempt     int            `json:"attempt"`
-	ChannelID   int            `json:"channel_id,omitempty"`
-	Group       string         `json:"group,omitempty"`
-	Rule        string         `json:"rule,omitempty"`
-	Status      int            `json:"status,omitempty"`
-	ErrorCode   string         `json:"error_code,omitempty"`
-	ErrorSource string         `json:"error_source,omitempty"`
-	ElapsedMS   int64          `json:"elapsed_ms"`
-	Decision    PolicyDecision `json:"decision"`
-	Health      string         `json:"health,omitempty"`
+	Attempt      int            `json:"attempt"`
+	ChannelID    int            `json:"channel_id,omitempty"`
+	Group        string         `json:"group,omitempty"`
+	Rule         string         `json:"rule,omitempty"`
+	Status       int            `json:"status,omitempty"`
+	ErrorCode    string         `json:"error_code,omitempty"`
+	ErrorSource  string         `json:"error_source,omitempty"`
+	FailureScope string         `json:"failure_scope,omitempty"`
+	ElapsedMS    int64          `json:"elapsed_ms"`
+	Decision     PolicyDecision `json:"decision"`
+	Health       string         `json:"health,omitempty"`
 }
 
 // RequestPolicyState records how one request was routed so administrators can
@@ -48,6 +49,7 @@ type RequestPolicyState struct {
 	RuleName          string
 	Successful        bool
 	OutcomeRecorded   bool
+	LastFailureScope  string
 	mu                sync.Mutex
 	events            []PolicyEvent
 }
@@ -111,7 +113,8 @@ func RecordPolicyFailure(c *gin.Context, channelID int, err *types.NewAPIError, 
 		source = "local"
 	}
 	state := RequestPolicy(c)
-	event := PolicyEvent{ChannelID: channelID, Status: err.StatusCode, ErrorCode: string(err.GetErrorCode()), ErrorSource: source, Decision: PolicyDecision{Action: "failure", Reason: "upstream_failure", Source: source}}
+	state.LastFailureScope = classifyRetryFailureScope(err)
+	event := PolicyEvent{ChannelID: channelID, Status: err.StatusCode, ErrorCode: string(err.GetErrorCode()), ErrorSource: source, FailureScope: state.LastFailureScope, Decision: PolicyDecision{Action: "failure", Reason: "upstream_failure", Source: source}}
 	if source == "local" {
 		event.Decision.Reason = "local_rejection"
 	}
