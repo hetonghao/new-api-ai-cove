@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { isAxiosError } from 'axios'
 import { ChevronDown } from 'lucide-react'
@@ -49,7 +49,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { formatTimestampToDate } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 
-import { createQualityCase, deleteQualityCase, updateQualityCase } from '../api'
+import {
+  createQualityCase,
+  deleteQualityCase,
+  getQualityOutputContract,
+  updateQualityCase,
+} from '../api'
 import {
   defaultQualityCaseValues,
   formValuesToWrite,
@@ -194,7 +199,15 @@ export function CaseEditor(props: CaseEditorProps) {
   const scheduleEnabled = form.watch('schedule_enabled')
   const scheduleKind = form.watch('schedule_kind')
   const samplesPerTarget = form.watch('samples_per_target')
+  const outputType = form.watch('output_type')
   const protocol = form.watch('protocol')
+  const [contractOpen, setContractOpen] = useState(false)
+  const contractQuery = useQuery({
+    queryKey: ['model-quality', 'output-contract'],
+    queryFn: getQualityOutputContract,
+    staleTime: Infinity,
+    enabled: outputType === 'svg',
+  })
   const maxOutputTokens = form.watch('max_output_tokens')
   const timeoutSeconds = form.watch('timeout_seconds')
   const canOperate = capabilities?.can_operate ?? false
@@ -473,11 +486,40 @@ export function CaseEditor(props: CaseEditorProps) {
                 {...form.register('instruction')}
               />
               <FieldDescription>
-                {t(
-                  'Sent before the prompt as a system or developer message. Leave empty to send only the prompt.'
-                )}
+                {outputType === 'svg'
+                  ? t(
+                      'Sent before the prompt after the built-in SVG output contract (well-formed XML, single root, viewBox, no markdown fences). Leave empty to send only the contract.'
+                    )
+                  : t(
+                      'Sent before the prompt as a system or developer message. Leave empty to send only the prompt.'
+                    )}
               </FieldDescription>
               <FieldError errors={[errors.instruction]} />
+              {outputType === 'svg' && (
+                <Collapsible
+                  open={contractOpen}
+                  onOpenChange={setContractOpen}
+                  className='mt-1'
+                >
+                  <CollapsibleTrigger
+                    render={
+                      <Button type='button' variant='ghost' size='sm' />
+                    }
+                    className='group -ml-2'
+                  >
+                    <ChevronDown
+                      className='size-3 transition-transform group-data-[panel-open]:rotate-180'
+                      aria-hidden='true'
+                    />
+                    {t('View built-in SVG contract')}
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <pre className='bg-muted text-muted-foreground mt-1 max-h-64 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap'>
+                      {contractQuery.data?.data?.contract ?? ''}
+                    </pre>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
             </Field>
           </FieldGroup>
 

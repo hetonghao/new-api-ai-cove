@@ -19,28 +19,61 @@ func configFixture() model.QualityConfig {
 	return model.QualityConfig{Model: "gpt-6-astra", OutputType: "svg", Mode: "channel", Protocol: "responses", TokenID: 1, Group: "default", ChannelIDs: []int{2}, Prompt: "Generate an SVG image of a pelican riding a bicycle by the seaside.", MaxOutputTokens: 16384, SamplesPerTarget: 3, TimeoutSeconds: 10, DailyLimit: 20}
 }
 
-func TestQualityRequestHasExactPromptAndNoHiddenInstructions(t *testing.T) {
+func TestQualityRequestSVGContractAndExactPrompt(t *testing.T) {
 	cfg := configFixture()
 	path, body, err := BuildRequest(cfg)
 	require.NoError(t, err)
 	assert.Equal(t, "/v1/responses", path)
 	var payload map[string]any
 	require.NoError(t, common.Unmarshal(body, &payload))
-	assert.Equal(t, []any{map[string]any{"role": "user", "content": cfg.Prompt}}, payload["input"])
+	assert.Equal(t, []any{
+		map[string]any{"role": "system", "content": SVGOutputContract},
+		map[string]any{"role": "user", "content": cfg.Prompt},
+	}, payload["input"])
 	assert.Equal(t, float64(16384), payload["max_output_tokens"])
 	assert.Equal(t, false, payload["store"])
 	assert.NotContains(t, payload, "reasoning")
 	assert.NotContains(t, payload, "tools")
 	assert.NotContains(t, payload, "temperature")
+
+	cfg.Instruction = "Use a flat pastel palette."
+	cfg.InstructionRole = "system"
+	path, body, err = BuildRequest(cfg)
+	require.NoError(t, err)
+	require.NoError(t, common.Unmarshal(body, &payload))
+	assert.Equal(t, []any{
+		map[string]any{"role": "system", "content": SVGOutputContract + "\n\n" + cfg.Instruction},
+		map[string]any{"role": "user", "content": cfg.Prompt},
+	}, payload["input"])
+
+	cfg.OutputType = "text"
+	_, body, err = BuildRequest(cfg)
+	require.NoError(t, err)
+	require.NoError(t, common.Unmarshal(body, &payload))
+	assert.Equal(t, []any{
+		map[string]any{"role": "system", "content": cfg.Instruction},
+		map[string]any{"role": "user", "content": cfg.Prompt},
+	}, payload["input"])
+	cfg.Instruction = ""
+	_, body, err = BuildRequest(cfg)
+	require.NoError(t, err)
+	require.NoError(t, common.Unmarshal(body, &payload))
+	assert.Equal(t, []any{map[string]any{"role": "user", "content": cfg.Prompt}}, payload["input"])
+
 	zero := 0.0
 	cfg.Temperature = &zero
 	cfg.Protocol = "chat"
+	cfg.OutputType = "svg"
 	path, body, err = BuildRequest(cfg)
 	require.NoError(t, err)
 	assert.Equal(t, "/v1/chat/completions", path)
 	require.NoError(t, common.Unmarshal(body, &payload))
 	assert.Equal(t, float64(0), payload["temperature"])
 	assert.Equal(t, float64(16384), payload["max_completion_tokens"])
+	assert.Equal(t, []any{
+		map[string]any{"role": "system", "content": SVGOutputContract},
+		map[string]any{"role": "user", "content": cfg.Prompt},
+	}, payload["messages"])
 	cfg.MaxOutputTokens = model.QualityMaxOutputTokens + 1
 	_, _, err = BuildRequest(cfg)
 	assert.Error(t, err)
@@ -248,28 +281,28 @@ var prodLabelledSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="960" heigh
 
 func TestQualitySVGAllowlistAndNoRepair(t *testing.T) {
 	valid := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#fff"/></svg>`
-	styled := `<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="sea"><stop offset="0%" stop-color="#abc"/></linearGradient></defs><style>.water { fill: url(#sea); stroke-width: 2; }</style><rect class="water" width="100" height="100"/></svg>`
+	styled := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="sea"><stop offset="0%" stop-color="#abc"/></linearGradient></defs><style>.water { fill: url(#sea); stroke-width: 2; }</style><rect class="water" width="100" height="100"/></svg>`
 	for _, tc := range []struct{ name, content, want string }{
 		{"valid", valid, ""},
 		{"fenced", "Here is the SVG:\n```svg\n" + valid + "\n```", ""},
 		{"gradient CSS", styled, ""},
 		{"captured pattern sample", "Here’s a clean SVG illustration of a pelican riding a bicycle along the seaside.\n```svg\n" + capturedPelicanSVG + "\n```\nThe scene combines a bright beach sky with a whimsical pelican on a red bicycle.", ""},
-		{"pattern fill", `<svg xmlns="http://www.w3.org/2000/svg"><defs><pattern id="p" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="5" height="5"/></pattern></defs><rect width="50" height="50" fill="url(#p)"/></svg>`, ""},
-		{"use local ref", `<svg xmlns="http://www.w3.org/2000/svg"><defs><symbol id="dot"><circle r="4"/></symbol></defs><use href="#dot" x="10" y="10"/></svg>`, ""},
-		{"clipPath and mask", `<svg xmlns="http://www.w3.org/2000/svg"><defs><clipPath id="c"><circle cx="10" cy="10" r="10"/></clipPath><mask id="m" maskUnits="userSpaceOnUse"><rect width="20" height="20" fill="#fff"/></mask></defs><rect width="20" height="20" clip-path="url(#c)" mask="url(#m)"/></svg>`, ""},
-		{"filter primitives", `<svg xmlns="http://www.w3.org/2000/svg"><defs><filter id="f" filterUnits="userSpaceOnUse"><feGaussianBlur in="SourceGraphic" stdDeviation="2"/><feDropShadow dx="1" dy="1" flood-color="#000" flood-opacity="0.3"/></filter></defs><rect width="20" height="20" filter="url(#f)"/></svg>`, ""},
-		{"marker", `<svg xmlns="http://www.w3.org/2000/svg"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M0,0L10,5L0,10z"/></marker></defs><line x1="0" y1="0" x2="20" y2="20" stroke="#000" marker-end="url(#arrow)"/></svg>`, ""},
-		{"smil animation", `<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"><animate attributeName="x" from="0" to="10" dur="1s" begin="0s" repeatCount="indefinite" fill="freeze"/><animateTransform attributeName="transform" type="rotate" from="0 5 5" to="360 5 5" dur="2s" additive="sum" repeatCount="indefinite"/></rect></svg>`, ""},
-		{"xlink href", `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><defs><circle id="c" r="5"/></defs><use xlink:href="#c"/></svg>`, ""},
-		{"gradient href", `<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="a"><stop offset="0" stop-color="#fff"/></linearGradient><linearGradient id="b" href="#a"/></defs><rect width="10" height="10" fill="url(#b)"/></svg>`, ""},
-		{"textPath", `<svg xmlns="http://www.w3.org/2000/svg"><defs><path id="curve" d="M0,50 Q50,0 100,50"/></defs><text><textPath href="#curve" startOffset="10%">hello</textPath></text></svg>`, ""},
-		{"xml space", `<svg xmlns="http://www.w3.org/2000/svg"><text xml:space="preserve"> hi </text></svg>`, ""},
-		{"style transform", `<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10" style="transform: rotate(45deg); fill: #abc"/></svg>`, ""},
+		{"pattern fill", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="p" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="5" height="5"/></pattern></defs><rect width="50" height="50" fill="url(#p)"/></svg>`, ""},
+		{"use local ref", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><symbol id="dot"><circle r="4"/></symbol></defs><use href="#dot" x="10" y="10"/></svg>`, ""},
+		{"clipPath and mask", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><clipPath id="c"><circle cx="10" cy="10" r="10"/></clipPath><mask id="m" maskUnits="userSpaceOnUse"><rect width="20" height="20" fill="#fff"/></mask></defs><rect width="20" height="20" clip-path="url(#c)" mask="url(#m)"/></svg>`, ""},
+		{"filter primitives", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><filter id="f" filterUnits="userSpaceOnUse"><feGaussianBlur in="SourceGraphic" stdDeviation="2"/><feDropShadow dx="1" dy="1" flood-color="#000" flood-opacity="0.3"/></filter></defs><rect width="20" height="20" filter="url(#f)"/></svg>`, ""},
+		{"marker", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M0,0L10,5L0,10z"/></marker></defs><line x1="0" y1="0" x2="20" y2="20" stroke="#000" marker-end="url(#arrow)"/></svg>`, ""},
+		{"smil animation", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="10" height="10"><animate attributeName="x" from="0" to="10" dur="1s" begin="0s" repeatCount="indefinite" fill="freeze"/><animateTransform attributeName="transform" type="rotate" from="0 5 5" to="360 5 5" dur="2s" additive="sum" repeatCount="indefinite"/></rect></svg>`, ""},
+		{"xlink href", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" xmlns:xlink="http://www.w3.org/1999/xlink"><defs><circle id="c" r="5"/></defs><use xlink:href="#c"/></svg>`, ""},
+		{"gradient href", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="a"><stop offset="0" stop-color="#fff"/></linearGradient><linearGradient id="b" href="#a"/></defs><rect width="10" height="10" fill="url(#b)"/></svg>`, ""},
+		{"textPath", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><path id="curve" d="M0,50 Q50,0 100,50"/></defs><text><textPath href="#curve" startOffset="10%">hello</textPath></text></svg>`, ""},
+		{"xml space", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text xml:space="preserve"> hi </text></svg>`, ""},
+		{"style transform", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="10" height="10" style="transform: rotate(45deg); fill: #abc"/></svg>`, ""},
 		{"prod aria-labelledby sample", prodLabelledSVG, ""},
-		{"aria idref attrs", `<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="t" aria-hidden="false"><title id="t">x</title><rect width="10" height="10" focusable="true"/></svg>`, ""},
+		{"aria idref attrs", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="t" aria-hidden="false"><title id="t">x</title><rect width="10" height="10" focusable="true"/></svg>`, ""},
 		{"aria-labelledby bad id", `<svg><rect aria-labelledby="a b!"/><rect/></svg>`, "unsafe_svg"},
 		{"aria-labelledby dangling", `<svg><rect aria-labelledby="missing"/><rect/></svg>`, "unsafe_svg"},
-		{"transform attr", `<svg xmlns="http://www.w3.org/2000/svg"><g transform="translate(10 20) rotate(45)"><rect width="10" height="10"/></g></svg>`, ""},
+		{"transform attr", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g transform="translate(10 20) rotate(45)"><rect width="10" height="10"/></g></svg>`, ""},
 		{"multiple", valid + valid, "ambiguous_svg"},
 		{"truncated", strings.TrimSuffix(valid, "</svg>"), "invalid_xml"},
 		{"missing", "I cannot create this image.", "missing_svg"},
@@ -279,8 +312,8 @@ func TestQualitySVGAllowlistAndNoRepair(t *testing.T) {
 		{"image", `<svg><image href="https://example.test/track"/></svg>`, "unsafe_svg"},
 		{"feimage", `<svg><filter><feImage href="#x"/></filter><rect/></svg>`, "unsafe_svg"},
 		{"anchor", `<svg><a href="#x"><rect/></a></svg>`, "unsafe_svg"},
-		{"nested svg", `<svg><svg><rect/></svg></svg>`, ""},
-		{"wrapper svg", `<svg xmlns="http://www.w3.org/2000/svg"><svg viewBox="0 0 900 700" width="900" height="700"><rect width="10" height="10"/></svg></svg>`, ""},
+		{"nested svg", `<svg viewBox="0 0 100 100"><svg viewBox="0 0 50 50"><rect/></svg></svg>`, ""},
+		{"wrapper svg", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 700"><svg viewBox="0 0 900 700" width="900" height="700"><rect width="10" height="10"/></svg></svg>`, ""},
 		{"sibling after nested", `<svg><svg><rect/></svg></svg><svg><rect/></svg>`, "ambiguous_svg"},
 		{"unbalanced nested", `<svg><svg><rect/></svg>`, "invalid_xml"},
 		{"use external", `<svg><use href="https://example.test/x"/><rect/></svg>`, "unsafe_svg"},
@@ -293,10 +326,22 @@ func TestQualitySVGAllowlistAndNoRepair(t *testing.T) {
 		{"cssimport", `<svg><style>@import 'https://example.test/x';</style><rect/></svg>`, "unsafe_svg"},
 		{"cssnested", `<svg><style>@media all {.x{fill:red}}</style><rect/></svg>`, "unsafe_svg"},
 		{"style root sizing", `<svg xmlns="http://www.w3.org/2000/svg"><style>:root{width:900px;height:450px}</style><rect width="10" height="10"/></svg>`, ""},
-		{"style svg root aspect-ratio", `<svg xmlns="http://www.w3.org/2000/svg"><style>svg:root{width:100%;height:auto;aspect-ratio:5/3;display:block} .line{stroke:#244b55}</style><rect class="line" width="10" height="10"/></svg>`, ""},
+		{"style svg root aspect-ratio", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 300"><style>svg:root{width:100%;height:auto;aspect-ratio:5/3;display:block} .line{stroke:#244b55}</style><rect class="line" width="10" height="10"/></svg>`, ""},
+		{"missing viewbox", `<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>`, "missing_viewbox"},
+		{"missing viewbox percent size", `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%"><rect width="10" height="10"/></svg>`, "missing_viewbox"},
+		{"viewbox from width height", `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="640"><rect width="10" height="10"/></svg>`, ""},
+		{"viewbox from px size", `<svg xmlns="http://www.w3.org/2000/svg" width="960px" height="640px"><rect width="10" height="10"/></svg>`, ""},
+		{"viewbox from css root", `<svg xmlns="http://www.w3.org/2000/svg"><style>:root{width:960px;height:640px}</style><rect width="10" height="10"/></svg>`, ""},
+		{"viewbox from svg root css", `<svg xmlns="http://www.w3.org/2000/svg"><style>svg:root{width:960px; height:640px; display:block}</style><rect width="10" height="10"/></svg>`, ""},
+		{"css root partial size", `<svg xmlns="http://www.w3.org/2000/svg"><style>:root{width:960px}</style><rect width="10" height="10"/></svg>`, "missing_viewbox"},
+		{"width only no viewbox", `<svg xmlns="http://www.w3.org/2000/svg" width="960"><rect width="10" height="10"/></svg>`, "missing_viewbox"},
+		{"malformed viewbox", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="abc" width="960" height="640"><rect width="10" height="10"/></svg>`, "missing_viewbox"},
+		{"viewbox three fields", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100"><rect width="10" height="10"/></svg>`, "missing_viewbox"},
+		{"css stroke-width not size", `<svg xmlns="http://www.w3.org/2000/svg"><style>:root{stroke-width:960px;height:640px}</style><rect width="10" height="10"/></svg>`, "missing_viewbox"},
+		{"css max-height not size", `<svg xmlns="http://www.w3.org/2000/svg"><style>:root{width:960px;max-height:640px}</style><rect width="10" height="10"/></svg>`, "missing_viewbox"},
 		{"style value double slash", `<svg><style>.x{fill: //evil}</style><rect/></svg>`, "unsafe_svg"},
 		{"entity", `<!DOCTYPE svg [<!ENTITY x SYSTEM "file:///etc/passwd">]><svg><text>&x;</text></svg>`, "unsafe_svg"},
-		{"localrecursion", `<svg><g id="loop"><use href="#loop"/></g></svg>`, ""},
+		{"localrecursion", `<svg viewBox="0 0 100 100"><g id="loop"><use href="#loop"/></g></svg>`, ""},
 		{"danglingref", `<svg><rect fill="url(#missing)"/></svg>`, "unsafe_svg"},
 		{"danglinguse", `<svg><use href="#missing"/><rect/></svg>`, "unsafe_svg"},
 		{"duplicateid", `<svg><rect id="a"/><circle id="a"/></svg>`, "invalid_xml"},
@@ -316,6 +361,12 @@ func TestQualitySVGAllowlistAndNoRepair(t *testing.T) {
 	got, code := ExtractSafeSVG(styled)
 	require.Empty(t, code)
 	assert.Equal(t, styled, got)
+	got, code = ExtractSafeSVG(`<svg xmlns="http://www.w3.org/2000/svg" width="960" height="640"><rect width="10" height="10"/></svg>`)
+	require.Empty(t, code)
+	assert.Contains(t, got, `viewBox="0 0 960 640"`)
+	got, code = ExtractSafeSVG(`<svg xmlns="http://www.w3.org/2000/svg"><style>:root{width:960px;height:640px}</style><rect width="10" height="10"/></svg>`)
+	require.Empty(t, code)
+	assert.Contains(t, got, `viewBox="0 0 960 640"`)
 	_, code = ExtractSafeSVG(`<svg><path d="` + strings.Repeat("M0 0 ", 15000) + `"/></svg>`)
 	assert.Equal(t, "svg_too_complex", code)
 }
@@ -426,7 +477,7 @@ func TestQualityStreamSizeLimits(t *testing.T) {
 
 func TestQualityHTTPExecutorDistinguishesRequestAndArtifactSuccess(t *testing.T) {
 	for _, tc := range []struct{ name, text, status, validation string }{
-		{"safe", `<svg xmlns="http://www.w3.org/2000/svg"><rect width="5" height="5"/></svg>`, "succeeded", "safe"},
+		{"safe", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5 5"><rect width="5" height="5"/></svg>`, "succeeded", "safe"},
 		{"unsafe", `<svg><script>alert(1)</script><rect/></svg>`, "failed", "unsafe_svg"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -466,7 +517,7 @@ func TestQualityHTTPExecutorRetriesTransientFailureOnce(t *testing.T) {
 	require.NoError(t, err)
 	okEvent := func(w http.ResponseWriter) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		data, err := common.Marshal(map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed", "output": []any{map[string]any{"type": "message", "content": []any{map[string]any{"type": "output_text", "text": `<svg xmlns="http://www.w3.org/2000/svg"><rect width="5" height="5"/></svg>`}}}}}})
+		data, err := common.Marshal(map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed", "output": []any{map[string]any{"type": "message", "content": []any{map[string]any{"type": "output_text", "text": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5 5"><rect width="5" height="5"/></svg>`}}}}}})
 		require.NoError(t, err)
 		_, err = w.Write(append(append([]byte("data: "), data...), []byte("\n\n")...))
 		require.NoError(t, err)

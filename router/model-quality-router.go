@@ -42,6 +42,7 @@ func setModelQualityRouter(api *gin.RouterGroup) {
 	group.GET("/capabilities", controller.GetQualityCapabilities)
 	read := group.Group("", requireQualityPanelAccess())
 	read.GET("/cases", controller.GetQualityCases)
+	read.GET("/output-contract", controller.GetQualityOutputContract)
 	read.GET("/cases/:id/dashboard", controller.GetQualityDashboard)
 	read.GET("/cases/:id/samples", controller.GetQualitySamples)
 	read.GET("/samples/:id/artifact", controller.GetQualityArtifact)

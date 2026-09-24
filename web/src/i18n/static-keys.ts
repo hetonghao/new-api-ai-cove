@@ -883,6 +883,7 @@ export const STATIC_I18N_KEYS = [
   'Executor interrupted',
   'SVG contains unsafe content',
   'No SVG found in the output',
+  'SVG has no viewBox dimension',
   'Multiple SVGs found in the output',
   'SVG is not valid XML',
   'SVG has no drawable content',

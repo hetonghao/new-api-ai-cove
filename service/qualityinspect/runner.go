@@ -87,8 +87,12 @@ func BuildRequest(cfg model.QualityConfig) (string, []byte, error) {
 		return "", nil, err
 	}
 	messages := make([]map[string]string, 0, 2)
-	if cfg.Instruction != "" {
-		messages = append(messages, map[string]string{"role": cfg.InstructionRole, "content": cfg.Instruction})
+	if instruction := composeInstruction(cfg); instruction != "" {
+		role := cfg.InstructionRole
+		if role == "" {
+			role = "system"
+		}
+		messages = append(messages, map[string]string{"role": role, "content": instruction})
 	}
 	messages = append(messages, map[string]string{"role": "user", "content": cfg.Prompt})
 	body := map[string]any{"model": cfg.Model, "stream": true}

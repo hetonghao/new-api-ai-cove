@@ -193,6 +193,12 @@ export interface QualityDashboardData {
   buckets: QualityBucket[]
 }
 
+export interface QualityOutputContract {
+  output_type: string
+  version: string
+  contract: string
+}
+
 export interface QualityCapabilities {
   channels: {
     id: number

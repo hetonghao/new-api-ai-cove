@@ -92,6 +92,7 @@ export const ERROR_CODE_LABEL: Record<string, string> = {
   executor_interrupted: 'Executor interrupted',
   unsafe_svg: 'SVG contains unsafe content',
   missing_svg: 'No SVG found in the output',
+  missing_viewbox: 'SVG has no viewBox dimension',
   ambiguous_svg: 'Multiple SVGs found in the output',
   invalid_xml: 'SVG is not valid XML',
   empty_svg: 'SVG has no drawable content',

@@ -27,6 +27,7 @@ import type {
   QualityCaseView,
   QualityCaseWrite,
   QualityDashboardData,
+  QualityOutputContract,
   QualityRunRequest,
   QualitySettingsConfig,
   QualitySettingsResponse,
@@ -54,6 +55,15 @@ export async function getQualityCase(
   id: number
 ): Promise<ApiResponse<QualityCaseView>> {
   const res = await api.get<ApiResponse<QualityCaseView>>(`${BASE}/cases/${id}`)
+  return res.data
+}
+
+export async function getQualityOutputContract(): Promise<
+  ApiResponse<QualityOutputContract>
+> {
+  const res = await api.get<ApiResponse<QualityOutputContract>>(
+    `${BASE}/output-contract`
+  )
   return res.data
 }
 

@@ -13,6 +13,10 @@ import (
 )
 
 var svgOpening = regexp.MustCompile(`<svg(?:\s|/?>)`)
+var svgDimension = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)?$`)
+var svgCSSRootBlock = regexp.MustCompile(`(?i):root\s*\{([^}]*)\}`)
+var svgCSSWidth = regexp.MustCompile(`(?i)(?:^|;)\s*width\s*:\s*([0-9]+(?:\.[0-9]+)?)px`)
+var svgCSSHeight = regexp.MustCompile(`(?i)(?:^|;)\s*height\s*:\s*([0-9]+(?:\.[0-9]+)?)px`)
 var svgIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]{0,127}$`)
 var svgLocalRef = regexp.MustCompile(`^#([A-Za-z_][A-Za-z0-9_.-]{0,127})$`)
 var svgStyleSelector = regexp.MustCompile(`^(?:[.#]?[A-Za-z_][A-Za-z0-9_-]*(?::root)?|:root)(?:\s*,\s*(?:[.#]?[A-Za-z_][A-Za-z0-9_-]*(?::root)?|:root))*$`)
@@ -202,6 +206,8 @@ func ExtractSafeSVG(text string) (string, string) {
 	decoder := xml.NewDecoder(strings.NewReader(candidate))
 	decoder.Strict = true
 	depth, nodes, drawing := 0, 0, 0
+	rootViewBox, rootViewBoxAttr := false, false
+	rootWidth, rootHeight := "", ""
 	ids := map[string]bool{}
 	refs := []string{}
 	styleDepth := 0
@@ -250,6 +256,23 @@ func ExtractSafeSVG(text string) (string, string) {
 				}
 				seenAttrs[key] = true
 				name := attr.Name.Local
+				if depth == 1 && attr.Name.Space == "" {
+					switch name {
+					case "viewBox":
+						rootViewBoxAttr = true
+						fields := strings.Fields(attr.Value)
+						rootViewBox = len(fields) == 4
+						for _, field := range fields {
+							if _, err := strconv.ParseFloat(field, 64); err != nil {
+								rootViewBox = false
+							}
+						}
+					case "width":
+						rootWidth = attr.Value
+					case "height":
+						rootHeight = attr.Value
+					}
+				}
 				if attr.Name.Space == "xmlns" {
 					if name != "xlink" || attr.Value != "http://www.w3.org/1999/xlink" {
 						return "", "unsafe_svg"
@@ -376,5 +399,51 @@ func ExtractSafeSVG(text string) (string, string) {
 			return "", "unsafe_svg"
 		}
 	}
+	if !rootViewBox {
+		// A root <svg> without viewBox has no intrinsic coordinate mapping and
+		// renders clipped in <img> contexts. When no viewBox attribute exists
+		// at all, recover the viewport size from explicit width/height
+		// attributes or a CSS :root sizing block and inject the equivalent
+		// viewBox; a malformed viewBox cannot be repaired by injection (the
+		// attribute already exists) and fails as a contract violation.
+		if rootViewBoxAttr {
+			return "", "missing_viewbox"
+		}
+		width, height := svgRootDimension(rootWidth), svgRootDimension(rootHeight)
+		if width == "" || height == "" {
+			width, height = svgCSSRootSize(candidate)
+		}
+		if width == "" || height == "" {
+			return "", "missing_viewbox"
+		}
+		candidate = injectRootViewBox(candidate, width, height)
+	}
 	return candidate, ""
+}
+
+func svgRootDimension(value string) string {
+	value = strings.TrimSuffix(strings.TrimSpace(value), "px")
+	if !svgDimension.MatchString(value) {
+		return ""
+	}
+	return value
+}
+
+func svgCSSRootSize(svg string) (string, string) {
+	for _, block := range svgCSSRootBlock.FindAllStringSubmatch(svg, -1) {
+		width := svgCSSWidth.FindStringSubmatch(block[1])
+		height := svgCSSHeight.FindStringSubmatch(block[1])
+		if width != nil && height != nil {
+			return width[1], height[1]
+		}
+	}
+	return "", ""
+}
+
+func injectRootViewBox(svg, width, height string) string {
+	i := strings.IndexByte(svg, '>')
+	if i < 0 {
+		return svg
+	}
+	return svg[:i] + ` viewBox="0 0 ` + width + ` ` + height + `"` + svg[i:]
 }

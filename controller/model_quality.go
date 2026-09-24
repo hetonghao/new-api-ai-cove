@@ -178,6 +178,16 @@ func GetQualityCapabilities(c *gin.Context) {
 	})
 }
 
+// GetQualityOutputContract exposes the fixed platform output contract injected
+// for svg test cases, so operators can see exactly what the model is told.
+func GetQualityOutputContract(c *gin.Context) {
+	common.ApiSuccess(c, gin.H{
+		"output_type": "svg",
+		"version":     qualityinspect.SVGOutputContractVersion,
+		"contract":    qualityinspect.SVGOutputContract,
+	})
+}
+
 // ---------------------------------------------------------------------------
 // Cases
 // ---------------------------------------------------------------------------
