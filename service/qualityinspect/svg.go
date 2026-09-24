@@ -15,8 +15,8 @@ import (
 var svgOpening = regexp.MustCompile(`<svg(?:\s|/?>)`)
 var svgIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]{0,127}$`)
 var svgLocalRef = regexp.MustCompile(`^#([A-Za-z_][A-Za-z0-9_.-]{0,127})$`)
-var svgStyleSelector = regexp.MustCompile(`^[.#]?[A-Za-z_][A-Za-z0-9_-]*(?:\s*,\s*[.#]?[A-Za-z_][A-Za-z0-9_-]*)*$`)
-var svgPlainValue = regexp.MustCompile(`^[A-Za-z0-9#.,%+\-\s"']{1,512}$`)
+var svgStyleSelector = regexp.MustCompile(`^(?:[.#]?[A-Za-z_][A-Za-z0-9_-]*(?::root)?|:root)(?:\s*,\s*(?:[.#]?[A-Za-z_][A-Za-z0-9_-]*(?::root)?|:root))*$`)
+var svgPlainValue = regexp.MustCompile(`^[A-Za-z0-9#.,%+\-/\s"']{1,512}$`)
 var svgColorFunction = regexp.MustCompile(`^(?:rgb|rgba|hsl|hsla)\([0-9.,%+\-\s/]+\)$`)
 var svgGeometryValue = regexp.MustCompile(`^[A-Za-z0-9#.,%+\-\s():;]+$`)
 var svgNumber = regexp.MustCompile(`[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?`)
@@ -94,7 +94,7 @@ func checkSVGAttrValue(value string, refs *[]string, numberBound float64) string
 }
 
 func safeStyleDeclarations(text string, refs *[]string) bool {
-	if len(text) > 32768 || strings.ContainsAny(text, "\\@<>/*{}") {
+	if len(text) > 32768 || strings.ContainsAny(text, "\\@<>*{}") {
 		return false
 	}
 	for declaration := range strings.SplitSeq(text, ";") {
