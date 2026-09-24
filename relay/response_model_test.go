@@ -107,6 +107,52 @@ func TestResponseModelLogOmitsUnchangedModel(t *testing.T) {
 	}
 }
 
+func TestResponseModelNamespaceAlias(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		requested string
+		upstream  string
+		returned  string
+		alias     bool
+		mismatch  bool
+	}{
+		{name: "namespaced requested model", requested: "swe-2", returned: "devin/swe-2", alias: true},
+		{name: "namespaced upstream model", requested: "swe-2", upstream: "swe-2-pro", returned: "vendor/swe-2-pro", alias: true},
+		{name: "namespaced dated suffix", requested: "swe-2", returned: "devin/swe-2-2026-09-01", alias: true},
+		{name: "nested namespace", requested: "swe-2", returned: "org/devin/swe-2", alias: true},
+		{name: "case-insensitive basename", requested: "swe-2", returned: "devin/SWE-2", alias: true},
+		{name: "exact upstream echo is not alias", requested: "swe-2", upstream: "devin/swe-2", returned: "devin/swe-2"},
+		{name: "namespace swap still warns", requested: "meta-llama/llama-3", returned: "other/llama-3", mismatch: true},
+		{name: "different basename still warns", requested: "swe-2", returned: "devin/swe-3", mismatch: true},
+		{name: "trailing variant matches the full-name prefix rule", requested: "swe-2", returned: "swe-2/beta"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			info := &relaycommon.RelayInfo{
+				OriginModelName: tc.requested,
+				ChannelMeta:     &relaycommon.ChannelMeta{UpstreamModelName: tc.upstream},
+			}
+			info.ObserveResponseModel(tc.returned)
+			require.NotNil(t, info.ResponseModel)
+			assert.Equal(t, tc.mismatch, info.ResponseModel.Mismatch)
+			assert.Equal(t, tc.alias, info.ResponseModel.Alias)
+
+			other := service.GenerateTextOtherInfo(c, info, 1, 1, 1, 0, 0, 0, 1)
+			snapshot := other.Snapshot()
+			adminInfo, _ := snapshot["admin_info"].(map[string]any)
+			_, inAdminScope := adminInfo["response_model"]
+			if tc.alias {
+				assert.NotContains(t, snapshot, "response_model")
+				assert.True(t, inAdminScope)
+				assert.Equal(t, *info.ResponseModel, adminInfo["response_model"])
+			} else {
+				assert.False(t, inAdminScope)
+				assert.Equal(t, *info.ResponseModel, snapshot["response_model"])
+			}
+		})
+	}
+}
+
 func TestResponseModelEmptyExpectedNamesDoNotMatchEveryPrefix(t *testing.T) {
 	for _, tc := range []struct{ requested, upstream string }{
 		{}, {upstream: "mapped"}, {requested: "requested"},

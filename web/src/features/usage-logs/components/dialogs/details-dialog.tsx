@@ -1138,6 +1138,14 @@ export function DetailsDialog(props: DetailsDialogProps) {
             <ResponseModelDetails observation={other.response_model} />
           </DetailSection>
         )}
+        {/* Namespace-alias observations are admin-only (see SetAdmin). */}
+        {props.isAdmin &&
+          !other?.response_model &&
+          adminInfo?.response_model && (
+            <DetailSection label={t('Response Model')}>
+              <ResponseModelDetails observation={adminInfo.response_model} />
+            </DetailSection>
+          )}
         {/* Model mapping for logs without response observations */}
         {!other?.response_model &&
           other?.is_model_mapped &&

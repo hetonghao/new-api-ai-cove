@@ -9,6 +9,10 @@ type ResponseModel struct {
 	UpstreamModel  string `json:"upstream_model"`
 	ReturnedModel  string `json:"returned_model"`
 	Mismatch       bool   `json:"mismatch"`
+	// Alias marks a returned name that matched only after stripping its
+	// aggregator namespace prefix; it is logged under admin_info instead of the
+	// user-visible scope.
+	Alias bool `json:"alias,omitempty"`
 }
 
 // ObserveResponseModel retains the first differing model for inspection, with
@@ -29,11 +33,25 @@ func (info *RelayInfo) ObserveResponseModel(model string) {
 	if observation.Mismatch {
 		return
 	}
+	// Aggregators may namespace the returned name ("devin/swe-2"); the basename
+	// after the last "/" is checked with the same rule so a namespace alias is
+	// not flagged as substitution. Expected names are never stripped, so a
+	// swapped namespace ("other/llama-3" for "meta-llama/llama-3") still warns.
+	base := model[strings.LastIndex(model, "/")+1:]
 	mismatch := true
+	alias := false
 	for _, expected := range []string{observation.RequestedModel, observation.UpstreamModel} {
-		if expected != "" && (strings.HasPrefix(model, expected) || strings.EqualFold(model, expected)) {
+		if expected == "" {
+			continue
+		}
+		if strings.HasPrefix(model, expected) || strings.EqualFold(model, expected) {
 			mismatch = false
+			alias = false
 			break
+		}
+		if base != model && (strings.HasPrefix(base, expected) || strings.EqualFold(base, expected)) {
+			mismatch = false
+			alias = true
 		}
 	}
 	if !mismatch && observation.ReturnedModel != "" &&
@@ -42,4 +60,5 @@ func (info *RelayInfo) ObserveResponseModel(model string) {
 	}
 	observation.ReturnedModel = model
 	observation.Mismatch = mismatch
+	observation.Alias = alias
 }

@@ -173,6 +173,13 @@ func AppendResponseModelLogInfo(relayInfo *relaycommon.RelayInfo, other *model.L
 		(relayInfo.ChannelMeta == nil || !relayInfo.IsModelMapped) {
 		return
 	}
+	// Namespace aliases ("devin/swe-2" for "swe-2") stay admin-only: surfacing an
+	// unfamiliar provider namespace to the log owner reads as a substitution
+	// warning even though the model itself matched.
+	if observation.Alias {
+		other.SetAdmin("response_model", *observation)
+		return
+	}
 	other.SetPublic("response_model", *observation)
 }
 

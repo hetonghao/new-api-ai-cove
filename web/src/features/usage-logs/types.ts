@@ -117,8 +117,21 @@ export interface ToolSurchargeItem {
   price: number
 }
 
+// ResponseModelObservation mirrors relaycommon.ResponseModel: the model names
+// declared by the upstream before response conversion. `alias` marks a
+// namespace-prefixed return ("devin/swe-2"); such observations are only stored
+// under admin_info and never shown to the log owner.
+export interface ResponseModelObservation {
+  requested_model: string
+  upstream_model: string
+  returned_model: string
+  mismatch: boolean
+  alias?: boolean
+}
+
 export interface LogOtherData {
   admin_info?: {
+    response_model?: ResponseModelObservation
     request_policy?: PolicyEvent[]
     is_multi_key?: boolean
     multi_key_index?: number
@@ -203,12 +216,7 @@ export interface LogOtherData {
   cache_creation_ratio_1h?: number
   is_model_mapped?: boolean
   upstream_model_name?: string
-  response_model?: {
-    requested_model: string
-    upstream_model: string
-    returned_model: string
-    mismatch: boolean
-  }
+  response_model?: ResponseModelObservation
   audio_ratio?: number
   audio_completion_ratio?: number
   frt?: number
