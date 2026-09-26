@@ -87,8 +87,6 @@ export function RunControls(props: RunControlsProps) {
   })
 
   const running = props.qualityCase.active_run_id !== ''
-  const targets = runTargetCount(props.qualityCase.config)
-  const count = runSampleTotal(props.qualityCase.config)
 
   return (
     <div className='flex flex-wrap items-center gap-2'>
@@ -132,17 +130,22 @@ export function RunControls(props: RunControlsProps) {
           {t('Run now')}
         </Button>
       )}
-      <ConfirmDialog
-        open={startOpen}
-        onOpenChange={setStartOpen}
-        title={t('Run now')}
-        desc={t(
-          'This will start {{count}} sample(s) against {{targets}} target(s). Sampling consumes quota.',
-          { count, targets }
-        )}
-        isLoading={startMutation.isPending}
-        handleConfirm={() => startMutation.mutate()}
-      />
+      {props.canOperate && (
+        <ConfirmDialog
+          open={startOpen}
+          onOpenChange={setStartOpen}
+          title={t('Run now')}
+          desc={t(
+            'This will start {{count}} sample(s) against {{targets}} target(s). Sampling consumes quota.',
+            {
+              count: runSampleTotal(props.qualityCase.config),
+              targets: runTargetCount(props.qualityCase.config),
+            }
+          )}
+          isLoading={startMutation.isPending}
+          handleConfirm={() => startMutation.mutate()}
+        />
+      )}
       <ConfirmDialog
         open={stopOpen}
         onOpenChange={setStopOpen}

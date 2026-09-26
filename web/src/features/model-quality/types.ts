@@ -30,7 +30,7 @@ export interface QualityConfig {
   protocol: 'responses' | 'chat'
   token_id: number
   group: string
-  channel_ids: number[]
+  channel_ids: number[] | null
   prompt: string
   instruction: string
   instruction_role: 'system' | 'developer' | ''

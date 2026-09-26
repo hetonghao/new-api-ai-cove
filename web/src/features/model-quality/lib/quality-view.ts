@@ -96,7 +96,7 @@ export function sampleEffectiveTime(sample: ModelQualitySample): number {
 
 export function runTargetCount(config: QualityConfig): number {
   if (config.mode === 'channel') {
-    return Math.max(config.channel_ids.length, 1)
+    return Math.max(config.channel_ids?.length ?? 0, 1)
   }
   return 1
 }
