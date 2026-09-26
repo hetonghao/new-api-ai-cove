@@ -16,7 +16,7 @@ import (
 // WS 这条路只用 sjson 给客户端 payload 打补丁（model / reasoning），其余字段照抄，
 // 所以 adaptor 里那层 DeepSeek /responses 规范化不会作用到真正发出去的 payload 上。
 // 这条用例锁住这层接线：插在 call 与它自己的 output 之间的 developer message 必须被
-// 提到 call 之前，否则上游整轮回 "No tool output found for tool call ..."。
+// 移到完整工具轮的结果之后，否则上游整轮回 "No tool output found for tool call ..."。
 func TestResponsesWebSocketPayloadNormalizesDeepSeekInput(t *testing.T) {
 	t.Parallel()
 
@@ -51,6 +51,6 @@ func TestResponsesWebSocketPayloadNormalizesDeepSeekInput(t *testing.T) {
 	for _, item := range items {
 		types = append(types, item.Get("type").String())
 	}
-	require.Equal(t, []string{"message", "message", "function_call", "function_call_output"}, types)
-	require.Equal(t, "developer", gjson.GetBytes(outgoing, "input.1.role").String())
+	require.Equal(t, []string{"message", "function_call", "function_call_output", "message"}, types)
+	require.Equal(t, "developer", gjson.GetBytes(outgoing, "input.3.role").String())
 }

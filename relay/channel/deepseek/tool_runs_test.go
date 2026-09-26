@@ -159,13 +159,13 @@ func TestNormalizeResponsesInputComposesAndIsIdempotent(t *testing.T) {
 	once := NormalizeResponsesInput(input)
 	require.Equal(t, []string{
 		"message",
+		"function_call",
+		"function_call",
+		"function_call_output",
+		"function_call_output",
 		"message",
-		"function_call",
-		"function_call",
-		"function_call_output",
-		"function_call_output",
 	}, inputTypes(t, once))
-	require.Equal(t, "developer", gjson.GetBytes(once, "1.role").String())
+	require.Equal(t, "developer", gjson.GetBytes(once, "5.role").String())
 	require.Equal(t, 0, relaycommon.DeepSeekToolReasoningDiagnosticsOfInput(once).Interleaved)
 
 	require.Equal(t, string(once), string(NormalizeResponsesInput(once)))

@@ -61,7 +61,7 @@ func normalizeDeepSeekAgentMessages(input json.RawMessage) json.RawMessage {
 
 // NormalizeResponsesInput applies the whole DeepSeek /responses item contract to a
 // raw input array: agent_message 与缺 call_id 的工具输出先改写成 user 轮，再把工具轮
-// 规范化（插在工具轮中间的非工具 item 提到 call 之前、丢掉孤立 output）。
+// 规范化（reasoning/assistant 等提到 calls 前，developer/user 通知移到 outputs 后，丢掉孤立 output）。
 //
 // 规范化不能只挂在 DeepSeek adaptor 的 ConvertOpenAIResponsesRequest 上：只要某条
 // 入口没走到它（渠道类型委托、直通路由、宿主工具转换各不相同），客户端插在

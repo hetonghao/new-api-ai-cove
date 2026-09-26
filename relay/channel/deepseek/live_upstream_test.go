@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/require"
 )
@@ -68,6 +69,11 @@ func TestDeepSeekLiveUpstreamContract(t *testing.T) {
 			shape: []map[string]any{user, call(1), output(1), emptyReasoning},
 		},
 		{
+			// system 保留调用前位置；与 developer/user 的处理不同。
+			name:  "system 消息后工具轮",
+			shape: []map[string]any{user, {"type": "message", "role": "system", "content": "Image resized."}, call(1), output(1)},
+		},
+		{
 			// 这条相邻顺序就是生产上反复 400 的形状，上游必须继续拒绝；一旦它开始
 			// 接受，说明上游规则变了，"绝不补 reasoning" 的红线需要重新评估。
 			name:   "assistant message 紧跟 reasoning（上游必须拒绝）",
@@ -88,12 +94,11 @@ func TestDeepSeekLiveUpstreamContract(t *testing.T) {
 			status, responseBody := postDeepSeekLiveUpstream(t, client, baseURL, apiKey, caseSession, deepSeekLiveBody(t, model, converted.Input))
 
 			if tc.reject {
-				require.Equal(t, http.StatusBadRequest, status, "上游不再拒绝 assistant message → reasoning，规则已变：%s", responseBody)
+				require.Equal(t, http.StatusBadRequest, status, "上游不再拒绝该历史形状，规则已变：%s", responseBody)
 				require.Contains(t, responseBody, "reasoning_text")
 				return
 			}
-			require.NotEqual(t, http.StatusBadRequest, status, "上游拒绝了转换后的 payload：%s", responseBody)
-			require.True(t, status >= 200 && status < 300, "上游返回 %d：%s", status, responseBody)
+			requireDeepSeekLiveSuccess(t, status, responseBody)
 		})
 	}
 }
@@ -122,13 +127,13 @@ func TestDeepSeekLiveUpstreamAgentMessage(t *testing.T) {
 	normalized := normalizeDeepSeekAgentMessages(raw)
 	status, responseBody = postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
 		fmt.Sprintf("%s-agent-fix-%d", session, time.Now().UnixNano()), deepSeekLiveBody(t, model, normalized))
-	require.True(t, status >= 200 && status < 300, "上游拒绝了规范化后的 payload：%s", responseBody)
+	requireDeepSeekLiveSuccess(t, status, responseBody)
 }
 
 // 2026-09-21 11:22 生产 400 现场（call_00_GLi6SIHQhqISBhtuwGpG3282，channel 59 D-6）：
 // Codex 把 `<image_resize_notice>` 这条 developer message 发在 view_image 的 call 与它
-// 自己的 output 之间，上游整轮回 "No tool output found for tool call ..."。把这条 message
-// 提到 call 之前即放行；数组型 input_image output 本身无害（第 3、4 条用例已分别锁定）。
+// 自己的 output 之间，上游整轮回 "No tool output found for tool call ..."。
+// 2026-09-26 D-3 实测：提到 calls 前又会触发 reasoning_text 400，必须移到整轮 outputs 后。
 func TestDeepSeekLiveUpstreamNoticeBetweenCallAndOutput(t *testing.T) {
 	baseURL, apiKey, model, session := deepSeekLiveTarget(t)
 	client := &http.Client{Timeout: 120 * time.Second}
@@ -146,16 +151,67 @@ func TestDeepSeekLiveUpstreamNoticeBetweenCallAndOutput(t *testing.T) {
 		{"type": "function_call_output", "call_id": "call_00_GLi6SIHQhqISBhtuwGpG3282", "output": imageOutput},
 		{"type": "function_call_output", "call_id": "call_01_0SUCSgUYWTDdcW0GlNmX3093", "output": imageOutput},
 	}
-	raw := mustJSON(t, shape)
-
-	status, responseBody := postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
-		fmt.Sprintf("%s-notice-raw-%d", session, time.Now().UnixNano()), deepSeekLiveViewImageBody(t, model, raw))
-	require.Equal(t, http.StatusBadRequest, status, "上游不再拒绝插在工具轮中间的 developer message，规则已变：%s", responseBody)
-	require.Contains(t, responseBody, "No tool output found for tool call")
-
-	status, responseBody = postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
-		fmt.Sprintf("%s-notice-fix-%d", session, time.Now().UnixNano()), deepSeekLiveViewImageBody(t, model, NormalizeResponsesInput(raw)))
-	require.True(t, status >= 200 && status < 300, "上游拒绝了规范化后的 payload：%s", responseBody)
+	shape = append(shape,
+		map[string]any{"type": "reasoning", "summary": []any{}, "content": []map[string]any{{"type": "reasoning_text", "text": "Inspect the images"}}},
+		map[string]any{"type": "message", "role": "developer", "content": []map[string]any{{"type": "input_text", "text": "Second image resized."}}},
+		map[string]any{"type": "function_call", "call_id": "call_02_ThirdImage0003", "name": "view_image", "arguments": `{"path":"/tmp/c.png"}`},
+		map[string]any{"type": "function_call_output", "call_id": "call_02_ThirdImage0003", "output": "Third image inspected"},
+	)
+	for _, tc := range []struct {
+		name            string
+		order           []int
+		role            string
+		textOutput      bool
+		checkRaw        bool
+		reject          bool
+		normalizedError string
+	}{
+		{"between_calls", []int{0, 1, 2, 3, 4, 5}, "developer", false, true, true, ""},
+		{"between_outputs", []int{0, 1, 3, 4, 2, 5}, "developer", false, true, false, ""},
+		{"before_outputs", []int{0, 1, 3, 2, 4, 5}, "developer", false, true, true, ""},
+		{"after_outputs", []int{0, 1, 3, 4, 5, 2}, "developer", false, false, false, ""},
+		{"with_reasoning", []int{0, 6, 1, 3, 4, 2, 5}, "developer", false, false, false, ""},
+		{"three_calls_multiple_notices", []int{0, 6, 1, 3, 8, 4, 2, 5, 7, 9}, "developer", false, false, false, ""},
+		{"later_call_extends_run", []int{0, 1, 2, 3, 4, 8, 5, 9}, "developer", false, false, false, ""},
+		{"user_notice", []int{0, 1, 2, 3, 4, 5}, "user", false, false, false, ""},
+		{"system_image_history_remains_upstream_rejected", []int{0, 1, 2, 3, 4, 5}, "system", false, false, false, "reasoning_text"},
+		{"text_outputs", []int{0, 1, 2, 3, 4, 5}, "developer", true, false, false, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			shape[2]["role"] = tc.role
+			shape[4]["output"], shape[5]["output"] = imageOutput, imageOutput
+			if tc.textOutput {
+				shape[4]["output"], shape[5]["output"] = "image A", "image B"
+			}
+			items := make([]map[string]any, 0, len(tc.order))
+			for _, index := range tc.order {
+				items = append(items, shape[index])
+			}
+			raw := mustJSON(t, items)
+			if tc.checkRaw {
+				status, responseBody := postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
+					fmt.Sprintf("%s-%s-raw-%d", session, tc.name, time.Now().UnixNano()), deepSeekLiveViewImageBody(t, model, raw))
+				if tc.reject {
+					require.Equal(t, http.StatusBadRequest, status, "调用间或首个结果前的通知应被拒绝：%s", responseBody)
+					require.Contains(t, responseBody, "No tool output found for tool call")
+				} else {
+					// 原始结果间通知可被接受，旧规范化才引入 400。
+					requireDeepSeekLiveSuccess(t, status, responseBody)
+				}
+				t.Logf("raw status=%d", status)
+			}
+			status, responseBody := postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
+				fmt.Sprintf("%s-%s-fix-%d", session, tc.name, time.Now().UnixNano()), deepSeekLiveViewImageBody(t, model, NormalizeResponsesInput(raw)))
+			if tc.normalizedError != "" {
+				// system + 图片历史是既有上游限制；不改角色或编造 reasoning 消除拒绝。
+				require.Equal(t, http.StatusBadRequest, status, "上游拒绝契约改变：%s", responseBody)
+				require.Contains(t, responseBody, tc.normalizedError)
+				return
+			}
+			requireDeepSeekLiveSuccess(t, status, responseBody)
+			t.Logf("normalized status=%d: Responses stream finished", status)
+		})
+	}
 }
 
 // view_image 形状必须声明同名工具，否则上游不会把 function_call 映射成工具轮。
@@ -257,5 +313,28 @@ func TestDeepSeekLiveUpstreamCallLessToolOutput(t *testing.T) {
 
 	status, responseBody = postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
 		fmt.Sprintf("%s-idless-fix-%d", session, time.Now().UnixNano()), deepSeekLiveBody(t, model, normalizeDeepSeekAgentMessages(raw)))
-	require.True(t, status >= 200 && status < 300, "上游拒绝了规范化后的 payload：%s", responseBody)
+	requireDeepSeekLiveSuccess(t, status, responseBody)
+}
+
+// 短输出预算允许 response.incomplete，但不能把 HTTP 200 或 response.created 当成成功。
+func requireDeepSeekLiveSuccess(t *testing.T, status int, body string) {
+	t.Helper()
+	require.Equal(t, http.StatusOK, status, "上游拒绝请求：%s", body)
+	created, terminal := false, false
+	for line := range strings.SplitSeq(body, "\n") {
+		data, ok := strings.CutPrefix(line, "data:")
+		if !ok || strings.TrimSpace(data) == "[DONE]" {
+			continue
+		}
+		var event struct {
+			Type string `json:"type"`
+		}
+		require.NoError(t, common.Unmarshal([]byte(data), &event))
+		require.NotEqual(t, "error", event.Type, "流内错误：%s", data)
+		require.NotEqual(t, "response.failed", event.Type, "流内失败：%s", data)
+		created = created || event.Type == "response.created"
+		terminal = terminal || event.Type == "response.completed" || event.Type == "response.incomplete"
+	}
+	require.True(t, created, "缺少 response.created：%s", body)
+	require.True(t, terminal, "缺少 Responses 终态：%s", body)
 }

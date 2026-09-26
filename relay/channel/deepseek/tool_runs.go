@@ -6,10 +6,11 @@ import (
 	"github.com/QuantumNous/new-api/common"
 )
 
-// DeepSeek 上游对 Responses 工具轮的要求只有三条：轮内连续、调用在前结果在后、
-// 每个 call 都在同一份 payload 里有自己的 output。轮内夹进别的 item 会报
-// "No tool output found for tool call ..."（xAI 历史里的 web_search_call、
-// message、reasoning 都会插进工具轮中间），出现没有对应 call 的 output 会报
+// DeepSeek Responses 工具轮统一规整为调用在前、结果在后，每个 call 都在同一份
+// payload 里有自己的 output。通知插在调用之间或首个结果前会报
+// "No tool output found for tool call ..."；结果之间的通知虽可能被接受，也不能
+// 提到调用之前，否则会触发 reasoning_text 400。developer/user 通知移到整轮结果之后，
+// reasoning、assistant 与其他消息保留提升到调用之前的规则。出现没有对应 call 的 output 会报
 // "No tool call found for tool output ..."（上游从不解析 previous_response_id
 // 状态）。
 //
@@ -62,31 +63,35 @@ func canonicalizeDeepSeekToolRuns(input json.RawMessage) json.RawMessage {
 			outputAt[id] = i
 		}
 	}
-	hoisted := make(map[int][]json.RawMessage)
+	insertBefore := make(map[int][]json.RawMessage)
 	moved := make(map[int]struct{})
+	// 先找完整的重叠区间，再决定通知位置。后续 call 可能延长工具轮，
+	// 仅看通知前已出现的 call 会把它再次插到后续 call/output 之间。
+	runStart, runEnd := -1, -1
 	for i, item := range items {
-		if !isDeepSeekToolRunBreaker(item) {
+		if isDeepSeekToolCall(item) {
+			if at, ok := outputAt[toolCallID(item)]; ok && at > i && i > runEnd {
+				runStart, runEnd = i, at
+				for j := i + 1; j < runEnd; j++ {
+					if isDeepSeekToolCall(items[j]) {
+						runEnd = max(runEnd, outputAt[toolCallID(items[j])])
+					}
+				}
+			}
 			continue
 		}
-		target := -1
-		for j := range i {
-			if !isDeepSeekToolCall(items[j]) {
-				continue
+		if isDeepSeekToolRunBreaker(item) && i < runEnd {
+			target := runStart
+			var message struct {
+				Role string `json:"role"`
 			}
-			id := toolCallID(items[j])
-			if id == "" {
-				continue
+			_ = common.Unmarshal(item, &message)
+			switch message.Role {
+			case "user", "developer":
+				target = runEnd + 1
 			}
-			at, ok := outputAt[id]
-			if !ok || at < i {
-				continue
-			}
-			target = j
-			break
-		}
-		if target >= 0 {
 			moved[i] = struct{}{}
-			hoisted[target] = append(hoisted[target], item)
+			insertBefore[target] = append(insertBefore[target], item)
 		}
 	}
 	if len(moved) > 0 {
@@ -94,12 +99,13 @@ func canonicalizeDeepSeekToolRuns(input json.RawMessage) json.RawMessage {
 	}
 	kept := make([]json.RawMessage, 0, len(items))
 	for i, item := range items {
+		kept = append(kept, insertBefore[i]...)
 		if _, ok := moved[i]; ok {
 			continue
 		}
-		kept = append(kept, hoisted[i]...)
 		kept = append(kept, item)
 	}
+	kept = append(kept, insertBefore[len(items)]...)
 	regrouped, regroupedChanged := regroupDeepSeekToolRuns(kept)
 	if regroupedChanged {
 		kept, changed = regrouped, true
@@ -199,7 +205,7 @@ func isDeepSeekToolOutput(item json.RawMessage) bool {
 	}
 }
 
-// message 与 reasoning 都会终止上游的工具轮校验，必须移出工具轮。
+// message 与 reasoning 都可能打断工具轮，按角色移到对应边界。
 func isDeepSeekToolRunBreaker(item json.RawMessage) bool {
 	switch peekType(item) {
 	case "message", "reasoning":
