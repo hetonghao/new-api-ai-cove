@@ -178,7 +178,14 @@ func appendTaskLogInfo(task *model.Task, other *model.LogOther) {
 		other.SetPublic("task_id", task.TaskID)
 	}
 	if task.PrivateData.Execution != nil {
-		AppendTaskPluginAuditInfo(other, task.PrivateData.Execution.TaskPlugin)
+		execution := task.PrivateData.Execution
+		if execution.ClientSource != "" {
+			other.SetPublic("client_source", execution.ClientSource)
+			if execution.ClientVersion != "" {
+				other.SetPublic("client_version", execution.ClientVersion)
+			}
+		}
+		AppendTaskPluginAuditInfo(other, execution.TaskPlugin)
 	}
 	if task.PrivateData.UpstreamTaskID == "" && task.PrivateData.NodeName == "" {
 		return

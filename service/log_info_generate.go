@@ -134,12 +134,25 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	return other
 }
 
+// requestClientSource is self-reported provenance, never an authorization signal.
+func requestClientSource(ctx *gin.Context) string {
+	if ctx == nil || ctx.Request == nil {
+		return ""
+	}
+	switch source := ctx.GetHeader("X-AI-Cove-Client"); source {
+	case "turbo", "imagine":
+		return source
+	default:
+		return ""
+	}
+}
+
 func AppendRelayTransportLogInfo(ctx *gin.Context, other *model.LogOther) {
 	if ctx == nil || other == nil {
 		return
 	}
-	if ctx.Request != nil && ctx.GetHeader("X-AI-Cove-Client") == "turbo" {
-		other.SetPublic("client_source", "turbo")
+	if source := requestClientSource(ctx); source != "" {
+		other.SetPublic("client_source", source)
 		if version := strings.TrimSpace(ctx.GetHeader("X-AI-Cove-Client-Version")); version != "" {
 			other.SetPublic("client_version", version)
 		}

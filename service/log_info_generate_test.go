@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,6 +34,23 @@ func TestAppendRelayTransportLogInfo_appends_websocket_lifecycle_fields(t *testi
 		"websocket_complete_ms":         int64(45),
 		"websocket_close_reason":        "upstream disconnected",
 	}, other.Snapshot())
+}
+
+func TestAppendRelayTransportLogInfoImagineSource(t *testing.T) {
+	for _, source := range []string{"imagine", "unknown", ""} {
+		t.Run(source, func(t *testing.T) {
+			ctx, _ := gin.CreateTestContext(nil)
+			ctx.Request = &http.Request{Header: http.Header{}}
+			ctx.Request.Header.Set("X-AI-Cove-Client", source)
+			other := model.NewLogOther()
+			AppendRelayTransportLogInfo(ctx, other)
+			if source == "imagine" {
+				assert.Equal(t, "imagine", other.Snapshot()["client_source"])
+			} else {
+				assert.NotContains(t, other.Snapshot(), "client_source")
+			}
+		})
+	}
 }
 
 func TestAppendRelayTransportLogInfo_appends_turbo_client_source(t *testing.T) {

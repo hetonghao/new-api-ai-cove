@@ -22,6 +22,8 @@ import (
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -296,6 +298,94 @@ func callLogTaskConsumption(t *testing.T, info *relaycommon.RelayInfo, task *mod
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	return log
+}
+
+func TestImagineTaskLogsPreserveSubmissionSource(t *testing.T) {
+	for _, target := range []struct {
+		name common.DatabaseType
+		env  string
+	}{
+		{common.DatabaseTypeSQLite, ""},
+		{common.DatabaseTypeMySQL, "TEST_IMAGINE_MYSQL_DSN"},
+		{common.DatabaseTypePostgreSQL, "TEST_IMAGINE_POSTGRES_DSN"},
+	} {
+		t.Run(string(target.name), func(t *testing.T) {
+			var driver gorm.Dialector = sqlite.Open(":memory:")
+			if target.env != "" {
+				dsn := os.Getenv(target.env)
+				if dsn == "" {
+					t.Skip(target.env + " is not configured")
+				}
+				if target.name == common.DatabaseTypeMySQL {
+					driver = mysql.Open(dsn)
+				} else {
+					driver = postgres.New(postgres.Config{DSN: dsn, PreferSimpleProtocol: true})
+				}
+			}
+			db, err := gorm.Open(driver, &gorm.Config{})
+			require.NoError(t, err)
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+			oldDB, oldLogDB := model.DB, model.LOG_DB
+			oldMainType, oldLogType := common.MainDatabaseType(), common.LogDatabaseType()
+			model.DB, model.LOG_DB = db, db
+			common.SetDatabaseTypes(target.name, target.name)
+			t.Cleanup(func() {
+				model.DB, model.LOG_DB = oldDB, oldLogDB
+				common.SetDatabaseTypes(oldMainType, oldLogType)
+			})
+			require.NoError(t, db.AutoMigrate(&model.Task{}, &model.User{}, &model.Channel{}, &model.Log{}))
+			versionQuery := "select version()"
+			if target.name == common.DatabaseTypeSQLite {
+				versionQuery = "select sqlite_version()"
+			}
+			var version string
+			require.NoError(t, db.Raw(versionQuery).Scan(&version).Error)
+			t.Logf("database: %s", version)
+			t.Cleanup(func() {
+				for _, table := range []string{"tasks", "users", "channels", "logs"} {
+					require.NoError(t, db.Exec("DELETE FROM "+table).Error)
+				}
+			})
+			runImagineTaskLogsPreserveSubmissionSource(t)
+		})
+	}
+}
+
+func runImagineTaskLogsPreserveSubmissionSource(t *testing.T) {
+	t.Helper()
+	const userID, channelID = 49, 49
+	seedUser(t, userID, 10_000)
+	seedChannel(t, channelID)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+	ctx.Request.Header.Set("X-AI-Cove-Client", "imagine")
+	task := makeTask(userID, channelID, 100, 0, BillingSourceWallet, 0)
+	task.PrivateData.Execution = TaskExecutionSnapshotFromContext(ctx)
+	require.NoError(t, task.Insert())
+	stored := new(model.Task)
+	require.NoError(t, model.DB.First(stored, task.ID).Error)
+	task = stored
+	// A later request cannot change the original submission's provenance.
+	ctx.Request.Header.Set("X-AI-Cove-Client", "turbo")
+	info := &relaycommon.RelayInfo{
+		UserId: userID, OriginModelName: "test-model", UsingGroup: "default",
+		ChannelMeta:   &relaycommon.ChannelMeta{ChannelId: channelID},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{Action: "GENERATE"},
+		PriceData:     types.PriceData{Quota: 100},
+	}
+	LogTaskConsumption(ctx, info, task)
+	consume := getLastLog(t)
+	var other map[string]any
+	require.NoError(t, common.UnmarshalJsonStr(consume.Other, &other))
+	assert.Equal(t, "imagine", other["client_source"])
+	require.True(t, RefundTaskQuota(context.Background(), task, "test failure"))
+	refund := getLastLog(t)
+	require.Equal(t, model.LogTypeRefund, refund.Type)
+	other = nil
+	require.NoError(t, common.UnmarshalJsonStr(refund.Other, &other))
+	assert.Equal(t, "imagine", other["client_source"])
 }
 
 func TestLogTaskConsumptionIncludesTieredSnapshotUsageFacts(t *testing.T) {

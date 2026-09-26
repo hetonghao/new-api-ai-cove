@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
+  flexRender,
   getCoreRowModel,
   useReactTable,
   type VisibilityState,
@@ -57,6 +58,7 @@ const log = usageLogSchema.parse({
 
 function Fixture(props: {
   admin?: boolean
+  desktop?: boolean
   visibility?: VisibilityState
   logs?: UsageLog[]
   loading?: boolean
@@ -69,6 +71,14 @@ function Fixture(props: {
     getCoreRowModel: getCoreRowModel(),
     state: { columnVisibility: props.visibility ?? {} },
   })
+  if (props.desktop) {
+    const cell = table
+      .getRowModel()
+      .rows[0].getAllCells()
+      .find((cell) => cell.column.id === 'model_name')
+    if (!cell) throw new Error('Expected a model column')
+    return <>{flexRender(cell.column.columnDef.cell, cell.getContext())}</>
+  }
   return (
     <>
       <button type='button' onClick={() => context.setSensitiveVisible(false)}>
@@ -82,6 +92,40 @@ function Fixture(props: {
     </>
   )
 }
+
+it.each([false, true])(
+  'shows Imagine provenance for image, video and refund logs (desktop=%s)',
+  (desktop) => {
+    for (const type of [2, 5, 6]) {
+      const view = renderLogs({
+        desktop,
+        logs: [
+          {
+            ...log,
+            type,
+            other: JSON.stringify({
+              client_source: 'imagine',
+              is_task: type === 6,
+            }),
+          },
+        ],
+      })
+      expect(screen.getByText('AI Cove Imagine skill')).toBeVisible()
+      expect(screen.queryByLabelText('From Turbo')).not.toBeInTheDocument()
+      view.unmount()
+    }
+  }
+)
+
+it.each(['turbo', 'unknown', undefined])(
+  'does not label other clients as Imagine (%s)',
+  (source) => {
+    renderLogs({
+      logs: [{ ...log, other: JSON.stringify({ client_source: source }) }],
+    })
+    expect(screen.queryByText('AI Cove Imagine skill')).not.toBeInTheDocument()
+  }
+)
 
 function renderLogs(props: Parameters<typeof Fixture>[0] = {}) {
   return render(

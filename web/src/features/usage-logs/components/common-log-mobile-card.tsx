@@ -38,6 +38,7 @@ import {
   isDisplayableLogType,
   isTimingLogType,
 } from '../lib/utils'
+import { ImagineSourceBadge } from './imagine-source-badge'
 import { ModelBadge, ResponseModelDetails } from './model-badge'
 import { StreamTpsCell, TimingMetricsCell } from './timing-metrics-cell'
 import { useUsageLogsContext } from './usage-logs-provider'
@@ -153,6 +154,7 @@ export function CommonLogMobileCard<TData>(props: {
               wrapText
               onInspect={() => setSelectedField('model')}
             />
+            <ImagineSourceBadge source={other?.client_source} />
           </div>
         )}
         {fields.cost.visible && costCell && (

@@ -1,6 +1,8 @@
 package service
 
 import (
+	"strings"
+
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
@@ -14,7 +16,11 @@ func TaskExecutionSnapshotFromContext(ctx *gin.Context) *model.TaskExecutionSnap
 		return nil
 	}
 	snapshot := &model.TaskExecutionSnapshot{
-		RequestID: ctx.GetString(common.RequestIdKey),
+		RequestID:    ctx.GetString(common.RequestIdKey),
+		ClientSource: requestClientSource(ctx),
+	}
+	if snapshot.ClientSource != "" {
+		snapshot.ClientVersion = strings.TrimSpace(ctx.GetHeader("X-AI-Cove-Client-Version"))
 	}
 	if ctx.Request != nil && ctx.Request.URL != nil {
 		snapshot.RequestPath = ctx.Request.URL.Path
@@ -43,7 +49,7 @@ func TaskExecutionSnapshotFromContext(ctx *gin.Context) *model.TaskExecutionSnap
 		}
 	}
 
-	if snapshot.RequestID == "" && snapshot.RequestPath == "" && snapshot.TaskPlugin == nil {
+	if snapshot.RequestID == "" && snapshot.RequestPath == "" && snapshot.ClientSource == "" && snapshot.TaskPlugin == nil {
 		return nil
 	}
 	return snapshot
