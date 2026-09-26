@@ -85,9 +85,13 @@ export function SampleDetailDialog(props: SampleDetailDialogProps) {
       }
       return response.data
     },
-    enabled: props.open && sample !== null && sample.status === 'succeeded',
+    enabled:
+      props.open &&
+      sample !== null &&
+      (sample.status === 'succeeded' || sample.status === 'failed'),
     staleTime: Infinity,
     retry: false,
+    meta: { errorToast: false },
   })
 
   const annotateMutation = useMutation({
@@ -130,7 +134,10 @@ export function SampleDetailDialog(props: SampleDetailDialogProps) {
   const sanitizedSvg = artifact ? sanitizeSvg(artifact.svg) : ''
   let source = ''
   if (artifact) {
-    source = sample.output_type === 'svg' ? artifact.svg : artifact.text
+    source =
+      sample.output_type === 'svg' && artifact.svg !== ''
+        ? artifact.svg
+        : artifact.text
   }
   let errorLabel = '—'
   if (sample.error_code !== '') {
