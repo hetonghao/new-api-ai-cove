@@ -35,6 +35,7 @@ import { formatUseTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { getFirstResponseTimeColor, getResponseTimeColor } from '../lib/format'
+import { ImagineSourceMarker } from './imagine-source-marker'
 import type { LogOtherData } from '../types'
 
 /**
@@ -163,6 +164,7 @@ interface StreamTpsCellProps {
   isTurbo?: boolean
   isTurboWarmup?: boolean
   turboVersion?: string
+  isImagine?: boolean
   compact?: boolean
   /** Task logs are asynchronous jobs; stream vs non-stream does not apply. */
   isTask?: boolean
@@ -250,6 +252,7 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
         {streamLabel}
         {webSocketMarker}
         {turboMarker}
+        {props.isImagine && <ImagineSourceMarker />}
         {showStreamError && (
           <TooltipProvider>
             <Tooltip>

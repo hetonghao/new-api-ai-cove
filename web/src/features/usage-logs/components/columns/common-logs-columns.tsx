@@ -76,7 +76,7 @@ import {
 } from '../../lib/utils'
 import type { LogOtherData } from '../../types'
 import { DetailsDialog } from '../dialogs/details-dialog'
-import { ImagineSourceBadge } from '../imagine-source-badge'
+import { ImagineSourceMarker } from '../imagine-source-marker'
 import { LogCostDisplay } from '../log-cost-display'
 import { ModelBadge } from '../model-badge'
 import { TimingMetricsCell, StreamTpsCell } from '../timing-metrics-cell'
@@ -691,16 +691,11 @@ export function useCommonLogsColumns(
         const modelInfo = formatModelName(log)
 
         return (
-          <div className='flex w-fit flex-col gap-0.5'>
-            <ModelBadge
-              modelName={modelInfo.name}
-              actualModel={modelInfo.actualModel}
-              responseModel={modelInfo.responseModel}
-            />
-            <ImagineSourceBadge
-              source={parseLogOther(log.other)?.client_source}
-            />
-          </div>
+          <ModelBadge
+            modelName={modelInfo.name}
+            actualModel={modelInfo.actualModel}
+            responseModel={modelInfo.responseModel}
+          />
         )
       },
       meta: { mobileTitle: true },
@@ -710,10 +705,13 @@ export function useCommonLogsColumns(
       header: t('Stream'),
       cell: ({ row }) => {
         const log = row.original
-        if (!isTimingLogType(log.type)) return null
+        const other = parseLogOther(log.other)
+        const isImagine = other?.client_source === 'imagine'
+        if (!isTimingLogType(log.type)) {
+          return isImagine ? <ImagineSourceMarker /> : null
+        }
 
         const useTime = row.getValue('use_time') as number
-        const other = parseLogOther(log.other)
         const tokensPerSecond =
           useTime > 0 && log.completion_tokens > 0
             ? log.completion_tokens / useTime
@@ -726,6 +724,7 @@ export function useCommonLogsColumns(
             isTurbo={other?.client_source === 'turbo'}
             isTurboWarmup={isTurboWarmupLog(log, other)}
             turboVersion={other?.client_version}
+            isImagine={isImagine}
             isTask={other?.is_task === true}
             tokensPerSecond={tokensPerSecond}
             streamStatus={other?.stream_status}

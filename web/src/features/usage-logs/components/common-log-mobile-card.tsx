@@ -38,7 +38,7 @@ import {
   isDisplayableLogType,
   isTimingLogType,
 } from '../lib/utils'
-import { ImagineSourceBadge } from './imagine-source-badge'
+import { ImagineSourceMarker } from './imagine-source-marker'
 import { ModelBadge, ResponseModelDetails } from './model-badge'
 import { StreamTpsCell, TimingMetricsCell } from './timing-metrics-cell'
 import { useUsageLogsContext } from './usage-logs-provider'
@@ -154,7 +154,9 @@ export function CommonLogMobileCard<TData>(props: {
               wrapText
               onInspect={() => setSelectedField('model')}
             />
-            <ImagineSourceBadge source={other?.client_source} />
+            {!timing && other?.client_source === 'imagine' && (
+              <ImagineSourceMarker />
+            )}
           </div>
         )}
         {fields.cost.visible && costCell && (
@@ -201,6 +203,7 @@ export function CommonLogMobileCard<TData>(props: {
                   isTurbo={other?.client_source === 'turbo'}
                   isTurboWarmup={isTurboWarmupLog(log, other)}
                   turboVersion={other?.client_version}
+                  isImagine={other?.client_source === 'imagine'}
                   isTask={other?.is_task === true}
                   tokensPerSecond={
                     log.use_time > 0 && log.completion_tokens > 0

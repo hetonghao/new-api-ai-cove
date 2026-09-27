@@ -75,8 +75,8 @@ function Fixture(props: {
     const cell = table
       .getRowModel()
       .rows[0].getAllCells()
-      .find((cell) => cell.column.id === 'model_name')
-    if (!cell) throw new Error('Expected a model column')
+      .find((cell) => cell.column.id === 'is_stream')
+    if (!cell) throw new Error('Expected a stream column')
     return <>{flexRender(cell.column.columnDef.cell, cell.getContext())}</>
   }
   return (
@@ -93,8 +93,10 @@ function Fixture(props: {
   )
 }
 
+const imagineLabel = 'From AI Cove Imagine skill'
+
 it.each([false, true])(
-  'shows Imagine provenance for image, video and refund logs (desktop=%s)',
+  'shows the Imagine icon marker for image, video and refund logs (desktop=%s)',
   (desktop) => {
     for (const type of [2, 5, 6]) {
       const view = renderLogs({
@@ -110,12 +112,24 @@ it.each([false, true])(
           },
         ],
       })
-      expect(screen.getByText('AI Cove Imagine skill')).toBeVisible()
+      const marker = screen.getByRole('button', { name: imagineLabel })
+      expect(marker.querySelector('.lucide-sparkles')).not.toBeNull()
+      expect(screen.queryByText(imagineLabel)).not.toBeInTheDocument()
       expect(screen.queryByLabelText('From Turbo')).not.toBeInTheDocument()
       view.unmount()
     }
   }
 )
+
+it('reveals the Imagine source text only when hovering the marker', async () => {
+  const user = userEvent.setup()
+  renderLogs({
+    desktop: true,
+    logs: [{ ...log, other: JSON.stringify({ client_source: 'imagine' }) }],
+  })
+  await user.hover(screen.getByRole('button', { name: imagineLabel }))
+  expect(await screen.findByText(imagineLabel)).toBeVisible()
+})
 
 it.each(['turbo', 'unknown', undefined])(
   'does not label other clients as Imagine (%s)',
@@ -123,7 +137,9 @@ it.each(['turbo', 'unknown', undefined])(
     renderLogs({
       logs: [{ ...log, other: JSON.stringify({ client_source: source }) }],
     })
-    expect(screen.queryByText('AI Cove Imagine skill')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: imagineLabel })
+    ).not.toBeInTheDocument()
   }
 )
 
