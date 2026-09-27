@@ -16,20 +16,25 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { ReactNode } from 'react'
-
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { formatTimestampToDate } from '@/lib/format'
+import {
+  createTooltipHandle,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
-import { bucketTone } from '../lib/quality-view'
+import { bucketTone, formatTimeRange } from '../lib/quality-view'
 import type { QualityBucket } from '../types'
 
 type TimelineStripProps = {
   buckets: readonly QualityBucket[]
   selectedBucket: QualityBucket | null
   onSelect: (bucket: QualityBucket | null) => void
+  live?: boolean
   legendExtra?: ReactNode
 }
 
@@ -38,7 +43,7 @@ const toneClass: Record<string, string> = {
   mostly_failure: 'bg-warning',
   mostly_success: 'bg-info',
   success: 'bg-success',
-  empty: 'bg-muted',
+  empty: 'bg-neutral/35',
 }
 
 const legendItems: { tone: string; labelKey: string }[] = [
@@ -51,6 +56,8 @@ const legendItems: { tone: string; labelKey: string }[] = [
 
 export function TimelineStrip(props: TimelineStripProps) {
   const { t } = useTranslation()
+  const [bucketTooltip] = useState(() => createTooltipHandle<number>())
+  const newestEnd = props.buckets.at(-1)?.end ?? 0
 
   return (
     <div className='space-y-1.5'>
@@ -59,36 +66,76 @@ export function TimelineStrip(props: TimelineStripProps) {
         role='group'
         aria-label={t('Last 24 hours results')}
       >
-        {props.buckets.map((bucket) => {
+        {props.buckets.map((bucket, index) => {
           const tone = bucketTone(bucket)
-          const label = t(
-            '{{range}}: {{success}} succeeded, {{failure}} failed',
-            {
-              range: `${formatTimestampToDate(bucket.start, 'milliseconds')} – ${formatTimestampToDate(bucket.end, 'milliseconds')}`,
-              success: bucket.success,
-              failure: bucket.failure,
-            }
-          )
           const selected = props.selectedBucket?.start === bucket.start
+          const live = props.live && index === props.buckets.length - 1
           return (
-            <button
-              key={bucket.start}
+            <TooltipTrigger
+              key={newestEnd - bucket.end}
+              handle={bucketTooltip}
+              payload={index}
+              delay={0}
+              closeOnClick={false}
               type='button'
               data-tone={tone}
-              aria-label={label}
-              title={label}
+              data-mq-bar=''
+              data-mq-live={live ? '' : undefined}
+              style={{ '--mq-bar-index': index } as CSSProperties}
+              aria-label={t(
+                '{{range}}: {{success}} succeeded, {{failure}} failed',
+                {
+                  range: formatTimeRange(bucket.start, bucket.end),
+                  success: bucket.success,
+                  failure: bucket.failure,
+                }
+              )}
               aria-pressed={selected}
               onClick={() => props.onSelect(selected ? null : bucket)}
               className={cn(
-                'focus-visible:ring-ring h-full min-w-0 flex-1 rounded-sm transition-opacity focus-visible:ring-2 focus-visible:outline-none',
+                'focus-visible:ring-ring h-full min-w-0 flex-1 cursor-pointer rounded-sm transition-[opacity,filter] duration-100 focus-visible:ring-2 focus-visible:outline-none',
+                'data-popup-open:brightness-90 dark:data-popup-open:brightness-125',
                 toneClass[tone],
-                props.selectedBucket && !selected && 'opacity-75',
+                props.selectedBucket && !selected && 'opacity-60',
                 selected && 'ring-ring ring-2 ring-inset'
               )}
             />
           )
         })}
       </div>
+      <Tooltip handle={bucketTooltip}>
+        {({ payload }) => {
+          const bucket =
+            payload === undefined ? undefined : props.buckets[payload]
+          if (!bucket) return null
+          const tone = bucketTone(bucket)
+          const selected = props.selectedBucket?.start === bucket.start
+          return (
+            <TooltipContent className='flex-col items-start gap-0.5 tabular-nums'>
+              <span className='font-medium'>
+                {formatTimeRange(bucket.start, bucket.end)}
+              </span>
+              <span className='flex items-center gap-1.5'>
+                <span
+                  aria-hidden='true'
+                  className={cn('size-2 rounded-sm', toneClass[tone])}
+                />
+                {tone === 'empty'
+                  ? t('No samples')
+                  : t('{{success}} succeeded, {{failed}} failed', {
+                      success: bucket.success,
+                      failed: bucket.failure,
+                    })}
+              </span>
+              <span className='text-background/70'>
+                {selected
+                  ? t('Click to clear filter')
+                  : t('Click to filter samples')}
+              </span>
+            </TooltipContent>
+          )
+        }}
+      </Tooltip>
       <div className='text-muted-foreground flex justify-between text-xs'>
         <span>{t('24h ago')}</span>
         <span>{t('12h ago')}</span>
@@ -99,7 +146,10 @@ export function TimelineStrip(props: TimelineStripProps) {
           <span key={item.tone} className='flex items-center gap-1'>
             <span
               aria-hidden='true'
-              className={cn('inline-block size-2 rounded-sm', toneClass[item.tone])}
+              className={cn(
+                'inline-block size-2 rounded-sm',
+                toneClass[item.tone]
+              )}
             />
             {t(item.labelKey)}
           </span>

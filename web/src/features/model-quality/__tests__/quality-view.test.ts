@@ -22,6 +22,7 @@ import { describe, expect, test } from 'vitest'
 import {
   bucketTone,
   formatPercentileMs,
+  formatTimeRange,
   runTargetCount,
   sanitizeSvg,
   scheduleSummary,
@@ -54,6 +55,19 @@ describe('bucketTone', () => {
   })
   test('an empty bucket is neither red nor green', () => {
     expect(bucketTone(bucket({}))).toBe('empty')
+  })
+})
+
+describe('formatTimeRange', () => {
+  test('a same-day range shows the date once', () => {
+    const start = new Date(2026, 8, 27, 14, 0, 48).getTime()
+    const end = new Date(2026, 8, 27, 14, 10, 48).getTime()
+    expect(formatTimeRange(start, end)).toBe('09-27 14:00 – 14:10')
+  })
+  test('a range crossing midnight keeps the end date', () => {
+    const start = new Date(2026, 8, 27, 23, 55).getTime()
+    const end = new Date(2026, 8, 28, 0, 5).getTime()
+    expect(formatTimeRange(start, end)).toBe('09-27 23:55 – 09-28 00:05')
   })
 })
 

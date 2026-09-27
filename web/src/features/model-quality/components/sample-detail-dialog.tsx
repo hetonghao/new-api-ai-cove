@@ -17,7 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { Download } from 'lucide-react'
+import { useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -25,6 +26,7 @@ import { CopyButton } from '@/components/copy-button'
 import { Dialog } from '@/components/dialog'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
+import { Field, FieldLabel } from '@/components/ui/field'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
@@ -67,6 +69,8 @@ export function SampleDetailDialog(props: SampleDetailDialogProps) {
   const [tag, setTag] = useState('')
   const [note, setNote] = useState('')
   const [pinned, setPinned] = useState(false)
+  const annotationTagId = useId()
+  const annotationNoteId = useId()
 
   useEffect(() => {
     setTag(sample?.annotation ?? '')
@@ -188,59 +192,70 @@ export function SampleDetailDialog(props: SampleDetailDialogProps) {
     )
   }
 
-  const footer = (
-    <div className='space-y-3 border-t pt-3'>
-      {sample.output_type === 'svg' &&
-        sample.status === 'succeeded' &&
-        sanitizedSvg !== '' && (
-          <div>
-            <Button size='sm' variant='outline' onClick={downloadSvg}>
-              {t('Download SVG')}
+  const canDownload =
+    sample.output_type === 'svg' &&
+    sample.status === 'succeeded' &&
+    sanitizedSvg !== ''
+  const annotationLabel =
+    ANNOTATION_OPTIONS.find((option) => option.value === sample.annotation)
+      ?.labelKey ?? sample.annotation
+
+  const footer = (props.canOperate || canDownload) && (
+    <div className='w-full space-y-3'>
+      {props.canOperate && (
+        <div className='grid gap-3 sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)]'>
+          <Field>
+            <FieldLabel htmlFor={annotationTagId}>{t('Annotation')}</FieldLabel>
+            <NativeSelect
+              id={annotationTagId}
+              aria-label={t('Annotation tag')}
+              className='bg-background rounded-lg'
+              value={tag}
+              onChange={(event) => setTag(event.target.value)}
+            >
+              {ANNOTATION_OPTIONS.map((option) => (
+                <NativeSelectOption key={option.value} value={option.value}>
+                  {t(option.labelKey)}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={annotationNoteId}>{t('Note')}</FieldLabel>
+            <Textarea
+              id={annotationNoteId}
+              value={note}
+              maxLength={2000}
+              onChange={(event) => setNote(event.target.value)}
+              rows={2}
+              aria-label={t('Annotation note')}
+              className='bg-background'
+            />
+          </Field>
+        </div>
+      )}
+      <div className='flex flex-wrap items-center gap-3'>
+        {canDownload && (
+          <Button size='sm' variant='outline' onClick={downloadSvg}>
+            <Download data-icon='inline-start' />
+            {t('Download SVG')}
+          </Button>
+        )}
+        {props.canOperate && (
+          <div className='ml-auto flex items-center gap-3'>
+            <label className='flex cursor-pointer items-center gap-2 text-sm'>
+              <Switch checked={pinned} onCheckedChange={setPinned} />
+              {t('Pinned')}
+            </label>
+            <Button
+              size='sm'
+              disabled={annotateMutation.isPending}
+              onClick={() => annotateMutation.mutate()}
+            >
+              {t('Save annotation')}
             </Button>
           </div>
         )}
-      <div className='flex flex-wrap items-end gap-3'>
-        <div className='space-y-1'>
-          <span className='text-sm font-medium'>{t('Annotation')}</span>
-          <NativeSelect
-            aria-label={t('Annotation tag')}
-            value={tag}
-            disabled={!props.canOperate}
-            onChange={(event) => setTag(event.target.value)}
-          >
-            {ANNOTATION_OPTIONS.map((option) => (
-              <NativeSelectOption key={option.value} value={option.value}>
-                {t(option.labelKey)}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </div>
-        <div className='min-w-40 flex-1 space-y-1'>
-          <span className='text-sm font-medium'>{t('Note')}</span>
-          <Textarea
-            value={note}
-            maxLength={2000}
-            disabled={!props.canOperate}
-            onChange={(event) => setNote(event.target.value)}
-            rows={2}
-            aria-label={t('Annotation note')}
-          />
-        </div>
-        <label className='flex items-center gap-2 text-sm'>
-          <Switch
-            checked={pinned}
-            disabled={!props.canOperate}
-            onCheckedChange={setPinned}
-          />
-          {t('Pinned')}
-        </label>
-        <Button
-          size='sm'
-          disabled={!props.canOperate || annotateMutation.isPending}
-          onClick={() => annotateMutation.mutate()}
-        >
-          {t('Save annotation')}
-        </Button>
       </div>
     </div>
   )
@@ -293,6 +308,16 @@ export function SampleDetailDialog(props: SampleDetailDialogProps) {
                 copyable={false}
               />
             </MetaRow>
+            {!props.canOperate && sample.annotation !== '' && (
+              <MetaRow label={t('Annotation')}>{t(annotationLabel)}</MetaRow>
+            )}
+            {!props.canOperate && sample.note !== '' && (
+              <MetaRow label={t('Note')}>
+                <span className='break-words whitespace-pre-wrap'>
+                  {sample.note}
+                </span>
+              </MetaRow>
+            )}
             <MetaRow label={t('Request ID')}>
               <span className='font-mono text-xs break-all'>
                 {sample.request_id || '—'}

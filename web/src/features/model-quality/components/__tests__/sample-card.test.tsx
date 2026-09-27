@@ -67,7 +67,7 @@ function makeSample(partial: Partial<ModelQualitySample>): ModelQualitySample {
   }
 }
 
-function renderCard(sample: ModelQualitySample) {
+function renderCard(sample: ModelQualitySample, selected = false) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -83,7 +83,7 @@ function renderCard(sample: ModelQualitySample) {
       <SampleCard
         sample={sample}
         selectable
-        selected={false}
+        selected={selected}
         showChannel
         onToggleSelect={vi.fn()}
         onOpen={vi.fn()}
@@ -168,6 +168,18 @@ describe('SampleCard', () => {
       screen.getByText('Upstream returned HTTP 500')
     ).toBeInTheDocument()
     expect(screen.getByText('http_500')).toBeInTheDocument()
+  })
+
+  test('a selected card checks its compare box and marks the card selected', () => {
+    const { container } = renderCard(
+      makeSample({ status: 'failed', error_code: 'timeout' }),
+      true
+    )
+
+    expect(
+      screen.getByRole('checkbox', { name: 'Select for compare' })
+    ).toBeChecked()
+    expect(container.firstElementChild).toHaveAttribute('data-selected', 'true')
   })
 
   test('a pending sample shows status text and never fetches an artifact', () => {

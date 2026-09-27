@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
-import { X } from 'lucide-react'
+import { ChevronRight, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -37,6 +37,7 @@ import {
 } from '../constants'
 import {
   formatPercentileMs,
+  formatTimeRange,
   sampleEffectiveTime,
   scheduleSummary,
 } from '../lib/quality-view'
@@ -63,10 +64,14 @@ type DashboardPanelProps = {
 
 function MetricCell(props: { label: string; value: string }) {
   return (
-    <div className='bg-card rounded-lg border px-2.5 py-2'>
-      <div className='text-muted-foreground text-xs'>{props.label}</div>
-      <div className='mt-0.5 text-base font-medium tabular-nums'>
-        {props.value}
+    <div className='bg-card rounded-lg border px-3 py-2'>
+      <div className='text-muted-foreground truncate text-xs'>
+        {props.label}
+      </div>
+      <div className='mt-1 overflow-hidden text-lg leading-tight font-semibold tracking-tight break-words tabular-nums'>
+        <span key={props.value} data-mq-tick='' className='inline-block'>
+          {props.value}
+        </span>
       </div>
     </div>
   )
@@ -268,6 +273,12 @@ export function DashboardPanel(props: DashboardPanelProps) {
           <span className='text-sm font-medium'>{qualityCase.name}</span>
           <span className='font-mono text-xs'>{qualityCase.config.model}</span>
           <span className='text-muted-foreground text-xs'>
+            {t('Reasoning effort')}:{' '}
+            <span className='text-foreground'>
+              {qualityCase.config.reasoning_effort || t('Upstream default')}
+            </span>
+          </span>
+          <span className='text-muted-foreground text-xs'>
             {qualityCase.config.mode === 'route'
               ? t('Normal routing')
               : t('Pinned channel')}
@@ -290,10 +301,14 @@ export function DashboardPanel(props: DashboardPanelProps) {
             />
           </div>
         </div>
-        <details className='mt-2 text-xs'>
-          <summary className='text-muted-foreground cursor-pointer'>
-            {t('Prompt')}:{' '}
-            <span className='text-foreground'>
+        <details className='group mt-2 text-xs'>
+          <summary className='text-muted-foreground hover:text-foreground focus-visible:ring-ring flex w-fit max-w-full cursor-pointer list-none items-center gap-1 rounded-sm transition-colors focus-visible:ring-2 focus-visible:outline-none [&::-webkit-details-marker]:hidden'>
+            <ChevronRight
+              aria-hidden='true'
+              className='size-3.5 shrink-0 transition-transform group-open:rotate-90'
+            />
+            <span className='shrink-0'>{t('Prompt')}:</span>
+            <span className='text-foreground min-w-0 truncate'>
               {qualityCase.config.prompt.split('\n')[0]}
             </span>
           </summary>
@@ -360,20 +375,15 @@ export function DashboardPanel(props: DashboardPanelProps) {
               })}
             </span>
             {selectedBucket ? (
-              <span className='flex shrink-0 items-center gap-1'>
+              <span className='motion-safe:animate-in fade-in zoom-in-95 flex shrink-0 items-center gap-1 duration-150 ease-out'>
                 <StatusBadge
                   variant='info'
                   copyable={false}
-                  label={t('{{start}} – {{end}}', {
-                    start: formatTimestampToDate(
-                      selectedBucket.start,
-                      'milliseconds'
-                    ),
-                    end: formatTimestampToDate(
-                      selectedBucket.end,
-                      'milliseconds'
-                    ),
-                  })}
+                  className='tabular-nums'
+                  label={formatTimeRange(
+                    selectedBucket.start,
+                    selectedBucket.end
+                  )}
                 />
                 <Button
                   size='sm'
@@ -402,6 +412,7 @@ export function DashboardPanel(props: DashboardPanelProps) {
             buckets={dashboard.buckets}
             selectedBucket={selectedBucket}
             onSelect={setSelectedBucket}
+            live={qualityCase.active_run_id !== ''}
             legendExtra={
               <>
                 <span className='text-muted-foreground'>

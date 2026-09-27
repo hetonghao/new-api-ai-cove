@@ -83,26 +83,29 @@ function renderControls(qualityCase: QualityCaseView, canOperate = false) {
 }
 
 describe('RunControls', () => {
-  test('public viewers with redacted channels see a disabled run button without crashing', () => {
+  test('public viewers with redacted channels see no operator buttons', () => {
     renderControls(makeCase())
 
-    expect(screen.getByRole('button', { name: 'Run now' })).toBeDisabled()
-    expect(
-      screen.queryByRole('button', { name: 'Edit' })
-    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 
-  test('public viewers with redacted channels see an active run but cannot stop it', () => {
+  test('public viewers see an active run without a stop button', () => {
     const qualityCase = makeCase()
     qualityCase.active_run_id = 'running-case'
     renderControls(qualityCase)
 
     expect(screen.getByText('Run in progress')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Stop' })).toBeDisabled()
-    expect(
-      screen.queryByRole('button', { name: 'Edit' })
-    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  test('operators see an active run with a stop button', () => {
+    const qualityCase = makeCase()
+    qualityCase.active_run_id = 'running-case'
+    renderControls(qualityCase, true)
+
+    expect(screen.getByText('Run in progress')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled()
   })
 
   test.each([

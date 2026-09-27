@@ -97,6 +97,7 @@ function SampleArtifactPreview(props: { sample: ModelQualitySample }) {
         src={svgDataUri(sanitized)}
         alt={t('Sample preview')}
         loading='lazy'
+        data-mq-develop=''
         className='h-full w-full object-contain'
       />
     </div>
@@ -182,7 +183,10 @@ function SampleTextPreview(props: { sample: ModelQualitySample }) {
     )
   }
   return (
-    <p className='text-foreground line-clamp-5 w-full px-3 text-xs break-words whitespace-pre-wrap'>
+    <p
+      data-mq-develop=''
+      className='text-foreground line-clamp-5 w-full px-3 text-xs break-words whitespace-pre-wrap'
+    >
       {artifactQuery.data.text}
     </p>
   )
@@ -193,7 +197,15 @@ export function SampleCard(props: SampleCardProps) {
   const sample = props.sample
 
   return (
-    <div className='bg-card relative rounded-lg border'>
+    <div
+      data-selected={props.selected}
+      className={cn(
+        'group/card bg-card relative rounded-lg border transition-[border-color,box-shadow] duration-150',
+        'hover:border-foreground/20',
+        props.selected &&
+          'border-primary ring-primary hover:border-primary ring-1'
+      )}
+    >
       <button
         type='button'
         onClick={() => props.onOpen(sample)}
@@ -238,7 +250,10 @@ export function SampleCard(props: SampleCardProps) {
           checked={props.selected}
           onCheckedChange={() => props.onToggleSelect(sample)}
           onClick={(event) => event.stopPropagation()}
-          className='bg-background absolute top-2 left-2'
+          className={cn(
+            'bg-background absolute top-2 left-2 shadow-sm transition-opacity duration-150',
+            'pointer-fine:opacity-0 pointer-fine:group-hover/card:opacity-100 pointer-fine:group-has-[:focus-visible]/card:opacity-100 pointer-fine:group-data-[selecting=true]/wall:opacity-100 pointer-fine:data-checked:opacity-100'
+          )}
         />
       )}
     </div>
@@ -281,8 +296,9 @@ export function SampleWall(props: SampleWallProps) {
   return (
     <div className='space-y-3'>
       <div
+        data-selecting={props.selectedIds.size > 0}
         className={cn(
-          'grid grid-cols-1 gap-3',
+          'group/wall grid grid-cols-1 gap-3',
           WALL_COLUMN_CLASS[props.columns] ?? WALL_COLUMN_CLASS[4]
         )}
       >
@@ -327,11 +343,14 @@ export function CompareTray(props: CompareTrayProps) {
     <div
       className={cn(
         'bg-popover ring-border fixed right-4 bottom-4 z-40 flex items-center gap-3',
-        'rounded-lg p-3 shadow-lg ring-1'
+        'rounded-lg p-3 shadow-lg ring-1',
+        'motion-safe:animate-in fade-in slide-in-from-bottom-3 duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]'
       )}
     >
-      <span className='text-sm'>
-        {t('{{count}} selected', { count: props.count })}
+      <span className='overflow-hidden text-sm'>
+        <span key={props.count} data-mq-tick='' className='inline-block'>
+          {t('{{count}} selected', { count: props.count })}
+        </span>
       </span>
       <Button
         size='sm'

@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -70,7 +71,7 @@ function makeSample(partial: Partial<ModelQualitySample>): ModelQualitySample {
   }
 }
 
-function renderDialog(sample: ModelQualitySample) {
+function renderDialog(sample: ModelQualitySample, canOperate = false) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -87,7 +88,7 @@ function renderDialog(sample: ModelQualitySample) {
         sample={sample}
         open
         onOpenChange={vi.fn()}
-        canOperate={false}
+        canOperate={canOperate}
         showChannel
       />
     </Wrapper>
@@ -142,5 +143,64 @@ describe('SampleDetailDialog', () => {
       await screen.findByText(/<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)
     ).toBeInTheDocument()
     expect(screen.queryByText('raw')).not.toBeInTheDocument()
+  })
+
+  test('public viewers get no annotation form', () => {
+    renderDialog(makeSample({ status: 'failed', error_code: 'timeout' }))
+
+    expect(
+      screen.queryByRole('combobox', { name: 'Annotation tag' })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('textbox', { name: 'Annotation note' })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Save annotation' })
+    ).not.toBeInTheDocument()
+  })
+
+  test('public viewers read an existing annotation in the metadata tab', () => {
+    renderDialog(
+      makeSample({
+        status: 'failed',
+        error_code: 'timeout',
+        annotation: 'review',
+        note: 'Wheel spokes missing',
+      })
+    )
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Metadata' }))
+
+    expect(screen.getByText('Needs review')).toBeVisible()
+    expect(screen.getByText('Wheel spokes missing')).toBeVisible()
+  })
+
+  test('operators edit the annotation from the dialog footer', () => {
+    renderDialog(
+      makeSample({
+        status: 'failed',
+        error_code: 'timeout',
+        annotation: 'review',
+      }),
+      true
+    )
+
+    expect(
+      screen.getByRole('combobox', { name: 'Annotation tag' })
+    ).toHaveValue('review')
+    expect(
+      screen.getByRole('button', { name: 'Save annotation' })
+    ).toBeEnabled()
+  })
+
+  test('operators focus the note field by clicking its visible label', async () => {
+    const user = userEvent.setup()
+    renderDialog(makeSample({ status: 'failed', error_code: 'timeout' }), true)
+
+    await user.click(screen.getByText('Note'))
+
+    expect(
+      screen.getByRole('textbox', { name: 'Annotation note' })
+    ).toHaveFocus()
   })
 })

@@ -87,33 +87,35 @@ export function RunControls(props: RunControlsProps) {
   })
 
   const running = props.qualityCase.active_run_id !== ''
+  const runBadge = (
+    <StatusBadge
+      variant='info'
+      pulse
+      copyable={false}
+      label={t('Run in progress')}
+    />
+  )
+
+  if (!props.canOperate) return running ? runBadge : null
 
   return (
     <div className='flex flex-wrap items-center gap-2'>
-      {props.canOperate && (
-        <Button
-          size='sm'
-          variant='outline'
-          onClick={props.onEdit}
-          aria-label={t('Edit')}
-        >
-          <Pencil data-icon='inline-start' />
-          {t('Edit')}
-        </Button>
-      )}
+      <Button
+        size='sm'
+        variant='outline'
+        onClick={props.onEdit}
+        aria-label={t('Edit')}
+      >
+        <Pencil data-icon='inline-start' />
+        {t('Edit')}
+      </Button>
       {running ? (
         <>
-          <StatusBadge
-            variant='info'
-            pulse
-            copyable={false}
-            label={t('Run in progress')}
-          />
+          {runBadge}
           <Button
             size='sm'
             variant='outline'
             className='text-destructive'
-            disabled={!props.canOperate}
             onClick={() => setStopOpen(true)}
           >
             <Square data-icon='inline-start' />
@@ -123,29 +125,27 @@ export function RunControls(props: RunControlsProps) {
       ) : (
         <Button
           size='sm'
-          disabled={!props.canOperate || !props.qualityCase.enabled}
+          disabled={!props.qualityCase.enabled}
           onClick={() => setStartOpen(true)}
         >
           <Play data-icon='inline-start' />
           {t('Run now')}
         </Button>
       )}
-      {props.canOperate && (
-        <ConfirmDialog
-          open={startOpen}
-          onOpenChange={setStartOpen}
-          title={t('Run now')}
-          desc={t(
-            'This will start {{count}} sample(s) against {{targets}} target(s). Sampling consumes quota.',
-            {
-              count: runSampleTotal(props.qualityCase.config),
-              targets: runTargetCount(props.qualityCase.config),
-            }
-          )}
-          isLoading={startMutation.isPending}
-          handleConfirm={() => startMutation.mutate()}
-        />
-      )}
+      <ConfirmDialog
+        open={startOpen}
+        onOpenChange={setStartOpen}
+        title={t('Run now')}
+        desc={t(
+          'This will start {{count}} sample(s) against {{targets}} target(s). Sampling consumes quota.',
+          {
+            count: runSampleTotal(props.qualityCase.config),
+            targets: runTargetCount(props.qualityCase.config),
+          }
+        )}
+        isLoading={startMutation.isPending}
+        handleConfirm={() => startMutation.mutate()}
+      />
       <ConfirmDialog
         open={stopOpen}
         onOpenChange={setStopOpen}

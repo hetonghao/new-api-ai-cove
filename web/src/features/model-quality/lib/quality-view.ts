@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import DOMPurify from 'dompurify'
 import type { TFunction } from 'i18next'
 
+import dayjs from '@/lib/dayjs'
+
 import type {
   ModelQualitySample,
   QualityBucket,
@@ -44,6 +46,13 @@ export function bucketTone(bucket: QualityBucket): BucketTone {
   }
   if (bucket.success > 0) return 'success'
   return 'empty'
+}
+
+export function formatTimeRange(startMs: number, endMs: number): string {
+  const start = dayjs(startMs)
+  const end = dayjs(endMs)
+  const endFormat = start.isSame(end, 'day') ? 'HH:mm' : 'MM-DD HH:mm'
+  return `${start.format('MM-DD HH:mm')} – ${end.format(endFormat)}`
 }
 
 export function scheduleSummary(
