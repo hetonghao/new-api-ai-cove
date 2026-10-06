@@ -1161,8 +1161,29 @@ func TestMediaPresetProfilesAreValid(t *testing.T) {
 	}))
 	assert.Equal(t, "/v1/images/edits", gpt2.Operations["image_to_image"].Path)
 	assert.Equal(t, "/v1/images/generations", gpt2.Operations["text_to_image"].Path)
+	gptSizes := []string{"auto", "1024x1024", "1536x1024", "1024x1536", "2048x2048", "2048x1152", "3840x2160", "2160x3840"}
+	for _, opName := range []string{"text_to_image", "image_to_image"} {
+		params := gpt2.Operations[opName].Parameters
+		assert.Equal(t, gptSizes, params["size"].Enum, opName)
+		assert.Equal(t, []string{"auto", "low", "medium", "high"}, params["quality"].Enum, opName)
+	}
+	for _, id := range []string{"gpt-image-2.5-flare", "gpt-image-2.5-sunburst"} {
+		profile, ok := mediaPresetProfile(id, map[string]bool{"image-generation": true}, nil)
+		require.True(t, ok, id)
+		for _, opName := range []string{"text_to_image", "image_to_image"} {
+			params := profile.Operations[opName].Parameters
+			assert.Equal(t, gptSizes, params["size"].Enum, id)
+			assert.Equal(t, []string{"auto", "low", "medium", "high", "xhigh", "max"}, params["quality"].Enum, id)
+		}
+	}
+	for _, id := range []string{"gpt-image-1.5", "gpt-image-2-4k"} {
+		profile, ok := mediaPresetProfile(id, map[string]bool{"image-generation": true}, nil)
+		require.True(t, ok, id)
+		assert.Empty(t, profile.Operations["text_to_image"].Parameters, id)
+	}
 	opaque := profiles[0]
 	assert.Equal(t, "/v1/images/edits", opaque.Operations["image_to_image"].Path, "any image model defaults to image edits")
+	assert.Empty(t, opaque.Operations["text_to_image"].Parameters)
 	video := profiles[1]
 	videoEdit := video.Operations["image_to_video"]
 	assert.Equal(t, "/v1/videos", videoEdit.Path, "any video model defaults to image-to-video")

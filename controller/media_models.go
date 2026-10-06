@@ -78,6 +78,28 @@ var mediaGeminiResolution = model.MediaParameter{
 	Enum: []string{"1K", "2K", "4K"},
 }
 
+var mediaGPTImageSize = model.MediaParameter{
+	Type: "string",
+	Enum: []string{"auto", "1024x1024", "1536x1024", "1024x1536", "2048x2048", "2048x1152", "3840x2160", "2160x3840"},
+}
+
+var mediaGPTImageQualities = map[string][]string{
+	"gpt-image-2":            {"auto", "low", "medium", "high"},
+	"gpt-image-2.5-flare":    {"auto", "low", "medium", "high", "xhigh", "max"},
+	"gpt-image-2.5-sunburst": {"auto", "low", "medium", "high", "xhigh", "max"},
+}
+
+func mediaOpenAIImageParameters(id string) map[string]model.MediaParameter {
+	qualities, ok := mediaGPTImageQualities[id]
+	if !ok {
+		return map[string]model.MediaParameter{}
+	}
+	return map[string]model.MediaParameter{
+		"size":    mediaGPTImageSize,
+		"quality": {Type: "string", Enum: qualities},
+	}
+}
+
 func mediaNoReference() model.MediaReference {
 	return model.MediaReference{Input: "none", MaxImages: 0}
 }
@@ -151,6 +173,7 @@ func mediaPresetProfile(id string, endpoints map[string]bool, generation *jsplug
 		}, true
 	}
 	if hasImage {
+		parameters := mediaOpenAIImageParameters(id)
 		return model.MediaModelProfile{
 			ID:   id,
 			Type: "image",
@@ -158,13 +181,13 @@ func mediaPresetProfile(id string, endpoints map[string]bool, generation *jsplug
 				"text_to_image": {
 					Protocol:   "openai_images",
 					Path:       "/v1/images/generations",
-					Parameters: map[string]model.MediaParameter{},
+					Parameters: parameters,
 					Reference:  mediaNoReference(),
 				},
 				"image_to_image": {
 					Protocol:   "openai_images",
 					Path:       "/v1/images/edits",
-					Parameters: map[string]model.MediaParameter{},
+					Parameters: parameters,
 					Reference:  mediaInlineReference(),
 				},
 			},
