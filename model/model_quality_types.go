@@ -37,7 +37,6 @@ type QualityConfig struct {
 	Mode             string   `json:"mode"`
 	Protocol         string   `json:"protocol"`
 	TokenID          int      `json:"token_id"`
-	Group            string   `json:"group"`
 	ChannelIDs       []int    `json:"channel_ids"`
 	Prompt           string   `json:"prompt"`
 	Instruction      string   `json:"instruction"`

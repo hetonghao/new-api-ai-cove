@@ -85,7 +85,6 @@ export function CaseEditor(props: CaseEditorProps) {
         ? viewToFormValues(props.qualityCase)
         : defaultQualityCaseValues({
             token_id: capabilities?.tokens[0]?.id ?? 0,
-            group: capabilities?.tokens[0]?.group ?? '',
           }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [props.qualityCase?.id, props.qualityCase?.edit_version]
@@ -379,15 +378,6 @@ export function CaseEditor(props: CaseEditorProps) {
                 className='w-full'
                 aria-invalid={Boolean(errors.token_id)}
                 {...tokenField}
-                onChange={(event) => {
-                  tokenField.onChange(event)
-                  const token = capabilities?.tokens.find(
-                    (entry) => entry.id === Number(event.target.value)
-                  )
-                  if (token && form.getValues('group') === '') {
-                    form.setValue('group', token.group, { shouldDirty: true })
-                  }
-                }}
               >
                 <NativeSelectOption value={0}>
                   {t('Select a token')}
@@ -395,6 +385,7 @@ export function CaseEditor(props: CaseEditorProps) {
                 {(capabilities?.tokens ?? []).map((token) => (
                   <NativeSelectOption key={token.id} value={token.id}>
                     {token.name} (#{token.id})
+                    {token.group ? ` · ${token.group}` : ''}
                   </NativeSelectOption>
                 ))}
               </NativeSelect>
@@ -406,15 +397,6 @@ export function CaseEditor(props: CaseEditorProps) {
                 </FieldDescription>
               )}
               <FieldError errors={[errors.token_id]} />
-            </Field>
-            <Field data-invalid={Boolean(errors.group)}>
-              <FieldLabel htmlFor='mq-group'>{t('Group')}</FieldLabel>
-              <Input
-                id='mq-group'
-                aria-invalid={Boolean(errors.group)}
-                {...form.register('group')}
-              />
-              <FieldError errors={[errors.group]} />
             </Field>
             {mode === 'channel' && (
               <Field

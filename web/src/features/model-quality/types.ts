@@ -29,7 +29,6 @@ export interface QualityConfig {
   mode: 'route' | 'channel'
   protocol: 'responses' | 'chat'
   token_id: number
-  group: string
   channel_ids: number[] | null
   prompt: string
   instruction: string

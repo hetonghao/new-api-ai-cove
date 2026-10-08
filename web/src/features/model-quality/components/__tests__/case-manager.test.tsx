@@ -61,7 +61,6 @@ function makeCase(partial: Partial<QualityCaseView>): QualityCaseView {
       mode: 'channel',
       protocol: 'responses',
       token_id: 1,
-      group: '',
       channel_ids: [7],
       prompt: 'prompt',
       instruction: '',

@@ -68,7 +68,7 @@ func setupQualityQueueTest(t *testing.T, targets []int, samples int) (*model.Mod
 	settingsJSON, err := common.Marshal(settings)
 	require.NoError(t, err)
 	require.NoError(t, db.Create(&model.ModelQualitySettings{ID: 1, Version: 1, Config: string(settingsJSON)}).Error)
-	cfg := model.QualityConfig{Model: "gpt-6-astra", OutputType: "text", Mode: "channel", Protocol: "responses", TokenID: 1, Group: "default", ChannelIDs: targets, Prompt: "test fixture", MaxOutputTokens: 100, SamplesPerTarget: samples, TimeoutSeconds: 10, DailyLimit: 20}
+	cfg := model.QualityConfig{Model: "gpt-6-astra", OutputType: "text", Mode: "channel", Protocol: "responses", TokenID: 1, ChannelIDs: targets, Prompt: "test fixture", MaxOutputTokens: 100, SamplesPerTarget: samples, TimeoutSeconds: 10, DailyLimit: 20}
 	cfgJSON, fingerprint, err := model.QualityConfigFingerprint(cfg)
 	require.NoError(t, err)
 	c := model.ModelQualityCase{Name: "fixture", Enabled: true, Version: 1, EditVersion: 1, CreatedAt: now.UnixMilli()}

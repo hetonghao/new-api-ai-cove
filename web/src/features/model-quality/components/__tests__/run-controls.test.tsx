@@ -47,7 +47,6 @@ function makeCase(): QualityCaseView {
       mode: 'channel',
       protocol: 'responses',
       token_id: 0,
-      group: '',
       channel_ids: null,
       prompt: 'Draw a pelican',
       instruction: '',

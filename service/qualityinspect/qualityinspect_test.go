@@ -16,7 +16,7 @@ import (
 )
 
 func configFixture() model.QualityConfig {
-	return model.QualityConfig{Model: "gpt-6-astra", OutputType: "svg", Mode: "channel", Protocol: "responses", TokenID: 1, Group: "default", ChannelIDs: []int{2}, Prompt: "Generate an SVG image of a pelican riding a bicycle by the seaside.", MaxOutputTokens: 16384, SamplesPerTarget: 3, TimeoutSeconds: 10, DailyLimit: 20}
+	return model.QualityConfig{Model: "gpt-6-astra", OutputType: "svg", Mode: "channel", Protocol: "responses", TokenID: 1, ChannelIDs: []int{2}, Prompt: "Generate an SVG image of a pelican riding a bicycle by the seaside.", MaxOutputTokens: 16384, SamplesPerTarget: 3, TimeoutSeconds: 10, DailyLimit: 20}
 }
 
 func TestQualityRequestSVGContractAndExactPrompt(t *testing.T) {

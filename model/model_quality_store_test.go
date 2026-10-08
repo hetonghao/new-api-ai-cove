@@ -74,7 +74,7 @@ func setupQualityStoreTest(t *testing.T, dialect string) time.Time {
 
 func createQualityStoreCase(t *testing.T, now time.Time, samples int) ModelQualityCase {
 	t.Helper()
-	cfg := QualityConfig{Model: "gpt-6-astra", OutputType: "text", Mode: "channel", Protocol: "responses", TokenID: 1, Group: "default", ChannelIDs: []int{7}, Prompt: "test fixture", MaxOutputTokens: 100, SamplesPerTarget: samples, TimeoutSeconds: 180, DailyLimit: 10}
+	cfg := QualityConfig{Model: "gpt-6-astra", OutputType: "text", Mode: "channel", Protocol: "responses", TokenID: 1, ChannelIDs: []int{7}, Prompt: "test fixture", MaxOutputTokens: 100, SamplesPerTarget: samples, TimeoutSeconds: 180, DailyLimit: 10}
 	body, fingerprint, err := QualityConfigFingerprint(cfg)
 	require.NoError(t, err)
 	c := ModelQualityCase{Name: "case", Enabled: true, Version: 1, EditVersion: 1, CreatedAt: now.UnixMilli()}
@@ -530,7 +530,7 @@ func testModelQualityStoreDeleteCase(t *testing.T, dialect string) {
 func testModelQualityStoreAllVersionsScope(t *testing.T, dialect string) {
 	now := setupQualityStoreTest(t, dialect)
 	c := createQualityStoreCase(t, now, 1)
-	cfg := QualityConfig{Model: "gpt-6-astra", OutputType: "text", Mode: "channel", Protocol: "responses", TokenID: 1, Group: "default", ChannelIDs: []int{7}, Prompt: "test fixture v2", MaxOutputTokens: 100, SamplesPerTarget: 1, TimeoutSeconds: 180, DailyLimit: 10}
+	cfg := QualityConfig{Model: "gpt-6-astra", OutputType: "text", Mode: "channel", Protocol: "responses", TokenID: 1, ChannelIDs: []int{7}, Prompt: "test fixture v2", MaxOutputTokens: 100, SamplesPerTarget: 1, TimeoutSeconds: 180, DailyLimit: 10}
 	body, fingerprint, err := QualityConfigFingerprint(cfg)
 	require.NoError(t, err)
 	require.NoError(t, DB.Create(&ModelQualityRevision{CaseID: c.ID, Version: 2, ConfigJSON: body, Fingerprint: fingerprint}).Error)

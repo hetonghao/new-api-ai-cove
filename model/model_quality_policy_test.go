@@ -10,7 +10,7 @@ import (
 
 func TestModelQualityConfigPreservesPromptAndExplicitZero(t *testing.T) {
 	zero := 0.0
-	cfg := QualityConfig{Model: "gpt-6-astra", OutputType: "svg", Mode: "channel", Protocol: "responses", TokenID: 1, Group: "default", ChannelIDs: []int{1}, Prompt: " Generate an SVG image of a pelican riding a bicycle by the seaside.\n", MaxOutputTokens: 16384, SamplesPerTarget: 3, TimeoutSeconds: 180, DailyLimit: 200}
+	cfg := QualityConfig{Model: "gpt-6-astra", OutputType: "svg", Mode: "channel", Protocol: "responses", TokenID: 1, ChannelIDs: []int{1}, Prompt: " Generate an SVG image of a pelican riding a bicycle by the seaside.\n", MaxOutputTokens: 16384, SamplesPerTarget: 3, TimeoutSeconds: 180, DailyLimit: 200}
 	body, first, err := QualityConfigFingerprint(cfg)
 	require.NoError(t, err)
 	assert.Contains(t, body, `"prompt":" Generate an SVG image of a pelican riding a bicycle by the seaside.\n"`)

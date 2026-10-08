@@ -33,7 +33,6 @@ export type QualityCaseFormValues = {
   mode: 'route' | 'channel'
   model: string
   token_id: number
-  group: string
   channel_ids: number[]
   prompt: string
   instruction: string
@@ -96,7 +95,6 @@ export function getQualityCaseFormSchema(t: TFunction) {
         .number()
         .int()
         .min(1, t('Select an approved execution token')),
-      group: z.string(),
       channel_ids: z.array(z.number().int().positive()),
       prompt: z.string().trim().min(1, t('Prompt is required')),
       instruction: z.string(),
@@ -220,7 +218,6 @@ export function getQualityCaseFormSchema(t: TFunction) {
 
 export function defaultQualityCaseValues(input?: {
   token_id?: number
-  group?: string
   timezone?: string
 }): QualityCaseFormValues {
   const timezone =
@@ -235,7 +232,6 @@ export function defaultQualityCaseValues(input?: {
     mode: 'route',
     model: 'gpt-6-astra',
     token_id: input?.token_id ?? 0,
-    group: input?.group ?? '',
     channel_ids: [],
     prompt:
       'Generate an SVG image of a pelican riding a bicycle by the seaside.',
@@ -269,7 +265,6 @@ export function viewToFormValues(view: QualityCaseView): QualityCaseFormValues {
     mode: config.mode,
     model: config.model,
     token_id: config.token_id,
-    group: config.group,
     channel_ids: [...(config.channel_ids ?? [])],
     prompt: config.prompt,
     instruction: config.instruction,
@@ -316,7 +311,6 @@ export function formValuesToWrite(
       mode: values.mode,
       protocol: values.protocol,
       token_id: values.token_id,
-      group: values.group,
       channel_ids: values.mode === 'channel' ? values.channel_ids : [],
       prompt: values.prompt,
       instruction: values.instruction,

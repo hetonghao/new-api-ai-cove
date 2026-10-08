@@ -42,9 +42,6 @@ func ValidateRuntime(cfg model.QualityConfig, target int) (*model.Token, error) 
 	if group == "" {
 		group = user.Group
 	}
-	if cfg.Group != group {
-		return nil, errors.New("test group differs from execution token group")
-	}
 	if token.ModelLimitsEnabled && !middleware.TokenModelLimitAllows(token.GetModelLimitsMap(), cfg.Model) {
 		return nil, errors.New("execution identity does not allow this model")
 	}

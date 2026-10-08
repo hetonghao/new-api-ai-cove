@@ -74,7 +74,6 @@ function makeCase(): QualityCaseView {
       mode: 'route',
       protocol: 'responses',
       token_id: 1,
-      group: '',
       channel_ids: [],
       prompt: 'prompt',
       instruction: '',
