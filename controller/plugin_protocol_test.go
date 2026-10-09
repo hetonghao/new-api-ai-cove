@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -154,6 +155,10 @@ func TestServeTaskPluginProtocolDisconnectBeforeDurableBarrierPersistsAndSettles
 	previousLogConsumeEnabled := common.LogConsumeEnabled
 	common.LogConsumeEnabled = false
 	t.Cleanup(func() { common.LogConsumeEnabled = previousLogConsumeEnabled })
+	t.Cleanup(func() {
+		// Settlement notification work must finish before the fixture restores its globals.
+		require.Eventually(t, func() bool { return gopool.WorkerCount() == 0 }, 5*time.Second, time.Millisecond)
+	})
 
 	pinned := compilePluginProtocolTestEndpoint(t, "disconnect-before-durable", `
 		export const protocols = {openai_responses: {
@@ -1482,6 +1487,7 @@ func newPluginProtocolTestContext(stream, requestBodyStream bool) (*gin.Context,
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{}`))
 	common.SetContextKey(c, constant.ContextKeyUserId, 71)
+	common.SetContextKey(c, constant.ContextKeyUserQuota, 1_000_000)
 	common.SetContextKey(c, constant.ContextKeyTokenId, 81)
 	common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
 	c.Set("resolved_task_model", "video-model")
@@ -1637,6 +1643,7 @@ func newImageProtocolTestContext(responseFormat string) (*gin.Context, *httptest
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{}`))
 	common.SetContextKey(c, constant.ContextKeyUserId, 71)
+	common.SetContextKey(c, constant.ContextKeyUserQuota, 1_000_000)
 	common.SetContextKey(c, constant.ContextKeyTokenId, 81)
 	common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
 	c.Set("resolved_task_model", "image-model")
@@ -1797,6 +1804,10 @@ func TestServeTaskPluginImageProtocolDisconnectDuringSubmissionKeepsDurableSettl
 	previousLogConsumeEnabled := common.LogConsumeEnabled
 	common.LogConsumeEnabled = false
 	t.Cleanup(func() { common.LogConsumeEnabled = previousLogConsumeEnabled })
+	t.Cleanup(func() {
+		// Settlement notification work must finish before the fixture restores its globals.
+		require.Eventually(t, func() bool { return gopool.WorkerCount() == 0 }, 5*time.Second, time.Millisecond)
+	})
 
 	pinned := imageProtocolTestEndpoint(t)
 	c, recorder := newImageProtocolTestContext("")
