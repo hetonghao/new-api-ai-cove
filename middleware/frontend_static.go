@@ -3,7 +3,9 @@ package middleware
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -11,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	ginGzip "github.com/gin-contrib/gzip"
 	"github.com/gin-contrib/static"
@@ -22,6 +25,8 @@ type precompressedFile struct {
 	once        sync.Once
 	body        []byte
 	contentType string
+	etag        string
+	modtime     time.Time
 	err         error
 }
 
@@ -40,7 +45,21 @@ func ServeFrontendFiles(frontendFS static.ServeFileSystem) gin.HandlerFunc {
 			return
 		}
 		c.Abort()
-		if !strings.Contains(c.GetHeader("Accept-Encoding"), "gzip") ||
+		c.Header("Vary", "Accept-Encoding")
+		acceptsGzip := false
+		for coding := range strings.SplitSeq(c.GetHeader("Accept-Encoding"), ",") {
+			encoding, params, err := mime.ParseMediaType(coding)
+			if err != nil || encoding != "gzip" {
+				continue
+			}
+			quality := 1.0
+			if value, ok := params["q"]; ok {
+				quality, err = strconv.ParseFloat(value, 64)
+			}
+			acceptsGzip = err == nil && quality > 0 && quality <= 1
+			break
+		}
+		if !acceptsGzip ||
 			ginGzip.DefaultExcludedExtentions.Contains(path.Ext(urlPath)) ||
 			strings.HasSuffix(urlPath, "/index.html") {
 			fileServer.ServeHTTP(c.Writer, c.Request)
@@ -89,21 +108,30 @@ func ServeFrontendFiles(frontendFS static.ServeFileSystem) gin.HandlerFunc {
 				file.contentType = http.DetectContentType(raw)
 			}
 			file.body = bytes.Clone(compressed.Bytes())
+			file.etag = fmt.Sprintf(`"gzip-%x"`, sha256.Sum256(file.body))
+			file.modtime = info.ModTime()
 		})
 		if file.err != nil {
 			fileServer.ServeHTTP(c.Writer, c.Request)
 			return
 		}
 
-		// Range requests get the whole body; a server may ignore Range.
 		header := c.Writer.Header()
 		header.Set("Content-Encoding", "gzip")
-		header.Set("Vary", "Accept-Encoding")
 		header.Set("Content-Type", file.contentType)
 		header.Set("Content-Length", strconv.Itoa(len(file.body)))
-		c.Writer.WriteHeader(http.StatusOK)
-		if c.Request.Method != http.MethodHead {
-			_, _ = c.Writer.Write(file.body)
+		header.Set("ETag", file.etag)
+		request := c.Request
+		if request.Method != http.MethodGet || strings.Contains(request.Header.Get("Range"), ",") {
+			// shortcut: serve multiple gzip ranges as a full response until multipart encoding is needed.
+			request = request.Clone(request.Context())
+			request.Header.Del("Range")
+		}
+		http.ServeContent(c.Writer, request, urlPath, file.modtime, bytes.NewReader(file.body))
+		if c.Writer.Status() == http.StatusPreconditionFailed {
+			// Gin has not committed the status-only 412; it has no gzip body or file length.
+			header.Del("Content-Length")
+			header.Del("Content-Encoding")
 		}
 	}
 }
