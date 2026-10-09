@@ -159,9 +159,11 @@ func RunSample(ctx context.Context, cfg model.QualityConfig, target int) model.Q
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	result = execute(ctx, client, base+path, key, body, cfg)
-	if target > 0 {
+	if result.ChannelID == 0 {
 		result.ChannelID = target
-		if channel, err := model.GetChannelById(target, false); err == nil {
+	}
+	if result.ChannelID > 0 {
+		if channel, err := model.GetChannelById(result.ChannelID, false); err == nil {
 			result.ChannelName = channel.Name
 		}
 	} else if id, name, err := model.QualityRequestChannel(result.RequestID, cfg.TokenID); err == nil {
@@ -221,6 +223,9 @@ func executeOnce(parent context.Context, client *http.Client, url, key string, b
 	}
 	defer response.Body.Close()
 	result.RequestID = response.Header.Get(common.RequestIdKey)
+	if id, err := strconv.Atoi(response.Header.Get(common.QualityInspectionChannelHeader)); err == nil && id > 0 {
+		result.ChannelID = id
+	}
 	if len(result.RequestID) > 128 {
 		result.RequestID = ""
 	}
@@ -230,6 +235,7 @@ func executeOnce(parent context.Context, client *http.Client, url, key string, b
 	}
 	parsed := ParseResponse(response.Body, response.Header.Get("Content-Type"), cfg.Protocol, start)
 	parsed.RequestID = result.RequestID
+	parsed.ChannelID = result.ChannelID
 	duration := time.Since(start).Milliseconds()
 	parsed.DurationMs = &duration
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {

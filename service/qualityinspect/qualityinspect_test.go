@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -492,6 +493,7 @@ func TestQualityHTTPExecutorDistinguishesRequestAndArtifactSuccess(t *testing.T)
 				assert.Equal(t, "1", r.Header.Get(common.QualityInspectionHeader))
 				w.Header().Set("Content-Type", "text/event-stream")
 				w.Header().Set(common.RequestIdKey, "quality-test-request")
+				w.Header().Set(common.QualityInspectionChannelHeader, "7")
 				data, err := common.Marshal(map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed", "output": []any{map[string]any{"type": "message", "content": []any{map[string]any{"type": "output_text", "text": tc.text}}}}}})
 				require.NoError(t, err)
 				_, err = w.Write(append(append([]byte("data: "), data...), []byte("\n\n")...))
@@ -504,6 +506,7 @@ func TestQualityHTTPExecutorDistinguishesRequestAndArtifactSuccess(t *testing.T)
 			assert.True(t, result.RequestSuccess)
 			assert.Equal(t, tc.text, string(result.Text))
 			assert.Equal(t, "quality-test-request", result.RequestID)
+			assert.Equal(t, 7, result.ChannelID)
 		})
 	}
 }
@@ -535,6 +538,7 @@ func TestQualityHTTPExecutorRetriesTransientFailureOnce(t *testing.T) {
 			attempts := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				attempts++
+				w.Header().Set(common.QualityInspectionChannelHeader, strconv.Itoa(attempts))
 				if attempts == 1 {
 					w.WriteHeader(tc.failWith)
 					return
@@ -545,6 +549,7 @@ func TestQualityHTTPExecutorRetriesTransientFailureOnce(t *testing.T) {
 			result := execute(context.Background(), server.Client(), server.URL, "local-test-token", payload, cfg)
 			assert.Equal(t, tc.wantAttempts, attempts)
 			assert.Equal(t, tc.wantStatus, result.Status)
+			assert.Equal(t, tc.wantAttempts, result.ChannelID, "executor retry must keep the final attempt's channel")
 		})
 	}
 }

@@ -189,7 +189,8 @@ const (
 	ResponsesWebSocketUpstreamTraceKey = "responses_websocket_upstream_trace"
 	// QualityInspectionHeader marks quality-inspection samples so upstream
 	// failures do not feed the channel auto-disable circuit breaker.
-	QualityInspectionHeader = "X-Ai-Cove-Quality-Inspection"
+	QualityInspectionHeader        = "X-Ai-Cove-Quality-Inspection"
+	QualityInspectionChannelHeader = "X-Ai-Cove-Quality-Channel-Id"
 )
 
 const (

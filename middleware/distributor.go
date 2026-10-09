@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +22,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
@@ -652,6 +655,16 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 		c.Set("api_version", channel.Other)
 	case constant.ChannelTypeCoze:
 		c.Set("bot_id", channel.Other)
+	}
+	// Inspection finishes at the terminal event, before the consume log is written.
+	if c.Request != nil && c.GetHeader(common.QualityInspectionHeader) == "1" && c.GetInt("token_id") > 0 && !c.Writer.Written() {
+		host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+		if ip := net.ParseIP(host); err == nil && ip != nil && ip.IsLoopback() {
+			user, err := model.GetUserById(c.GetInt("id"), false)
+			if err == nil && user.Status == common.UserStatusEnabled && authz.Can(user.Id, user.Role, authz.ChannelOperate) {
+				c.Header(common.QualityInspectionChannelHeader, strconv.Itoa(channel.Id))
+			}
+		}
 	}
 	return nil
 }
