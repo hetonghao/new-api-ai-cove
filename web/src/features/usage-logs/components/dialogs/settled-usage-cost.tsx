@@ -26,6 +26,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import { toIntlLocale } from '@/i18n/languages'
 import {
   formatBillingCurrencyFromUSD,
   getCurrencyDisplay,
@@ -48,28 +49,55 @@ const amountOptions = {
 export function SettledUsageCost(props: {
   log: UsageLog
   other: LogOtherData
-  prices: Array<{ field: string; label: string; price: number }>
+  multiplierLabel: string
+  prices: Array<{
+    field: string
+    label: string
+    price: number
+    unit?: string
+    quantityUnit?: string
+    divisor?: number
+  }>
 }) {
-  const { t } = useTranslation()
-  const pricedKeys = billedKeysForFields(
-    props.prices.map((entry) => entry.field)
-  )
-  const counts = resolveBilledTokenCounts({
-    promptTokens: props.log.prompt_tokens,
-    completionTokens: props.log.completion_tokens,
-    other: props.other,
-    pricedKeys,
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  const quantityFormat = new Intl.NumberFormat(locale, {
+    maximumFractionDigits: 20,
   })
+  const isTask = props.other.is_task === true
+  const fields = props.prices.map((entry) => entry.field)
+  const pricedKeys = isTask ? fields : billedKeysForFields(fields)
+  const counts = isTask
+    ? props.other.usage_facts
+    : resolveBilledTokenCounts({
+        promptTokens: props.log.prompt_tokens,
+        completionTokens: props.log.completion_tokens,
+        other: props.other,
+        pricedKeys,
+      })
   const recordedCost =
     props.log.quota / getCurrencyDisplay().config.quotaPerUnit
+  const quantities = props.prices.map((entry, index) =>
+    isTask && entry.field === 'constant' ? 1 : counts?.[pricedKeys[index]]
+  )
   const complete =
-    counts !== null &&
     pricedKeys.length === props.prices.length &&
-    props.prices.length > 0
+    props.prices.length > 0 &&
+    quantities.every(
+      (count, index) =>
+        typeof count === 'number' &&
+        Number.isFinite(count) &&
+        count >= 0 &&
+        Number.isFinite(
+          (props.prices[index].price /
+            (props.prices[index].divisor ?? 1_000_000)) *
+            count
+        )
+    )
   const rows = complete
     ? props.prices.map((entry, index) => {
-        const count = counts[pricedKeys[index]]
-        const subtotal = (entry.price / 1_000_000) * count
+        const count = Number(quantities[index])
+        const subtotal = (entry.price / (entry.divisor ?? 1_000_000)) * count
         return {
           ...entry,
           count,
@@ -102,9 +130,11 @@ export function SettledUsageCost(props: {
     >
       <div className='flex flex-wrap items-baseline justify-between gap-2'>
         <h3 className='text-xs font-semibold'>{t('Usage cost')}</h3>
-        <span className='text-muted-foreground text-[10px]'>
-          {t('Unit')}: USD / {t('1M token')}
-        </span>
+        {!isTask && (
+          <span className='text-muted-foreground text-[10px]'>
+            {t('Unit')}: USD / {t('1M token')}
+          </span>
+        )}
       </div>
       {complete ? (
         <StaticDataTable
@@ -122,17 +152,25 @@ export function SettledUsageCost(props: {
             },
             {
               id: 'usage',
-              header: t('Token usage'),
+              header: t(isTask ? 'Usage' : 'Token usage'),
               className: 'w-1/4 text-right',
               cellClassName: 'text-right font-mono tabular-nums',
-              cell: (row) => row.count.toLocaleString(),
+              cell: (row) =>
+                `${quantityFormat.format(row.count)}${isTask ? ` ${row.quantityUnit}` : ''}`,
             },
             {
               id: 'price',
-              header: t('Final unit price'),
+              header: `${t('Final unit price')} ${props.multiplierLabel}`,
               className: 'w-1/4 text-right',
               cellClassName: 'text-right font-mono tabular-nums',
-              cell: (row) => row.formattedPrice,
+              cell: (row) =>
+                isTask ? (
+                  <span className='break-all'>
+                    {row.formattedPrice}/{row.unit}
+                  </span>
+                ) : (
+                  row.formattedPrice
+                ),
             },
             {
               id: 'subtotal',
@@ -147,7 +185,9 @@ export function SettledUsageCost(props: {
       ) : (
         <p className='text-muted-foreground text-xs'>
           {t(
-            'Recorded billable tokens are incomplete; the cost formula is unavailable.'
+            isTask
+              ? 'Recorded billable usage is incomplete; the cost formula is unavailable.'
+              : 'Recorded billable tokens are incomplete; the cost formula is unavailable.'
           )}
         </p>
       )}
@@ -174,7 +214,11 @@ export function SettledUsageCost(props: {
           <CollapsibleContent>
             <div className='bg-muted/50 mt-2 space-y-2 rounded-md p-3 text-xs'>
               <p className='text-muted-foreground'>
-                {t('Final unit price ÷ 1,000,000 × token usage = subtotal')}
+                {t(
+                  isTask
+                    ? 'Final unit price × usage = subtotal'
+                    : 'Final unit price ÷ 1,000,000 × token usage = subtotal'
+                )}
               </p>
               {rows.map((row) => (
                 <div
@@ -183,25 +227,32 @@ export function SettledUsageCost(props: {
                 >
                   <span>{t(row.label)}</span>
                   <span className='font-mono break-all tabular-nums'>
-                    {row.formattedPrice} ÷ 1,000,000 ×{' '}
-                    {row.count.toLocaleString()} = {row.formattedSubtotal}
+                    {row.formattedPrice}
+                    {row.divisor === 1 ? '' : ' ÷ 1,000,000'} ×{' '}
+                    {quantityFormat.format(row.count)}
+                    {isTask ? ` ${row.quantityUnit}` : ''} ={' '}
+                    {row.formattedSubtotal}
                   </span>
                 </div>
               ))}
               <p className='border-t pt-2 font-mono break-all tabular-nums'>
-                {t('Token cost subtotal')}:{' '}
+                {t(isTask ? 'Subtotal' : 'Token cost subtotal')}:{' '}
                 {rows.map((row) => row.formattedSubtotal).join(' + ')} ={' '}
                 {calculated}
               </p>
               <p className='text-muted-foreground'>
                 {t(
-                  'Uses recorded billable tokens and final unit prices; multipliers are not applied again.'
+                  isTask
+                    ? 'Uses recorded billable usage and final unit prices; multipliers are not applied again.'
+                    : 'Uses recorded billable tokens and final unit prices; multipliers are not applied again.'
                 )}
               </p>
               {diverges && (
                 <p className='text-muted-foreground'>
                   {t(
-                    'Token subtotals differ from the recorded charge. Rounding or additional charges may apply; the log charge is authoritative.'
+                    isTask
+                      ? 'Usage subtotals differ from the recorded charge. Rounding or additional charges may apply; the log charge is authoritative.'
+                      : 'Token subtotals differ from the recorded charge. Rounding or additional charges may apply; the log charge is authoritative.'
                   )}
                 </p>
               )}

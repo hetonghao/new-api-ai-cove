@@ -7621,6 +7621,10 @@
     "View your usage logs, statistics, tasks, and audit logs.": "Afficher vos journaux d’utilisation, statistiques, tâches et journaux d’audit.",
     "Wallet pre-consume bypass threshold (USD)": "Seuil sans pré-débit du portefeuille (USD)",
     "What do you want to change?": "Que souhaitez-vous modifier ?",
-    "You can create up to {{count}} access tokens": "Vous pouvez créer jusqu’à {{count}} jetons d’accès"
+    "You can create up to {{count}} access tokens": "Vous pouvez créer jusqu’à {{count}} jetons d’accès",
+    "Recorded billable usage is incomplete; the cost formula is unavailable.": "Les données d’utilisation facturable sont incomplètes ; la formule du coût est indisponible.",
+    "Final unit price × usage = subtotal": "Prix unitaire final × utilisation = sous-total",
+    "Uses recorded billable usage and final unit prices; multipliers are not applied again.": "Utilise les données d’utilisation facturable et les prix unitaires finaux enregistrés ; les multiplicateurs ne sont pas appliqués à nouveau.",
+    "Usage subtotals differ from the recorded charge. Rounding or additional charges may apply; the log charge is authoritative.": "Les sous-totaux d’utilisation diffèrent du montant enregistré. Des arrondis ou des frais supplémentaires peuvent s’appliquer ; le montant du journal fait foi."
   }
 }

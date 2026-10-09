@@ -426,6 +426,11 @@ test('settled unit prices apply only recorded matched rules and the group ratio'
   expect(table.getByRole('row', { name: 'Input $7 $2.8' })).toBeVisible()
   expect(table.getByRole('row', { name: 'Output $30 $12' })).toBeVisible()
   expect(
+    table.getByRole('columnheader', {
+      name: 'Final unit price (×0.5 ×0.8)',
+    })
+  ).toBeVisible()
+  expect(
     table.getByRole('row', { name: 'Cache Read $0.16 $0.064' })
   ).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'View calculation' }))
@@ -451,6 +456,11 @@ test('settled usage cost shows recorded token formula behind a collapsed control
   const usageTable = within(
     await screen.findByRole('table', { name: 'Usage cost' })
   )
+  expect(
+    usageTable.getByRole('columnheader', {
+      name: 'Final unit price (×0.5 ×0.8)',
+    })
+  ).toBeVisible()
   expect(usageTable.getByRole('row', { name: /Input 1,000/ })).toBeVisible()
   expect(usageTable.getByRole('row', { name: /Output 200/ })).toBeVisible()
   expect(usageTable.getByRole('row', { name: /Cache Read 500/ })).toBeVisible()
@@ -525,9 +535,24 @@ test('settled usage cost rebuilds the formula from the logged token counts', asy
 })
 
 test.each([
-  { user_group_ratio: 0.2, group_ratio: 0.8, expected: 'Input $7 $1.4' },
-  { user_group_ratio: 0, group_ratio: 0.8, expected: 'Input $7 $0' },
-  { user_group_ratio: -1, group_ratio: 0.8, expected: 'Input $7 $5.6' },
+  {
+    user_group_ratio: 0.2,
+    group_ratio: 0.8,
+    expected: 'Input $7 $1.4',
+    header: 'Final unit price (×2 ×0.5 ×0.2)',
+  },
+  {
+    user_group_ratio: 0,
+    group_ratio: 0.8,
+    expected: 'Input $7 $0',
+    header: 'Final unit price (×2 ×0.5 ×0)',
+  },
+  {
+    user_group_ratio: -1,
+    group_ratio: 0.8,
+    expected: 'Input $7 $5.6',
+    header: 'Final unit price (×2 ×0.5 ×0.8)',
+  },
 ])(
   'settled prices respect the recorded effective group ratio: $expected',
   async (scenario) => {
@@ -552,6 +577,9 @@ test.each([
       await screen.findByRole('table', { name: 'Settled unit prices' })
     )
     expect(table.getByRole('row', { name: scenario.expected })).toBeVisible()
+    expect(
+      table.getByRole('columnheader', { name: scenario.header })
+    ).toBeVisible()
     expect(table.getByRole('row', { name: 'Output $0 $0' })).toBeVisible()
   }
 )
@@ -638,4 +666,245 @@ test('fixed per-image settlement shows unit price without multiplying image coun
   )
   expect(table.getByRole('row', { name: 'Per image $0.1 $0.08' })).toBeVisible()
   expect(screen.getByText('Unit: USD / image')).toBeVisible()
+})
+
+const videoExpression =
+  'u("resolution") == "480p" ? tier("480p", u("input_images") * 0.1 + u("seconds") * 0.5) : u("resolution") == "720p" ? tier("720p", u("input_images") * 0.1 + u("seconds") * 0.7) : tier("1080p", u("input_images") * 0.1 + u("seconds") * 1)'
+const videoSchema = {
+  seconds: { type: 'number' as const, unit: 'second' as const },
+  input_images: {
+    type: 'number' as const,
+    unit: 'count' as const,
+    unitLabel: { en: 'image', zh: '张' },
+  },
+  resolution: { enum: ['480p', '720p', '1080p'] },
+}
+const videoOther: LogOtherData = {
+  is_task: true,
+  billing_mode: 'tiered_expr',
+  expr_b64: btoa(videoExpression),
+  matched_tier: '720p',
+  group_ratio: 0.27,
+  usage_facts: { seconds: 5, resolution: '720p', input_images: 0 },
+}
+
+test('video settlement shows per-second and per-image prices, costs and persistent multipliers', async () => {
+  client.setQueryData(['pricing'], {
+    data: [
+      {
+        model_name: 'grok-imagine-video-1.5',
+        billing_usage_schema: videoSchema,
+      },
+    ],
+    vendors: [],
+  })
+  fireEvent.click(
+    renderPreview(videoOther, false, {
+      model_name: 'grok-imagine-video-1.5',
+      quota: 472500,
+    })
+  )
+  const prices = within(
+    await screen.findByRole('table', { name: 'Settled unit prices' })
+  )
+  expect(
+    prices.getByRole('row', { name: 'seconds $0.7/second $0.189/second' })
+  ).toBeVisible()
+  expect(
+    prices.getByRole('row', { name: 'input_images $0.1/image $0.027/image' })
+  ).toBeVisible()
+  const usage = within(await screen.findByRole('table', { name: 'Usage cost' }))
+  expect(
+    usage.getByRole('row', { name: 'seconds 5 s $0.189/second $0.945' })
+  ).toBeVisible()
+  expect(
+    usage.getByRole('row', { name: 'input_images 0 image $0.027/image $0' })
+  ).toBeVisible()
+  for (const table of [prices, usage]) {
+    expect(
+      table.getByRole('columnheader', { name: 'Final unit price (×0.27)' })
+    ).toBeVisible()
+  }
+  expect(
+    within(screen.getByRole('region', { name: 'Usage cost' })).getByText(
+      '$0.945',
+      { selector: 'strong' }
+    )
+  ).toBeVisible()
+})
+
+test('historical task settlement uses logged prices instead of the current price expression', async () => {
+  client.setQueryData(['pricing'], {
+    data: [
+      {
+        model_name: 'wan2.5-i2v-preview',
+        billing_usage_schema: videoSchema,
+        billing_expr: videoExpression,
+      },
+    ],
+    vendors: [],
+  })
+  fireEvent.click(
+    renderPreview(
+      {
+        ...videoOther,
+        expr_b64: btoa('tier("base", u("seconds") * 0.5)'),
+        matched_tier: 'base',
+      },
+      false,
+      { quota: 337500 }
+    )
+  )
+  const prices = within(
+    await screen.findByRole('table', { name: 'Settled unit prices' })
+  )
+  expect(
+    prices.getByRole('row', { name: 'seconds $0.5/second $0.135/second' })
+  ).toBeVisible()
+  const usage = within(await screen.findByRole('table', { name: 'Usage cost' }))
+  expect(
+    usage.getByRole('row', { name: 'seconds 5 s $0.135/second $0.675' })
+  ).toBeVisible()
+})
+
+test('missing recorded task quantities keep the charge visible without inventing zero usage', async () => {
+  client.setQueryData(['pricing'], {
+    data: [
+      { model_name: 'wan2.5-i2v-preview', billing_usage_schema: videoSchema },
+    ],
+    vendors: [],
+  })
+  fireEvent.click(
+    renderPreview(
+      { ...videoOther, usage_facts: { resolution: '720p' } },
+      false,
+      { quota: 472500 }
+    )
+  )
+  const section = within(
+    await screen.findByRole('region', { name: 'Usage cost' })
+  )
+  expect(section.queryByRole('table')).not.toBeInTheDocument()
+  expect(section.getByText('$0.945')).toBeVisible()
+})
+
+test('task settlement does not invent prices for ambiguous historical tiers', async () => {
+  client.setQueryData(['pricing'], {
+    data: [
+      { model_name: 'wan2.5-i2v-preview', billing_usage_schema: videoSchema },
+    ],
+    vendors: [],
+  })
+  fireEvent.click(
+    renderPreview({
+      ...videoOther,
+      expr_b64: btoa(
+        'u("resolution") == "480p" ? tier("same", u("seconds") * 0.5) : tier("same", u("seconds") * 0.7)'
+      ),
+      matched_tier: 'same',
+      usage_facts: undefined,
+    })
+  )
+  expect(
+    await screen.findByText(
+      'Historical billing data is incomplete; final unit prices are unavailable.'
+    )
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('table', { name: 'Settled unit prices' })
+  ).not.toBeInTheDocument()
+})
+
+test('task settlement requires schema for every usage field in the logged expression', async () => {
+  client.setQueryData(['pricing'], {
+    data: [
+      {
+        model_name: 'wan2.5-i2v-preview',
+        billing_usage_schema: {
+          seconds: videoSchema.seconds,
+          resolution: videoSchema.resolution,
+        },
+      },
+    ],
+    vendors: [],
+  })
+  fireEvent.click(renderPreview(videoOther))
+  expect(
+    await screen.findByText(
+      'Historical billing data is incomplete; final unit prices are unavailable.'
+    )
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('table', { name: 'Settled unit prices' })
+  ).not.toBeInTheDocument()
+})
+
+test('task settlement scales token usage once and adds a per-request charge once', async () => {
+  client.setQueryData(['pricing'], {
+    data: [
+      {
+        model_name: 'wan2.5-i2v-preview',
+        billing_usage_schema: { tokens: { type: 'number', unit: 'token' } },
+      },
+    ],
+    vendors: [],
+  })
+  fireEvent.click(
+    renderPreview(
+      {
+        ...videoOther,
+        expr_b64: btoa('tier("base", u("tokens") * 2 / 1000000 + 0.05)'),
+        matched_tier: 'base',
+        usage_facts: { tokens: 1000 },
+      },
+      false,
+      { quota: 7020 }
+    )
+  )
+  const usage = within(await screen.findByRole('table', { name: 'Usage cost' }))
+  expect(
+    usage.getByRole('row', {
+      name: 'tokens 1,000 token $0.54/1M token $0.00054',
+    })
+  ).toBeVisible()
+  expect(
+    usage.getByRole('row', {
+      name: 'Additional charge 1 request $0.0135/request $0.0135',
+    })
+  ).toBeVisible()
+  expect(
+    within(screen.getByRole('region', { name: 'Usage cost' })).getByText(
+      '$0.01404',
+      { selector: 'strong' }
+    )
+  ).toBeVisible()
+})
+
+test.each([
+  ['zhCN', '1,234.56789'],
+  ['zhTW', '1,234.56789'],
+  ['en', '1,234.56789'],
+  ['fr', '1\u202f234,56789'],
+  ['ru', '1\u00a0234,56789'],
+  ['ja', '1,234.56789'],
+  ['vi', '1.234,56789'],
+])('task quantities keep full precision in %s', async (language, quantity) => {
+  i18n.addResourceBundle(language, 'translation', en.translation)
+  await i18n.changeLanguage(language)
+  client.setQueryData(['pricing'], {
+    data: [
+      { model_name: 'wan2.5-i2v-preview', billing_usage_schema: videoSchema },
+    ],
+    vendors: [],
+  })
+  fireEvent.click(
+    renderPreview({
+      ...videoOther,
+      expr_b64: btoa('tier("base", u("seconds") * 0.5)'),
+      matched_tier: 'base',
+      usage_facts: { seconds: 1234.56789 },
+    })
+  )
+  const usage = within(await screen.findByRole('table', { name: 'Usage cost' }))
+  expect(usage.getByRole('cell', { name: `${quantity} s` })).toBeVisible()
 })

@@ -7621,6 +7621,10 @@
     "View your usage logs, statistics, tasks, and audit logs.": "View your usage logs, statistics, tasks, and audit logs.",
     "Wallet pre-consume bypass threshold (USD)": "Wallet pre-consume bypass threshold (USD)",
     "What do you want to change?": "What do you want to change?",
-    "You can create up to {{count}} access tokens": "You can create up to {{count}} access tokens"
+    "You can create up to {{count}} access tokens": "You can create up to {{count}} access tokens",
+    "Recorded billable usage is incomplete; the cost formula is unavailable.": "Recorded billable usage is incomplete; the cost formula is unavailable.",
+    "Final unit price × usage = subtotal": "Final unit price × usage = subtotal",
+    "Uses recorded billable usage and final unit prices; multipliers are not applied again.": "Uses recorded billable usage and final unit prices; multipliers are not applied again.",
+    "Usage subtotals differ from the recorded charge. Rounding or additional charges may apply; the log charge is authoritative.": "Usage subtotals differ from the recorded charge. Rounding or additional charges may apply; the log charge is authoritative."
   }
 }

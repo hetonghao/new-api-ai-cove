@@ -7621,6 +7621,10 @@
     "View your usage logs, statistics, tasks, and audit logs.": "利用ログ、統計、タスク、監査ログを表示します。",
     "Wallet pre-consume bypass threshold (USD)": "ウォレットの事前引き落とし省略額（USD）",
     "What do you want to change?": "何を変更しますか？",
-    "You can create up to {{count}} access tokens": "アクセストークンは最大 {{count}} 個まで作成できます"
+    "You can create up to {{count}} access tokens": "アクセストークンは最大 {{count}} 個まで作成できます",
+    "Recorded billable usage is incomplete; the cost formula is unavailable.": "記録された課金対象の使用量が不完全なため、料金の計算式を表示できません。",
+    "Final unit price × usage = subtotal": "最終単価 × 使用量 = 小計",
+    "Uses recorded billable usage and final unit prices; multipliers are not applied again.": "記録された課金対象の使用量と最終単価を使用し、倍率は重ねて適用しません。",
+    "Usage subtotals differ from the recorded charge. Rounding or additional charges may apply; the log charge is authoritative.": "使用量の小計が記録された請求額と異なります。丸め処理や追加料金が含まれる場合があります。ログに記録された請求額が正となります。"
   }
 }

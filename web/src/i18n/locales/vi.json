@@ -7621,6 +7621,10 @@
     "View your usage logs, statistics, tasks, and audit logs.": "Xem nhật ký sử dụng, thống kê, tác vụ và nhật ký kiểm toán của bạn.",
     "Wallet pre-consume bypass threshold (USD)": "Ngưỡng ví được miễn khấu trừ trước (USD)",
     "What do you want to change?": "Bạn muốn thay đổi gì?",
-    "You can create up to {{count}} access tokens": "Bạn có thể tạo tối đa {{count}} token truy cập"
+    "You can create up to {{count}} access tokens": "Bạn có thể tạo tối đa {{count}} token truy cập",
+    "Recorded billable usage is incomplete; the cost formula is unavailable.": "Dữ liệu sử dụng tính phí đã ghi nhận chưa đầy đủ; không thể hiển thị công thức chi phí.",
+    "Final unit price × usage = subtotal": "Đơn giá cuối cùng × mức sử dụng = thành tiền",
+    "Uses recorded billable usage and final unit prices; multipliers are not applied again.": "Sử dụng mức sử dụng tính phí và đơn giá cuối cùng đã ghi nhận; không áp dụng lại hệ số.",
+    "Usage subtotals differ from the recorded charge. Rounding or additional charges may apply; the log charge is authoritative.": "Tổng chi phí sử dụng khác với số tiền đã ghi nhận. Có thể do làm tròn hoặc phí bổ sung; số tiền trong nhật ký là căn cứ chính xác."
   }
 }

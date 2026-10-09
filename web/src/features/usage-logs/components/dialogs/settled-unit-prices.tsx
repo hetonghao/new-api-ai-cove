@@ -28,6 +28,19 @@ import {
 } from '@/components/ui/collapsible'
 import { normalizeTierLabel } from '@/features/pricing/lib/billing-expr'
 import { compileBillingExpression } from '@/features/pricing/lib/billing-expression/parser'
+import { visitExpression } from '@/features/pricing/lib/billing-expression/types'
+import { isBreakdownTierMatched } from '@/features/pricing/lib/breakdown-tier-match'
+import {
+  getDynamicPriceEntries,
+  getTaskUsagePriceUnitLabelKey,
+  getTaskUsageQuantityUnitLabelKey,
+} from '@/features/pricing/lib/dynamic-price'
+import { getTaskPricingDisplayTiers } from '@/features/pricing/lib/task-matrix-display'
+import {
+  taskPriceLabel,
+  taskUsageUnitLabel,
+} from '@/features/pricing/lib/task-price-display'
+import type { BillingUsageSchema } from '@/features/pricing/types'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 
 import type { UsageLog } from '../../data/schema'
@@ -38,11 +51,11 @@ import { SettledUsageCost } from './settled-usage-cost'
 export function SettledUnitPrices(props: {
   other: LogOtherData
   log: UsageLog
+  usageSchema?: BillingUsageSchema
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const other = props.other
-  if (other.is_task) return null
-
+  const language = i18n.resolvedLanguage || i18n.language
   const summary = getTieredBillingSummary(other)
   const compiled = compileBillingExpression(
     decodeBillingExprB64(other.expr_b64)
@@ -69,11 +82,88 @@ export function SettledUnitPrices(props: {
     typeof other.fixed_price === 'number' &&
     Number.isFinite(other.fixed_price) &&
     other.fixed_price >= 0
+  const taskTiers = other.is_task
+    ? getTaskPricingDisplayTiers(
+        decodeBillingExprB64(other.expr_b64),
+        props.usageSchema
+      )
+    : []
+  const taskMatches = taskTiers.filter(
+    (tier) =>
+      normalizeTierLabel(tier.label) ===
+        normalizeTierLabel(other.matched_tier) &&
+      isBreakdownTierMatched(
+        tier,
+        taskTiers,
+        other.matched_tier,
+        other.usage_facts
+      )
+  )
+  let hasTaskUsageSchema = true
+  if (other.is_task && compiled.status === 'ready') {
+    visitExpression(compiled.ast, (node) => {
+      if (node.kind !== 'call' || node.name !== 'u') return
+      const field = node.args[0]
+      if (
+        field.kind !== 'literal' ||
+        typeof field.value !== 'string' ||
+        !Object.hasOwn(props.usageSchema ?? {}, field.value)
+      ) {
+        hasTaskUsageSchema = false
+      }
+    })
+  }
+  const priceEntries: Array<{
+    field: string
+    shortLabel: string
+    price: number
+    unit?: string
+    quantityUnit?: string
+    divisor?: number
+  }> = other.is_task
+    ? getDynamicPriceEntries(taskMatches.length === 1 ? taskMatches[0] : null, {
+        tokenUnit: 'M',
+        usageSchema: props.usageSchema,
+      }).map((entry) => ({
+        field: entry.field,
+        shortLabel:
+          entry.labelKind === 'schema'
+            ? taskPriceLabel(entry.description, entry.shortLabel, language)
+            : t(entry.shortLabel),
+        price: entry.value,
+        unit: taskUsageUnitLabel(
+          props.usageSchema?.[entry.field],
+          language,
+          t(
+            entry.unit === 'request'
+              ? 'request'
+              : getTaskUsagePriceUnitLabelKey(
+                  props.usageSchema?.[entry.field]?.unit
+                )
+          )
+        ),
+        quantityUnit: taskUsageUnitLabel(
+          props.usageSchema?.[entry.field],
+          language,
+          t(
+            entry.unit === 'request'
+              ? 'request'
+              : getTaskUsageQuantityUnitLabelKey(
+                  props.usageSchema?.[entry.field]?.unit
+                )
+          )
+        ),
+        divisor: entry.unit === 'token' ? 1_000_000 : 1,
+      }))
+    : (summary?.priceEntries ?? [])
+  const hasMatchedTier = other.is_task
+    ? taskMatches.length === 1
+    : hasRecordedFixedPrice ||
+      (matchingTiers.length === 1 && matchingTiers[0] === summary?.tier)
   const canCalculate =
-    summary &&
-    summary.priceEntries.length > 0 &&
-    (hasRecordedFixedPrice ||
-      (matchingTiers.length === 1 && matchingTiers[0] === summary.tier)) &&
+    priceEntries.length > 0 &&
+    hasMatchedTier &&
+    hasTaskUsageSchema &&
     compiled.status === 'ready' &&
     (compiled.requestRules.length === 0 || other.request_rules != null) &&
     typeof groupRatio === 'number' &&
@@ -83,7 +173,7 @@ export function SettledUnitPrices(props: {
       (rule) => Number.isFinite(rule.multiplier) && rule.multiplier >= 0
     ) &&
     Number.isFinite(conditionRatio) &&
-    summary.priceEntries.every((entry) =>
+    priceEntries.every((entry) =>
       Number.isFinite(entry.price * conditionRatio * groupRatio)
     )
 
@@ -107,7 +197,14 @@ export function SettledUnitPrices(props: {
     abbreviate: false,
     minimumNonZero: 0.000001,
   }
-  const rows = summary.priceEntries.map((entry) => ({
+  const multipliers = [
+    ...matchedRules
+      .filter((rule) => rule.multiplier !== 1)
+      .map((rule) => rule.multiplier),
+    groupRatio,
+  ]
+  const multiplierLabel = `(${multipliers.map((ratio) => `×${ratio}`).join(' ')})`
+  const rows = priceEntries.map((entry) => ({
     ...entry,
     base: formatBillingCurrencyFromUSD(entry.price, priceOptions),
     final: formatBillingCurrencyFromUSD(
@@ -115,16 +212,18 @@ export function SettledUnitPrices(props: {
       priceOptions
     ),
   }))
-  const unit = summary.priceEntries[0].unit
+  const unit = priceEntries[0].unit
   const unitLabel = unit ? t(unit) : t('1M token')
 
   return (
     <section className='mt-4 min-w-0 space-y-3 border-t pt-4'>
       <div className='flex flex-wrap items-baseline justify-between gap-2'>
         <h3 className='text-xs font-semibold'>{t('Settled unit prices')}</h3>
-        <span className='text-muted-foreground text-[10px]'>
-          {t('Unit')}: USD / {unitLabel}
-        </span>
+        {!other.is_task && (
+          <span className='text-muted-foreground text-[10px]'>
+            {t('Unit')}: USD / {unitLabel}
+          </span>
+        )}
       </div>
       <p className='text-muted-foreground text-xs'>
         {t(
@@ -139,7 +238,7 @@ export function SettledUnitPrices(props: {
       <StaticDataTable
         className='rounded-none border-0 bg-transparent'
         tableProps={{ 'aria-label': t('Settled unit prices') }}
-        tableClassName='table-fixed [&_tbody_tr]:h-10 [&_td]:text-xs [&_th]:text-xs [&_td:last-child]:font-semibold'
+        tableClassName='table-fixed [&_tbody_tr]:h-10 [&_td]:text-xs [&_th]:text-xs [&_td:last-child]:font-semibold [&_td]:break-words [&_td]:whitespace-normal [&_th]:whitespace-normal'
         data={rows}
         getRowKey={(row) => row.field}
         columns={[
@@ -154,16 +253,30 @@ export function SettledUnitPrices(props: {
             header: t('Tier unit price'),
             className: 'text-right text-muted-foreground',
             cellClassName: 'text-right font-mono text-muted-foreground',
-            cell: (row) => row.base,
+            cell: (row) =>
+              other.is_task ? (
+                <span className='break-all'>
+                  {row.base}/{row.unit}
+                </span>
+              ) : (
+                row.base
+              ),
           },
           {
             id: 'final',
-            header: t('Final unit price'),
+            header: `${t('Final unit price')} ${multiplierLabel}`,
             className:
               'bg-emerald-500/10 text-right text-emerald-700 dark:text-emerald-300',
             cellClassName:
               'bg-emerald-500/10 text-right font-mono text-emerald-700 dark:text-emerald-300',
-            cell: (row) => row.final,
+            cell: (row) =>
+              other.is_task ? (
+                <span className='break-all'>
+                  {row.final}/{row.unit}
+                </span>
+              ) : (
+                row.final
+              ),
           },
         ]}
       />
@@ -199,17 +312,22 @@ export function SettledUnitPrices(props: {
           </div>
         </CollapsibleContent>
       </Collapsible>
-      {props.log.type === 2 && summary.tier.billingUnit !== 'request' && (
-        <SettledUsageCost
-          log={props.log}
-          other={other}
-          prices={rows.map((row) => ({
-            field: row.field,
-            label: row.shortLabel,
-            price: row.price * conditionRatio * groupRatio,
-          }))}
-        />
-      )}
+      {props.log.type === 2 &&
+        (other.is_task || summary?.tier.billingUnit !== 'request') && (
+          <SettledUsageCost
+            log={props.log}
+            other={other}
+            multiplierLabel={multiplierLabel}
+            prices={rows.map((row) => ({
+              field: row.field,
+              label: row.shortLabel,
+              price: row.price * conditionRatio * groupRatio,
+              unit: row.unit,
+              quantityUnit: row.quantityUnit,
+              divisor: row.divisor,
+            }))}
+          />
+        )}
     </section>
   )
 }

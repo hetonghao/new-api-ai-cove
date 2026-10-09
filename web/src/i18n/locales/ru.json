@@ -7621,6 +7621,10 @@
     "View your usage logs, statistics, tasks, and audit logs.": "Просмотр ваших журналов использования, статистики, задач и журнала аудита.",
     "Wallet pre-consume bypass threshold (USD)": "Порог кошелька без предсписания (USD)",
     "What do you want to change?": "Что вы хотите изменить?",
-    "You can create up to {{count}} access tokens": "Можно создать не более {{count}} токенов доступа"
+    "You can create up to {{count}} access tokens": "Можно создать не более {{count}} токенов доступа",
+    "Recorded billable usage is incomplete; the cost formula is unavailable.": "Записанные данные тарифицируемого использования неполны; формула стоимости недоступна.",
+    "Final unit price × usage = subtotal": "Итоговая цена за единицу × использование = подытог",
+    "Uses recorded billable usage and final unit prices; multipliers are not applied again.": "Используются записанные данные тарифицируемого использования и итоговые цены за единицу; множители повторно не применяются.",
+    "Usage subtotals differ from the recorded charge. Rounding or additional charges may apply; the log charge is authoritative.": "Подытоги использования отличаются от записанной суммы. Возможны округление или дополнительные сборы; сумма в журнале является определяющей."
   }
 }

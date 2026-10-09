@@ -7621,6 +7621,10 @@
     "View your usage logs, statistics, tasks, and audit logs.": "檢視你的使用日誌、統計、任務和稽核日誌。",
     "Wallet pre-consume bypass threshold (USD)": "錢包免預扣門檻（美元）",
     "What do you want to change?": "你想修改什麼？",
-    "You can create up to {{count}} access tokens": "最多可建立 {{count}} 個存取令牌"
+    "You can create up to {{count}} access tokens": "最多可建立 {{count}} 個存取令牌",
+    "Recorded billable usage is incomplete; the cost formula is unavailable.": "記錄的計費用量不完整，無法顯示費用計算公式。",
+    "Final unit price × usage = subtotal": "最終單價 × 用量 = 小計",
+    "Uses recorded billable usage and final unit prices; multipliers are not applied again.": "使用記錄的計費用量與最終單價，倍率不再重複套用。",
+    "Usage subtotals differ from the recorded charge. Rounding or additional charges may apply; the log charge is authoritative.": "用量小計與記錄的扣費金額不同，可能存在取整或附加費用；以日誌記錄的扣費為準。"
   }
 }

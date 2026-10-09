@@ -1198,7 +1198,11 @@ export function DetailsDialog(props: DetailsDialogProps) {
               usageSchema={billingUsageSchema}
               usageFacts={other.usage_facts}
             />
-            <SettledUnitPrices other={other} log={props.log} />
+            <SettledUnitPrices
+              other={other}
+              log={props.log}
+              usageSchema={billingUsageSchema}
+            />
           </DetailSection>
         )}
 
