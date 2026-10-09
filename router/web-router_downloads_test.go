@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"compress/gzip"
 	"embed"
 	"io"
 	"net/http"
@@ -94,32 +95,50 @@ func TestWebRouterServesDesktopInstallerWithoutGzipAndWithContentLength(t *testi
 	require.True(t, bytes.Equal(expectedBody, actualBody))
 }
 
-func TestWebRouterServesStaticJavaScriptWithoutOriginGzipAndWithImmutableCache(t *testing.T) {
+func TestWebRouterServesStaticJavaScriptWithGzipAndWithImmutableCache(t *testing.T) {
 	engine := newWebRouterTestEngine(t)
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, firstDefaultStaticAsset(t, "static/js", ".js"), nil)
+	assetPath := firstDefaultStaticAsset(t, "static/js", ".js")
+	request := httptest.NewRequest(http.MethodGet, assetPath, nil)
 	request.Header.Set("Accept-Encoding", "gzip")
 
 	engine.ServeHTTP(recorder, request)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
-	require.Equal(t, "", recorder.Header().Get("Content-Encoding"))
-	require.Equal(t, "", recorder.Header().Get("Vary"))
+	require.Equal(t, "gzip", recorder.Header().Get("Content-Encoding"))
+	require.Equal(t, "Accept-Encoding", recorder.Header().Get("Vary"))
 	require.Equal(t, "public, max-age=31536000, immutable", recorder.Header().Get("Cache-Control"))
-	require.NotEmpty(t, recorder.Body.String())
+	require.Equal(t, strconv.Itoa(recorder.Body.Len()), recorder.Header().Get("Content-Length"))
+	expectedBody, err := webRouterTestAssets.ReadFile(path.Join("web/dist", assetPath))
+	require.NoError(t, err)
+	reader, err := gzip.NewReader(recorder.Body)
+	require.NoError(t, err)
+	defer reader.Close()
+	actualBody, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.Equal(t, expectedBody, actualBody)
 }
 
-func TestWebRouterServesStaticCssWithoutOriginGzipAndWithImmutableCache(t *testing.T) {
+func TestWebRouterServesStaticCssWithGzipAndWithImmutableCache(t *testing.T) {
 	engine := newWebRouterTestEngine(t)
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, firstDefaultStaticAsset(t, "static/css", ".css"), nil)
+	assetPath := firstDefaultStaticAsset(t, "static/css", ".css")
+	request := httptest.NewRequest(http.MethodGet, assetPath, nil)
 	request.Header.Set("Accept-Encoding", "gzip")
 
 	engine.ServeHTTP(recorder, request)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
-	require.Equal(t, "", recorder.Header().Get("Content-Encoding"))
-	require.Equal(t, "", recorder.Header().Get("Vary"))
+	require.Equal(t, "gzip", recorder.Header().Get("Content-Encoding"))
+	require.Equal(t, "Accept-Encoding", recorder.Header().Get("Vary"))
 	require.Equal(t, "public, max-age=31536000, immutable", recorder.Header().Get("Cache-Control"))
-	require.NotEmpty(t, recorder.Body.String())
+	require.Equal(t, strconv.Itoa(recorder.Body.Len()), recorder.Header().Get("Content-Length"))
+	expectedBody, err := webRouterTestAssets.ReadFile(path.Join("web/dist", assetPath))
+	require.NoError(t, err)
+	reader, err := gzip.NewReader(recorder.Body)
+	require.NoError(t, err)
+	defer reader.Close()
+	actualBody, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.Equal(t, expectedBody, actualBody)
 }

@@ -185,7 +185,7 @@ test('labels OpenAI providers without showing a Neurons quota', () => {
   assert.ok(screen.getByText('Not applicable'))
 })
 
-test('renders the Neurons quota with the shared progress cell', () => {
+test('renders the Neurons quota with the shared progress cell', async () => {
   setViewport(1280)
   renderProviderList({
     ...PROVIDER,
@@ -198,6 +198,19 @@ test('renders the Neurons quota with the shared progress cell', () => {
   assert.equal(progress.getAttribute('aria-valuenow'), '70')
   assert.ok(screen.getByText('7,000'))
   assert.ok(screen.getByText('10,000'))
+  assert.ok(
+    screen.getByRole('button', {
+      name: 'Remaining 7,000; Total 10,000; Used amount 3,000',
+    })
+  )
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Remaining 7,000; Total 10,000; Used amount 3,000',
+    })
+  )
+  assert.ok(await screen.findByText('3,000'))
+  assert.ok(screen.getByText('Quota'))
+  assert.doesNotMatch(document.body.textContent ?? '', /USD|\$/)
 })
 
 test('keeps provider card edges inside clipped risk-center content', () => {
@@ -220,3 +233,24 @@ test('keeps provider card edges inside clipped risk-center content', () => {
     assert.equal(card.classList.contains('ring-0'), true)
   }
 })
+
+for (const [name, remaining, total, percentage] of [
+  ['zero total', 0, 0, '0'],
+  ['exhausted', 0, 10000, '0'],
+  ['overdrawn', -100, 10000, '0'],
+  ['above total', 12000, 10000, '100'],
+] as const) {
+  test(`keeps Neurons progress bounded when ${name}`, () => {
+    renderProviderList({
+      ...PROVIDER,
+      daily_neurons_limit: total,
+      daily_neurons_remaining: remaining,
+    })
+
+    assert.equal(
+      screen.getByRole('progressbar').getAttribute('aria-valuenow'),
+      percentage
+    )
+    assert.doesNotMatch(document.body.innerHTML, /NaN|Infinity|USD|\$/)
+  })
+}

@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next'
 
 import { QuotaDetailsPopover } from '@/components/quota-details-popover'
 import { StatusBadge } from '@/components/status-badge'
+import { Progress } from '@/components/ui/progress'
 import { formatQuotaWithCurrency, getCurrencyDisplay } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 import { useSystemConfigStore } from '@/stores/system-config-store'
@@ -37,6 +38,37 @@ type UserQuotaCellProps = {
 export function UserQuotaCell(props: UserQuotaCellProps) {
   const { t } = useTranslation()
   useSystemConfigStore((state) => state.config.currency)
+
+  if (props.total !== undefined && props.formatValue) {
+    const remaining = props.formatValue(props.remaining)
+    const total = props.formatValue(props.total)
+    const used = props.formatValue(props.used)
+    const percentage =
+      props.total > 0
+        ? Math.min(100, Math.max(0, (props.remaining / props.total) * 100))
+        : 0
+
+    return (
+      <QuotaDetailsPopover
+        title={t('Quota')}
+        triggerLabel={`${t('Remaining')} ${remaining}; ${t('Total')} ${total}; ${t('Used amount')} ${used}`}
+        details={[
+          { label: t('Remaining'), value: remaining },
+          { label: t('Total'), value: total },
+          { label: t('Total Used'), value: used },
+        ]}
+        afterTrigger={
+          <Progress value={percentage} aria-label={t('Remaining')} />
+        }
+      >
+        <span className='flex min-w-0 items-baseline gap-1 text-sm tabular-nums'>
+          <span>{remaining}</span>
+          <span className='text-muted-foreground'>/</span>
+          <span className='text-muted-foreground'>{total}</span>
+        </span>
+      </QuotaDetailsPopover>
+    )
+  }
 
   const { meta: currency } = getCurrencyDisplay()
   const quotaUnit = currency.kind === 'tokens' ? t('Tokens') : currency.symbol
