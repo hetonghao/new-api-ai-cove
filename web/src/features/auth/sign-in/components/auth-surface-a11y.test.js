@@ -159,7 +159,7 @@ test('interactive calls to action keep their floating motion', () => {
   const headerAuthRule = styles.match(
     /\.ai-cove-landing-header \.public-header-auth-button,[\s\S]*?\.public-header-mobile-auth-button\s*\{([\s\S]*?)\}/
   )?.[1]
-  const homeButtonRule = styles.match(/\.home-btn\s*\{([\s\S]*?)\}/)?.[1]
+  const homeButtonRule = styles.match(/^\.home-btn\s*\{([\s\S]*?)\}/m)?.[1]
   const authSubmitRule = styles.match(
     /\.ai-cove-auth-form \[data-slot='button'\]\[type='submit'\]\s*\{([\s\S]*?)\}/
   )?.[1]

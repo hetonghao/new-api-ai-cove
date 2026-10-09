@@ -212,7 +212,7 @@ it('shows unlimited with cumulative usage and explains it on demand', async () =
   )
 })
 
-it('keeps small custom-currency amounts exact and shows full values in the detail', async () => {
+it('keeps small USD amounts exact despite legacy custom currency and shows full detail', async () => {
   useSystemConfigStore.getState().setConfig({
     currency: {
       ...DEFAULT_CURRENCY_CONFIG,
@@ -222,7 +222,7 @@ it('keeps small custom-currency amounts exact and shows full values in the detai
   })
   renderQuota({ ...key, remain_quota: 1900, used_quota: 1100 })
   expect(
-    screen.getByRole('columnheader', { name: 'Quota (🐱)' })
+    screen.getByRole('columnheader', { name: 'Quota ($)' })
   ).toBeInTheDocument()
   const button = screen.getByRole('button')
   expect(button).toHaveTextContent('0.0038')

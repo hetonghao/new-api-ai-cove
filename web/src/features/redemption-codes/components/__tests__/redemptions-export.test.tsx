@@ -178,7 +178,7 @@ test('keeps names containing table delimiters and markup inside one Markdown cel
   )
 })
 
-test('successful batch creation opens export with returned codes and the configured currency', async () => {
+test('successful batch creation exports returned codes in USD despite legacy CNY', async () => {
   const downloads = captureDownloads()
   const user = userEvent.setup()
   useSystemConfigStore.getState().setConfig({
@@ -201,7 +201,7 @@ test('successful batch creation opens export with returned codes and the configu
   fireEvent.change(within(createDialog).getByLabelText('Quantity'), {
     target: { value: '2' },
   })
-  fireEvent.change(within(createDialog).getByLabelText('Quota (CNY)'), {
+  fireEvent.change(within(createDialog).getByLabelText('Quota (USD)'), {
     target: { value: '2000' },
   })
   await user.click(
@@ -232,7 +232,7 @@ test('successful batch creation opens export with returned codes and the configu
     ).not.toBeInTheDocument()
   )
   expect(await readDownload(downloads[0])).toBe(
-    'batch\tcreatedA\t¥2,000\nbatch\tcreatedB\t¥2,000\n'
+    'batch\tcreatedA\t$2,000\nbatch\tcreatedB\t$2,000\n'
   )
 })
 

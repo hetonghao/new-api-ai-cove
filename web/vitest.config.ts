@@ -19,11 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
+
+import { nodeTestFiles } from './scripts/run-tests.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
+  cacheDir: path.resolve(__dirname, '.cache/vitest'),
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -31,6 +34,7 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    exclude: [...configDefaults.exclude, ...nodeTestFiles],
     server: {
       deps: { inline: [/@lobehub\//, /antd-style/] },
     },
@@ -45,7 +49,7 @@ export default defineConfig({
     restoreMocks: true,
     include: [
       'src/**/*.{test,spec}.{ts,tsx}',
-      'scripts/oxlint/__tests__/*.test.ts',
+      'scripts/**/__tests__/*.test.ts',
     ],
   },
 })

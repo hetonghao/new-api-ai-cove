@@ -127,43 +127,50 @@ describe('usage facts billing details', () => {
   })
   const queryClients: QueryClient[] = []
 
-  test('shows actual billable image and cache tokens while retaining the aggregate cache count', () => {
-    queryClients.push(
-      renderDetails(
-        {
-          billing_mode: 'tiered_expr',
-          expr_b64: btoa(
-            'tier("standard", p * 5 + cr * 1.25 + img * 8 + img_cr * 2 + c * 30)'
-          ),
-          matched_tier: 'standard',
-          cache_tokens: 300,
-          image_cache_tokens: 200,
-          billing_tokens: { p: 300, cr: 100, img: 400, img_cr: 200, c: 100 },
-        },
-        1000
+  test.each([
+    { claude: false, inputTokens: '700' },
+    { claude: true, inputTokens: '1,000' },
+  ])(
+    'shows billable breakdown and separate cache totals with claude=$claude',
+    ({ claude, inputTokens }) => {
+      queryClients.push(
+        renderDetails(
+          {
+            billing_mode: 'tiered_expr',
+            expr_b64: btoa(
+              'tier("standard", p * 5 + cr * 1.25 + img * 8 + img_cr * 2 + c * 30)'
+            ),
+            matched_tier: 'standard',
+            claude,
+            cache_tokens: 300,
+            image_cache_tokens: 200,
+            billing_tokens: { p: 300, cr: 100, img: 400, img_cr: 200, c: 100 },
+          },
+          1000
+        )
       )
-    )
-    const billable = within(
-      screen.getByRole('group', { name: 'Billable token breakdown' })
-    )
-    expect(
-      billable.getByText('Image Cache').nextElementSibling
-    ).toHaveTextContent('200')
-    expect(
-      billable.getByText('Cache Read').nextElementSibling
-    ).toHaveTextContent('100')
-    expect(billable.getByText('Image In').nextElementSibling).toHaveTextContent(
-      '400'
-    )
-    expect(
-      screen.getByText('Input Tokens').nextElementSibling
-    ).toHaveTextContent('1,000')
-    expect(
-      screen
-        .getAllByText('Cache Read')
-        .some((label) => label.nextElementSibling?.textContent === '300')
-    ).toBe(true)
-  })
+      const billable = within(
+        screen.getByRole('group', { name: 'Billable token breakdown' })
+      )
+      expect(
+        billable.getByText('Image Cache').nextElementSibling
+      ).toHaveTextContent('200')
+      expect(
+        billable.getByText('Cache Read').nextElementSibling
+      ).toHaveTextContent('100')
+      expect(
+        billable.getByText('Image In').nextElementSibling
+      ).toHaveTextContent('400')
+      expect(
+        screen.getByText('Input Tokens').nextElementSibling
+      ).toHaveTextContent(inputTokens)
+      expect(
+        screen
+          .getAllByText('Cache Read')
+          .some((label) => label.nextElementSibling?.textContent === '300')
+      ).toBe(true)
+    }
+  )
 
   beforeAll(() => {
     i18next.addResourceBundle('en', 'translation', i18nKeys)

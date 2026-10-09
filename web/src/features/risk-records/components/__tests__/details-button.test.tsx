@@ -17,36 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import assert from 'node:assert/strict'
-import { after, afterEach, describe, test } from 'node:test'
 
-import { Window } from 'happy-dom'
+import { afterEach, describe, test } from 'vitest'
 
 import type { RiskRecord } from '../../types'
-
-const domWindow = new Window()
-const domGlobals = [
-  'window',
-  'document',
-  'navigator',
-  'HTMLElement',
-  'HTMLButtonElement',
-  'SVGElement',
-  'Node',
-  'Element',
-  'Event',
-  'CustomEvent',
-  'MutationObserver',
-  'requestAnimationFrame',
-  'cancelAnimationFrame',
-  'getComputedStyle',
-] as const
-
-for (const key of domGlobals) {
-  Object.defineProperty(globalThis, key, {
-    configurable: true,
-    value: domWindow[key],
-  })
-}
 
 const { cleanup, fireEvent, render, screen, within } =
   await import('@testing-library/react')
@@ -130,10 +104,6 @@ function getLabel(name: string): HTMLElement {
 
 describe('risk record details button presentation', () => {
   afterEach(cleanup)
-
-  after(() => {
-    domWindow.close()
-  })
 
   test('shows the error code in warning text when the record failed', () => {
     renderDetailsButton({

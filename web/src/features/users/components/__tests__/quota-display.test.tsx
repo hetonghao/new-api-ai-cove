@@ -216,7 +216,7 @@ it('preserves negative balances in details opened with the keyboard', async () =
   expect(within(detail).getByText('2')).toBeInTheDocument()
 })
 
-it('shows the custom symbol only in the column header', () => {
+it('keeps the USD symbol only in the header despite legacy custom currency', () => {
   useSystemConfigStore.getState().setConfig({
     currency: {
       ...DEFAULT_CURRENCY_CONFIG,
@@ -231,7 +231,7 @@ it('shows the custom symbol only in the column header', () => {
     </I18nextProvider>
   )
   expect(
-    screen.getByRole('columnheader', { name: 'Available Balance (🐱)' })
+    screen.getByRole('columnheader', { name: 'Available Balance ($)' })
   ).toBeInTheDocument()
   for (const cell of screen.getAllByRole('cell')) {
     expect(cell).not.toHaveTextContent('🐱')
@@ -394,7 +394,7 @@ it('combines creation and last login into one column with full dates visible dir
   ).not.toBeInTheDocument()
 })
 
-it('updates the header unit and converted amounts together when currency settings change', () => {
+it('keeps the USD header and amounts when legacy currency settings change', () => {
   render(
     <I18nextProvider i18n={i18n}>
       <QuotaTable remaining={500000} used={1000000} />
@@ -410,20 +410,20 @@ it('updates the header unit and converted amounts together when currency setting
     })
   )
   expect(
-    screen.getByRole('columnheader', { name: 'Available Balance (¥)' })
+    screen.getByRole('columnheader', { name: 'Available Balance ($)' })
   ).toBeInTheDocument()
   expect(
-    within(screen.getAllByRole('cell')[0]).getByText('7')
+    within(screen.getAllByRole('cell')[0]).getByText('1')
   ).toBeInTheDocument()
   expect(
-    within(screen.getAllByRole('cell')[0]).getByText('14')
+    within(screen.getAllByRole('cell')[0]).getByText('2')
   ).toBeInTheDocument()
   for (const cell of screen.getAllByRole('cell')) {
     expect(cell).not.toHaveTextContent('¥')
   }
 })
 
-it('labels raw quota mode as tokens without introducing a currency symbol', () => {
+it('converts raw quota to USD despite legacy token display mode', () => {
   useSystemConfigStore.getState().setConfig({
     currency: { ...DEFAULT_CURRENCY_CONFIG, quotaDisplayType: 'TOKENS' },
   })
@@ -433,12 +433,12 @@ it('labels raw quota mode as tokens without introducing a currency symbol', () =
     </I18nextProvider>
   )
   expect(
-    screen.getByRole('columnheader', { name: 'Available Balance (Tokens)' })
+    screen.getByRole('columnheader', { name: 'Available Balance ($)' })
   ).toBeInTheDocument()
   expect(
-    within(screen.getAllByRole('cell')[0]).getByText('100')
+    within(screen.getAllByRole('cell')[0]).getByText('0.0002')
   ).toBeInTheDocument()
   expect(
-    within(screen.getAllByRole('cell')[0]).getByText('200')
+    within(screen.getAllByRole('cell')[0]).getByText('0.0004')
   ).toBeInTheDocument()
 })

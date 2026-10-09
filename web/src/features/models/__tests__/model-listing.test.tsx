@@ -630,7 +630,7 @@ it.each([
   }
 )
 
-it('shows task tier ranges in the schema unit and converts site currency only once', async () => {
+it('shows task tier ranges in the schema unit and keeps USD despite legacy CNY', async () => {
   useSystemConfigStore.getState().setConfig({
     currency: {
       ...DEFAULT_CURRENCY_CONFIG,
@@ -661,9 +661,9 @@ it('shows task tier ranges in the schema unit and converts site currency only on
   const button = screen.getByRole('button', {
     name: 'View pricing for channel-only',
   })
-  expect(button).toHaveTextContent(/2.8.*5.6/)
+  expect(button).toHaveTextContent(/0.4.*0.8/)
   expect(button).toHaveTextContent('/s')
-  expect(button).toHaveTextContent('CNY')
+  expect(button).toHaveTextContent('USD')
   expect(button).not.toHaveTextContent('¥')
   expect(button).not.toHaveTextContent('1M tokens')
 })
@@ -820,10 +820,10 @@ it('keeps an active visibility filter when its server result is empty', async ()
 })
 
 it.each([
-  { type: 'CUSTOM' as const, caption: '🐱 / 1M tokens' },
+  { type: 'CUSTOM' as const, caption: 'USD / 1M tokens' },
   { type: 'TOKENS' as const, caption: 'USD / 1M tokens' },
 ])(
-  'uses one currency caption in $type mode without replacing prices with quota counts',
+  'uses one USD caption despite legacy $type mode without replacing prices with quota counts',
   async ({ type, caption }) => {
     useSystemConfigStore.getState().setConfig({
       currency: {
@@ -850,8 +850,7 @@ it.each([
       'Input0.5Output1'
     )
     expect(within(button).getByText(caption)).toBeVisible()
-    if (type === 'CUSTOM') {
-      expect(button.textContent?.match(/🐱/g)).toHaveLength(1)
-    }
+    expect(button.textContent?.match(/USD/g)).toHaveLength(1)
+    expect(button).not.toHaveTextContent('🐱')
   }
 )

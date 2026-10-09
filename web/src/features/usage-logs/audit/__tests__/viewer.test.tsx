@@ -792,6 +792,13 @@ it('mobile access history keeps pagination visible and puts result filters in a 
       })
     )
     await user.click(within(drawer).getByRole('button', { name: 'Search' }))
+    expect(drawer).toHaveAttribute('data-state', 'closed')
+    // JSDOM does not run Vaul's CSS exit animation; complete the browser event.
+    const animationEnd = new Event('animationend', { bubbles: true })
+    Object.defineProperty(animationEnd, 'animationName', {
+      value: 'slideToBottom',
+    })
+    fireEvent(drawer, animationEnd)
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     )

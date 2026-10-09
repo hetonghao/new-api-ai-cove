@@ -56,6 +56,11 @@ for (const key of domGlobals) {
 }
 
 const { cleanup, render } = await import('@testing-library/react')
+const { QueryClient, QueryClientProvider } =
+  await import('@tanstack/react-query')
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+})
 const { createMemoryHistory, createRootRoute, createRouter, RouterProvider } =
   await import('@tanstack/react-router')
 const { createInstance } = await import('i18next')
@@ -93,7 +98,10 @@ describe('home footer', () => {
     useSystemConfigStore.getState().setLoadedLogoUrl('/logo.png')
   })
 
-  afterEach(() => cleanup())
+  afterEach(() => {
+    cleanup()
+    queryClient.clear()
+  })
 
   after(() => domWindow.close())
 
@@ -115,7 +123,11 @@ describe('home footer', () => {
     })
     await router.load()
 
-    const rendered = render(<RouterProvider router={router} />)
+    const rendered = render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    )
     const cards = rendered.container.querySelectorAll('article')
     const wordmarks = rendered.container.querySelectorAll(
       '.home-footer-product-wordmark'

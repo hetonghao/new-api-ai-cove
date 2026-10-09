@@ -264,7 +264,7 @@ afterEach(async () => {
   await i18next.changeLanguage('en')
 })
 
-it('refreshes memoized provider prices when the group or display currency changes', () => {
+it('refreshes memoized group prices while ignoring legacy display currency', () => {
   const previous = useSystemConfigStore.getState().config.currency
   useSystemConfigStore
     .getState()
@@ -300,7 +300,8 @@ it('refreshes memoized provider prices when the group or display currency change
         },
       })
     )
-    expect(view.container).toHaveTextContent('1.32/unit')
+    expect(view.container).toHaveTextContent('0.66/unit')
+    expect(view.container).toHaveTextContent('USD')
   } finally {
     act(() => useSystemConfigStore.getState().setConfig({ currency: previous }))
   }

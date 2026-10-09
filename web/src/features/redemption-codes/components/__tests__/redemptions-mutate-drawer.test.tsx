@@ -141,7 +141,7 @@ function getSaveButton(): HTMLButtonElement {
 }
 
 function getControlByLabel(labelText: 'Name'): HTMLInputElement
-function getControlByLabel(labelText: 'Quota (CNY)'): HTMLInputElement
+function getControlByLabel(labelText: 'Quota (USD)'): HTMLInputElement
 function getControlByLabel(labelText: 'Quota (USD)'): HTMLInputElement
 function getControlByLabel(labelText: string): HTMLElement {
   const label = [...document.querySelectorAll<HTMLLabelElement>('label')].find(
@@ -187,7 +187,7 @@ afterEach(() => {
 })
 
 describe('redemption drawer', () => {
-  test('shows the reported CNY quota without floating-point noise', async () => {
+  test('shows the reported quota in USD without applying the legacy CNY exchange rate', async () => {
     const original = redemption(1, 13888889)
     apiClient.get = async () => ({ data: { success: true, data: original } })
 
@@ -197,7 +197,7 @@ describe('redemption drawer', () => {
     })
     await waitForLoadedForm()
 
-    expect(getControlByLabel('Quota (CNY)').value).toBe('200')
+    expect(getControlByLabel('Quota (USD)').value).toBe('27.78')
   })
 
   test('blocks updates and reports an error when loading rejects', async () => {
