@@ -132,6 +132,15 @@ func TestResponseModelNamespaceAlias(t *testing.T) {
 		alias     bool
 		mismatch  bool
 	}{
+		{name: "dot and hyphen without namespace", requested: "gpt-5.6-terra", returned: "gpt-5-6-terra"},
+		{name: "dot and hyphen upstream", requested: "alias", upstream: "gpt-5.6-terra", returned: "gpt-5-6-terra"},
+		{name: "dot and hyphen namespace", requested: "gpt-5.6-terra", returned: "devin/gpt-5-6-terra", alias: true},
+		{name: "reverse separators", requested: "gpt-5-6-terra", returned: "devin/gpt-5.6-terra", alias: true},
+		{name: "different version", requested: "gpt-5.6-terra", returned: "devin/gpt-5-7-terra", mismatch: true},
+		{name: "different variant", requested: "gpt-5.6-terra", returned: "devin/gpt-5-6-sol", mismatch: true},
+		{name: "missing separator", requested: "gpt-5.6-terra", returned: "devin/gpt-56-terra", mismatch: true},
+		{name: "underscore separator", requested: "gpt-5.6-terra", returned: "devin/gpt-5_6-terra", mismatch: true},
+		{name: "repeated separator", requested: "gpt-5.6-terra", returned: "devin/gpt-5--6-terra", mismatch: true},
 		{name: "namespaced requested model", requested: "swe-2", returned: "devin/swe-2", alias: true},
 		{name: "namespaced upstream model", requested: "swe-2", upstream: "swe-2-pro", returned: "vendor/swe-2-pro", alias: true},
 		{name: "namespaced dated suffix", requested: "swe-2", returned: "devin/swe-2-2026-09-01", alias: true},
@@ -207,6 +216,32 @@ func TestResponseModelExpectedProviderPath(t *testing.T) {
 			require.NotNil(t, info.ResponseModel)
 			assert.Equal(t, tc.returned, info.ResponseModel.ReturnedModel)
 			assert.Equal(t, tc.mismatch, info.ResponseModel.Mismatch())
+		})
+	}
+}
+
+func TestResponseModelSeparatorDifferenceRetainsMismatchPriority(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		models   []string
+		returned string
+		mismatch bool
+		alias    bool
+	}{
+		{name: "matching frame retains original alias", models: []string{"devin/gpt-5-6-terra", "gpt-5.6-terra"}, returned: "devin/gpt-5-6-terra", alias: true},
+		{name: "real mismatch supersedes alias", models: []string{"devin/gpt-5-6-terra", "other", "gpt-5.6-terra"}, returned: "other", mismatch: true},
+		{name: "alias cannot erase real mismatch", models: []string{"other", "devin/gpt-5-6-terra"}, returned: "other", mismatch: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{OriginModelName: "gpt-5.6-terra"}
+			for _, model := range tc.models {
+				info.ObserveResponseModel(model)
+			}
+			require.NotNil(t, info.ResponseModel)
+			assert.Equal(t, tc.mismatch, info.ResponseModel.Mismatch())
+			assert.Equal(t, tc.returned, info.ResponseModel.ReturnedModel)
+			assert.Equal(t, tc.alias, info.ResponseModel.Alias)
+			assert.Equal(t, "gpt-5.6-terra", info.ResponseModel.RequestedModel)
 		})
 	}
 }

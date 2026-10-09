@@ -25,23 +25,26 @@ export type ResponseModelObservation = NonNullable<
 /**
  * Decide whether an upstream response model deserves a mismatch warning.
  *
- * Mirrors relay/common/response_model.go: ignoring case, the returned name is
+ * Mirrors relay/common/response_model.go: ignoring case and dot/hyphen differences,
+ * the returned name is
  * compatible when it starts with the requested or upstream model (dated
- * versions, variants) or ends with it (provider paths such as
- * "deepseek/deepseek-v4.1-flash"). Nothing is stored; every row is judged
+ * versions, variants), including after a provider path such as
+ * "deepseek/deepseek-v4.1-flash". Nothing is stored; every row is judged
  * with the current rule.
  */
 export function isResponseModelMismatch(
   observation: ResponseModelObservation | undefined
 ): boolean {
   if (!observation) return false
-  const returned = (observation.returned_model ?? '').toLowerCase()
+  const returned = (observation.returned_model ?? '')
+    .toLowerCase()
+    .replaceAll('.', '-')
   if (returned.trim() === '') return false
   for (const candidate of [
     observation.requested_model,
     observation.upstream_model,
   ]) {
-    const expected = (candidate ?? '').toLowerCase()
+    const expected = (candidate ?? '').toLowerCase().replaceAll('.', '-')
     if (expected === '') continue
     if (
       returned.startsWith(expected) ||

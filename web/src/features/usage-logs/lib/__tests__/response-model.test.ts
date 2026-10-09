@@ -60,6 +60,27 @@ describe('isResponseModelMismatch', () => {
     expect(isResponseModelMismatch(observation(returned))).toBe(true)
   })
 
+  test.each([
+    ['gpt-5.6-terra', 'devin/gpt-5-6-terra', false],
+    ['gpt-5-6-terra', 'devin/gpt-5.6-terra', false],
+    ['gpt-5.6-terra', 'GPT-5-6-TERRA', false],
+    ['gpt-5.6-terra', 'devin/gpt-5-7-terra', true],
+    ['gpt-5.6-terra', 'devin/gpt-5-6-sol', true],
+    ['gpt-5.6-terra', 'devin/gpt-56-terra', true],
+    ['gpt-5.6-terra', 'devin/gpt-5_6-terra', true],
+    ['gpt-5.6-terra', 'devin/gpt-5--6-terra', true],
+    ['gpt-5.6-terra', 'other-gpt-5-6-terra', true],
+  ])(
+    'compares %s with %s using only dot/hyphen equivalence',
+    (expected, returned, mismatch) => {
+      for (const field of ['requested_model', 'upstream_model'] as const) {
+        expect(
+          isResponseModelMismatch(observation(returned, { [field]: expected }))
+        ).toBe(mismatch)
+      }
+    }
+  )
+
   test('compares against provider-qualified requested and upstream names as written', () => {
     expect(
       isResponseModelMismatch(

@@ -427,3 +427,24 @@ it.each([
     ).not.toBeInTheDocument()
   }
 )
+
+it('hides separator-only warnings while preserving the original response in details', async () => {
+  const user = userEvent.setup()
+  render(
+    <ModelBadge
+      modelName='gpt-5.6-terra'
+      responseModel={{
+        requested_model: 'gpt-5.6-terra',
+        upstream_model: 'gpt-5.6-terra',
+        returned_model: 'devin/gpt-5-6-terra',
+      }}
+    />
+  )
+  expect(screen.queryByText(/^Response model:/)).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Model: gpt-5.6-terra' }))
+  expect(await screen.findByText('devin/gpt-5-6-terra')).toBeVisible()
+  expect(screen.queryByText(/^Response model:/)).not.toBeInTheDocument()
+  expect(
+    screen.queryByText(/this warning alone does not prove model substitution/)
+  ).not.toBeInTheDocument()
+})

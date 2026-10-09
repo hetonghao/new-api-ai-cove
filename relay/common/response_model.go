@@ -13,14 +13,19 @@ type ResponseModel struct {
 	Alias          bool   `json:"alias,omitempty"`
 }
 
+func normalizeResponseModelName(model string) string {
+	return strings.ReplaceAll(strings.ToLower(model), ".", "-")
+}
+
 // matches reports whether an upstream declaration is compatible with the
-// requested or upstream model: equal ignoring case, a dated or variant name
-// that extends it, or the same name behind a provider path such as
+// requested or upstream model: equal ignoring case and dot/hyphen differences,
+// a dated or variant name that extends it, or the same name behind a provider
+// path such as
 // "deepseek/deepseek-v4.1-flash".
 func (r *ResponseModel) matches(model string) bool {
-	returned := strings.ToLower(model)
+	returned := normalizeResponseModelName(model)
 	for _, expected := range []string{r.RequestedModel, r.UpstreamModel} {
-		expected = strings.ToLower(expected)
+		expected = normalizeResponseModelName(expected)
 		if expected != "" && (strings.HasPrefix(returned, expected) || strings.HasPrefix(returned[strings.LastIndex(returned, "/")+1:], expected)) {
 			return true
 		}
@@ -57,5 +62,5 @@ func (info *RelayInfo) ObserveResponseModel(model string) {
 		return
 	}
 	observation.ReturnedModel = model
-	observation.Alias = observation.matches(model) && !strings.HasPrefix(strings.ToLower(model), strings.ToLower(observation.RequestedModel)) && (observation.UpstreamModel == "" || !strings.HasPrefix(strings.ToLower(model), strings.ToLower(observation.UpstreamModel)))
+	observation.Alias = observation.matches(model) && !strings.HasPrefix(normalizeResponseModelName(model), normalizeResponseModelName(observation.RequestedModel)) && (observation.UpstreamModel == "" || !strings.HasPrefix(normalizeResponseModelName(model), normalizeResponseModelName(observation.UpstreamModel)))
 }
