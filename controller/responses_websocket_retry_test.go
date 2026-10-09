@@ -1,7 +1,9 @@
 package controller
 
 import (
+	"fmt"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -559,6 +561,9 @@ func TestResponsesWebSocket_records_one_error_when_retry_candidates_are_exhauste
 
 func TestResponsesWebSocket_preconsumes_after_auto_group_selection(t *testing.T) {
 	db := setupResponsesWebSocketHandlerTest(t)
+	previousCountToken := constant.CountToken
+	constant.CountToken = true
+	t.Cleanup(func() { constant.CountToken = previousCountToken })
 	previousUsableGroups := setting.UserUsableGroups2JSONString()
 	t.Cleanup(func() {
 		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(previousUsableGroups))
@@ -578,7 +583,7 @@ func TestResponsesWebSocket_preconsumes_after_auto_group_selection(t *testing.T)
 		common.SetContextKey(c, constant.ContextKeyUserQuota, 50)
 	})
 
-	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"gpt-4o-mini","input":[]}`)))
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"response.create","model":"gpt-4o-mini","input":%q}`, strings.Repeat("hello ", 400)))))
 	errorEvent := readResponsesWebSocketTestEvent(t, client)
 	require.Equal(t, "error", gjson.GetBytes(errorEvent, "type").String())
 	require.Contains(t, gjson.GetBytes(errorEvent, "error.message").String(), "预扣费额度失败")
@@ -593,6 +598,9 @@ func TestResponsesWebSocket_preconsumes_after_auto_group_selection(t *testing.T)
 
 func TestResponsesWebSocket_reserves_higher_auto_group_before_retry_dial(t *testing.T) {
 	db := setupResponsesWebSocketHandlerTest(t)
+	previousCountToken := constant.CountToken
+	constant.CountToken = true
+	t.Cleanup(func() { constant.CountToken = previousCountToken })
 	previousUsableGroups := setting.UserUsableGroups2JSONString()
 	t.Cleanup(func() {
 		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(previousUsableGroups))
@@ -618,7 +626,7 @@ func TestResponsesWebSocket_reserves_higher_auto_group_before_retry_dial(t *test
 		common.SetContextKey(c, constant.ContextKeyUserQuota, 50)
 	})
 
-	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"gpt-4o-mini","input":[]}`)))
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"response.create","model":"gpt-4o-mini","input":%q}`, strings.Repeat("hello ", 400)))))
 	errorEvent := readResponsesWebSocketTestEvent(t, client)
 	require.Equal(t, "error", gjson.GetBytes(errorEvent, "type").String())
 	require.Zero(t, backup.connections.Load())

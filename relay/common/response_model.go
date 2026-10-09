@@ -4,21 +4,40 @@ import "strings"
 
 // ResponseModel records upstream declarations before response conversion. It is
 // diagnostic only: it must never change routing, pricing, or downstream output.
+// Only the three names are stored; whether they disagree is computed on demand
+// so every consumer applies the current comparison rule to old rows as well.
 type ResponseModel struct {
 	RequestedModel string `json:"requested_model"`
 	UpstreamModel  string `json:"upstream_model"`
 	ReturnedModel  string `json:"returned_model"`
-	Mismatch       bool   `json:"mismatch"`
-	// Alias marks a returned name that matched only after stripping its
-	// aggregator namespace prefix; it is logged under admin_info instead of the
-	// user-visible scope.
-	Alias bool `json:"alias,omitempty"`
+	Alias          bool   `json:"alias,omitempty"`
+}
+
+// matches reports whether an upstream declaration is compatible with the
+// requested or upstream model: equal ignoring case, a dated or variant name
+// that extends it, or the same name behind a provider path such as
+// "deepseek/deepseek-v4.1-flash".
+func (r *ResponseModel) matches(model string) bool {
+	returned := strings.ToLower(model)
+	for _, expected := range []string{r.RequestedModel, r.UpstreamModel} {
+		expected = strings.ToLower(expected)
+		if expected != "" && (strings.HasPrefix(returned, expected) || strings.HasPrefix(returned[strings.LastIndex(returned, "/")+1:], expected)) {
+			return true
+		}
+	}
+	return false
+}
+
+// Mismatch reports whether the retained upstream declaration disagrees with
+// both the requested and upstream models.
+func (r *ResponseModel) Mismatch() bool {
+	return r != nil && r.ReturnedModel != "" && !r.matches(r.ReturnedModel)
 }
 
 // ObserveResponseModel retains the first differing model for inspection, with
-// mismatches taking priority over prefix or case-only differences. A later
-// matching or empty event cannot erase it. Only observe upstream declarations,
-// never models synthesized by a response converter.
+// mismatches taking priority over provider-path, prefix, or case-only
+// differences. A later matching or empty event cannot erase it. Only observe
+// upstream declarations, never models synthesized by a response converter.
 func (info *RelayInfo) ObserveResponseModel(model string) {
 	if info == nil || strings.TrimSpace(model) == "" {
 		return
@@ -30,35 +49,13 @@ func (info *RelayInfo) ObserveResponseModel(model string) {
 		}
 	}
 	observation := info.ResponseModel
-	if observation.Mismatch {
+	if observation.Mismatch() {
 		return
 	}
-	// Aggregators may namespace the returned name ("devin/swe-2"); the basename
-	// after the last "/" is checked with the same rule so a namespace alias is
-	// not flagged as substitution. Expected names are never stripped, so a
-	// swapped namespace ("other/llama-3" for "meta-llama/llama-3") still warns.
-	base := model[strings.LastIndex(model, "/")+1:]
-	mismatch := true
-	alias := false
-	for _, expected := range []string{observation.RequestedModel, observation.UpstreamModel} {
-		if expected == "" {
-			continue
-		}
-		if strings.HasPrefix(model, expected) || strings.EqualFold(model, expected) {
-			mismatch = false
-			alias = false
-			break
-		}
-		if base != model && (strings.HasPrefix(base, expected) || strings.EqualFold(base, expected)) {
-			mismatch = false
-			alias = true
-		}
-	}
-	if !mismatch && observation.ReturnedModel != "" &&
+	if observation.matches(model) && observation.ReturnedModel != "" &&
 		observation.ReturnedModel != observation.RequestedModel && observation.ReturnedModel != observation.UpstreamModel {
 		return
 	}
 	observation.ReturnedModel = model
-	observation.Mismatch = mismatch
-	observation.Alias = alias
+	observation.Alias = observation.matches(model) && !strings.HasPrefix(strings.ToLower(model), strings.ToLower(observation.RequestedModel)) && (observation.UpstreamModel == "" || !strings.HasPrefix(strings.ToLower(model), strings.ToLower(observation.UpstreamModel)))
 }

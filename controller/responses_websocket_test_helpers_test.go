@@ -14,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
@@ -76,7 +75,6 @@ func setupResponsesWebSocketHandlerTest(t *testing.T) *gorm.DB {
 	setting.ModelRequestRateLimitSuccessCount = 1000
 	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":0}`))
 	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"gpt-4o-mini":0.075}`))
-	service.InitTokenEncoders()
 
 	user := model.User{
 		Id:       42,

@@ -47,6 +47,8 @@ test:
 		GOWORK=off go test $$root_packages
 	@echo "Testing relaykit Go module..."
 	@cd relaykit && GOWORK=off go test ./...
+	@echo "Testing tokenkit Go module..."
+	@cd tokenkit && GOWORK=off go test ./...
 
 # DeepSeek 链路门禁：改 relay/channel/deepseek/、relay/common/deepseek_*、或
 # relay/channel/openai/relay_responses.go 的 DeepSeek 路径都必须先跑通它。

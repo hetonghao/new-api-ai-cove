@@ -12,6 +12,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -313,26 +314,22 @@ func TestGetSalesLogsStatWithNonConsumeTypeReturnsEmptyStats(t *testing.T) {
 }
 
 func TestManageUserCanPromoteCommonUserToSales(t *testing.T) {
-	db := setupSalesControllerTestDB(t)
-	require.NoError(t, db.Create(&model.User{
-		Id:       2,
-		Username: "alice",
-		Role:     common.RoleCommonUser,
-		Status:   common.UserStatusEnabled,
-		Group:    "default",
-		AffCode:  "ctrl-promote-2",
-	}).Error)
-
-	ctx, recorder := newSalesControllerContext(t, http.MethodPost, "/api/user/manage", ManageRequest{Id: 2, Action: "promote_sales"}, common.RoleAdminUser)
-	ctx.Set("role", common.RoleAdminUser)
-
-	ManageUser(ctx)
-
+	_, identity, target := setupAdminUserTest(t)
+	body := fmt.Sprintf(`{"id":%d,"action":"promote_sales"}`, target.Id)
+	withoutProof := adminUserRequest(http.MethodPost, "/api/user/manage", body, "", identity, common.RoleRootUser, nil, ManageUser)
+	require.Contains(t, withoutProof.Body.String(), "SECURITY_PROOF_REQUIRED")
+	var unchanged model.User
+	require.NoError(t, model.DB.First(&unchanged, target.Id).Error)
+	require.Equal(t, common.RoleCommonUser, unchanged.Role)
+	proof := issueSecurityEnrollmentProof(t, identity, service.VerificationOperation{
+		Scope:   service.VerificationScopeAdminUserManage,
+		Context: []byte(fmt.Sprintf(`{"user_id":%d,"action":"promote_sales"}`, target.Id)),
+	}, service.VerificationMethodPassword)
+	recorder := adminUserRequest(http.MethodPost, "/api/user/manage", body, proof, identity, common.RoleRootUser, nil, ManageUser)
 	response := decodeSalesAPIResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
-
 	var user model.User
-	require.NoError(t, db.First(&user, 2).Error)
+	require.NoError(t, model.DB.First(&user, target.Id).Error)
 	require.Equal(t, common.RoleSalesUser, user.Role)
 }
 

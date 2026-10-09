@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
+import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -41,6 +42,7 @@ import {
   LOG_TYPE_ENUM,
 } from '../constants'
 import type { UsageLog } from '../data/schema'
+import { shouldShowBillingSource } from '../lib/billing-source'
 import { useColumnsByCategory } from '../lib/columns'
 import { parseLogOther } from '../lib/format'
 import { fetchLogsByCategory } from '../lib/utils'
@@ -116,11 +118,11 @@ interface UsageLogsTableProps {
 
 export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   const { t } = useTranslation()
-  const {
-    isAdminView,
-    isRootView: isRoot,
-    viewAccess,
-  } = useLogsViewScope()
+  const getColumnClassName = useCallback(
+    () => (logCategory === 'common' ? 'py-2' : 'py-3.5'),
+    [logCategory]
+  )
+  const { isAdminView, isRootView: isRoot, viewAccess } = useLogsViewScope()
   const currentUserId = useAuthStore((state) => state.auth.user?.id)
   const isMobile = useMediaQuery('(max-width: 640px)')
   const {
@@ -133,19 +135,27 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   } = useUsageLogsContext()
   const canUseAdminControls = adminControls ?? isAdminView
   const canHideSelf = hideSelfControl ?? isAdminView
-  const { data: showWalletSource = false } = useQuery({
-    queryKey: ['usage-log-wallet-source', isAdminView, currentUserId],
+  const { data: showBillingSource = false } = useQuery({
+    queryKey: ['usage-log-billing-source', isAdminView, currentUserId],
     enabled: logCategory === 'common' && currentUserId != null,
     queryFn: async () => {
       if (isAdminView) {
         const result = await getAdminPlans()
-        return result.success && (result.data?.length ?? 0) > 0
+        return shouldShowBillingSource({
+          isAdmin: isAdminView,
+          plans: result.success ? result.data : undefined,
+          subscriptions: undefined,
+        })
       }
 
-      const result = await getSelfSubscriptionFull()
-      const subscriptions =
-        result.data?.all_subscriptions ?? result.data?.subscriptions
-      return result.success && (subscriptions?.length ?? 0) > 0
+      const selfResult = await getSelfSubscriptionFull()
+      return shouldShowBillingSource({
+        isAdmin: isAdminView,
+        plans: undefined,
+        subscriptions: selfResult.success
+          ? selfResult.data?.subscriptions
+          : undefined,
+      })
     },
   })
 
@@ -245,7 +255,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     logCategory,
     canUseAdminControls,
     isRoot,
-    showWalletSource
+    showBillingSource
   )
   const isLoadingData = isLoading || (isFetching && !data)
 
@@ -319,7 +329,8 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
             key={row.id}
             row={row}
             className={cn('transition-colors', tintClass)}
-            getColumnClassName={() => (isCommon ? 'py-2' : 'py-3.5')}
+            getColumnClassName={getColumnClassName}
+            cellRenderColumns={table.options.columns}
           />
         )
       }}

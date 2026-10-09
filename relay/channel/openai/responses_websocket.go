@@ -8,6 +8,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/tokenkit"
 )
 
 type ResponsesWebSocketUsageTracker struct {
@@ -41,11 +42,13 @@ func (t *ResponsesWebSocketUsageTracker) Observe(payload []byte) (bool, *dto.Usa
 		t.done = true
 		t.succeeded = true
 		t.observeCompletedResponse(event.Response)
+		t.info.ApplyVendorToolUsage(payload)
 		t.imageCounter.Commit(t.info)
 		return true, t.usage(event.Response), nil
 	case "response.failed", "response.incomplete", "response.cancelled", "response.canceled", "error":
 		t.done = true
-		t.imageCounter.Reset()
+		t.observeCompletedResponse(event.Response)
+		t.info.ApplyVendorToolUsage(payload)
 		t.imageCounter.Commit(t.info)
 		return true, t.usage(event.Response), nil
 	}
@@ -110,21 +113,15 @@ func (t *ResponsesWebSocketUsageTracker) observeOutput(output *dto.ResponsesOutp
 
 func (t *ResponsesWebSocketUsageTracker) usage(response *dto.OpenAIResponsesResponse) *dto.Usage {
 	usage := &dto.Usage{}
-	if response != nil && response.Usage != nil {
-		usage.PromptTokens = response.Usage.InputTokens
-		usage.CompletionTokens = response.Usage.OutputTokens
-		usage.TotalTokens = response.Usage.TotalTokens
-		if response.Usage.InputTokensDetails != nil {
-			usage.PromptTokensDetails.CachedTokens = response.Usage.InputTokensDetails.CachedTokens
-			usage.PromptTokensDetails.CacheWriteTokens = response.Usage.InputTokensDetails.CacheWriteTokens
-		}
+	if response != nil {
+		service.ApplyResponsesUsage(usage, response.Usage)
 	}
 	if usage.CompletionTokens == 0 && t.responseText.Len() > 0 && t.info != nil {
 		modelName := t.info.GetUpstreamModelName()
 		if modelName == "" {
 			modelName = t.info.OriginModelName
 		}
-		usage.CompletionTokens = service.CountTextToken(t.responseText.String(), modelName)
+		usage.CompletionTokens = tokenkit.Count(modelName, t.responseText.String())
 	}
 	if usage.PromptTokens == 0 && usage.CompletionTokens > 0 && t.info != nil {
 		usage.PromptTokens = t.info.GetEstimatePromptTokens()

@@ -11,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -50,15 +51,17 @@ func setupRiskRecordRouterTest(t *testing.T, role int) (*httptest.Server, *http.
 		&model.RiskRecordGovernance{},
 		&model.Channel{},
 		&model.User{},
+		&model.UserSession{},
+		&model.AuditLog{},
 		&model.Token{},
 	))
-	accessToken := "risk-record-route-test-" + strings.ReplaceAll(t.Name(), "/", "-")
 	user := &model.User{
 		Username: "root", Password: "password", Role: role, Status: common.UserStatusEnabled,
 		Group: "default", AuthVersion: 1, AffCode: "risk-record-route-test",
 	}
-	user.SetAccessToken(accessToken)
 	require.NoError(t, db.Create(user).Error)
+	bundle, err := service.CreateLoginSession(user.Id, "password", "127.0.0.1", "risk-route-test")
+	require.NoError(t, err)
 
 	engine := gin.New()
 	registerRiskPolicyRoutes(engine.Group("/api"))
@@ -75,7 +78,7 @@ func setupRiskRecordRouterTest(t *testing.T, role int) (*httptest.Server, *http.
 			_ = sqlDB.Close()
 		}
 	})
-	return server, client, accessToken
+	return server, client, bundle.AccessToken
 }
 
 func TestSevereRiskRecordAPI_listsIndependentRecords(t *testing.T) {

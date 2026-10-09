@@ -205,6 +205,7 @@ export function CommonLogMobileCard<TData>(props: {
                   turboVersion={other?.client_version}
                   isImagine={other?.client_source === 'imagine'}
                   isTask={other?.is_task === true}
+                  isSyncTask={other?.task_sync === true}
                   tokensPerSecond={
                     log.use_time > 0 && log.completion_tokens > 0
                       ? log.completion_tokens / log.use_time

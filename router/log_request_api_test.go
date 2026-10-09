@@ -10,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -31,14 +32,14 @@ func TestLogRequestAPI_returnsExactLogForAdmin(t *testing.T) {
 	require.NoError(t, err)
 	model.DB = db
 	model.LOG_DB = db
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}))
-	accessToken := "log-request-admin-token"
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.Log{}, &model.AuditLog{}))
 	admin := &model.User{
 		Username: "admin", Password: "password", Role: common.RoleAdminUser,
 		Status: common.UserStatusEnabled, Group: "default", AffCode: "log-request-admin",
 	}
-	admin.SetAccessToken(accessToken)
 	require.NoError(t, db.Create(admin).Error)
+	bundle, err := service.CreateLoginSession(admin.Id, "password", "127.0.0.1", "log-route-test")
+	require.NoError(t, err)
 	require.NoError(t, db.Create(&[]model.Log{
 		{RequestId: "target-request-extra", ModelName: "wrong-prefix-match"},
 		{RequestId: "target-request", ModelName: "gpt-target"},
@@ -55,7 +56,7 @@ func TestLogRequestAPI_returnsExactLogForAdmin(t *testing.T) {
 	})
 	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/api/log/request/target-request", nil)
 	require.NoError(t, err)
-	request.Header.Set("Authorization", "Bearer "+accessToken)
+	request.Header.Set("Authorization", "Bearer "+bundle.AccessToken)
 
 	// When
 	response, err := server.Client().Do(request)

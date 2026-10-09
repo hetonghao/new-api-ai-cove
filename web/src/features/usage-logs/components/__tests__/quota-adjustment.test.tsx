@@ -47,6 +47,7 @@ import { renderAuditContent } from '../../lib/format'
 import type { LogOtherData } from '../../types'
 import { useCommonLogsColumns } from '../columns/common-logs-columns'
 import { DetailsDialog } from '../dialogs/details-dialog'
+import { UsageLogsProvider } from '../usage-logs-provider'
 
 // Provider icons are unused by quota logs; their browser-only dependencies
 // cannot be loaded by Vitest's Node ESM resolver.
@@ -184,7 +185,9 @@ describe('quota adjustment log localization', () => {
       render(
         <I18nextProvider i18n={i18n}>
           <QueryClientProvider client={queryClient}>
-            <QuotaLogPreview log={log} />
+            <UsageLogsProvider search={{}} navigateSearch={() => undefined}>
+              <QuotaLogPreview log={log} />
+            </UsageLogsProvider>
           </QueryClientProvider>
         </I18nextProvider>
       )
