@@ -132,6 +132,7 @@ func ServeFrontendFiles(frontendFS static.ServeFileSystem) gin.HandlerFunc {
 			// Gin has not committed the status-only 412; it has no gzip body or file length.
 			header.Del("Content-Length")
 			header.Del("Content-Encoding")
+			header.Set("Cache-Control", "no-store")
 		}
 	}
 }

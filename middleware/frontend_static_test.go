@@ -201,12 +201,19 @@ func TestServeFrontendFilesGzipRangeUsesCompressedBytes(t *testing.T) {
 	assert.Empty(t, outOfBounds.Header().Get("Content-Encoding"))
 	assert.Empty(t, outOfBounds.Header().Get("Content-Length"), "the compressed file length must not describe the error body")
 	assert.Equal(t, "text/plain; charset=utf-8", outOfBounds.Header().Get("Content-Type"))
+	assert.Empty(t, outOfBounds.Header().Get("Cache-Control"))
 	assert.NotEmpty(t, outOfBounds.Body.String())
-	preconditionFailed := requestWithHeaders(http.MethodGet, "gzip", map[string]string{"If-Match": `"old-gzip"`})
-	assert.Equal(t, http.StatusPreconditionFailed, preconditionFailed.Code)
-	assert.Empty(t, preconditionFailed.Body.Bytes())
-	assert.Empty(t, preconditionFailed.Header().Get("Content-Length"))
-	assert.Empty(t, preconditionFailed.Header().Get("Content-Encoding"))
+	for _, headers := range []map[string]string{
+		{"If-Match": `"old-gzip"`},
+		{"If-Unmodified-Since": "Thu, 01 Jan 1970 00:00:00 GMT"},
+	} {
+		preconditionFailed := requestWithHeaders(http.MethodGet, "gzip", headers)
+		assert.Equal(t, http.StatusPreconditionFailed, preconditionFailed.Code)
+		assert.Empty(t, preconditionFailed.Body.Bytes())
+		assert.Empty(t, preconditionFailed.Header().Get("Content-Length"))
+		assert.Empty(t, preconditionFailed.Header().Get("Content-Encoding"))
+		assert.Equal(t, "no-store", preconditionFailed.Header().Get("Cache-Control"))
+	}
 	assert.Equal(t, int32(1), frontendFS.opens.Load(), "ranges and conditional requests must reuse the compressed file")
 
 	identity := requestWithHeaders(http.MethodGet, "identity", map[string]string{"Range": "bytes=0-9", "If-Range": etag})
