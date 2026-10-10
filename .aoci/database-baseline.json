@@ -1,0 +1,752 @@
+{
+  "version": "database-evidence-baseline/v1",
+  "sources": [
+    {
+      "source_id": "newapi-production",
+      "engine": "postgresql",
+      "database": "newapi",
+      "namespaces": [
+        "public"
+      ],
+      "include_namespaces": [],
+      "exclude_namespaces": [],
+      "include_tables": [],
+      "exclude_tables": [],
+      "case_semantics": {
+        "identifier_case": "preserve_quoted_fold_unquoted_lower"
+      },
+      "evidence_version": "database-evidence/v1",
+      "source_snapshot_sha256": "101a883a38d903034ebce00865631ab5b1c8740c92a705a543eaa826ee6e7779",
+      "tables": [
+        {
+          "object_ref": "database://newapi-production/public/abilities",
+          "table_evidence_sha256": "b9d868e0f542be829e715122f99af381c6f58eea2a58f3bc0120d5183faa01f5",
+          "component_hashes": {
+            "columns": "72da5f911c1d1dab3f2ef504970d14a347a96ad7c3ba70a547a9bec560aad74f",
+            "primary_key": "2c7d8071fa798125d06e40affbaf17ff277080bbb26b4be753b3be9b6ce52017",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "ad7e8f3008e3802c4f8affef9c1e52f1153476a41a06c4b019c3b35685de7aca",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/ai_cove_migration_subscription_report",
+          "table_evidence_sha256": "8d488bd14d7bd6335e5ef09fd438f809cd9c56551ceb2394e85692937586ca46",
+          "component_hashes": {
+            "columns": "a2a9e167dd74fd5dff16e1a39f133eabdc4e0007f94e9bfd0bc6dfc30619eea1",
+            "primary_key": "a51f7d6a93804a566efbb62b278bcc82fa712d855c4ddbecee0418f676d85040",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "ee0483467df4184395884b577015289384d98327e9e24f420cda51e2690f34f3",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/ai_cove_migration_token_map",
+          "table_evidence_sha256": "1c55c1bdbc4887655cdbb95c60ec8e11d28d76ffce63db7752e88fd9f77522d7",
+          "component_hashes": {
+            "columns": "6969b56416347fdd5d2bc7088f1387189a311d9a2b7b9910da71221356e15f14",
+            "primary_key": "c9e454dc708c76c3ea1f6b46a6c6e404868dc80ee46f14478695b2852dac5ec6",
+            "unique_constraints": "b0359a2a5220a9cd51034e6530353c72fbf6f20763c2e24bcd73867aa8d792d7",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "845b8f852e9ee52df6b9c03ec86a8c3fb93f06c98f6b9f6ad4d496c36a4ce000",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/ai_cove_migration_usage_log_map",
+          "table_evidence_sha256": "ea92123bf6a5ddec103c23d19a20962da269b1006e6109415c35bcb218c0693f",
+          "component_hashes": {
+            "columns": "b04c609ff0493b60cfd76defeee329e72eec5d393f50e3387e09078338f55d5f",
+            "primary_key": "e4e9e745e939c8a28abb858e0aed6d7cda919e0b0b3e40dbffe6696f6ec11772",
+            "unique_constraints": "3cbfde7ed04974cdbef8bfc49f6d54201282107f9cd8f8bd185d89144a5e75fc",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "5912fec140e620f8e0a62ea9d69cc00ecddc913eb4e86193c7877bb668859513",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/ai_cove_migration_user_map",
+          "table_evidence_sha256": "9f1d332e78f088af4517444c1c2b2175fde09250d2d61f0c5c517a6a2d03952e",
+          "component_hashes": {
+            "columns": "f5008218c734350d2978c6de7415efb596e4a409122bfc964ff40917b6001bef",
+            "primary_key": "3680fabf983d35ecaa4f3da4ad428cd00836622133c59d13cbada0a0e6b09f57",
+            "unique_constraints": "8dbf4f9418f43c1346c81ba2d8fd33ac7f07d9a9eaa459cc36e30d9a276648fb",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "6f5bc4c6de5b7089e7b4adc1df80177308658611bb4763e8b7092557f5356254",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/audit_logs",
+          "table_evidence_sha256": "7c8003bbccf26812141fe4e384f538248181c391a99ee27867aa27c78362ea88",
+          "component_hashes": {
+            "columns": "a10ae75eb07af9c0bb3bc3a05e8b4dd20b503f3843910be86b43384e54df7d59",
+            "primary_key": "197d11760ac9c4b975c2910858a7ca378e2a822b702a7abbe0766edfeeb20b7f",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "870ceba50d9c5e9a31f90f47a6e9ad6348b77ae09d1913f5cfb8c2a2fb27d1fb",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/auth_flows",
+          "table_evidence_sha256": "1e7dc9d7ec0536b862483d947aa6a9b122050119e79725e4da97c96bff5ccf64",
+          "component_hashes": {
+            "columns": "af5d7452b6c038aee5362fb69a71935020015052f5a6660cd9fa512a194dc9e5",
+            "primary_key": "30e665ceec5f0a0e0513d92ce5c8909c8bb940a4cab761a5d6d6a1777e1b33b0",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "b9510068fc69e43b3dee086cfb1b6e8ea4587e91161adb2aa1a474de74f177c7",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/authz_roles",
+          "table_evidence_sha256": "0cce5ba967d1fe8cb6e51b65ce05454fda47e61315b24dbeed3e73be02accfd7",
+          "component_hashes": {
+            "columns": "c37b64bb4ce21f7296249cf430e4a883bab5f11b24f4048107d9f09bea12f22c",
+            "primary_key": "706da665b50a485d27841997246c7ec0ccde04c6d54679b0f9e579e5b00d59c3",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "c9dc4aba4f107d4633682195851accb7baf8fe881ea790429bc604fa8e814d17",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/casbin_rule",
+          "table_evidence_sha256": "76cd650db96b66e3d25e63bae3b6f9b29c8ba78c9d65ee25b994a1471da5ba3e",
+          "component_hashes": {
+            "columns": "7837844f1b3d101746cd23cece7e399a5fcd0ef75d37d435063ef7e56b7cf811",
+            "primary_key": "3484a6bad847af422fa06213213a96628aa4cae8a478334f68b87b4240db3e1f",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "b41744614e7ac5afe4301c416d9ebb48db10859f00da457c9fc7dcb5c585f245",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/channels",
+          "table_evidence_sha256": "7c19a1813daaf4a45677413047d3a8020c6decac8e3df7f62898c6b1ab03b2f8",
+          "component_hashes": {
+            "columns": "b7aeaed3267a6d66249a418a6ee4115c56741c622c2ff2f64f7664bae45fd397",
+            "primary_key": "8df471856a6a760f6596623b8fd7b10fd4d7c0fffee25333284d5cfe84b28638",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "20143467954fbcbcf70cb9b455edfee347460b7903ea5d3aca26023c3ecc6792",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/checkins",
+          "table_evidence_sha256": "4ae8a8f5206c39efc15b53bbf23a6b8c02f08784fffe2f8c8ee35447519db81d",
+          "component_hashes": {
+            "columns": "bce9a32177cdc197f7d678f69f393bedb17073b03fb283957f66c184a57e0309",
+            "primary_key": "addbf9d096597483d1cc5a77ad6eab3b6c23537d31fec2beb4fc0065cf78f95a",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "c4ab6f0faab76f090959f28152b26e3c1a770548b2e92f892f6350d47bbe7853",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/custom_oauth_providers",
+          "table_evidence_sha256": "a82fe60bcb6a436aa751c148f09d5c41c7dc43f6710e362739fb491711fc4f04",
+          "component_hashes": {
+            "columns": "9446771b48c738b97a6dbbc39e1525b28aa8eae87db1f32e1966379554548722",
+            "primary_key": "0afd8a990a840f06bd58b3f2855fc2bebb0b6a8e42e8ab6d584775afdf12b5a1",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "f6edba5a784c76916a36b152af0eb8e5c66f97cd87f3f96fc92c46c426a9f43a",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/external_identity_claims",
+          "table_evidence_sha256": "5af05cd7afddfc174ab47aa97545c648f848cf4045d5f1264797c571357516cb",
+          "component_hashes": {
+            "columns": "d1ebbe37e9d57231e5c56d2fb5b0ab07692281f77b150da7bc6f54b84a0a6b3a",
+            "primary_key": "d956aea848d3fb58c07da6f5c94c9efbbdcc440e4403f6d61e9d653318620b55",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "3bcc9fa1594611cf8fb08cfd3afaf62d0ca781e85872723c52799cea5c16dfbb",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/login_encryption_keys",
+          "table_evidence_sha256": "1fc097e8dc18eb657e90c1f660e3aa0301d988a57af4fa04f9f2733298680a41",
+          "component_hashes": {
+            "columns": "f793f038ef8e9b542743102fb86ba5f78860b8596df6e21cfe00cc4ba339a703",
+            "primary_key": "0db3e3fa632268873ac005b6527e3afb165f64b95c2411b33085ad0497f562b0",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "45241094a82607e901baba9822f5a513994b8108c9ee5e1466351e9853789e27",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/logs",
+          "table_evidence_sha256": "71f54844e7855aa8c527eca7e27dc31903379d2cd93591ee7ae3f024ccf4061e",
+          "component_hashes": {
+            "columns": "81101ef261a46313f916d6afe4034a7bf456cf77b622290b58d49e8025fee1ec",
+            "primary_key": "ec13a5d6220b987462abcae468efb0439155acd16cb6406572f6cfa1acaaf37d",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "4922c97daaf27fa63911922dea334142bb404ab487abf8f85163806bdddeb7d4",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/midjourneys",
+          "table_evidence_sha256": "3851a679ced020168bd778a76544f929615ef0c340e8db1ec1b4c66dc78e3ba0",
+          "component_hashes": {
+            "columns": "ce23ec5a8ed89223812e71c55b3913432fbb59081328b0107a65f54f289aeef7",
+            "primary_key": "2485fe1cf26baed672793be37b0c063cab586594d778ca1eea49352f726f4872",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "7de35d2937b5ce7ed5f3299d1a4f630d86230eb1269e13ae6645fc429488ece0",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/model_quality_artifacts",
+          "table_evidence_sha256": "62d4dab3c7e2f7eaae20e4bf8aa02eec2d31d6ed09394f7195088fbcc7d90388",
+          "component_hashes": {
+            "columns": "c53a23d4f2ab800674ca77adfc27595033af3171c06a329909589509a3161b5a",
+            "primary_key": "84980e54af4082ba4f518887c53ad5484bcde29f19924575a0eacd8398bcffb3",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "63e234b2aec0d08227d2899fdc77d5f87fa7b6aa92aa8cbdaa2eabfeb3ad429b",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/model_quality_budgets",
+          "table_evidence_sha256": "a7b44d92f463cd2f0c3c916d5ece5e93e4ea3286346aaaa7d79af997506aaabd",
+          "component_hashes": {
+            "columns": "5317de2f5cb15d9f94aaaf243fe876ee2218d53ec730703197863149d917953a",
+            "primary_key": "f57cf06921f3d5c6485a58e899c9049aa1519b87aba8c6a2ae0c1077136df5b5",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "d965cb0716381965b610a63abda5fe5c609ad304bd78bd55d3386daa67604df7",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/model_quality_cases",
+          "table_evidence_sha256": "ed6a3340473eee9ad8a2af537379483ce3eb72d00bb2eb88ec940086624407be",
+          "component_hashes": {
+            "columns": "25b044a2fa6d775817d5a26b69a00260edbecf6e2e3248f9ea8edf903c77ffae",
+            "primary_key": "f8d6b69cdca13b081ad9174fa09eeb7625796ea82487c59b3ee5f8be9fdbee85",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "136771b9b102b92f1da13bc77d9b42cb7589977451db14f26b54a510b841de41",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/model_quality_revisions",
+          "table_evidence_sha256": "2bb3a37634b8f17c5ee6d7585eaf0862f90bd1c92bb3146caaed59bee1b9c4ef",
+          "component_hashes": {
+            "columns": "d557edcb36fcd1ea0f58bf736e26f6c7db5102875edfc0369c881e01372758cd",
+            "primary_key": "a5e19ce303e8c9a14fcf9cfbbf9a4526481067ecd3955a88166b1278e3b2cc8b",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "73ee5e1fbf8431896d03728e3c60fc99f2dae90c91f4b956719f08b1c87efe8a",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/model_quality_runs",
+          "table_evidence_sha256": "09bfb86f6bea3bf4f1e416fbba79c0e5bb02f76a4b8beb3bafe02c6699169728",
+          "component_hashes": {
+            "columns": "ddd66656d9c84af4a7ba460d5d2406cabaff8087d4b05a359d5d126ba1a88d82",
+            "primary_key": "436cf5ed54c3c32ebeb2511c2c89fc86894d106892ad7b53a3e967107baebbc8",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "8b76b9e9a21fdd32b260a6dafc1e34c3b2ee0bee9a7caecac2cb0e7014281930",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/model_quality_samples",
+          "table_evidence_sha256": "002a9968c8ac2d31653593c3314ec697ceddee647f048295f20cfc5a5549ca26",
+          "component_hashes": {
+            "columns": "8d370fddc594b34aff0544d0ad8236be08581f76ce42ca596404f2f5c16d5679",
+            "primary_key": "69b3016f1bb0f64c6e491f5b3487f328d7bc0a1e3a4c7a4811d57de7fa2890db",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "10fc0c222670ee11b1311947b024882bbebc47a38805e5d4e9c5a8bffe0f143f",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/model_quality_settings",
+          "table_evidence_sha256": "bb742d81ae72b6a0e80851d66e3c521a7d01c6e5bfd69c01f91f93205d5bcb3a",
+          "component_hashes": {
+            "columns": "49a9176ac6e1bef99b5d6eda4439b193f0da34895e59b45b32046124ce9a0601",
+            "primary_key": "24ef133c97144959a7d68801f926a6c8e311bb02e94217536e94b34fd6ff9adb",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "fd00805a86ab1c29091434681c664432a8855e97fbcd96a0cd7c02c21c43d4e8",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/models",
+          "table_evidence_sha256": "a4e2f3c97126d886f1229af43782f06db63cd683cc128d62dc8f0986b6645dc4",
+          "component_hashes": {
+            "columns": "d2b76f5479f0a55f52ecd966a090b4811dd03abd6ce0aac45e1e3d5d68a8148e",
+            "primary_key": "1791eea15122e0c4242985144e29f83c3565cf1fd0ca87bcb2272106c287c955",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "0d132248e66a2c50bec52f5cfc67ccadcd677599ebbd85e3b822a00709ae44db",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/options",
+          "table_evidence_sha256": "20c62985818ea945dc25ee8cdfeff627a1adf6e1a26b8b68a2b38c8768c06585",
+          "component_hashes": {
+            "columns": "987659db73552f49367ae4b0a2576a497e22f7ed7daedd53cde52b9e8b4fff12",
+            "primary_key": "57c6eb3c8b41a94d42d6976842445992720db9bc2ff4223c5d0aa3ffa612af2e",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "3d7dc06959ae9474a39119708a661ac13799be8842017dea35a231bc66fee75c",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/passkey_credentials",
+          "table_evidence_sha256": "cfed1f77cd1c06ff06de0f53ec266aebf729ecafab8b2db1d49f988d5e5e4f62",
+          "component_hashes": {
+            "columns": "1133a9c894f4c164a3ef98edd4f78340a3f79eb517bc4c30781d2674ca7c4512",
+            "primary_key": "d759fc821878b1044dbe0c90394591b96771befa376d1f4a2c3c88a76b2a0160",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "53f2b36072243ddb8b3faf9ae549010c3ac0b47a265c394f295784f4bcef43a9",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/perf_metrics",
+          "table_evidence_sha256": "fdea2b05fe797f28dbc8c676b0ae2b7f68136e3363a30e3b49fa27eb1b22112b",
+          "component_hashes": {
+            "columns": "ac57df2ab9639f6f7ac669968528bc90afbc871cd32af1ffd08f8f336af1e456",
+            "primary_key": "0e2df0d3dd9028f3e7cd3637a427d6fe84331eb4ba2545651c049770ddd85684",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "c54ac5236ff8e8a253c068805ed72e034e0a8cf887f87bae37b75fb603568b91",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/prefill_groups",
+          "table_evidence_sha256": "a5919525a22741c2a87e60f11c2642a0adcc12194291f7a72d78b7c244845bdc",
+          "component_hashes": {
+            "columns": "6984bb9a9ea6abd8da11c73829b8f36347d9ada3dc9776402105aa57fe2c7156",
+            "primary_key": "d1c2e4171db69f3740cb3ff0534c07be5485afbe8c97dca48238f59dbde2f374",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "f15baafa9e56d1467249d8a0ce62d639c22fa3239fdd245c5ff3d090bbc49fe4",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/quota_data",
+          "table_evidence_sha256": "5ed2ad610f8839bb25f345e8103f7839cc0e84349d80b55f1c1a0b26cf9ab66a",
+          "component_hashes": {
+            "columns": "668f02a11ca036351c6bcf5971da2e61273cbef1827eb98579f853a55d448fcb",
+            "primary_key": "76b360d2297be334c2169648ccc59be0ebd1fe237c09436c858191f9d9a915b6",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "65d1614b8c962c8c2b796c152e2208771df72ef7474dda3a9ff9c28be1d724a5",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/redemptions",
+          "table_evidence_sha256": "cfa8371a41c83bb7aac7f614da706c54f86bbb9d363fe9284d98777553a81f92",
+          "component_hashes": {
+            "columns": "329092c689833110cc2f5abc54ecd2b57b5b7c5e2669ae3c4c23e6933ea1ca52",
+            "primary_key": "5113ccc64f2dd7fb34c7c1bd7d4631637d14edb9c7611f0a61b20965a1aa771e",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "c4c2f1ce0f08299d84d88273962454adbd80beb966d353477763ca14f8467ced",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/risk_policies",
+          "table_evidence_sha256": "0e7dbceb9a81025a0ba4dcb74442628a5f308fc1af60942094cfd1497714bd81",
+          "component_hashes": {
+            "columns": "660895bbd13388ad6695a0f5567b195c7d7e46e1b7234286e6c3d3e2b5b62f12",
+            "primary_key": "ab0284cd641bd84e4223d178596e3f06d13fd2a9e4a321ad6d67798b4e4d55a8",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "033c67885f2e020bd5bbf11ed2ebb00268dc19463bf71bae0f0357ffb9c7a98b",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/risk_providers",
+          "table_evidence_sha256": "a15328fd12ddbe127162ad3494503542d27aa3303b0a8fbfcc75d51d958286e4",
+          "component_hashes": {
+            "columns": "2285c40d7b3ba15a9f29995f3698eb33b039d591a71f037dce37f08cba348a2d",
+            "primary_key": "873b4b1d40a097b569727b12e39a10b5b4d4f0257772826848e3954c15c12b6c",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "3667d824cf6b32205b91d8bc67e744c66560a89b51c2faa4c7dbb43520e9c4bf",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/risk_record_governance",
+          "table_evidence_sha256": "c635c9994c426e450904ec94ec1ddc4d6b37a396bb62189027140a8d85113e23",
+          "component_hashes": {
+            "columns": "9a8408dc5a6f4027a81bc0d520c7e0ab3c196841f4fb9f794b4955cf80fff125",
+            "primary_key": "58c611bc101de60879d0ae6ad23a22cde0cf374d77de21b1c708df2611db1826",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "3453c8fc45b4b52f06646da278d7f90610894a6f16475eb0ecc58b1ff65856d2",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/risk_records",
+          "table_evidence_sha256": "48442dd316b5f866c53e83f2582d57ec1b4b5f0d6c0b83ef8977f9817450caed",
+          "component_hashes": {
+            "columns": "97f89141a162498d0a7f8a5c8447e1f84421c751ffb113ff7c4ddb75ef60cf96",
+            "primary_key": "4da02ca79c874a67e858357397da3cf746fb723a39c55db4a11dcabdc4b3b22c",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "7c1a7ddc4432bb918aa8d15647082d14e0f9a546967d8ad1ad61e61d1dc80509",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/risk_rules",
+          "table_evidence_sha256": "45db31c45fbebc93e3de6cd979529da0b47a185c2c7f9a9f8edd0e44b17117af",
+          "component_hashes": {
+            "columns": "cfc6b9a8f66e8664fab84f735486cc4e0fa052676aba57a4ceffe874fc9856fd",
+            "primary_key": "c847594b76135fc726a98240737ad9c41013867d158303812af81c7761c57707",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "14d5d74011609a00b7bd2add08c0efefe0a907b974a77f3c7b06c4a83f80df69",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/sales_commission_settlements",
+          "table_evidence_sha256": "9812142c768689f1219b6b2f381756b33e0f607b7c1b22553094df85278d01c0",
+          "component_hashes": {
+            "columns": "75c772c9c8f47622737c7bdcba4153cb9ca95beef26f7376f5127ced9ed9fac8",
+            "primary_key": "ab91d8db223f3c29c632ef07145b2f8331ff2bb769ad225f4e0c0a0c213695a0",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "a83128faa51c2231b17b4b490bfc23eca9111c079a092ceb6f1f4071133a46fb",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/setups",
+          "table_evidence_sha256": "b7f9c2bec66c41f10003c077b84e44ecc33565088c349c6abdc55b8ababfd847",
+          "component_hashes": {
+            "columns": "745222579cfab7c272abd6595d49dd8df03106033928aa0501331f2fb27f466c",
+            "primary_key": "3daeb7ae09dd504bf403805e9655747e41ad347a61dbafa26eb26a8b0c695637",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "c5e2b65589a4d3f6e594fc166b1368a54d1fa91b078037d39efd6c571c1d650a",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/severe_risk_records",
+          "table_evidence_sha256": "36587557b6d52bffade383c24aeb48834180847c168f1d27c4211d24a6e30267",
+          "component_hashes": {
+            "columns": "deaf99871c5dbd4c94fa5edabf9a00e9da2c0414a9bb82e659bc52aa743a2462",
+            "primary_key": "e660cd5dbf28b5982e4671300eb061f2bb7b189ece3cf39f0e2fcbd18b6cda70",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "ffed0aeed2218fdb1b7dde0a259c69eb0660a5a079f3d356defa2868775bd050",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/subscription_orders",
+          "table_evidence_sha256": "df42551d86d1c94855e5d04f378d8e888342d0d59d2a2a4b89a8d091a615e2c5",
+          "component_hashes": {
+            "columns": "2c510b2401a6219e677d57940cd9e7bdf6d9510b845955421dbe07efa66696ee",
+            "primary_key": "69f939b5a9cc07178f35de1c8d414fbab093e6cff30d967090792eeaf8f9de72",
+            "unique_constraints": "629591db352ac7a7ddc24092b14d95bc56ec523a177473b898b7c5f7db694759",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "6026c9b0662df35af83f411e5720ecf0ea031e400f997d900e15076d884c6dc3",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/subscription_plans",
+          "table_evidence_sha256": "ca74aaf71ce3242c9dd2e022a32a7de41f5100be392e16cb4a3b27e52ea6b7f7",
+          "component_hashes": {
+            "columns": "a5d18e8e841013a60a9465dba8a262d71262680204a53493835733a90f0fcdc7",
+            "primary_key": "13c3a56f8d974040008e53a3cc307aae8a7e0101f0a48f37ed423a5c026ff071",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "70f66a4850b6709485da4224ffc864fc8a5bc69bf5a5fe1c19465f46563d21f1",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/subscription_pre_consume_records",
+          "table_evidence_sha256": "e5ce13a1e199bc6200595e466dd89bf87ffe20f597ce300bfc5c082ce495490b",
+          "component_hashes": {
+            "columns": "42aa06a73dc8401d951e0aad4946016aceb671ff3f11ea7fb14c4843146317db",
+            "primary_key": "cd0afe4dd4b15ee62b34fd0ee91914eaf21771b3fb01470b43d8ba3545d3533c",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "2f9c8f5a760f68e94048fe9da5553ca7ad0d5d9eb9dcde4dabefaa4db0e20b4e",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/system_instances",
+          "table_evidence_sha256": "52db5a077f08255ef4a04cc607e5359ef8ad3f8c4aaede0336f12422cc362880",
+          "component_hashes": {
+            "columns": "4a19df061e8854a986001b46cccd5ae3fd706c4ce41422307a9446e58a2c9ff7",
+            "primary_key": "5e3ba1572997465a7429e430965ec78929b560e64feed9b49901775ae26fb478",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "aad93b39a808594afeab4ae48394522087230af0f7d8c22d901694bec4b6bb59",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/system_task_locks",
+          "table_evidence_sha256": "ae43760bdb4a3b6c0de52bf36dd29e22bb19b939632873d5f04efe782bb33d9c",
+          "component_hashes": {
+            "columns": "bd891e62a6c87e0c28cadae10f6bd2ace37402c8d3e176afa26eb769814f6351",
+            "primary_key": "d2d3ed2056237008465f75004262d65dc36dea26cd222177bdb2746e792f114e",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "74b2a2b2a2965a9220042d7cc0f8b8eebde4bf8f9275a900aeda3a0cb72f88c5",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/system_tasks",
+          "table_evidence_sha256": "2b58bb0b202d8667c8ca29dfd95ecdb3f344cf7939f03abf107f89a4ff5a5298",
+          "component_hashes": {
+            "columns": "af0b909f1304a8bfbd147a38ec3e3ae25bed9ab6f148b893ebae6458bf9fdf61",
+            "primary_key": "79dce915bec1d151bc8b9803da9c1a39eca9c74d82b76b67532d37f3d4275c00",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "46e8c1685689f6512bb4752fdda4b9aefb8773c53ffdb051e1b2bc303c63e4d6",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/task_plugins",
+          "table_evidence_sha256": "8cd261eecf23606e4ae7eb9017cfd79a13abd3af5a39539fff6425815913ce72",
+          "component_hashes": {
+            "columns": "915167c2330a51c3a56428485d4023d5cc003813be0b645e967296fe130f427d",
+            "primary_key": "e4948bf58a507ff4c896eede8d58872fbcc1f7a92dd21407276d3837b8ba3ab4",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "66e744391aa093502bc18c67b6225c22a2fc5e94420aeb48961c60dbe5508a91",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/tasks",
+          "table_evidence_sha256": "e6ee83c21bca8731e7273f1409ce1f852a4542860854e97c7585bb7cc7a291ac",
+          "component_hashes": {
+            "columns": "0442dacff8a64f5635fdd5ebca9557356f159746dd9c52433a9eb56e3be57fa6",
+            "primary_key": "2e3ba936b764255560fc7ecc0b72dd114ca6eebf9dd8de7977828e24a42229f9",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "96b2318522b722cb4b0325ccb4fa1c341797aacf7bc7a1774b6a644b83aaf4d2",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/tokens",
+          "table_evidence_sha256": "85e389ac2a075b0904f677bb446325b3341749c245e90f15e030fba22ea49125",
+          "component_hashes": {
+            "columns": "db96d98f24ebc68e8680ca924390d980a62114bfedc5b9f12ab37e5d256de128",
+            "primary_key": "6885b8fa4fdb7d54d0a3318a028014e60d82da7696169fb229685d601bafe37d",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "efc8af20a6ff8a3e1fd684f75144b20310e5f4f987eb30868439302a4b305212",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/top_ups",
+          "table_evidence_sha256": "792d4c559f2c40250daefba26416c39072981017b8c12f054da88fba43aeefe5",
+          "component_hashes": {
+            "columns": "f08a971102f2dd1fc932972e57c452cac670de4c0df6334c73516fb8b8470411",
+            "primary_key": "2a03a8cf41142241e99fa414104c492b56c7cbca8befe7dac95442516c87d804",
+            "unique_constraints": "8ebd12fb62c6e4415ee0ed52195a859ed2eb53c0f41fa4efda39df61f3fb9c9a",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "9accf1fe19db811e9a887681a1079aa6f3f3ffad04917c27f8285b6492ce6129",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/two_fa_backup_codes",
+          "table_evidence_sha256": "6466c0b4637e936e404130204535e4bddee2d162e2ec500c5873791513f3816f",
+          "component_hashes": {
+            "columns": "98a26f6e925cd9a42c881615ba72f657d3a39af465e369f38714cae14ef86c32",
+            "primary_key": "13c6bb00cbc8351ea0dc5fa637eb0f0d9067f3338993b707b55f4eb83f3eefe2",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "b291d8877586b96f001d2482744a6581a4e1534e18528cc0790935c969f0649d",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/two_fas",
+          "table_evidence_sha256": "dec9ce5bac505a0c82c759ff7073ab1d9d3c09fabb534781624896dac679f3ec",
+          "component_hashes": {
+            "columns": "6f13b55370ac6a3328d6f3fae038efc9bc6f09ee0e9eb856018aa76d3dbc537a",
+            "primary_key": "926ab1e948ffff1ec3b7cf65aeb0eec6a896d25b2b7c27f946bbc485a9bb5151",
+            "unique_constraints": "160bb6891b900401d5514404375d0ac5975f5586f33d8c3d44a6c7c041b413f8",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "52a30b042f02c51c2a2578c802f8e4e23db0e57b2310b26085acc17f99039d41",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/user_access_tokens",
+          "table_evidence_sha256": "f6c536e358fef6f892ffa9491c4244cc128d9cd4e14d3f47a4784440563d0d72",
+          "component_hashes": {
+            "columns": "282b2391ff77faea460ca30cd67d5a287fb812d4fd659e39c7a290bbeeeeb8e7",
+            "primary_key": "1e22eb1c3b791c4108b33adb69b059afe6c447315e2fd143977bf476fccf2754",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "5c3cfd19b91abd86887632185ff5899a2729f7ebe9f478fe6a9e406101bbe8ce",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/user_oauth_bindings",
+          "table_evidence_sha256": "ec082df04207c4346d2fbf419e4dbd1a426a27861b87c663f7ca2b925ba70c9d",
+          "component_hashes": {
+            "columns": "e92c5a18fb8d8f56640a154b476ea1a5e06f098e87a01b605bf8c22fade220f9",
+            "primary_key": "06a7b4bdb7205b36d0b1e3c2cc295558bb37cf3157d774b0ffb848a2e64c2f18",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "2c13a3b1dad0599989ef8b1639ce66d0b14682f6d565c8ebe80a91a29203e761",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/user_sessions",
+          "table_evidence_sha256": "4d73a5dd7d403c28d26139bacc9f1abb5e78e135ef43b54a2fe1477860c2f285",
+          "component_hashes": {
+            "columns": "b6915a962576779ca6475e680e0de8533ef7997d14ca440079abb488b123e1b1",
+            "primary_key": "52a05f29d5aab7a98861e1703026e308ff32559a92fc5853a358c037c6d7e320",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "b6909ade89205ea34d2807560a0bf28f409193ac5ca8c8639d4edac5f440f365",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/user_subscriptions",
+          "table_evidence_sha256": "4a2f962fec02f78442e16b0edb3461e0ae1563818a461ada54ea324cc580fbd5",
+          "component_hashes": {
+            "columns": "550bb5f06142e89f7afeda6c37566485272c36def12366380b96d0915c6fc1e7",
+            "primary_key": "a242b3cd7f9b24943b19f96bf2f14f30a15995010bb15a09e09e0b43c2cadf44",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "52b2edbb89cc2b30862efabd975dc73320bd0f10e03e2323975dceaa15e51577",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/users",
+          "table_evidence_sha256": "8f215c8b556b27c32413e820271e970d3760433889de7eb159f92385bab13008",
+          "component_hashes": {
+            "columns": "3a062db370143e0d180b946b356be83109a4ad16358b4564425fc57c51b5bf84",
+            "primary_key": "d2c4cb3998067e6bae51e2cc9cb9ddda49a9cb2c527355b9f897165fefb59f07",
+            "unique_constraints": "b1d5cbd86b71b8775182941e509a0ba9f2bbe2dbcf51764196b6eae811185319",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "2bb96762d33e905929263a0f4cfef5bd37785e9435f610bcf8f0ca3bbb2158e8",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        },
+        {
+          "object_ref": "database://newapi-production/public/vendors",
+          "table_evidence_sha256": "22e4fa45afbe28c41b9230b611cff4259998b0339a587d372e4b58f9f5c3587c",
+          "component_hashes": {
+            "columns": "5143bf2f938a1bea199b49a097f94e1c8aefd6a3619c7388b14da328a6c186a5",
+            "primary_key": "773882a1f420aaf98f5ff5cfadb63d574ec5146140eff97bfd6d6d2c29acb1e2",
+            "unique_constraints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "foreign_keys": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "checks": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "indexes": "cbd92aad3e300b9f3cb75206598e7224ff8228865de27da62cd7da5757985ae2",
+            "partition": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+          }
+        }
+      ]
+    }
+  ]
+}
