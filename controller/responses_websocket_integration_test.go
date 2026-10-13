@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting"
@@ -331,6 +332,7 @@ func TestResponsesWebSocket_rejects_idle_event_without_forwarding_it(t *testing.
 }
 
 func TestResponsesWebSocket_applies_model_request_rate_limit_per_create(t *testing.T) {
+	require.NoError(t, i18n.Init())
 	db := setupResponsesWebSocketHandlerTest(t)
 	setting.ModelRequestRateLimitEnabled = true
 	setting.ModelRequestRateLimitCount = 1
