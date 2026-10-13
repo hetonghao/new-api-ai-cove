@@ -7,9 +7,10 @@ import "github.com/QuantumNous/new-api/model"
 // require, so case instructions only carry case-specific needs. Bump
 // SVGOutputContractVersion whenever the contract text changes so historical
 // runs remain interpretable.
-const SVGOutputContractVersion = "v1"
+const SVGOutputContractVersion = "v2"
 
 const SVGOutputContract = `Respond with a single SVG image only. Requirements:
+- do not call any tools or functions (no shell, file writes or patches); write the SVG directly in your reply
 - output must be well-formed XML with exactly one root <svg xmlns="http://www.w3.org/2000/svg"> element
 - the root <svg> must declare viewBox="0 0 W H" with numeric bounds (width/height recommended)
 - escape &, <, > inside attribute values and close every tag properly

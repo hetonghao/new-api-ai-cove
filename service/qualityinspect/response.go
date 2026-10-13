@@ -3,6 +3,7 @@ package qualityinspect
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"errors"
 	"io"
 	"strings"
@@ -30,9 +31,13 @@ type responseObject struct {
 	Model  string         `json:"model"`
 	Usage  *responseUsage `json:"usage"`
 	Output []struct {
-		Type    string            `json:"type"`
-		Role    string            `json:"role"`
-		Content []responseContent `json:"content"`
+		Type      string            `json:"type"`
+		Role      string            `json:"role"`
+		Content   []responseContent `json:"content"`
+		Name      string            `json:"name"`
+		Arguments common.RawMessage `json:"arguments"`
+		Input     common.RawMessage `json:"input"`
+		Action    common.RawMessage `json:"action"`
 	} `json:"output"`
 	Incomplete struct {
 		Reason string `json:"reason"`
@@ -50,14 +55,49 @@ type responseEvent struct {
 		Index        int     `json:"index"`
 		FinishReason *string `json:"finish_reason"`
 		Delta        struct {
-			Content string `json:"content"`
-			Refusal string `json:"refusal"`
+			Content   string         `json:"content"`
+			Refusal   string         `json:"refusal"`
+			ToolCalls []chatToolCall `json:"tool_calls"`
 		} `json:"delta"`
 		Message struct {
-			Content string `json:"content"`
-			Refusal string `json:"refusal"`
+			Content   string         `json:"content"`
+			Refusal   string         `json:"refusal"`
+			ToolCalls []chatToolCall `json:"tool_calls"`
 		} `json:"message"`
 	} `json:"choices"`
+}
+
+type chatToolCall struct {
+	Index    int `json:"index"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
+type toolCall struct{ Name, Arguments string }
+
+// toolCallTranscript keeps what a tool_call_turn model actually tried to do in
+// the artifact text so operators can tell an agentic upstream wrapper from a
+// genuinely empty reply. It stays within the artifact limit so the sample keeps
+// its tool_call_turn code instead of becoming artifact_too_large.
+func toolCallTranscript(text string, calls []toolCall) []byte {
+	var transcript strings.Builder
+	transcript.WriteString(text)
+	for _, call := range calls {
+		if transcript.Len() > 0 {
+			transcript.WriteString("\n\n")
+		}
+		transcript.WriteString("[tool_call] " + call.Name)
+		if call.Arguments != "" {
+			transcript.WriteString("\n" + call.Arguments)
+		}
+	}
+	out := []byte(transcript.String())
+	if len(out) > model.QualityMaxResponseBytes {
+		out = bytes.ToValidUTF8(out[:model.QualityMaxResponseBytes], nil)
+	}
+	return out
 }
 
 func readUsage(result *model.QualityResult, usage *responseUsage, protocol string) {
@@ -86,13 +126,24 @@ func finishResponse(result *model.QualityResult, response *responseObject) {
 	result.FinishReason = response.Status
 	readUsage(result, response.Usage, "responses")
 	var text strings.Builder
-	sawMessage, sawToolCall := false, false
+	sawMessage := false
+	var calls []toolCall
 	for _, item := range response.Output {
 		if item.Type != "message" {
 			// Agentic upstreams can end a turn with tool/function calls and no
 			// assistant message at all; distinguish that from an empty reply.
-			if strings.HasSuffix(item.Type, "_call") || item.Type == "function_call" {
-				sawToolCall = true
+			if strings.HasSuffix(item.Type, "_call") {
+				call := toolCall{Name: cmp.Or(item.Name, item.Type)}
+				for _, raw := range []common.RawMessage{item.Arguments, item.Input, item.Action} {
+					if len(raw) == 0 || string(raw) == "null" {
+						continue
+					}
+					if common.Unmarshal(raw, &call.Arguments) != nil {
+						call.Arguments = string(raw)
+					}
+					break
+				}
+				calls = append(calls, call)
 			}
 			continue
 		}
@@ -120,8 +171,9 @@ func finishResponse(result *model.QualityResult, response *responseObject) {
 	}
 	if strings.TrimSpace(text.String()) == "" {
 		switch {
-		case !sawMessage && sawToolCall:
+		case !sawMessage && len(calls) > 0:
 			result.ErrorCode = "tool_call_turn"
+			result.Text = toolCallTranscript("", calls)
 		case !sawMessage:
 			result.ErrorCode = "no_message"
 		default:
@@ -178,6 +230,11 @@ func ParseResponse(reader io.Reader, contentType, protocol string, start time.Ti
 				}
 				if result.FinishReason == "tool_calls" {
 					result.ErrorCode = "tool_call_turn"
+					calls := make([]toolCall, 0, len(choice.Message.ToolCalls))
+					for _, call := range choice.Message.ToolCalls {
+						calls = append(calls, toolCall{call.Function.Name, call.Function.Arguments})
+					}
+					result.Text = toolCallTranscript(choice.Message.Content, calls)
 					return result
 				}
 				if result.FinishReason != "stop" {
@@ -202,6 +259,9 @@ func ParseResponse(reader io.Reader, contentType, protocol string, start time.Ti
 	scanner.Buffer(make([]byte, 4096), model.QualityMaxEventBytes+1)
 	var data bytes.Buffer
 	var output strings.Builder
+	// Streamed tool calls arrive as name/argument fragments keyed by index.
+	var streamCalls []*[2]strings.Builder
+	streamCallBytes := 0
 	terminal, done := false, false
 	seenFinish := false
 	process := func() bool {
@@ -257,6 +317,17 @@ func ParseResponse(reader io.Reader, contentType, protocol string, start time.Ti
 				result.ErrorCode = "refusal"
 				return false
 			}
+			for _, delta := range choice.Delta.ToolCalls {
+				if delta.Index < 0 || delta.Index > 64 || streamCallBytes > model.QualityMaxResponseBytes {
+					continue
+				}
+				for len(streamCalls) <= delta.Index {
+					streamCalls = append(streamCalls, &[2]strings.Builder{})
+				}
+				streamCalls[delta.Index][0].WriteString(delta.Function.Name)
+				streamCalls[delta.Index][1].WriteString(delta.Function.Arguments)
+				streamCallBytes += len(delta.Function.Name) + len(delta.Function.Arguments)
+			}
 			if choice.Delta.Content != "" {
 				if seenFinish {
 					result.ErrorCode = "content_after_terminal"
@@ -281,6 +352,13 @@ func ParseResponse(reader io.Reader, contentType, protocol string, start time.Ti
 				}
 				if *choice.FinishReason == "tool_calls" {
 					result.ErrorCode = "tool_call_turn"
+					calls := make([]toolCall, 0, len(streamCalls))
+					for _, call := range streamCalls {
+						calls = append(calls, toolCall{call[0].String(), call[1].String()})
+					}
+					transcript := toolCallTranscript(output.String(), calls)
+					output.Reset()
+					output.Write(transcript)
 					return false
 				}
 				if *choice.FinishReason != "stop" {
