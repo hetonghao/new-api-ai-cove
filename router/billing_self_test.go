@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -297,6 +298,7 @@ func TestBillingSelfRejectsDisabledToken(t *testing.T) {
 }
 
 func TestBillingSelfRejectsTokenWhenClientIPOutsideAllowList(t *testing.T) {
+	require.NoError(t, i18n.Init())
 	db := setupBillingSelfRouteTestDB(t)
 	now := time.Now().Unix()
 	allowIps := "127.0.0.1/32"
@@ -337,7 +339,7 @@ func TestBillingSelfRejectsTokenWhenClientIPOutsideAllowList(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, recorder.Code)
 	response := decodeBillingSelfResponse(t, recorder)
 	require.False(t, response.Success)
-	require.Equal(t, "您的 IP 不在令牌允许访问的列表中", response.Message)
+	require.Equal(t, "Your IP address is not on this token's allowlist", response.Message)
 }
 
 func TestBillingSelfMarksUnlimitedSubscriptions(t *testing.T) {

@@ -33,7 +33,7 @@ func TestValidateAnnouncements_Rejects3001ChineseCharacters(t *testing.T) {
 		t.Fatal("expected 3001 Chinese characters to fail, got nil")
 	}
 
-	expected := "第1个公告的内容长度不能超过3000字符"
+	expected := "Announcement #1 content cannot exceed 3000 characters"
 	if err.Error() != expected {
 		t.Fatalf("expected error %q, got %q", expected, err.Error())
 	}
@@ -65,7 +65,7 @@ func TestValidateAnnouncements_Rejects3001EmojiCharacters(t *testing.T) {
 		t.Fatal("expected 3001 emoji characters to fail, got nil")
 	}
 
-	expected := "第1个公告的内容长度不能超过3000字符"
+	expected := "Announcement #1 content cannot exceed 3000 characters"
 	if err.Error() != expected {
 		t.Fatalf("expected error %q, got %q", expected, err.Error())
 	}

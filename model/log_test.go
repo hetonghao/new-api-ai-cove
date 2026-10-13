@@ -55,22 +55,7 @@ func seedUsageLogsForExcludeSelfTest(t *testing.T) {
 func TestGetAllLogsCanExcludeCurrentAdminUser(t *testing.T) {
 	seedUsageLogsForExcludeSelfTest(t)
 
-	logs, total, err := GetAllLogs(
-		LogTypeConsume,
-		0,
-		0,
-		"",
-		"",
-		"",
-		0,
-		20,
-		0,
-		"",
-		"",
-		"",
-		1,
-		LogSourceFilters{},
-	)
+	logs, total, err := GetAllLogs(LogFilter{Type: LogTypeConsume, ExcludeUserId: 1}, 0, 20)
 
 	require.NoError(t, err)
 	require.EqualValues(t, 2, total)

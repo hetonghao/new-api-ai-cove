@@ -49,6 +49,7 @@ import { getDefaultTimeRange } from '../lib/utils'
 import type { CommonLogFilters } from '../types'
 import { CommonLogsStats } from './common-logs-stats'
 import { CompactDateTimeRangePicker } from './compact-date-time-range-picker'
+import { ExportLogsDialog } from './dialogs/export-logs-dialog'
 import {
   LogsFilterField,
   LogsFilterInput,
@@ -549,6 +550,7 @@ export function CommonLogsFilterBar<TData>(
       stats={statsBar}
       actionStart={sensitiveToggle}
       primaryFiltersClassName='lg:grid-cols-[max-content_max-content_max-content_repeat(3,minmax(0,1fr))]'
+      actionEnd={<ExportLogsDialog />}
       primaryFilters={
         <>
           {dateRangeFilter}

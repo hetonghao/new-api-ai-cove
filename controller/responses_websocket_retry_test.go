@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -560,6 +561,7 @@ func TestResponsesWebSocket_records_one_error_when_retry_candidates_are_exhauste
 }
 
 func TestResponsesWebSocket_preconsumes_after_auto_group_selection(t *testing.T) {
+	require.NoError(t, i18n.Init())
 	db := setupResponsesWebSocketHandlerTest(t)
 	previousCountToken := constant.CountToken
 	constant.CountToken = true
@@ -586,7 +588,7 @@ func TestResponsesWebSocket_preconsumes_after_auto_group_selection(t *testing.T)
 	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"response.create","model":"gpt-4o-mini","input":%q}`, strings.Repeat("hello ", 400)))))
 	errorEvent := readResponsesWebSocketTestEvent(t, client)
 	require.Equal(t, "error", gjson.GetBytes(errorEvent, "type").String())
-	require.Contains(t, gjson.GetBytes(errorEvent, "error.message").String(), "预扣费额度失败")
+	require.Contains(t, gjson.GetBytes(errorEvent, "error.message").String(), "Not enough quota to pre-consume")
 	_, _, err := client.ReadMessage()
 	require.Error(t, err)
 	require.Zero(t, upstream.connections.Load())

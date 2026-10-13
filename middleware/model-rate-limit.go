@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/common/limiter"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting"
@@ -54,6 +55,11 @@ type modelRequestRateLimitConfig struct {
 	totalMaxCount   int
 	successMaxCount int
 	userID          string
+}
+
+func modelRateLimitReachedError(c *gin.Context, key string, maxCount int) *types.NewAPIError {
+	message := i18n.T(c, key, map[string]any{"Minutes": setting.ModelRequestRateLimitDurationMinutes, "Max": maxCount})
+	return types.NewErrorWithStatusCode(errors.New(message), types.ErrorCode("rate_limit_exceeded"), http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
 }
 
 const (
@@ -141,8 +147,7 @@ func takeRedisModelRequestRateLimit(c *gin.Context, config modelRequestRateLimit
 		return nil, types.NewErrorWithStatusCode(err, types.ErrorCode("rate_limit_check_failed"), http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
 	}
 	if !allowed {
-		message := fmt.Sprintf("您已达到请求数限制：%d分钟内最多请求%d次", setting.ModelRequestRateLimitDurationMinutes, config.successMaxCount)
-		return nil, types.NewErrorWithStatusCode(errors.New(message), types.ErrorCode("rate_limit_exceeded"), http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
+		return nil, modelRateLimitReachedError(c, i18n.MsgRateLimitReached, config.successMaxCount)
 	}
 
 	if config.totalMaxCount > 0 {
@@ -159,8 +164,7 @@ func takeRedisModelRequestRateLimit(c *gin.Context, config modelRequestRateLimit
 			return nil, types.NewErrorWithStatusCode(err, types.ErrorCode("rate_limit_check_failed"), http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
 		}
 		if !allowed {
-			message := fmt.Sprintf("您已达到总请求数限制：%d分钟内最多请求%d次，包括失败次数，请检查您的请求是否正确", setting.ModelRequestRateLimitDurationMinutes, config.totalMaxCount)
-			return nil, types.NewErrorWithStatusCode(errors.New(message), types.ErrorCode("rate_limit_exceeded"), http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
+			return nil, modelRateLimitReachedError(c, i18n.MsgRateLimitTotalReached, config.totalMaxCount)
 		}
 	}
 
@@ -169,25 +173,23 @@ func takeRedisModelRequestRateLimit(c *gin.Context, config modelRequestRateLimit
 	}}, nil
 }
 
-func takeMemoryModelRequestRateLimit(config modelRequestRateLimitConfig, reserve bool) (*ModelRequestRateLimitTicket, *types.NewAPIError) {
+func takeMemoryModelRequestRateLimit(c *gin.Context, config modelRequestRateLimitConfig, reserve bool) (*ModelRequestRateLimitTicket, *types.NewAPIError) {
 	inMemoryRateLimiter.Init(time.Duration(setting.ModelRequestRateLimitDurationMinutes) * time.Minute)
 	totalKey := ModelRequestRateLimitCountMark + config.userID
 	if config.totalMaxCount > 0 && !inMemoryRateLimiter.Request(totalKey, config.totalMaxCount, config.duration) {
-		message := fmt.Sprintf("您已达到总请求数限制：%d分钟内最多请求%d次，包括失败次数，请检查您的请求是否正确", setting.ModelRequestRateLimitDurationMinutes, config.totalMaxCount)
-		return nil, types.NewErrorWithStatusCode(errors.New(message), types.ErrorCode("rate_limit_exceeded"), http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
+		return nil, modelRateLimitReachedError(c, i18n.MsgRateLimitTotalReached, config.totalMaxCount)
 	}
 
 	successKey := ModelRequestRateLimitSuccessCountMark + config.userID
-	successLimited := fmt.Sprintf("您已达到请求数限制：%d分钟内最多请求%d次", setting.ModelRequestRateLimitDurationMinutes, config.successMaxCount)
 	if reserve && config.successMaxCount > 0 {
 		reservation := inMemoryRateLimiter.Reserve(successKey, config.successMaxCount, config.duration)
 		if reservation == nil {
-			return nil, types.NewErrorWithStatusCode(errors.New(successLimited), types.ErrorCode("rate_limit_exceeded"), http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
+			return nil, modelRateLimitReachedError(c, i18n.MsgRateLimitReached, config.successMaxCount)
 		}
 		return &ModelRequestRateLimitTicket{reservation: reservation}, nil
 	}
 	if !inMemoryRateLimiter.CanRequest(successKey, config.successMaxCount, config.duration) {
-		return nil, types.NewErrorWithStatusCode(errors.New(successLimited), types.ErrorCode("rate_limit_exceeded"), http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
+		return nil, modelRateLimitReachedError(c, i18n.MsgRateLimitReached, config.successMaxCount)
 	}
 
 	return &ModelRequestRateLimitTicket{recordSuccess: func() {
@@ -207,7 +209,7 @@ func TakeModelRequestRateLimit(c *gin.Context) (*ModelRequestRateLimitTicket, *t
 	if common.RedisEnabled {
 		return takeRedisModelRequestRateLimit(c, config)
 	}
-	return takeMemoryModelRequestRateLimit(config, false)
+	return takeMemoryModelRequestRateLimit(c, config, false)
 }
 
 func modelRequestSucceeded(c *gin.Context) bool {
@@ -225,7 +227,7 @@ func modelRequestRateLimitHandler(config modelRequestRateLimitConfig, useRedis b
 		if useRedis {
 			ticket, apiErr = takeRedisModelRequestRateLimit(c, config)
 		} else {
-			ticket, apiErr = takeMemoryModelRequestRateLimit(config, true)
+			ticket, apiErr = takeMemoryModelRequestRateLimit(c, config, true)
 		}
 		if apiErr != nil {
 			abortWithOpenAiMessage(c, apiErr.StatusCode, apiErr.Error(), apiErr.GetErrorCode())

@@ -25,26 +25,17 @@ func TestLogSourceFiltersMatchWebSocketAndTurboMarkers(t *testing.T) {
 		},
 	}).Error)
 
-	logs, total, err := GetAllLogs(
-		LogTypeConsume, 0, 0, "", "", "", 0, 20, 0, "", "", "", 0,
-		LogSourceFilters{WebSocket: true},
-	)
+	logs, total, err := GetAllLogs(LogFilter{Type: LogTypeConsume, Sources: LogSourceFilters{WebSocket: true}}, 0, 20)
 	require.NoError(t, err)
 	require.EqualValues(t, 2, total)
 	require.Len(t, logs, 2)
 
-	logs, total, err = GetAllLogs(
-		LogTypeConsume, 0, 0, "", "", "", 0, 20, 0, "", "", "", 0,
-		LogSourceFilters{FromTurbo: true},
-	)
+	logs, total, err = GetAllLogs(LogFilter{Type: LogTypeConsume, Sources: LogSourceFilters{FromTurbo: true}}, 0, 20)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, total)
 	require.Len(t, logs, 1)
 
-	logs, total, err = GetUserLogs(
-		1, LogTypeConsume, 0, 0, "", "", 0, 20, "", "", "",
-		LogSourceFilters{WebSocket: true, FromTurbo: true},
-	)
+	logs, total, err = GetUserLogs(1, LogFilter{Type: LogTypeConsume, Sources: LogSourceFilters{WebSocket: true, FromTurbo: true}}, 0, 20)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, total)
 	require.Len(t, logs, 1)
