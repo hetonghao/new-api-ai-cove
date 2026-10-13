@@ -2722,6 +2722,7 @@
     "Generate tokens from the Tokens page; you can scope them to specific models, groups, IPs, and rate-limits.": "トークンページから API キーを発行できます。モデル、グループ、IP、レート制限ごとに細かく権限を設定可能です。",
     "Generated capabilities": "生成された機能",
     "Generated image": "生成された画像",
+    "Generated via tool call": "ツール呼び出しで生成",
     "Generating new codes will invalidate all existing backup codes.": "新しいコードを生成すると、既存のすべてのバックアップコードが無効になります。",
     "Generating...": "生成中...",
     "Generation quality preset": "生成品質プリセット",

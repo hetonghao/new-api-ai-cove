@@ -245,6 +245,12 @@ func executeOnce(parent context.Context, client *http.Client, url, key string, b
 		parsed.Status, parsed.ErrorCode = "cancelled", "cancelled"
 	}
 	if parsed.Status != "succeeded" {
+		if cfg.OutputType == "svg" && parsed.ErrorCode == "tool_call_turn" {
+			if svg := toolCallSVG(parsed.ToolArguments); svg != "" {
+				parsed.Status, parsed.ErrorCode, parsed.RequestSuccess, parsed.ViaTool = "succeeded", "", true, true
+				parsed.SVG, parsed.Validation = []byte(svg), "safe"
+			}
+		}
 		return parsed
 	}
 	if cfg.OutputType == "svg" {

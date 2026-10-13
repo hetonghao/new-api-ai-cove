@@ -184,6 +184,9 @@ type ModelQualitySample struct {
 	AnnotatedAt     int64  `json:"annotated_at"`
 	ArtifactExpired bool   `json:"artifact_expired"`
 	Pinned          bool   `json:"pinned"`
+	// ViaTool marks an SVG the model wrote through a tool call (for example
+	// apply_patch on an agentic upstream) rather than in its reply text.
+	ViaTool bool `json:"via_tool"`
 }
 
 type ModelQualityArtifact struct {
@@ -209,8 +212,12 @@ type QualityResult struct {
 	ErrorCode      string `json:"error_code"`
 	Validation     string `json:"validation"`
 	FinishReason   string `json:"finish_reason"`
+	ViaTool        bool   `json:"via_tool"`
 	Text           []byte `json:"-"`
 	SVG            []byte `json:"-"`
+	// ToolArguments holds raw tool-call payloads of a tool_call_turn so the
+	// executor can recover an SVG the model wrote through a tool.
+	ToolArguments []string `json:"-"`
 }
 
 type ModelQualityBudget struct {

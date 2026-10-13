@@ -23,6 +23,7 @@ import {
   ImageOff,
   Loader2,
   Tag,
+  Wrench,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -233,6 +234,16 @@ export function SampleCard(props: SampleCardProps) {
               className='text-muted-foreground size-3 shrink-0'
               aria-hidden='true'
             />
+          )}
+          {sample.via_tool && (
+            <span
+              role='img'
+              aria-label={t('Generated via tool call')}
+              title={t('Generated via tool call')}
+              className='text-muted-foreground shrink-0'
+            >
+              <Wrench className='size-3' aria-hidden='true' />
+            </span>
           )}
           <span className='text-muted-foreground ml-auto tabular-nums'>
             {formatDurationMs(sample.duration_ms)}

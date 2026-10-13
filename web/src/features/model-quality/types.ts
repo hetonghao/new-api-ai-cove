@@ -151,6 +151,7 @@ export interface ModelQualitySample {
   annotated_at: number
   artifact_expired: boolean
   pinned: boolean
+  via_tool: boolean
 }
 
 export interface QualityChannelView {

@@ -2722,6 +2722,7 @@
     "Generate tokens from the Tokens page; you can scope them to specific models, groups, IPs, and rate-limits.": "Tạo token tại trang Tokens; bạn có thể giới hạn theo model, nhóm, IP và rate-limit.",
     "Generated capabilities": "Khả năng được tạo",
     "Generated image": "Ảnh được tạo",
+    "Generated via tool call": "Tạo qua lệnh gọi công cụ",
     "Generating new codes will invalidate all existing backup codes.": "Tạo mã mới sẽ vô hiệu hóa tất cả các mã dự phòng hiện có.",
     "Generating...": "Đang tạo...",
     "Generation quality preset": "Mức chất lượng sinh",

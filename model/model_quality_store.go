@@ -1234,6 +1234,7 @@ func FinishQualitySample(id int64, executorID string, result QualityResult, now 
 				"error_code":      result.ErrorCode,
 				"validation":      result.Validation,
 				"finish_reason":   result.FinishReason,
+				"via_tool":        result.ViaTool,
 				"finished_at":     now.UnixMilli(),
 			})
 		if res.Error != nil {

@@ -77,13 +77,15 @@ type chatToolCall struct {
 
 type toolCall struct{ Name, Arguments string }
 
-// toolCallTranscript keeps what a tool_call_turn model actually tried to do in
+// recordToolCalls keeps what a tool_call_turn model actually tried to do in
 // the artifact text so operators can tell an agentic upstream wrapper from a
-// genuinely empty reply. It stays within the artifact limit so the sample keeps
-// its tool_call_turn code instead of becoming artifact_too_large.
-func toolCallTranscript(text string, calls []toolCall) []byte {
+// genuinely empty reply, and keeps the raw payloads for SVG recovery. The text
+// stays within the artifact limit so the sample keeps its tool_call_turn code
+// instead of becoming artifact_too_large.
+func recordToolCalls(result *model.QualityResult, text string, calls []toolCall) {
 	var transcript strings.Builder
 	transcript.WriteString(text)
+	result.ToolArguments = result.ToolArguments[:0]
 	for _, call := range calls {
 		if transcript.Len() > 0 {
 			transcript.WriteString("\n\n")
@@ -91,13 +93,13 @@ func toolCallTranscript(text string, calls []toolCall) []byte {
 		transcript.WriteString("[tool_call] " + call.Name)
 		if call.Arguments != "" {
 			transcript.WriteString("\n" + call.Arguments)
+			result.ToolArguments = append(result.ToolArguments, call.Arguments)
 		}
 	}
-	out := []byte(transcript.String())
-	if len(out) > model.QualityMaxResponseBytes {
-		out = bytes.ToValidUTF8(out[:model.QualityMaxResponseBytes], nil)
+	result.Text = []byte(transcript.String())
+	if len(result.Text) > model.QualityMaxResponseBytes {
+		result.Text = bytes.ToValidUTF8(result.Text[:model.QualityMaxResponseBytes], nil)
 	}
-	return out
 }
 
 func readUsage(result *model.QualityResult, usage *responseUsage, protocol string) {
@@ -173,7 +175,7 @@ func finishResponse(result *model.QualityResult, response *responseObject) {
 		switch {
 		case !sawMessage && len(calls) > 0:
 			result.ErrorCode = "tool_call_turn"
-			result.Text = toolCallTranscript("", calls)
+			recordToolCalls(result, "", calls)
 		case !sawMessage:
 			result.ErrorCode = "no_message"
 		default:
@@ -234,7 +236,7 @@ func ParseResponse(reader io.Reader, contentType, protocol string, start time.Ti
 					for _, call := range choice.Message.ToolCalls {
 						calls = append(calls, toolCall{call.Function.Name, call.Function.Arguments})
 					}
-					result.Text = toolCallTranscript(choice.Message.Content, calls)
+					recordToolCalls(&result, choice.Message.Content, calls)
 					return result
 				}
 				if result.FinishReason != "stop" {
@@ -356,9 +358,9 @@ func ParseResponse(reader io.Reader, contentType, protocol string, start time.Ti
 					for _, call := range streamCalls {
 						calls = append(calls, toolCall{call[0].String(), call[1].String()})
 					}
-					transcript := toolCallTranscript(output.String(), calls)
+					recordToolCalls(&result, output.String(), calls)
 					output.Reset()
-					output.Write(transcript)
+					output.Write(result.Text)
 					return false
 				}
 				if *choice.FinishReason != "stop" {

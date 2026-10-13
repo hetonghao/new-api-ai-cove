@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download } from 'lucide-react'
+import { Download, Wrench } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -302,11 +302,19 @@ export function SampleDetailDialog(props: SampleDetailDialogProps) {
               </MetaRow>
             )}
             <MetaRow label={t('Status')}>
-              <StatusBadge
-                variant={SAMPLE_STATUS_VARIANT[sample.status] ?? 'neutral'}
-                label={t(sampleStatusLabel(sample.status))}
-                copyable={false}
-              />
+              <span className='flex flex-wrap items-center gap-2'>
+                <StatusBadge
+                  variant={SAMPLE_STATUS_VARIANT[sample.status] ?? 'neutral'}
+                  label={t(sampleStatusLabel(sample.status))}
+                  copyable={false}
+                />
+                {sample.via_tool && (
+                  <span className='text-muted-foreground inline-flex items-center gap-1 text-xs'>
+                    <Wrench className='size-3' aria-hidden='true' />
+                    {t('Generated via tool call')}
+                  </span>
+                )}
+              </span>
             </MetaRow>
             {!props.canOperate && sample.annotation !== '' && (
               <MetaRow label={t('Annotation')}>{t(annotationLabel)}</MetaRow>

@@ -67,6 +67,7 @@ function makeSample(partial: Partial<ModelQualitySample>): ModelQualitySample {
     annotated_at: 0,
     artifact_expired: false,
     pinned: false,
+    via_tool: false,
     ...partial,
   }
 }
@@ -143,6 +144,15 @@ describe('SampleDetailDialog', () => {
       await screen.findByText(/<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)
     ).toBeInTheDocument()
     expect(screen.queryByText('raw')).not.toBeInTheDocument()
+  })
+
+  test('a tool-generated sample is labelled in the metadata tab', () => {
+    getQualityArtifact.mockResolvedValue({ success: false, message: 'x' })
+    renderDialog(makeSample({ via_tool: true }))
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Metadata' }))
+
+    expect(screen.getByText('Generated via tool call')).toBeVisible()
   })
 
   test('public viewers get no annotation form', () => {

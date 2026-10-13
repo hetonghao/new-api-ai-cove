@@ -513,6 +513,55 @@ func TestQualityHTTPExecutorDistinguishesRequestAndArtifactSuccess(t *testing.T)
 	}
 }
 
+func TestQualityHTTPExecutorAcceptsSVGWrittenByToolCall(t *testing.T) {
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5 5"><rect width="5" height="5"/></svg>`
+	shell := func(command string) map[string]any {
+		arguments, err := common.Marshal(map[string]any{"command": []string{"bash", "-lc", command}})
+		require.NoError(t, err)
+		return map[string]any{"type": "function_call", "name": "shell", "arguments": string(arguments)}
+	}
+	patch := map[string]any{"type": "custom_tool_call", "name": "apply_patch", "input": "*** Begin Patch\n*** Add File: pelican.svg\n+<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 5 5\">\n+  <rect width=\"5\" height=\"5\"/>\n+</svg>\n*** End Patch"}
+	for _, tc := range []struct {
+		name    string
+		output  []any
+		viaTool bool
+	}{
+		{"apply_patch add file", []any{patch}, true},
+		{"shell heredoc after exploration", []any{shell("ls"), shell("cat > pelican.svg <<'EOF'\n" + svg + "\nEOF")}, true},
+		{"no svg in tool calls", []any{shell("ls")}, false},
+		{"unsafe svg in tool calls", []any{shell(`echo '<svg viewBox="0 0 5 5"><script>alert(1)</script><rect/></svg>' > a.svg`)}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := configFixture()
+			_, payload, err := BuildRequest(cfg)
+			require.NoError(t, err)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				data, err := common.Marshal(map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed", "output": tc.output}})
+				require.NoError(t, err)
+				_, err = w.Write(append(append([]byte("data: "), data...), []byte("\n\n")...))
+				require.NoError(t, err)
+			}))
+			defer server.Close()
+			result := execute(context.Background(), server.Client(), server.URL, "local-test-token", payload, cfg)
+			assert.Equal(t, tc.viaTool, result.ViaTool)
+			assert.Contains(t, string(result.Text), "[tool_call] ")
+			if !tc.viaTool {
+				assert.Equal(t, "failed", result.Status)
+				assert.Equal(t, "tool_call_turn", result.ErrorCode)
+				assert.Empty(t, result.SVG)
+				return
+			}
+			assert.Equal(t, "succeeded", result.Status)
+			assert.Empty(t, result.ErrorCode)
+			assert.Equal(t, "safe", result.Validation)
+			assert.True(t, result.RequestSuccess)
+			assert.Contains(t, string(result.SVG), `<rect width="5" height="5"/>`)
+			assert.NotContains(t, string(result.SVG), "+")
+		})
+	}
+}
+
 func TestQualityHTTPExecutorRetriesTransientFailureOnce(t *testing.T) {
 	previous := qualityRetryDelay
 	qualityRetryDelay = time.Millisecond

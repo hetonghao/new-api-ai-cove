@@ -21,8 +21,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { SampleCard } from '../sample-wall'
 import type { ModelQualitySample } from '../../types'
+import { SampleCard } from '../sample-wall'
 
 const { get } = vi.hoisted(() => ({ get: vi.fn() }))
 
@@ -63,6 +63,7 @@ function makeSample(partial: Partial<ModelQualitySample>): ModelQualitySample {
     annotated_at: 0,
     artifact_expired: false,
     pinned: false,
+    via_tool: false,
     ...partial,
   }
 }
@@ -121,6 +122,20 @@ describe('SampleCard', () => {
     expect(src).not.toContain('script')
   })
 
+  test('only a tool-generated sample shows the tool call marker', () => {
+    get.mockResolvedValue({ data: { success: false, message: 'x' } })
+    const plain = renderCard(makeSample({}))
+    expect(
+      screen.queryByRole('img', { name: 'Generated via tool call' })
+    ).not.toBeInTheDocument()
+    plain.unmount()
+
+    renderCard(makeSample({ via_tool: true }))
+    expect(
+      screen.getByRole('img', { name: 'Generated via tool call' })
+    ).toBeInTheDocument()
+  })
+
   test('a failed sample shows the mapped error label without artifact fetch', () => {
     renderCard(makeSample({ status: 'failed', error_code: 'timeout' }))
     expect(screen.getByText('Request timed out')).toBeInTheDocument()
@@ -154,19 +169,15 @@ describe('SampleCard', () => {
   })
 
   test('an unknown error code falls back to the raw code in monospace', () => {
-    renderCard(
-      makeSample({ status: 'failed', error_code: 'vendor_xyz_500' })
+    renderCard(makeSample({ status: 'failed', error_code: 'vendor_xyz_500' }))
+    expect(screen.getAllByText('vendor_xyz_500').length).toBeGreaterThanOrEqual(
+      1
     )
-    expect(
-      screen.getAllByText('vendor_xyz_500').length
-    ).toBeGreaterThanOrEqual(1)
   })
 
   test('an http_ code maps to a readable upstream status label', () => {
     renderCard(makeSample({ status: 'failed', error_code: 'http_500' }))
-    expect(
-      screen.getByText('Upstream returned HTTP 500')
-    ).toBeInTheDocument()
+    expect(screen.getByText('Upstream returned HTTP 500')).toBeInTheDocument()
     expect(screen.getByText('http_500')).toBeInTheDocument()
   })
 

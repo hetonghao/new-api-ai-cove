@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 )
 
@@ -148,6 +149,56 @@ func safeStyleSheet(text string, refs *[]string) bool {
 		text = rest
 	}
 	return true
+}
+
+// toolCallSVG recovers a safe SVG that an agentic upstream wrote through a
+// tool call (apply_patch, shell heredoc, file write) instead of replying with
+// it. JSON payloads are searched string by string, apply_patch bodies keep only
+// their added lines, and the last call carrying a safe SVG wins because it
+// reflects the file's final state.
+func toolCallSVG(arguments []string) string {
+	found := ""
+	for _, raw := range arguments {
+		candidates := []string{raw}
+		var decoded any
+		if common.Unmarshal([]byte(raw), &decoded) == nil {
+			candidates = jsonStrings(decoded, nil)
+		}
+		for _, text := range candidates {
+			if !svgOpening.MatchString(text) {
+				continue
+			}
+			if strings.Contains(text, "*** Begin Patch") {
+				var added strings.Builder
+				for line := range strings.SplitSeq(text, "\n") {
+					if content, ok := strings.CutPrefix(line, "+"); ok {
+						added.WriteString(content + "\n")
+					}
+				}
+				text = added.String()
+			}
+			if svg, code := ExtractSafeSVG(text); code == "" {
+				found = svg
+			}
+		}
+	}
+	return found
+}
+
+func jsonStrings(value any, out []string) []string {
+	switch v := value.(type) {
+	case string:
+		out = append(out, v)
+	case []any:
+		for _, item := range v {
+			out = jsonStrings(item, out)
+		}
+	case map[string]any:
+		for _, item := range v {
+			out = jsonStrings(item, out)
+		}
+	}
+	return out
 }
 
 func ExtractSafeSVG(text string) (string, string) {
