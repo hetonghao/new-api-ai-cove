@@ -18,6 +18,7 @@ import (
 )
 
 const (
+	responsesInputTypeReasoning          = "reasoning"
 	responsesInputTypeFunctionCall       = "function_call"
 	responsesInputTypeFunctionCallOutput = "function_call_output"
 	responsesInputTypeCustomToolCall     = "custom_tool_call"
@@ -222,6 +223,13 @@ func responsesInputItemToChatMessages(ctx context.Context, item map[string]any, 
 		callID := strings.TrimSpace(kitutil.Interface2String(item["call_id"]))
 		content, media := responsesToolOutputToChat(ctx, item["output"])
 		return append(messages, dto.Message{Role: "tool", ToolCallId: callID, Content: content}), media, nil
+	case responsesInputTypeReasoning:
+		// Chat Completions 没有 reasoning item 的载体：原实现会把它当成 role=user 的消息，
+		// 并把 content 里的 reasoning_text part 原样透传，DeepSeek 兼容上游直接 422
+		// `unknown variant reasoning_text, expected one of text, image_url, file`。
+		// 原生 responses 类渠道的历史在 fallback 到 chat 类渠道时会带这种 item，
+		// 只能丢弃 item 本身；工具轮和正式消息都保留。
+		return messages, nil, nil
 	}
 
 	role := strings.TrimSpace(kitutil.Interface2String(item["role"]))
@@ -311,6 +319,10 @@ func responsesContentPartsToChatContent(ctx context.Context, parts []any) (any, 
 				"type":      dto.ContentTypeVideoUrl,
 				"video_url": responsesVideoPartToChatVideoURL(part),
 			})
+		case "reasoning_text", "summary_text":
+			// reasoning item 的 content 只在 Responses 协议里有意义；chat 端点没有这种
+			// content part，透传会被上游 422 unknown variant reasoning_text。
+			continue
 		default:
 			onlyText = false
 			chatParts = append(chatParts, part)

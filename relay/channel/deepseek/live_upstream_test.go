@@ -13,6 +13,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	relayconvert "github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -134,6 +135,9 @@ func TestDeepSeekLiveUpstreamAgentMessage(t *testing.T) {
 // Codex 把 `<image_resize_notice>` 这条 developer message 发在 view_image 的 call 与它
 // 自己的 output 之间，上游整轮回 "No tool output found for tool call ..."。
 // 2026-09-26 D-3 实测：提到 calls 前又会触发 reasoning_text 400，必须移到整轮 outputs 后。
+// 2026-10-19 起 call_id 会被规范化改写到外部命名空间（call_00_ET_+hash），上游不再把
+// 外来签发的 id 当成需要回传 reasoning 的调用，原先 system+图片历史的 reasoning_text
+// 限制也随之消失（已改成正例断言）。
 func TestDeepSeekLiveUpstreamNoticeBetweenCallAndOutput(t *testing.T) {
 	baseURL, apiKey, model, session := deepSeekLiveTarget(t)
 	client := &http.Client{Timeout: 120 * time.Second}
@@ -158,24 +162,23 @@ func TestDeepSeekLiveUpstreamNoticeBetweenCallAndOutput(t *testing.T) {
 		map[string]any{"type": "function_call_output", "call_id": "call_02_ThirdImage0003", "output": "Third image inspected"},
 	)
 	for _, tc := range []struct {
-		name            string
-		order           []int
-		role            string
-		textOutput      bool
-		checkRaw        bool
-		reject          bool
-		normalizedError string
+		name       string
+		order      []int
+		role       string
+		textOutput bool
+		checkRaw   bool
+		reject     bool
 	}{
-		{"between_calls", []int{0, 1, 2, 3, 4, 5}, "developer", false, true, true, ""},
-		{"between_outputs", []int{0, 1, 3, 4, 2, 5}, "developer", false, true, false, ""},
-		{"before_outputs", []int{0, 1, 3, 2, 4, 5}, "developer", false, true, true, ""},
-		{"after_outputs", []int{0, 1, 3, 4, 5, 2}, "developer", false, false, false, ""},
-		{"with_reasoning", []int{0, 6, 1, 3, 4, 2, 5}, "developer", false, false, false, ""},
-		{"three_calls_multiple_notices", []int{0, 6, 1, 3, 8, 4, 2, 5, 7, 9}, "developer", false, false, false, ""},
-		{"later_call_extends_run", []int{0, 1, 2, 3, 4, 8, 5, 9}, "developer", false, false, false, ""},
-		{"user_notice", []int{0, 1, 2, 3, 4, 5}, "user", false, false, false, ""},
-		{"system_image_history_remains_upstream_rejected", []int{0, 1, 2, 3, 4, 5}, "system", false, false, false, "reasoning_text"},
-		{"text_outputs", []int{0, 1, 2, 3, 4, 5}, "developer", true, false, false, ""},
+		{"between_calls", []int{0, 1, 2, 3, 4, 5}, "developer", false, true, true},
+		{"between_outputs", []int{0, 1, 3, 4, 2, 5}, "developer", false, true, false},
+		{"before_outputs", []int{0, 1, 3, 2, 4, 5}, "developer", false, true, true},
+		{"after_outputs", []int{0, 1, 3, 4, 5, 2}, "developer", false, false, false},
+		{"with_reasoning", []int{0, 6, 1, 3, 4, 2, 5}, "developer", false, false, false},
+		{"three_calls_multiple_notices", []int{0, 6, 1, 3, 8, 4, 2, 5, 7, 9}, "developer", false, false, false},
+		{"later_call_extends_run", []int{0, 1, 2, 3, 4, 8, 5, 9}, "developer", false, false, false},
+		{"user_notice", []int{0, 1, 2, 3, 4, 5}, "user", false, false, false},
+		{"system_image_history", []int{0, 1, 2, 3, 4, 5}, "system", false, false, false},
+		{"text_outputs", []int{0, 1, 2, 3, 4, 5}, "developer", true, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			shape[2]["role"] = tc.role
@@ -202,12 +205,6 @@ func TestDeepSeekLiveUpstreamNoticeBetweenCallAndOutput(t *testing.T) {
 			}
 			status, responseBody := postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
 				fmt.Sprintf("%s-%s-fix-%d", session, tc.name, time.Now().UnixNano()), deepSeekLiveViewImageBody(t, model, NormalizeResponsesInput(raw)))
-			if tc.normalizedError != "" {
-				// system + 图片历史是既有上游限制；不改角色或编造 reasoning 消除拒绝。
-				require.Equal(t, http.StatusBadRequest, status, "上游拒绝契约改变：%s", responseBody)
-				require.Contains(t, responseBody, tc.normalizedError)
-				return
-			}
 			requireDeepSeekLiveSuccess(t, status, responseBody)
 			t.Logf("normalized status=%d: Responses stream finished", status)
 		})
@@ -294,8 +291,8 @@ func postDeepSeekLiveUpstream(t *testing.T, client *http.Client, url, apiKey, se
 }
 
 // 侧边会话投递形状（2026-09-18 23:01 生产 422 现场）：Codex 会发出没有 call_id 的
-// function_call_output，上游对这种缺字段是硬拒（不是静默忽略）；改写成 user 轮后必须放行。
-// 只断"被拒 + 拒的理由是 call_id"，具体 4xx 码不锁死。
+// function_call_output，上游曾对这种缺字段硬拒；改写成 user 轮后必须放行。
+// 2026-10-19 实测上游已不再硬拒（见下方分支），测试保留原始状态观测 + 规范化后必须成功。
 func TestDeepSeekLiveUpstreamCallLessToolOutput(t *testing.T) {
 	baseURL, apiKey, model, session := deepSeekLiveTarget(t)
 	client := &http.Client{Timeout: 120 * time.Second}
@@ -308,8 +305,14 @@ func TestDeepSeekLiveUpstreamCallLessToolOutput(t *testing.T) {
 
 	status, responseBody := postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
 		fmt.Sprintf("%s-idless-raw-%d", session, time.Now().UnixNano()), deepSeekLiveBody(t, model, raw))
-	require.GreaterOrEqual(t, status, http.StatusBadRequest, "上游不再拒绝缺 call_id 的 tool output，规则已变：%s", responseBody)
-	require.Contains(t, responseBody, "call_id")
+	if status >= http.StatusBadRequest {
+		require.Contains(t, responseBody, "call_id", "拒绝理由不再是 call_id：%s", responseBody)
+	} else {
+		// 2026-10-19 用线上 key 实测：上游已接受缺 call_id 的 tool output（不再硬拒）。
+		// 改写 user 轮仍保留：既保住投递正文，也不依赖这条上游行为的稳定性。
+		requireDeepSeekLiveSuccess(t, status, responseBody)
+		t.Logf("上游已接受缺 call_id 的 tool output（status=%d）", status)
+	}
 
 	status, responseBody = postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
 		fmt.Sprintf("%s-idless-fix-%d", session, time.Now().UnixNano()), deepSeekLiveBody(t, model, normalizeDeepSeekAgentMessages(raw)))
@@ -337,4 +340,153 @@ func requireDeepSeekLiveSuccess(t *testing.T, status int, body string) {
 	}
 	require.True(t, created, "缺少 response.created：%s", body)
 	require.True(t, terminal, "缺少 Responses 终态：%s", body)
+}
+
+// 2026-10-19 16:33 生产现场：chat completions → responses 转换产出的 reasoning item
+// 只有 summary、content 为空、没有 encrypted_content；这种历史 fallback 到原生
+// responses 渠道时，上游要求 thinking 模式回传 reasoning_text。丢弃不可回放的
+// reasoning 后，同一份历史必须能在原生类渠道继续跑。
+//
+// 合成小形状可能不会触发现有账号的拒绝（账号/历史规模差异），完整的“原始必须 400、
+// 修复后必须 200”契约由 TestDeepSeekLiveUpstreamProductionPayloadReplay 覆盖。
+func TestDeepSeekLiveUpstreamChatClassHistoryFallback(t *testing.T) {
+	baseURL, apiKey, model, session := deepSeekLiveTarget(t)
+	client := &http.Client{Timeout: 120 * time.Second}
+
+	chatReasoning := func(id, text string) map[string]any {
+		return map[string]any{
+			"type":    "reasoning",
+			"id":      id,
+			"status":  "completed",
+			"role":    "",
+			"content": nil,
+			"summary": []map[string]any{{"type": "summary_text", "text": text}},
+			"quality": "",
+			"size":    "",
+		}
+	}
+	raw := mustJSON(t, []map[string]any{
+		{"type": "message", "role": "user", "content": []map[string]any{{"type": "input_text", "text": "按顺序回复 ok"}}},
+		chatReasoning("chatcmpl-live-a_reasoning_0", "先看目录"),
+		{"type": "message", "role": "assistant", "phase": "commentary", "content": []map[string]any{{"type": "output_text", "text": "我先跑一条命令。"}}},
+		{"type": "function_call", "call_id": "call_00_ET_chatfallback000000000001", "name": "bash", "arguments": `{"command":"pwd"}`},
+		{"type": "function_call_output", "call_id": "call_00_ET_chatfallback000000000001", "output": "/tmp\n"},
+		chatReasoning("chatcmpl-live-b_reasoning_0", "再看结果"),
+		{"type": "function_call", "call_id": "call_00_ET_chatfallback000000000002", "name": "bash", "arguments": `{"command":"pwd"}`},
+		{"type": "function_call_output", "call_id": "call_00_ET_chatfallback000000000002", "output": "/tmp\n"},
+	})
+
+	normalized := NormalizeResponsesInput(raw)
+	require.NotContains(t, string(normalized), "_reasoning_0", "不可回放的 reasoning 必须被丢弃")
+	status, responseBody := postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
+		fmt.Sprintf("%s-chat-history-fix-%d", session, time.Now().UnixNano()), deepSeekLiveBody(t, model, normalized))
+	requireDeepSeekLiveSuccess(t, status, responseBody)
+}
+
+// 生产 dump 回放：把 `deepseek_upstream_failure payload` 分片还原出的完整出站 body
+// 通过 AI_COVE_DEEPSEEK_E2E_PAYLOAD_FILE 传入。用同一份 payload 做单变量对照：
+// 原始 body 必须复现 400 reasoning_text；只丢不可回放 reasoning 仍应 400（形状不是
+// 唯一根因）；只把 call_id 外部化即 200；两项都做后 200——完整复现并验收 2026-10-19
+// 16:33 事故（chat 类渠道历史 fallback 到原生类渠道被整轮拒绝）。
+func TestDeepSeekLiveUpstreamProductionPayloadReplay(t *testing.T) {
+	baseURL, apiKey, _, session := deepSeekLiveTarget(t)
+	payloadPath := strings.TrimSpace(os.Getenv("AI_COVE_DEEPSEEK_E2E_PAYLOAD_FILE"))
+	if payloadPath == "" {
+		t.Skip("set AI_COVE_DEEPSEEK_E2E_PAYLOAD_FILE to a reassembled deepseek_upstream_failure payload")
+	}
+	payload, err := os.ReadFile(payloadPath)
+	require.NoError(t, err)
+
+	var body map[string]json.RawMessage
+	require.NoError(t, common.Unmarshal(payload, &body))
+	// 生产 body 的 max_output_tokens 是 32768；回放只需要验证输入形状，限制输出成本。
+	body["max_output_tokens"] = json.RawMessage(`16`)
+	delete(body, "prompt_cache_key")
+	originalInput := body["input"]
+	client := &http.Client{Timeout: 120 * time.Second}
+
+	post := func(name string) (int, string) {
+		raw, err := common.Marshal(body)
+		require.NoError(t, err)
+		return postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
+			fmt.Sprintf("%s-production-%s-%d", session, name, time.Now().UnixNano()), raw)
+	}
+	requireRejected := func(name string) {
+		t.Helper()
+		status, responseBody := post(name)
+		require.Equal(t, http.StatusBadRequest, status, "生产 payload 未复现上游拒绝：%s", responseBody)
+		require.Contains(t, responseBody, "reasoning_text")
+	}
+
+	requireRejected("raw")
+
+	body["input"] = dropUnreplayableDeepSeekReasoning(originalInput)
+	requireRejected("drop_reasoning_only")
+
+	body["input"] = makeDeepSeekCallIDsPortable(originalInput)
+	status, responseBody := post("portable_call_ids_only")
+	require.Equal(t, http.StatusOK, status, "只做 call_id 外部化应已被上游接受：%s", responseBody)
+
+	body["input"] = NormalizeResponsesInput(originalInput)
+	fixed, err := common.Marshal(body)
+	require.NoError(t, err)
+	require.NotContains(t, string(fixed), "_reasoning_0", "不可回放的 reasoning 必须被丢弃")
+	status, responseBody = postDeepSeekLiveUpstream(t, client, baseURL, apiKey,
+		fmt.Sprintf("%s-production-fixed-%d", session, time.Now().UnixNano()), fixed)
+	requireDeepSeekLiveSuccess(t, status, responseBody)
+}
+
+// 反向 fallback：原生 responses 历史落到 chat 类渠道时，转换后的 chat body 不能再带
+// reasoning_text content part（DeepSeek 兼容 chat 上游 422 unknown variant reasoning_text）。
+// 需要显式提供 chat completions 地址：AI_COVE_DEEPSEEK_E2E_CHAT_URL。
+func TestDeepSeekLiveUpstreamNativeHistoryToChat(t *testing.T) {
+	_, _, model, session := deepSeekLiveTarget(t)
+	chatURL := strings.TrimSpace(os.Getenv("AI_COVE_DEEPSEEK_E2E_CHAT_URL"))
+	chatAPIKey := strings.TrimSpace(os.Getenv("AI_COVE_DEEPSEEK_E2E_CHAT_API_KEY"))
+	if chatURL == "" || chatAPIKey == "" {
+		t.Skip("set AI_COVE_DEEPSEEK_E2E_CHAT_URL and AI_COVE_DEEPSEEK_E2E_CHAT_API_KEY for the chat-class fallback direction")
+	}
+	client := &http.Client{Timeout: 120 * time.Second}
+	stream := true
+	maxOutputTokens := uint(16)
+	// 生产链路先过 host 侧规范化（call_id 转外部命名空间、丢不可回放 reasoning），
+	// 再做 responses → chat 转换；fixture 用上游签发形态的 call_id 覆盖改写路径。
+	input := NormalizeResponsesInput(mustJSON(t, []map[string]any{
+		{"type": "message", "role": "user", "content": []map[string]any{{"type": "input_text", "text": "按顺序回复 ok"}}},
+		{"type": "reasoning", "id": "rs_live_native_1", "summary": []any{}, "content": []map[string]any{{"type": "reasoning_text", "text": "先看目录"}}, "encrypted_content": "opaque-live-1"},
+		{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "我先跑一条命令。"}}},
+		{"type": "function_call", "call_id": "call_00_cwBm5ITHjfMIIw3Drstn9324", "name": "bash", "arguments": `{"command":"pwd"}`},
+		{"type": "function_call_output", "call_id": "call_00_cwBm5ITHjfMIIw3Drstn9324", "output": "/tmp\n"},
+		{"type": "reasoning", "id": "rs_live_native_2", "summary": []any{}, "content": []map[string]any{{"type": "reasoning_text", "text": "再看结果"}}, "encrypted_content": "opaque-live-2"},
+		{"type": "function_call", "call_id": "call_01_xlz65RztUGxjV9glpllb7847", "name": "bash", "arguments": `{"command":"pwd"}`},
+		{"type": "function_call_output", "call_id": "call_01_xlz65RztUGxjV9glpllb7847", "output": "/tmp\n"},
+	}))
+	require.NotContains(t, string(input), "call_00_cwBm5ITHjfMIIw3Drstn9324",
+		"上游签发形态的 call_id 必须被改写成外部命名空间")
+	converted, err := relayconvert.ResponsesRequestToChatCompletionsRequest(&dto.OpenAIResponsesRequest{
+		Model:           model,
+		Stream:          &stream,
+		MaxOutputTokens: &maxOutputTokens,
+		Reasoning:       &dto.Reasoning{Effort: "high", Summary: "auto"},
+		Tools: mustJSON(t, []map[string]any{{
+			"type":        "function",
+			"name":        "bash",
+			"description": "run a shell command",
+			"parameters": map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"command": map[string]any{"type": "string"}},
+				"required":   []string{"command"},
+			},
+		}}),
+		Input: input,
+	})
+	require.NoError(t, err)
+
+	body, err := common.Marshal(converted)
+	require.NoError(t, err)
+	require.NotContains(t, string(body), "reasoning_text")
+	require.Contains(t, string(body), "call_00_ET_")
+	status, responseBody := postDeepSeekLiveUpstream(t, client, chatURL, chatAPIKey,
+		fmt.Sprintf("%s-native-to-chat-%d", session, time.Now().UnixNano()), body)
+	require.Equal(t, http.StatusOK, status, "chat 类上游拒绝原生历史转换结果：%s", responseBody)
 }

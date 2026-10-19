@@ -3,6 +3,7 @@ package oairesponses
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -560,4 +561,59 @@ func mustRawMessage(t *testing.T, value any) []byte {
 	raw, err := kitutil.Marshal(value)
 	require.NoError(t, err)
 	return raw
+}
+
+// 原生 responses 历史里的 reasoning item 在 chat completions 没有载体：当前实现会把它
+// 当成 role=user 的消息，并把 content 里的 reasoning_text part 原样透传，上游（DeepSeek
+// 兼容网关）直接 422 `unknown variant reasoning_text, expected one of text, image_url, file`
+// ——2026-10-18/19 生产日志里已多次出现。原生类渠道异常时 fallback 到 chat 类渠道，
+// 历史必然长这样，所以转换时必须丢弃 reasoning item，不能透传。
+func TestResponsesRequestToChatCompletionsRequestDropsReasoningItems(t *testing.T) {
+	got, err := ResponsesRequestToChatCompletionsRequest(context.Background(), &dto.OpenAIResponsesRequest{
+		Model: "deepseek-v4.1-flash",
+		Input: mustRawMessage(t, []map[string]any{
+			{"type": "message", "role": "user", "content": []map[string]any{{"type": "input_text", "text": "查一下"}}},
+			{"type": "reasoning", "id": "rs_native", "summary": []any{}, "content": []map[string]any{{"type": "reasoning_text", "text": "先看日志"}}, "encrypted_content": "opaque"},
+			{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "开始"}}},
+			{"type": "function_call", "call_id": "call_1", "name": "bash", "arguments": "{}"},
+			{"type": "function_call_output", "call_id": "call_1", "output": "ok"},
+			{"type": "reasoning", "id": "chatcmpl-x_reasoning_0", "status": "completed", "role": "", "content": nil,
+				"summary": []map[string]any{{"type": "summary_text", "text": "继续"}}},
+			{"type": "function_call", "call_id": "call_2", "name": "bash", "arguments": "{}"},
+			{"type": "function_call_output", "call_id": "call_2", "output": "done"},
+			{"type": "message", "role": "user", "content": "下一步"},
+		}),
+	})
+	require.NoError(t, err)
+
+	roles := make([]string, 0, len(got.Messages))
+	for _, message := range got.Messages {
+		roles = append(roles, message.Role)
+	}
+	require.Equal(t, []string{"user", "assistant", "tool", "assistant", "tool", "user"}, roles)
+
+	encoded, err := kitutil.Marshal(got)
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), "reasoning_text")
+	require.NotContains(t, string(encoded), "summary_text")
+	for _, message := range got.Messages {
+		if len(message.ToolCalls) > 0 {
+			continue
+		}
+		if message.Role == "user" || message.Role == "assistant" || message.Role == "system" {
+			require.NotEmpty(t, strings.TrimSpace(message.StringContent()), "reasoning item 不得转换成空消息")
+		}
+	}
+}
+
+// 防御性处理：即使 reasoning_text / summary_text 出现在 message content parts 里
+// （历史被别的中间层拍平），也不能透传进 chat content。
+func TestResponsesContentPartsToChatContentDropsReasoningParts(t *testing.T) {
+	content, err := responsesContentPartsToChatContent(context.Background(), []any{
+		map[string]any{"type": "reasoning_text", "text": "先看日志"},
+		map[string]any{"type": "input_text", "text": "真正的用户输入"},
+		map[string]any{"type": "summary_text", "text": "摘要"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "真正的用户输入", content)
 }

@@ -50,17 +50,25 @@ test:
 	@echo "Testing tokenkit Go module..."
 	@cd tokenkit && GOWORK=off go test ./...
 
-# DeepSeek 链路门禁：改 relay/channel/deepseek/、relay/common/deepseek_*、或
-# relay/channel/openai/relay_responses.go 的 DeepSeek 路径都必须先跑通它。
-# 镜像发布工作流会在 build 之前跑同一条命令。
+# DeepSeek 链路门禁：改 relay/channel/deepseek/、relay/common/deepseek_*、
+# relaykit/relayconvert/internal/oai_responses/、或 relay/channel/openai/relay_responses.go
+# 的 DeepSeek 路径都必须先跑通它。镜像发布工作流会在 build 之前跑同一条命令。
 deepseek-gate:
 	@echo "Running DeepSeek relay gate..."
 	@GOWORK=off go test ./relay/ ./relay/common/... ./relay/channel/deepseek/... ./relay/channel/openai/... -count=1
 	@GOWORK=off go test ./controller/ -run 'ResponsesWebSocket' -count=1
+	@cd relaykit && GOWORK=off go test ./relayconvert/... -count=1
 
 # 打真实上游的端到端检查，默认跳过；需要显式给出地址和密钥：
 #   AI_COVE_DEEPSEEK_E2E_BASE_URL=https://opencode.ai/zen/go/v1/responses
 #   AI_COVE_DEEPSEEK_E2E_API_KEY=sk-...
+#   AI_COVE_DEEPSEEK_E2E_SESSION=ai-cove-live-e2e        （可选，zen 需要会话头）
+#   AI_COVE_DEEPSEEK_E2E_MODEL=deepseek-v4.1-flash       （可选）
+# 反向 fallback（原生 responses 历史 → chat 类渠道）另需：
+#   AI_COVE_DEEPSEEK_E2E_CHAT_URL=https://.../v1/chat/completions
+#   AI_COVE_DEEPSEEK_E2E_CHAT_API_KEY=sk-...
+# 生产事故 payload 回放（deepseek_upstream_failure 分片还原后的完整出站 body）：
+#   AI_COVE_DEEPSEEK_E2E_PAYLOAD_FILE=/tmp/failing_payload.json
 deepseek-live-e2e:
 	@echo "Running DeepSeek live upstream end-to-end checks..."
 	@GOWORK=off go test ./relay/channel/deepseek/ -run TestDeepSeekLiveUpstream -count=1 -v
