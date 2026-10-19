@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -276,5 +277,64 @@ func TestNormalizeResponsesInputRewritesForeignNativeCallIDs(t *testing.T) {
 	require.Equal(t, externalCall, items[6].Get("call_id").String())
 
 	require.Equal(t, string(got), string(NormalizeResponsesInput(input)), "同一输入每轮映射必须一致")
+	require.Equal(t, string(got), string(NormalizeResponsesInput(got)), "规范化必须幂等")
+}
+
+// fallback 归一化必须是无损边界：只允许丢弃目标上游无法回放的 reasoning item、把上游
+// 签发形态的 call_id 映射到外部命名空间；用户/助手文本、工具名、arguments、工具输出等
+// 正文逐字段保持不变，call/output 成对映射，客户端传入的原始字节不被修改。
+func TestNormalizeResponsesInputPreservesConversationContent(t *testing.T) {
+	const (
+		nativeCall = "call_00_cwBm5ITHjfMIIw3Drstn9324"
+		shortCall  = "call_9"
+	)
+	imageOutput := []map[string]any{{"type": "input_image", "image_url": "data:image/png;base64,iVBORw0KGgo=", "detail": "high"}}
+	input := mustJSON(t, []map[string]any{
+		{"type": "message", "role": "user", "content": []map[string]any{{"type": "input_text", "text": "排查告警"}}},
+		{"type": "reasoning", "id": "chatcmpl-x_reasoning_0", "status": "completed", "role": "", "content": nil, "summary": []map[string]any{{"type": "summary_text", "text": "先看日志"}}},
+		{"type": "reasoning", "id": "rs_1", "summary": []any{}, "content": []map[string]any{{"type": "reasoning_text", "text": "先看 df"}}, "encrypted_content": "opaque"},
+		{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "开始扫描"}}},
+		{"type": "function_call", "call_id": nativeCall, "name": "bash", "arguments": `{"command":"pwd"}`},
+		{"type": "function_call", "call_id": shortCall, "name": "noop", "arguments": `{"path":"/tmp"}`},
+		{"type": "function_call_output", "call_id": nativeCall, "output": imageOutput},
+		{"type": "function_call_output", "call_id": shortCall, "output": "ok"},
+	})
+	original := append([]byte(nil), input...)
+
+	got := NormalizeResponsesInput(input)
+	require.Equal(t, string(original), string(input), "不得修改调用方传入的原始字节")
+
+	var before, after []map[string]any
+	require.NoError(t, common.Unmarshal(original, &before))
+	require.NoError(t, common.Unmarshal(got, &after))
+	require.Len(t, after, len(before)-1, "只允许丢弃不可回放的 reasoning item")
+	require.NotContains(t, string(got), "chatcmpl-x_reasoning_0")
+
+	// 除 call_id 外，每个保留 item 必须与客户端内容逐字段一致（顺序不变）。
+	contentWithoutCallID := func(item map[string]any) string {
+		copied := make(map[string]any, len(item))
+		for key, value := range item {
+			if key == "call_id" {
+				continue
+			}
+			copied[key] = value
+		}
+		raw, err := common.Marshal(copied)
+		require.NoError(t, err)
+		return string(raw)
+	}
+	require.JSONEq(t, contentWithoutCallID(before[0]), contentWithoutCallID(after[0]))
+	require.JSONEq(t, contentWithoutCallID(before[2]), contentWithoutCallID(after[1]), "可回放 reasoning 必须原样保留")
+	require.JSONEq(t, contentWithoutCallID(before[3]), contentWithoutCallID(after[2]))
+	for i := range 4 {
+		require.JSONEq(t, contentWithoutCallID(before[4+i]), contentWithoutCallID(after[3+i]),
+			"工具调用/输出正文必须原样保留")
+	}
+
+	// 成对映射：call 与自己的 output 仍共享同一个 id；非签发形态的 id 不动。
+	require.Equal(t, gjson.GetBytes(got, "3.call_id").String(), gjson.GetBytes(got, "5.call_id").String())
+	require.Equal(t, gjson.GetBytes(got, "4.call_id").String(), gjson.GetBytes(got, "6.call_id").String())
+	require.True(t, strings.HasPrefix(gjson.GetBytes(got, "3.call_id").String(), deepSeekPortableCallIDPrefix))
+	require.Equal(t, shortCall, gjson.GetBytes(got, "4.call_id").String())
 	require.Equal(t, string(got), string(NormalizeResponsesInput(got)), "规范化必须幂等")
 }
