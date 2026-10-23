@@ -140,3 +140,59 @@ func TestModelMemoryRateLimitRejectionsReturnOpenAIError(t *testing.T) {
 		})
 	}
 }
+
+// A group with its own limit counts each user's requests on its own; groups
+// without one keep sharing the user's global limit.
+func TestModelRateLimitCountsConfiguredGroupsSeparately(t *testing.T) {
+	require.NoError(t, i18n.Init())
+	previousEnabled, previousMinutes := setting.ModelRequestRateLimitEnabled, setting.ModelRequestRateLimitDurationMinutes
+	previousTotal, previousSuccess := setting.ModelRequestRateLimitCount, setting.ModelRequestRateLimitSuccessCount
+	previousGroups, previousRedisEnabled := setting.ModelRequestRateLimitGroup, common.RedisEnabled
+	t.Cleanup(func() {
+		setting.ModelRequestRateLimitEnabled, setting.ModelRequestRateLimitDurationMinutes = previousEnabled, previousMinutes
+		setting.ModelRequestRateLimitCount, setting.ModelRequestRateLimitSuccessCount = previousTotal, previousSuccess
+		setting.ModelRequestRateLimitGroup, common.RedisEnabled = previousGroups, previousRedisEnabled
+	})
+	setting.ModelRequestRateLimitEnabled, setting.ModelRequestRateLimitDurationMinutes = true, 1
+	common.RedisEnabled = false
+
+	// Groups a and b have their own limits; c and d have none and share the global one.
+	steps := []struct {
+		group string
+		want  int
+	}{
+		{"a", http.StatusOK}, {"a", http.StatusTooManyRequests},
+		{"b", http.StatusOK}, {"b", http.StatusTooManyRequests},
+		{"c", http.StatusOK}, {"d", http.StatusTooManyRequests},
+	}
+	// The Redis token bucket binds to the first Redis client it sees and another
+	// test already drives it, so the total limit runs on the memory backend only.
+	for _, tc := range []struct {
+		backend, limit string
+		counts         [2]int // [total, success] for groups a and b and for the global limit
+	}{
+		{"memory", "success", [2]int{0, 1}},
+		{"redis", "success", [2]int{0, 1}},
+		{"memory", "total", [2]int{1, 1000}},
+	} {
+		t.Run(tc.backend+"/"+tc.limit, func(t *testing.T) {
+			if tc.backend == "redis" {
+				useRateLimitMiniRedis(t)
+			}
+			setting.ModelRequestRateLimitCount, setting.ModelRequestRateLimitSuccessCount = tc.counts[0], tc.counts[1]
+			setting.ModelRequestRateLimitGroup = map[string][2]int{"a": tc.counts, "b": tc.counts}
+			userID := 7200000 + int(modelRateLimitTestUsers.Add(1))
+			router := gin.New()
+			router.GET("/:group", func(c *gin.Context) {
+				c.Set("id", userID)
+				common.SetContextKey(c, constant.ContextKeyTokenGroup, c.Param("group"))
+			}, ModelRequestRateLimit(), func(c *gin.Context) {
+				c.Status(http.StatusOK)
+			})
+
+			for _, step := range steps {
+				assert.Equal(t, step.want, performRateLimitRequest(router, "/"+step.group, "127.0.0.1:1000").Code, "group %s", step.group)
+			}
+		})
+	}
+}

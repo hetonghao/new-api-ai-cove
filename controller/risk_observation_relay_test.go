@@ -23,11 +23,14 @@ func TestApplyRelayRiskGate_keeps_sensitive_word_error_before_ai_and_upstream(t 
 	gin.SetMode(gin.TestMode)
 	originalCheckEnabled := setting.CheckSensitiveEnabled
 	originalPromptCheck := setting.CheckSensitiveOnPromptEnabled
+	originalWords := setting.SensitiveWords
+	setting.SensitiveWords = []string{"test_sensitive"}
 	setting.CheckSensitiveEnabled = true
 	setting.CheckSensitiveOnPromptEnabled = true
 	t.Cleanup(func() {
 		setting.CheckSensitiveEnabled = originalCheckEnabled
 		setting.CheckSensitiveOnPromptEnabled = originalPromptCheck
+		setting.SensitiveWords = originalWords
 	})
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)

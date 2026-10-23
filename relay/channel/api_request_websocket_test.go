@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDoWssRequestRealtimeIgnoresChannelProxyConfiguration(t *testing.T) {
+func TestDoWssRequestRealtimeRejectsInvalidChannelProxy(t *testing.T) {
 	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
@@ -51,9 +51,8 @@ func TestDoWssRequestRealtimeIgnoresChannelProxyConfiguration(t *testing.T) {
 	}
 
 	conn, err := channel.DoWssRequest(&openai.Adaptor{}, ctx, info, nil)
-	require.NoError(t, err)
-	require.NotNil(t, conn)
-	require.NoError(t, conn.Close())
+	require.ErrorContains(t, err, "proxy")
+	require.Nil(t, conn)
 	require.True(t, strings.HasPrefix(info.ChannelBaseUrl, "ws://"))
 }
 

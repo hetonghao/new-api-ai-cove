@@ -135,6 +135,7 @@ func getModelRequestRateLimitConfig(c *gin.Context) modelRequestRateLimitConfig 
 	if totalCount, successCount, found := setting.GetGroupRateLimit(group); found {
 		config.totalMaxCount = totalCount
 		config.successMaxCount = successCount
+		config.userID += ":" + group
 	}
 	return config
 }
@@ -221,7 +222,9 @@ func modelRequestSucceeded(c *gin.Context) bool {
 // in-memory backend holds a reservation until the response outcome is known.
 func modelRequestRateLimitHandler(config modelRequestRateLimitConfig, useRedis bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		config.userID = strconv.Itoa(c.GetInt("id"))
+		if config.userID == "" {
+			config.userID = strconv.Itoa(c.GetInt("id"))
+		}
 		var ticket *ModelRequestRateLimitTicket
 		var apiErr *types.NewAPIError
 		if useRedis {

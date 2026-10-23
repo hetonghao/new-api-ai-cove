@@ -214,7 +214,7 @@ func writeResponsesWebSocketError(conn *websocket.Conn, codec *responsesWebSocke
 	if apiErr.GetErrorCode() == types.ErrorCodeResponsesWebSocketUnavailable {
 		status = apiErr.StatusCode
 	}
-	return writeResponsesWebSocketErrorEvent(conn, codec, c, apiErr.ToOpenAIError(), status)
+	return writeResponsesWebSocketErrorEvent(conn, codec, c, apiErr.ToOpenAIError(common.UpstreamAddresses(c)...), status)
 }
 
 func writeResponsesWebSocketStateMissing(conn *websocket.Conn, codec *responsesWebSocketPrivateCodec, c *gin.Context) error {

@@ -95,10 +95,11 @@ type responsesWebSocketTestBilling struct {
 	refunds int
 }
 
-func (*responsesWebSocketTestBilling) Settle(int) error         { return nil }
-func (*responsesWebSocketTestBilling) NeedsRefund() bool        { return true }
-func (*responsesWebSocketTestBilling) GetPreConsumedQuota() int { return 0 }
-func (*responsesWebSocketTestBilling) Reserve(int) error        { return nil }
+func (*responsesWebSocketTestBilling) Settle(int) error              { return nil }
+func (*responsesWebSocketTestBilling) NeedsRefund() bool             { return true }
+func (*responsesWebSocketTestBilling) GetPreConsumedQuota() int      { return 0 }
+func (*responsesWebSocketTestBilling) Reserve(int) error             { return nil }
+func (*responsesWebSocketTestBilling) ReserveBeforeSubmit(int) error { return nil }
 func (billing *responsesWebSocketTestBilling) Refund(*gin.Context) {
 	billing.refunds++
 }

@@ -1,11 +1,14 @@
 package service
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 )
+
+var riskContentURLPattern = regexp.MustCompile(`(?:https?|wss?)://[^\s"<>{}]+`)
 
 const riskRecordContentHMACDomain = "ai-cove:risk-record-content-hmac:v1"
 
@@ -15,7 +18,7 @@ type RiskRecordContentMetadata struct {
 }
 
 func BuildRiskRecordContentMetadata(content string) RiskRecordContentMetadata {
-	preview := common.MaskSensitiveInfo(strings.TrimSpace(content))
+	preview := common.MaskSensitiveInfo(strings.TrimSpace(content), riskContentURLPattern.FindAllString(content, -1)...)
 
 	normalized := NormalizeRiskText(content)
 	if normalized == "" {
@@ -29,7 +32,7 @@ func BuildRiskRecordContentMetadata(content string) RiskRecordContentMetadata {
 }
 
 func BuildRiskRecordChunkSummary(content string) string {
-	summary := []rune(common.MaskSensitiveInfo(strings.TrimSpace(content)))
+	summary := []rune(common.MaskSensitiveInfo(strings.TrimSpace(content), riskContentURLPattern.FindAllString(content, -1)...))
 	if len(summary) > model.RiskRecordChunkSummaryMaxRunes {
 		summary = summary[:model.RiskRecordChunkSummaryMaxRunes]
 	}

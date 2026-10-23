@@ -36,7 +36,8 @@ func (p *responsesWebSocketRetryBillingProbe) NeedsRefund() bool {
 
 func (*responsesWebSocketRetryBillingProbe) GetPreConsumedQuota() int { return 1 }
 
-func (*responsesWebSocketRetryBillingProbe) Reserve(int) error { return nil }
+func (*responsesWebSocketRetryBillingProbe) Reserve(int) error             { return nil }
+func (*responsesWebSocketRetryBillingProbe) ReserveBeforeSubmit(int) error { return nil }
 
 var _ relaycommon.BillingSettler = (*responsesWebSocketRetryBillingProbe)(nil)
 
