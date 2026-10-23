@@ -16,6 +16,7 @@ var NotifyLimitCount int
 var NotificationLimitDurationMinute int
 var GenerateDefaultToken bool
 var ErrorLogEnabled bool
+var ErrorLogRequestBodySnapshotEnabled bool
 var TaskQueryLimit int
 var TaskTimeoutMinutes int
 var TaskPollMaxFailures = 20

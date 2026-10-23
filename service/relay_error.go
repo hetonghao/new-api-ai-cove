@@ -1,7 +1,10 @@
 package service
 
 import (
+	"io"
+	"slices"
 	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -17,6 +20,73 @@ import (
 
 const relayAttemptErrorsKey = "relay_attempt_errors"
 const relayAttemptErrorHistoryMax = 32
+
+// errorBodySnapshotHeadLimit bounds the copied body head so a single failing
+// request cannot inflate the logs row; operators only need enough prefix to
+// recognise the request shape, not the whole conversation.
+const errorBodySnapshotHeadLimit = 64 << 10
+
+// AppendErrorRequestBodySnapshot records bounded diagnostics about the request
+// body that reached the upstream attempt: its byte size, the top-level JSON
+// field names, and a truncated head. This answers "did the request fail because
+// it was too large or because a field was rejected" without persisting the whole
+// user payload.
+func AppendErrorRequestBodySnapshot(c *gin.Context, other *model.LogOther) {
+	if c == nil || other == nil || !constant.ErrorLogRequestBodySnapshotEnabled {
+		return
+	}
+	storage, err := common.GetBodyStorage(c)
+	if err != nil || storage == nil {
+		return
+	}
+	if _, errSeek := storage.Seek(0, io.SeekStart); errSeek != nil {
+		return
+	}
+	body, errBytes := storage.Bytes()
+	if errBytes != nil {
+		return
+	}
+	if _, errSeek := storage.Seek(0, io.SeekStart); errSeek != nil {
+		return
+	}
+	other.SetAdmin("error_body_bytes", len(body))
+	if len(body) == 0 {
+		return
+	}
+	other.SetAdmin("error_body_head", truncateErrorBodyHead(body, errorBodySnapshotHeadLimit))
+	if keys := topLevelJSONFieldNames(body); len(keys) > 0 {
+		other.SetAdmin("error_body_fields", keys)
+	}
+}
+
+// truncateErrorBodyHead returns at most limit bytes, keeping the payload valid
+// UTF-8 so the JSON log column never carries a split rune.
+func truncateErrorBodyHead(body []byte, limit int) string {
+	if len(body) <= limit {
+		return string(body)
+	}
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(body[cut]) {
+		cut--
+	}
+	return string(body[:cut])
+}
+
+// topLevelJSONFieldNames lists the object's top-level keys without decoding the
+// values, so very large bodies stay cheap to inspect. It returns nil when the
+// body is not a JSON object.
+func topLevelJSONFieldNames(body []byte) []string {
+	var fields map[string]common.RawMessage
+	if err := common.Unmarshal(body, &fields); err != nil {
+		return nil
+	}
+	keys := make([]string, 0, len(fields))
+	for key := range fields {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
+}
 
 // RecordRelayAttemptError keeps a bounded history of every failed attempt so the
 // final error can fall back to earlier capacity evidence and the error log can
@@ -141,6 +211,7 @@ func RecordRelayErrorLog(c *gin.Context, err *types.NewAPIError, channelId int, 
 	AppendResponseModelLogInfo(relayInfo, other)
 	AppendTaskPluginContextAuditInfo(c, other)
 	AppendRelayTransportLogInfo(c, other)
+	AppendErrorRequestBodySnapshot(c, other)
 	startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
 	if startTime.IsZero() {
 		startTime = time.Now()

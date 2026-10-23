@@ -6,8 +6,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -249,4 +251,43 @@ func TestRequestPolicyEventsReachLogAdminInfo(t *testing.T) {
 	other := model.NewLogOther()
 	AppendRelayLogAdminInfo(untouched, nil, other)
 	assert.NotContains(t, other.Snapshot()["admin_info"], "request_policy", "requests without decisions do not carry an empty record")
+}
+
+func TestAppendErrorRequestBodySnapshotRecordsShapeNotPayload(t *testing.T) {
+	previous := constant.ErrorLogRequestBodySnapshotEnabled
+	constant.ErrorLogRequestBodySnapshotEnabled = true
+	t.Cleanup(func() { constant.ErrorLogRequestBodySnapshotEnabled = previous })
+
+	body := `{"model":"gpt-6-sol","messages":[{"role":"user","content":"hello"}],"stream":true}`
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+
+	other := model.NewLogOther()
+	AppendErrorRequestBodySnapshot(c, other)
+	admin := other.Snapshot()["admin_info"].(map[string]any)
+
+	assert.Equal(t, len(body), admin["error_body_bytes"])
+	assert.Equal(t, []string{"messages", "model", "stream"}, admin["error_body_fields"])
+	assert.Equal(t, body, admin["error_body_head"], "a small body is captured whole")
+}
+
+func TestAppendErrorRequestBodySnapshotDisablingLeavesNoTrace(t *testing.T) {
+	previous := constant.ErrorLogRequestBodySnapshotEnabled
+	constant.ErrorLogRequestBodySnapshotEnabled = false
+	t.Cleanup(func() { constant.ErrorLogRequestBodySnapshotEnabled = previous })
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-6-sol"}`))
+
+	other := model.NewLogOther()
+	AppendErrorRequestBodySnapshot(c, other)
+	assert.NotContains(t, other.Snapshot(), "admin_info", "disabled snapshotting writes nothing at all")
+}
+
+func TestTruncateErrorBodyHeadKeepsValidUTF8(t *testing.T) {
+	// A multi-byte rune straddling the limit must not be split.
+	body := []byte(strings.Repeat("能", 10))
+	head := truncateErrorBodyHead(body, 4)
+	assert.True(t, utf8.ValidString(head), "truncated head stays valid UTF-8")
+	assert.LessOrEqual(t, len(head), 4)
 }
