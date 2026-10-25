@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Codex only": "僅允許 Codex",
+    "Only route requests with Codex client headers to this channel. Client headers can be spoofed and do not replace authentication.": "僅將帶有 Codex 用戶端請求標頭的請求路由至此管道。請求標頭可偽造，不能取代身分驗證。",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

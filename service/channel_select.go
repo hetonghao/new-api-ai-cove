@@ -207,11 +207,17 @@ func retryExcludedChannelIDs(param *RetryParam) map[int]bool {
 	return excluded
 }
 
-func channelSelectionFilters(param *RetryParam) []dto.ChannelFilter {
-	if param == nil {
-		return nil
+func channelSelectionFilters(c *gin.Context) []dto.ChannelFilter {
+	return append(GetChannelConstraints(c).Filters, dto.ChannelFilter{
+		Kind: dto.FilterCodexClient, CodexClient: c != nil && common.IsCodexClientRequest(c.Request),
+	})
+}
+
+func CheckChannelClient(c *gin.Context, channel *model.Channel) *types.NewAPIError {
+	if channel.GetSetting().CodexOnly && !common.IsCodexClientRequest(c.Request) {
+		return types.NewErrorWithStatusCode(errors.New(i18n.T(c, i18n.MsgDistributorCodexOnly)), types.ErrorCode(dto.FilterCodexClient), http.StatusForbidden, types.ErrOptionWithSkipRetry())
 	}
-	return GetChannelConstraints(param.Ctx).Filters
+	return nil
 }
 
 func collectRetryCandidates(param *RetryParam, group string) ([]*model.Channel, error) {
@@ -219,7 +225,7 @@ func collectRetryCandidates(param *RetryParam, group string) ([]*model.Channel, 
 	candidates := make([]*model.Channel, 0)
 	seen := make(map[int]bool)
 	for {
-		candidate, err := model.GetRandomSatisfiedChannelWithSelection(group, param.ModelName, 0, param.RequestPath, param.RequireWebSockets, excluded, channelSelectionFilters(param))
+		candidate, err := model.GetRandomSatisfiedChannelWithSelection(group, param.ModelName, 0, param.RequestPath, param.RequireWebSockets, excluded, channelSelectionFilters(param.Ctx))
 		if err != nil {
 			return nil, err
 		}
@@ -267,7 +273,7 @@ func selectRetryCandidateAcrossGroups(param *RetryParam, groups []string, startG
 
 func selectRetryChannel(param *RetryParam, group string, priorityRetry int, allowSameChannelFallback bool) (*model.Channel, error) {
 	if len(param.TriedChannelIDs) == 0 {
-		return model.GetRandomSatisfiedChannelWithSelection(group, param.ModelName, priorityRetry, param.RequestPath, param.RequireWebSockets, param.ExcludedChannelIDs, channelSelectionFilters(param))
+		return model.GetRandomSatisfiedChannelWithSelection(group, param.ModelName, priorityRetry, param.RequestPath, param.RequireWebSockets, param.ExcludedChannelIDs, channelSelectionFilters(param.Ctx))
 	}
 	candidates, err := collectRetryCandidates(param, group)
 	if err != nil {
@@ -294,13 +300,13 @@ func selectRetryChannel(param *RetryParam, group string, priorityRetry int, allo
 			}
 		}
 		if !excluded[param.LastChannelID] {
-			lastChannel, err := model.GetRandomSatisfiedChannelWithSelection(group, param.ModelName, 0, param.RequestPath, param.RequireWebSockets, excluded, channelSelectionFilters(param))
+			lastChannel, err := model.GetRandomSatisfiedChannelWithSelection(group, param.ModelName, 0, param.RequestPath, param.RequireWebSockets, excluded, channelSelectionFilters(param.Ctx))
 			if err != nil || lastChannel != nil {
 				return lastChannel, err
 			}
 		}
 	}
-	return model.GetRandomSatisfiedChannelWithSelection(group, param.ModelName, priorityRetry, param.RequestPath, param.RequireWebSockets, param.ExcludedChannelIDs, channelSelectionFilters(param))
+	return model.GetRandomSatisfiedChannelWithSelection(group, param.ModelName, priorityRetry, param.RequestPath, param.RequireWebSockets, param.ExcludedChannelIDs, channelSelectionFilters(param.Ctx))
 }
 
 func selectLastChannelFallbackInGroups(param *RetryParam, groups []string) (*model.Channel, string, error) {
@@ -310,7 +316,7 @@ func selectLastChannelFallbackInGroups(param *RetryParam, groups []string) (*mod
 	excluded := retryExcludedChannelIDs(param)
 	delete(excluded, param.LastChannelID)
 	for _, group := range groups {
-		channel, err := model.GetRandomSatisfiedChannelWithSelection(group, param.ModelName, 0, param.RequestPath, param.RequireWebSockets, excluded, channelSelectionFilters(param))
+		channel, err := model.GetRandomSatisfiedChannelWithSelection(group, param.ModelName, 0, param.RequestPath, param.RequireWebSockets, excluded, channelSelectionFilters(param.Ctx))
 		if err != nil {
 			return nil, group, err
 		}
@@ -547,6 +553,7 @@ type ChannelSelectError struct {
 // callers. The caller still applies SetupContextForSelectedChannel.
 func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam) (*model.Channel, string, *ChannelSelectError) {
 	constraints := GetChannelConstraints(c)
+	filters := channelSelectionFilters(c)
 	if pin, found, overridden := constraints.ResolvedPin(); found {
 		for _, lost := range overridden {
 			logger.LogWarn(c, common.LogText(
@@ -561,7 +568,10 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 		if channel.Status != common.ChannelStatusEnabled {
 			return nil, "", pinnedChannelUnavailable(pin, http.StatusForbidden, i18n.MsgDistributorChannelDisabled)
 		}
-		if ok, kind := model.ChannelSatisfiesFilters(channel, modelName, constraints.Filters); !ok {
+		if ok, kind := model.ChannelSatisfiesFilters(channel, modelName, filters); !ok {
+			if kind == dto.FilterCodexClient {
+				return nil, "", &ChannelSelectError{StatusCode: http.StatusForbidden, Code: types.ErrorCode(kind), MessageID: i18n.MsgDistributorCodexOnly, FilterKind: kind, Channel: channel}
+			}
 			return nil, "", &ChannelSelectError{
 				StatusCode: http.StatusBadRequest, Code: types.ErrorCode(kind), MessageID: i18n.MsgDistributorNoAvailableChannel,
 				Params:     map[string]any{"Group": common.GetContextKeyString(c, constant.ContextKeyUsingGroup), "Model": modelName},
@@ -580,7 +590,7 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 			preferred, err := model.CacheGetChannel(preferredChannelID)
 			affinitySatisfied := false
 			if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled {
-				affinitySatisfied, _ = model.ChannelSatisfiesFilters(preferred, modelName, constraints.Filters)
+				affinitySatisfied, _ = model.ChannelSatisfiesFilters(preferred, modelName, filters)
 			}
 			if affinitySatisfied {
 				if usingGroup == "auto" {
@@ -631,7 +641,7 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 			}
 		}
 	}
-	if ok, kind := model.ChannelSatisfiesFilters(channel, modelName, constraints.Filters); !ok {
+	if ok, kind := model.ChannelSatisfiesFilters(channel, modelName, filters); !ok {
 		return nil, selectGroup, &ChannelSelectError{
 			StatusCode: http.StatusServiceUnavailable, Code: types.ErrorCodeModelNotFound, MessageID: i18n.MsgDistributorNoAvailableChannel,
 			Params:     map[string]any{"Group": common.GetContextKeyString(c, constant.ContextKeyUsingGroup), "Model": modelName},

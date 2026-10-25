@@ -161,6 +161,9 @@ func prepareFirstResponsesWebSocketRequestWithBilling(baseCtx *gin.Context, payl
 }
 
 func preparePinnedResponsesWebSocketRequest(pinnedCtx *gin.Context, payload []byte, sessionModel string, pinnedChannel *model.Channel) (*responsesWebSocketRequestState, []byte, error) {
+	if apiErr := service.CheckChannelClient(pinnedCtx, pinnedChannel); apiErr != nil {
+		return nil, nil, apiErr
+	}
 	state, request, err := prepareResponsesWebSocketRequest(pinnedCtx, payload, sessionModel)
 	if err != nil {
 		apiErr := asResponsesWebSocketAPIError(err)
@@ -263,7 +266,7 @@ func selectResponsesWebSocketChannel(c *gin.Context, info *relaycommon.RelayInfo
 	usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 	if preferredID, found := service.GetPreferredChannelByAffinity(c, info.OriginModelName, usingGroup); found && !excluded[preferredID] {
 		preferred, err := model.CacheGetChannel(preferredID)
-		if err == nil && model.ChannelSupportsResponsesWebSocket(preferred) {
+		if err == nil && model.ChannelSupportsResponsesWebSocket(preferred) && service.CheckChannelClient(c, preferred) == nil {
 			if usingGroup == "auto" {
 				userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 				for _, group := range service.GetRequestAutoGroups(c, userGroup) {

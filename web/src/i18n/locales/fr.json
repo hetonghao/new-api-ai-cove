@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Codex only": "Codex uniquement",
+    "Only route requests with Codex client headers to this channel. Client headers can be spoofed and do not replace authentication.": "Acheminer vers ce canal uniquement les requêtes avec des en-têtes client Codex. Ces en-têtes peuvent être falsifiés et ne remplacent pas l’authentification.",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

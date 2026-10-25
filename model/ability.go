@@ -1,7 +1,6 @@
 package model
 
 import (
-	"errors"
 	"sort"
 	"strings"
 	"sync"
@@ -62,60 +61,12 @@ func GetAllEnableAbilities() []Ability {
 	return abilities
 }
 
-func getPriority(group string, model string, retry int, excludedChannelIDs map[int]bool) (int, error) {
-	excludedIDs := channelIDsFromMap(excludedChannelIDs)
-
-	query := DB.Model(&Ability{}).
-		Select("DISTINCT(priority)").
-		Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
-	if len(excludedIDs) > 0 {
+func getChannelQuery(group string, model string, excludedChannelIDs map[int]bool) *gorm.DB {
+	query := DB.Model(&Ability{}).Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
+	if excludedIDs := channelIDsFromMap(excludedChannelIDs); len(excludedIDs) > 0 {
 		query = query.Where("channel_id NOT IN ?", excludedIDs)
 	}
-	var priorities []int
-	err := query.Order("priority DESC").Pluck("priority", &priorities).Error // 按优先级降序排序
-
-	if err != nil {
-		// 处理错误
-		return 0, err
-	}
-
-	if len(priorities) == 0 {
-		// 如果没有查询到优先级，则返回错误
-		return 0, errors.New("database consistency is broken")
-	}
-
-	// 确定要使用的优先级
-	var priorityToUse int
-	if retry >= len(priorities) {
-		// 如果重试次数大于优先级数，则使用最小的优先级
-		priorityToUse = priorities[len(priorities)-1]
-	} else {
-		priorityToUse = priorities[retry]
-	}
-	return priorityToUse, nil
-}
-
-func getChannelQuery(group string, model string, retry int, excludedChannelIDs map[int]bool) (*gorm.DB, error) {
-	excludedIDs := channelIDsFromMap(excludedChannelIDs)
-	baseQuery := DB.Model(&Ability{}).Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
-	if len(excludedIDs) > 0 {
-		baseQuery = baseQuery.Where("channel_id NOT IN ?", excludedIDs)
-	}
-	maxPrioritySubQuery := DB.Model(&Ability{}).Select("MAX(priority)").Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
-	if len(excludedIDs) > 0 {
-		maxPrioritySubQuery = maxPrioritySubQuery.Where("channel_id NOT IN ?", excludedIDs)
-	}
-	channelQuery := baseQuery.Where("priority = (?)", maxPrioritySubQuery)
-	if retry != 0 {
-		priority, err := getPriority(group, model, retry, excludedChannelIDs)
-		if err != nil {
-			return nil, err
-		} else {
-			channelQuery = baseQuery.Where("priority = ?", priority)
-		}
-	}
-
-	return channelQuery, nil
+	return query.Order("priority DESC, weight DESC")
 }
 
 func GetChannel(group string, model string, retry int, filters []dto.ChannelFilter) (*Channel, error) {
@@ -135,23 +86,25 @@ func GetChannelWithSelection(group string, model string, retry int, requestPath 
 
 func getChannelWithSelection(group string, model string, retry int, requestPath string, requireWebSockets bool, excludedChannelIDs map[int]bool, filters []dto.ChannelFilter) (*Channel, error) {
 	var abilities []Ability
-	channelQuery, err := getChannelQuery(group, model, retry, excludedChannelIDs)
-	if err != nil {
-		return nil, err
-	}
-	if err := channelQuery.Order("weight DESC").Find(&abilities).Error; err != nil {
+	if err := getChannelQuery(group, model, excludedChannelIDs).Find(&abilities).Error; err != nil {
 		return nil, err
 	}
 	abilities = filterAbilitiesByConstraints(abilities, model, filters)
 	// Like the memory cache, retry with the routing name (for example without
 	// @ modifiers) when no channel serves the exact name.
 	if normalized := ratio_setting.RoutingMatchModelName(model); len(abilities) == 0 && normalized != "" && normalized != model {
-		err = DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, normalized, true).Order("priority DESC, weight DESC").Find(&abilities).Error
-		if err != nil {
+		if err := getChannelQuery(group, normalized, excludedChannelIDs).Find(&abilities).Error; err != nil {
 			return nil, err
 		}
 		abilities = filterAbilitiesByConstraints(abilities, model, filters)
 	}
+	if requestPath != "" && len(filters) == 0 {
+		abilities = filterAbilitiesByRequestPathAndModel(abilities, requestPath, model)
+	}
+	if requireWebSockets {
+		abilities = filterAbilitiesByWebSocketCapability(abilities, excludedChannelIDs)
+	}
+	abilities = filterAbilitiesByExcludedChannels(abilities, excludedChannelIDs)
 	if len(abilities) > 0 {
 		priorities := make([]int64, 0)
 		seen := make(map[int64]bool)
@@ -174,13 +127,6 @@ func getChannelWithSelection(group string, model string, retry int, requestPath 
 			return ability.Priority == nil && targetPriority == 0 || ability.Priority != nil && *ability.Priority == targetPriority
 		})
 	}
-	if requestPath != "" && len(filters) == 0 {
-		abilities = filterAbilitiesByRequestPathAndModel(abilities, requestPath, model)
-	}
-	if requireWebSockets {
-		abilities = filterAbilitiesByWebSocketCapability(abilities, excludedChannelIDs)
-	}
-	abilities = filterAbilitiesByExcludedChannels(abilities, excludedChannelIDs)
 	channel := Channel{}
 	if len(abilities) > 0 {
 		// Randomly choose one
@@ -201,7 +147,7 @@ func getChannelWithSelection(group string, model string, retry int, requestPath 
 	} else {
 		return nil, nil
 	}
-	err = DB.First(&channel, "id = ?", channel.Id).Error
+	err := DB.First(&channel, "id = ?", channel.Id).Error
 	return &channel, err
 }
 
@@ -356,7 +302,7 @@ func filterAbilitiesByRequestPathAndModel(abilities []Ability, requestPath strin
 
 // filterAbilitiesByConstraints applies the same ChannelSatisfiesFilters
 // predicate used by the memory-cache path. A failed channel lookup fails
-// closed when a task-plugin identity is required and fails open otherwise.
+// closed when client restrictions or a task-plugin identity require it.
 func filterAbilitiesByConstraints(abilities []Ability, modelName string, filters []dto.ChannelFilter) []Ability {
 	if len(abilities) == 0 {
 		return nil
@@ -374,6 +320,11 @@ func filterAbilitiesByConstraints(abilities []Ability, modelName string, filters
 
 	var channels []*Channel
 	if err := DB.Where("id IN ?", channelIds).Find(&channels).Error; err != nil {
+		for _, filter := range filters {
+			if filter.Kind == dto.FilterCodexClient && !filter.CodexClient {
+				return nil
+			}
+		}
 		if identityFilterRequiresKey(filters) {
 			return nil
 		}

@@ -40,8 +40,11 @@ import {
 import { CHANNEL_TYPE_ADVANCED_CUSTOM } from '../../lib/advanced-custom'
 import {
   CHANNEL_FORM_DEFAULT_VALUES,
+  buildSettingJSON,
+  transformChannelToFormDefaults,
   type ChannelFormValues,
 } from '../../lib/channel-form'
+import { channelSchema } from '../../types'
 import { ChannelQuickOptions } from '../channel-quick-options'
 import type { PassthroughKind } from '../dialogs/passthrough-warning-dialog'
 
@@ -49,6 +52,7 @@ type HarnessProps = {
   channelType?: number
   layout?: 'stacked' | 'inline'
   values?: Partial<ChannelFormValues>
+  sensitiveLocked?: boolean
   confirm: (kind: PassthroughKind) => Promise<boolean>
   onSave?: (values: ChannelFormValues) => void
 }
@@ -80,7 +84,7 @@ function QuickOptionsHarness(props: HarnessProps) {
           >
             <ChannelQuickOptions
               channelType={channelType}
-              sensitiveLocked={false}
+              sensitiveLocked={props.sensitiveLocked ?? false}
               disabled={false}
               layout={props.layout}
               confirmEnablePassthrough={props.confirm}
@@ -95,6 +99,64 @@ function QuickOptionsHarness(props: HarnessProps) {
 
 const HEADERS_SWITCH = { name: 'Pass Through Request Headers' }
 const BODY_SWITCH = { name: 'Pass Through Body' }
+
+describe('Codex only quick option', () => {
+  test.each(['stacked', 'inline'] as const)(
+    'saves, restores and disables the restriction in %s layout',
+    async (layout) => {
+      const user = userEvent.setup()
+      const saved: ChannelFormValues[] = []
+      const confirm = vi.fn(() => Promise.resolve(true))
+      render(
+        <QuickOptionsHarness
+          layout={layout}
+          confirm={confirm}
+          onSave={(values) => saved.push(values)}
+        />
+      )
+      const toggle = screen.getByRole('switch', { name: 'Codex only' })
+      expect(toggle).not.toBeChecked()
+      await user.click(toggle)
+      await user.click(screen.getByRole('button', { name: 'Save' }))
+      await waitFor(() => expect(saved).toHaveLength(1))
+      const setting = buildSettingJSON(saved[0])
+      expect(JSON.parse(setting).codex_only).toBe(true)
+      const channel = channelSchema.parse({
+        id: 1,
+        type: 1,
+        key: '',
+        status: 1,
+        name: 'Codex',
+        created_time: 0,
+        test_time: 0,
+        response_time: 0,
+        balance_updated_time: 0,
+        setting,
+      })
+      expect(transformChannelToFormDefaults(channel).codex_only).toBe(true)
+      await user.click(toggle)
+      await user.click(screen.getByRole('button', { name: 'Save' }))
+      await waitFor(() => expect(saved).toHaveLength(2))
+      expect(JSON.parse(buildSettingJSON(saved[1])).codex_only).toBeUndefined()
+      expect(confirm).not.toHaveBeenCalled()
+    }
+  )
+
+  test('prevents changes when sensitive settings are locked', async () => {
+    const user = userEvent.setup()
+    render(
+      <QuickOptionsHarness
+        sensitiveLocked
+        values={{ codex_only: true }}
+        confirm={() => Promise.resolve(true)}
+      />
+    )
+    const toggle = screen.getByRole('switch', { name: 'Codex only' })
+    expect(toggle).toHaveAttribute('aria-disabled', 'true')
+    await user.click(toggle)
+    expect(toggle).toBeChecked()
+  })
+})
 
 beforeEach(() => {
   vi.spyOn(api, 'get').mockResolvedValue({

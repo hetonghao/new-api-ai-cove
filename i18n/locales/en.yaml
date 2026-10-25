@@ -17,6 +17,7 @@ rate_limit.total_reached: "You have reached the total request limit: maximum {{.
 distributor.invalid_request: "Invalid request: {{.Error}}"
 distributor.invalid_channel_id: "Invalid channel ID"
 distributor.channel_disabled: "This channel has been disabled"
+distributor.codex_only: "This channel only allows Codex clients"
 distributor.token_no_model_access: "This token has no access to any models"
 distributor.token_model_forbidden: "This token has no access to model {{.Model}}"
 distributor.model_name_required: "Model name not specified, model name cannot be empty"

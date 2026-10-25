@@ -16,6 +16,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 func TestChannelValidateSettingsRejectsInvalidHTTPTransport(t *testing.T) {
@@ -48,6 +49,99 @@ func TestChannelValidateSettingsRejectsInvalidHTTPTransport(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
+}
+
+func TestChannelCodexOnlySettingsRoundTrip(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			var driver gorm.Dialector
+			switch dialect {
+			case "sqlite":
+				driver = sqlite.Open(filepath.Join(t.TempDir(), "codex.db"))
+			case "mysql":
+				dsn := os.Getenv("TEST_MYSQL_DSN")
+				if dsn == "" {
+					t.Skip("TEST_MYSQL_DSN is not configured")
+				}
+				driver = mysql.Open(dsn)
+			case "postgres":
+				dsn := os.Getenv("TEST_POSTGRES_DSN")
+				if dsn == "" {
+					t.Skip("TEST_POSTGRES_DSN is not configured")
+				}
+				driver = postgres.Open(dsn)
+			}
+			db, err := gorm.Open(driver, &gorm.Config{NamingStrategy: schema.NamingStrategy{TablePrefix: "codex_only_"}})
+			require.NoError(t, err)
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+			table := db
+			require.NoError(t, table.AutoMigrate(&Channel{}, &Ability{}))
+			t.Cleanup(func() { require.NoError(t, db.Migrator().DropTable(&Ability{}, &Channel{})) })
+			previousDB, previousType := DB, common.MainDatabaseType()
+			DB = db
+			common.SetMainDatabaseType(common.DatabaseType(dialect))
+			initCol()
+			t.Cleanup(func() { DB = previousDB; common.SetMainDatabaseType(previousType); initCol() })
+			var version string
+			query := "select version()"
+			if dialect == "sqlite" {
+				query = "select sqlite_version()"
+			}
+			require.NoError(t, db.Raw(query).Scan(&version).Error)
+			t.Logf("%s version: %s", dialect, version)
+			channel := &Channel{Type: constant.ChannelTypeOpenAI, Key: "test", Name: "codex restriction"}
+			require.NoError(t, table.Create(channel).Error)
+			for _, enabled := range []bool{false, true, false} {
+				channel.SetSetting(dto.ChannelSettings{CodexOnly: enabled, ResponsesWebSocketEnabled: true})
+				require.NoError(t, channel.ValidateSettings())
+				require.NoError(t, table.Save(channel).Error)
+				var loaded Channel
+				require.NoError(t, table.First(&loaded, channel.Id).Error)
+				require.Equal(t, enabled, loaded.GetSetting().CodexOnly)
+				require.True(t, loaded.GetSetting().ResponsesWebSocketEnabled)
+				for _, codex := range []bool{false, true} {
+					allowed, _ := ChannelSatisfiesFilters(&loaded, "gpt-4o-mini", []filterdto.ChannelFilter{{Kind: filterdto.FilterCodexClient, CodexClient: codex}})
+					require.Equal(t, !enabled || codex, allowed)
+				}
+			}
+			channel.SetSetting(dto.ChannelSettings{CodexOnly: true})
+			require.NoError(t, db.Save(channel).Error)
+			ordinary := &Channel{Type: constant.ChannelTypeOpenAI, Key: "test", Name: "ordinary"}
+			require.NoError(t, db.Create(ordinary).Error)
+			for _, item := range []struct {
+				id       int
+				priority int64
+			}{{channel.Id, 10}, {ordinary.Id, 0}} {
+				require.NoError(t, db.Create(&Ability{Group: "default", Model: "codex-test", ChannelId: item.id, Enabled: true, Priority: common.GetPointer(item.priority), Weight: 100}).Error)
+			}
+			for _, codex := range []bool{false, true} {
+				selected, err := GetChannelWithSelection("default", "codex-test", 0, "", false, nil, []filterdto.ChannelFilter{{Kind: filterdto.FilterCodexClient, CodexClient: codex}})
+				require.NoError(t, err)
+				require.NotNil(t, selected)
+				wantID := ordinary.Id
+				if codex {
+					wantID = channel.Id
+				}
+				require.Equal(t, wantID, selected.Id)
+			}
+
+		})
+	}
+}
+
+func TestChannelCodexOnlyLookupFailureRejectsCandidates(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "unavailable-channels.db")), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	previousDB := DB
+	DB = db
+	t.Cleanup(func() { DB = previousDB; require.NoError(t, sqlDB.Close()) })
+	abilities := []Ability{{ChannelId: 1}}
+	filtered := filterAbilitiesByConstraints(abilities, "gpt-4o-mini", []filterdto.ChannelFilter{{Kind: filterdto.FilterCodexClient}})
+	require.Empty(t, filtered, "a failed settings lookup must not bypass the client restriction")
 }
 
 func TestChannelWebSocketCapabilitySupportsResponsesChannelTypes(t *testing.T) {

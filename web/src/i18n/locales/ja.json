@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Codex only": "Codex のみ許可",
+    "Only route requests with Codex client headers to this channel. Client headers can be spoofed and do not replace authentication.": "Codex クライアントのヘッダーを持つリクエストのみをこのチャネルに振り分けます。ヘッダーは偽装できるため、認証の代わりにはなりません。",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

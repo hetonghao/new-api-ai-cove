@@ -69,23 +69,31 @@ export function ChannelQuickOptions(props: ChannelQuickOptionsProps) {
   const id = useId()
   const formContext = useFormContext<ChannelFormValues>()
   const form = props.form ?? formContext
-  const [passthrough, headerOverride, autoBan, modelCheck, websocket] =
-    useWatch({
-      control: form.control,
-      name: [
-        'pass_through_body_enabled',
-        'header_override',
-        'auto_ban',
-        'upstream_model_update_check_enabled',
-        'responses_websocket_enabled',
-      ],
-    })
+  const [
+    passthrough,
+    headerOverride,
+    autoBan,
+    modelCheck,
+    websocket,
+    codexOnly,
+  ] = useWatch({
+    control: form.control,
+    name: [
+      'pass_through_body_enabled',
+      'header_override',
+      'auto_ban',
+      'upstream_model_update_check_enabled',
+      'responses_websocket_enabled',
+      'codex_only',
+    ],
+  })
   const sensitiveDisabled = props.sensitiveLocked || props.disabled
   const setOption = (
     name:
       | 'pass_through_body_enabled'
       | 'upstream_model_update_check_enabled'
-      | 'responses_websocket_enabled',
+      | 'responses_websocket_enabled'
+      | 'codex_only',
     value: boolean
   ) => form.setValue(name, value, { shouldDirty: true, shouldValidate: true })
   // The header switch is a shortcut for the "*" rule in Request Header
@@ -174,6 +182,17 @@ export function ChannelQuickOptions(props: ChannelQuickOptionsProps) {
       disabled: sensitiveDisabled,
     })
   }
+
+  options.push({
+    key: 'codex-only',
+    label: t('Codex only'),
+    description: t(
+      'Only route requests with Codex client headers to this channel. Client headers can be spoofed and do not replace authentication.'
+    ),
+    checked: codexOnly === true,
+    onCheckedChange: (value) => setOption('codex_only', value),
+    disabled: sensitiveDisabled,
+  })
 
   if (props.layout === 'inline') {
     return (

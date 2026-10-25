@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Codex only": "Chỉ cho phép Codex",
+    "Only route requests with Codex client headers to this channel. Client headers can be spoofed and do not replace authentication.": "Chỉ định tuyến yêu cầu có tiêu đề máy khách Codex đến kênh này. Tiêu đề có thể bị giả mạo và không thay thế xác thực.",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

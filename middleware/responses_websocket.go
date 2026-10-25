@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,6 +25,10 @@ func ResponsesWebSocketPreflight() gin.HandlerFunc {
 			channel, err := model.GetChannelById(channelID, true)
 			if err != nil {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, "指定渠道无效", types.ErrorCodeGetChannelFailed)
+				return
+			}
+			if apiErr := service.CheckChannelClient(c, channel); apiErr != nil {
+				abortWithOpenAiMessage(c, apiErr.StatusCode, apiErr.Error(), apiErr.GetErrorCode())
 				return
 			}
 			if !model.ChannelSupportsResponsesWebSocket(channel) {
