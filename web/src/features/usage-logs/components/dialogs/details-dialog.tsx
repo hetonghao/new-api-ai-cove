@@ -89,6 +89,7 @@ import {
   renderLogContent,
 } from '../../lib/format'
 import { buildQuotaAuditOperation } from '../../lib/quota-audit-operation'
+import { isResponseModelMismatch } from '../../lib/response-model'
 import {
   getLogTypeConfig,
   isPerCallBilling,
@@ -1147,15 +1148,17 @@ export function DetailsDialog(props: DetailsDialogProps) {
           />
         )}
 
-        {other?.response_model && (
-          <DetailSection label={t('Response Model')}>
-            <ResponseModelDetails observation={other.response_model} />
-          </DetailSection>
-        )}
+        {other?.response_model &&
+          isResponseModelMismatch(other.response_model) && (
+            <DetailSection label={t('Response Model')}>
+              <ResponseModelDetails observation={other.response_model} />
+            </DetailSection>
+          )}
         {/* Namespace-alias observations are admin-only (see SetAdmin). */}
         {props.isAdmin &&
           !other?.response_model &&
-          adminInfo?.response_model && (
+          adminInfo?.response_model &&
+          isResponseModelMismatch(adminInfo.response_model) && (
             <DetailSection label={t('Response Model')}>
               <ResponseModelDetails observation={adminInfo.response_model} />
             </DetailSection>

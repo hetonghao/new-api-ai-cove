@@ -52,7 +52,7 @@ function makeLog(other: LogOtherData): UsageLog {
   }
 }
 
-function renderDetails(isAdmin: boolean): void {
+function renderDetails(isAdmin: boolean, other: LogOtherData): void {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -63,17 +63,7 @@ function renderDetails(isAdmin: boolean): void {
   render(
     <QueryClientProvider client={queryClient}>
       <DetailsDialog
-        log={makeLog({
-          admin_info: {
-            response_model: {
-              requested_model: 'swe-2',
-              upstream_model: 'swe-2',
-              returned_model: 'devin/swe-2',
-              mismatch: false,
-              alias: true,
-            },
-          },
-        })}
+        log={makeLog(other)}
         isAdmin={isAdmin}
         isRoot={false}
         open
@@ -90,18 +80,75 @@ afterEach(() => {
   queryClients.length = 0
 })
 
-describe('namespace-alias response model observation', () => {
-  test('shows the alias observation to admins', () => {
-    renderDetails(true)
+describe.each([false, true])(
+  'response model details (admin-only: %s)',
+  (adminOnly) => {
+    test.each([
+      ['swe-2', 'swe-2', 'swe-2'],
+      ['swe-2', 'swe-2', 'devin/swe-2'],
+      ['swe-2', 'swe-2', 'SWE-2'],
+      ['swe-2', 'swe-2', 'swe-2-2026-09-17'],
+      ['gpt-5.6-terra', 'gpt-5.6-terra', 'devin/gpt-5-6-terra'],
+      ['swe-2', 'mapped-model', 'vendor/mapped-model-2026-09-17'],
+    ])(
+      'hides compatible response %s / %s / %s',
+      (requested, upstream, returned) => {
+        const responseModel = {
+          requested_model: requested,
+          upstream_model: upstream,
+          returned_model: returned,
+          mismatch: true,
+        }
+        renderDetails(
+          adminOnly,
+          adminOnly
+            ? { admin_info: { response_model: responseModel } }
+            : { response_model: responseModel }
+        )
 
-    expect(screen.getByText('devin/swe-2')).toBeInTheDocument()
-    expect(screen.getAllByText('Response Model').length).toBeGreaterThan(0)
+        expect(screen.getByRole('dialog')).toBeInTheDocument()
+        expect(screen.queryAllByText('Response Model')).toHaveLength(0)
+        expect(screen.queryByText('Upstream Model')).not.toBeInTheDocument()
+        expect(screen.queryByText(/^Response model:/)).not.toBeInTheDocument()
+      }
+    )
+
+    test('shows a genuine mismatch and all three model names', () => {
+      const responseModel = {
+        requested_model: 'swe-2',
+        upstream_model: 'mapped-model',
+        returned_model: 'different-model',
+        mismatch: false,
+      }
+      renderDetails(
+        adminOnly,
+        adminOnly
+          ? { admin_info: { response_model: responseModel } }
+          : { response_model: responseModel }
+      )
+
+      expect(screen.getByText('Request Model')).toBeInTheDocument()
+      expect(screen.getByText('Upstream Model')).toBeInTheDocument()
+      expect(screen.getByText('mapped-model')).toBeInTheDocument()
+      expect(screen.getByText('different-model')).toBeInTheDocument()
+      expect(
+        screen.getByText('Response model: different-model')
+      ).toBeInTheDocument()
+    })
+  }
+)
+
+test('hides admin-only response observations from non-admin users', () => {
+  renderDetails(false, {
+    admin_info: {
+      response_model: {
+        requested_model: 'swe-2',
+        upstream_model: 'swe-2',
+        returned_model: 'different-model',
+      },
+    },
   })
 
-  test('hides the alias observation from non-admin users', () => {
-    renderDetails(false)
-
-    expect(screen.queryByText('devin/swe-2')).toBeNull()
-    expect(screen.queryByText('Response Model')).toBeNull()
-  })
+  expect(screen.queryByText('different-model')).not.toBeInTheDocument()
+  expect(screen.queryByText('Response Model')).not.toBeInTheDocument()
 })
