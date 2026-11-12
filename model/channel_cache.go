@@ -251,6 +251,7 @@ func filterExcludedChannels(channels []int, excluded map[int]bool) []int {
 func isResponsesWebSocketChannelType(channelType int) bool {
 	switch channelType {
 	case constant.ChannelTypeOpenAI,
+		constant.ChannelTypeAzure,
 		constant.ChannelTypeCodex,
 		constant.ChannelTypeAdvancedCustom,
 		constant.ChannelTypeSub2API,

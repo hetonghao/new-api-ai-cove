@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
@@ -23,6 +24,7 @@ import (
 func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Conn, clientCodec *responsesWebSocketPrivateCodec, observability *responsesWebSocketObservability) error {
 	baseCtx.Set(responsesWebSocketObservabilityKey, observability)
 	connectionStarted := time.Now()
+	var clientWriteBudget helper.StreamWriteBudget
 	sessionCtx, cancel := context.WithCancel(baseCtx.Request.Context())
 	defer cancel()
 	var (
@@ -495,7 +497,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 				capacityEvidence = ""
 			}
 			for _, frameToForward := range framesToForward {
-				if err := writeResponsesWebSocketClientMessage(clientConn, clientCodec, frameToForward.messageType, frameToForward.payload); err != nil {
+				if err := writeResponsesWebSocketClientMessage(clientConn, clientCodec, frameToForward.messageType, frameToForward.payload, &clientWriteBudget); err != nil {
 					cleanupReason = responsesWebSocketCleanupClientDisconnected
 					return err
 				}

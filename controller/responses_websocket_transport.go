@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/wsmanager"
+	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -188,15 +189,25 @@ func writeResponsesWebSocketMessage(conn *websocket.Conn, messageType int, paylo
 	return conn.WriteMessage(messageType, payload)
 }
 
-func writeResponsesWebSocketClientMessage(conn *websocket.Conn, codec *responsesWebSocketPrivateCodec, messageType int, payload []byte) error {
-	if codec == nil {
-		return writeResponsesWebSocketMessage(conn, messageType, payload)
+func writeResponsesWebSocketClientMessage(conn *websocket.Conn, codec *responsesWebSocketPrivateCodec, messageType int, payload []byte, budget *helper.StreamWriteBudget) error {
+	if conn == nil {
+		return errors.New("websocket connection is nil")
 	}
-	wireType, wirePayload, err := codec.Encode(messageType, payload)
-	if err != nil {
+	if codec != nil {
+		wireType, wirePayload, err := codec.Encode(messageType, payload)
+		if err != nil {
+			return err
+		}
+		messageType, payload = wireType, wirePayload
+	}
+	deadline := time.Now().Add(responsesWebSocketWriteTimeout)
+	if budget != nil {
+		deadline = budget.Deadline(time.Now(), len(payload))
+	}
+	if err := conn.SetWriteDeadline(deadline); err != nil {
 		return err
 	}
-	return writeResponsesWebSocketMessage(conn, wireType, wirePayload)
+	return conn.WriteMessage(messageType, payload)
 }
 
 func writeResponsesWebSocketControl(conn *websocket.Conn, messageType int, payload []byte) error {
@@ -243,7 +254,7 @@ func writeResponsesWebSocketErrorEvent(conn *websocket.Conn, codec *responsesWeb
 	if err != nil {
 		return err
 	}
-	return writeResponsesWebSocketClientMessage(conn, codec, websocket.TextMessage, payload)
+	return writeResponsesWebSocketClientMessage(conn, codec, websocket.TextMessage, payload, nil)
 }
 
 func writeResponsesWebSocketClose(conn *websocket.Conn, code int, reason string) error {

@@ -153,6 +153,7 @@ func TestChannelWebSocketCapabilitySupportsResponsesChannelTypes(t *testing.T) {
 	}{
 		{name: "missing defaults off", channelType: constant.ChannelTypeOpenAI},
 		{name: "OpenAI persists enabled", channelType: constant.ChannelTypeOpenAI, enabled: true, want: true},
+		{name: "Azure persists enabled", channelType: constant.ChannelTypeAzure, enabled: true, want: true},
 		{name: "Codex persists enabled", channelType: constant.ChannelTypeCodex, enabled: true, want: true},
 		{name: "Advanced Custom persists enabled", channelType: constant.ChannelTypeAdvancedCustom, enabled: true, want: true},
 		{name: "Sub2API persists enabled", channelType: constant.ChannelTypeSub2API, enabled: true, want: true},
