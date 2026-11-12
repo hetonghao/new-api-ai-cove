@@ -140,6 +140,7 @@ export function CommonLogsFilterBar<TData>(
     setSensitiveVisible,
     search: searchParams,
     navigateSearch,
+    dataScope,
     adminControls,
     advancedFilterExpansionRequest,
     queryKeyScope,
@@ -550,7 +551,7 @@ export function CommonLogsFilterBar<TData>(
       stats={statsBar}
       actionStart={sensitiveToggle}
       primaryFiltersClassName='lg:grid-cols-[max-content_max-content_max-content_repeat(3,minmax(0,1fr))]'
-      actionEnd={<ExportLogsDialog />}
+      actionEnd={dataScope === 'default' ? <ExportLogsDialog /> : undefined}
       primaryFilters={
         <>
           {dateRangeFilter}
