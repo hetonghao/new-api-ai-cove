@@ -3,7 +3,6 @@ package common
 import (
 	"crypto/sha256"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -11,10 +10,7 @@ import (
 )
 
 func IsOfficialOpenAIResponsesURL(rawURL string) bool {
-	target, err := url.Parse(rawURL)
-	return err == nil && (target.Scheme == "https" || target.Scheme == "wss") &&
-		strings.EqualFold(target.Hostname(), "api.openai.com") &&
-		(target.Port() == "" || target.Port() == "443") && target.Path == "/v1/responses"
+	return IsOfficialOpenAIURL(rawURL, "/v1/responses")
 }
 
 // NormalizeOfficialOpenAIResponsesItemIDs repairs replayed item IDs without
