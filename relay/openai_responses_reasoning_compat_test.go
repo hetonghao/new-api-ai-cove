@@ -30,19 +30,25 @@ func TestOfficialOpenAIResponsesReplaysForeignReasoning(t *testing.T) {
 	t.Cleanup(func() { client.Transport = previousTransport })
 	const summary = `[{"type":"summary_text","text":"Keep the original reasoning summary."}]`
 	const foreign = `{"type":"reasoning","id":"item_5ba7ac0d-28e6-4317-ba48-0a57d052b060_5","status":"completed","encrypted_content":"","summary":` + summary + `,"content":null,"vendor":9007199254740993}`
-	const replayable = `{"type":"reasoning","encrypted_content":"","summary":` + summary + `,"content":null,"vendor":9007199254740993}`
+	const replayable = `{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Previous reasoning summary:\nKeep the original reasoning summary."}]}`
 	for _, tc := range []struct {
-		name, endpoint, item, want                 string
-		passthrough, globalPassthrough, referenced bool
+		name, endpoint, item, want                       string
+		passthrough, globalPassthrough, referenced, drop bool
 	}{
 		{name: "official", item: foreign, want: replayable},
 		{name: "channel passthrough", item: foreign, want: replayable, passthrough: true},
 		{name: "global passthrough", item: foreign, want: replayable, globalPassthrough: true},
-		{name: "missing ciphertext", item: `{"type":"reasoning","id":"item_missing","status":"completed","summary":[]}`, want: `{"type":"reasoning","summary":[]}`},
-		{name: "null ciphertext", item: `{"type":"reasoning","id":"item_null","status":"completed","encrypted_content":null,"summary":[]}`, want: `{"type":"reasoning","encrypted_content":null,"summary":[]}`},
+		{name: "missing ciphertext", item: `{"type":"reasoning","id":"item_missing","status":"completed","summary":[]}`, drop: true},
+		{name: "null ciphertext", item: `{"type":"reasoning","id":"item_null","status":"completed","encrypted_content":null,"summary":[]}`, drop: true},
+		{name: "unsigned without id", item: `{"type":"reasoning","summary":` + summary + `}`, want: replayable},
+		{name: "Devin ciphertext becomes context", item: `{"type":"reasoning","id":"item_sealed","status":"completed","encrypted_content":"sealed.v1.test","summary":` + summary + `}`, want: replayable},
+		{name: "OpenAI ciphertext survives a foreign id", item: `{"type":"reasoning","id":"item_native","status":"completed","encrypted_content":"gAAAA_native","summary":[]}`, want: `{"type":"reasoning","encrypted_content":"gAAAA_native","summary":[]}`},
+		{name: "OpenAI native state stays intact", item: `{"type":"reasoning","id":"rs_native","encrypted_content":"gAAAA_native","summary":[]}`},
+		{name: "native output status is removed", item: `{"type":"reasoning","id":"rs_native","status":"completed","encrypted_content":"gAAAA_native","summary":[]}`, want: `{"type":"reasoning","id":"rs_native","encrypted_content":"gAAAA_native","summary":[]}`},
+		{name: "reasoning text becomes context", item: `{"type":"reasoning","id":"item_text","summary":[],"content":[{"type":"reasoning_text","text":"Keep the original reasoning summary."}]}`, want: replayable},
 		{name: "ciphertext preserved", item: `{"type":"reasoning","id":"item_signed","status":"completed","encrypted_content":"opaque","summary":[]}`},
 		{name: "malformed ciphertext preserved", item: `{"type":"reasoning","id":"item_bad","status":"completed","encrypted_content":false,"summary":[]}`},
-		{name: "official item reference preserved", item: `{"type":"reasoning","id":"rs_official","status":"completed","encrypted_content":"","summary":[]}`},
+		{name: "official item reference preserved", item: `{"type":"reasoning","id":"rs_official","encrypted_content":"","summary":[]}`},
 		{name: "explicit reference preserved", item: foreign, referenced: true},
 		{name: "already replayable", item: replayable},
 		{name: "CPA", endpoint: "http://cpa-pro-1:8319", item: foreign},
@@ -91,10 +97,15 @@ func TestOfficialOpenAIResponsesReplaysForeignReasoning(t *testing.T) {
 			require.NoError(t, err)
 			response := result.(*http.Response)
 			t.Cleanup(func() { require.NoError(t, response.Body.Close()) })
-			assert.JSONEq(t, want, gjson.GetBytes(received, "input.2").Raw)
-			assert.Equal(t, gjson.Get(tc.item, "vendor").Raw, gjson.GetBytes(received, "input.2.vendor").Raw)
+			outputIndex := "3"
+			if tc.drop {
+				assert.Len(t, gjson.GetBytes(received, "input").Array(), 3)
+				outputIndex = "2"
+			} else {
+				assert.JSONEq(t, want, gjson.GetBytes(received, "input.2").Raw)
+			}
 			assert.Equal(t, "call_lookup", gjson.GetBytes(received, "input.1.call_id").String())
-			assert.Equal(t, "call_lookup", gjson.GetBytes(received, "input.3.call_id").String())
+			assert.Equal(t, "call_lookup", gjson.GetBytes(received, "input."+outputIndex+".call_id").String())
 			assert.Equal(t, "high", gjson.GetBytes(received, "reasoning.effort").String())
 			assert.JSONEq(t, input, string(request.Input), "the next channel attempt must retain the original history")
 			storage, err := common.GetBodyStorage(c)
