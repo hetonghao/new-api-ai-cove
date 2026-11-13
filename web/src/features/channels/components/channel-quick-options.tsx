@@ -22,6 +22,8 @@ import { useTranslation } from 'react-i18next'
 
 import { FieldGroup } from '@/components/ui/field'
 import { Label } from '@/components/ui/label'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
 import { SettingsSwitchField } from '@/features/system-settings/components/settings-form-layout'
 import { ChannelHealthSource } from '@/features/system-settings/request-policies/related-policy-link'
@@ -75,8 +77,7 @@ export function ChannelQuickOptions(props: ChannelQuickOptionsProps) {
     autoBan,
     modelCheck,
     websocket,
-    codexOnly,
-    codexForbidden,
+    codexAccess,
   ] = useWatch({
     control: form.control,
     name: [
@@ -85,8 +86,7 @@ export function ChannelQuickOptions(props: ChannelQuickOptionsProps) {
       'auto_ban',
       'upstream_model_update_check_enabled',
       'responses_websocket_enabled',
-      'codex_only',
-      'codex_forbidden',
+      'codex_access',
     ],
   })
   const sensitiveDisabled = props.sensitiveLocked || props.disabled
@@ -94,21 +94,9 @@ export function ChannelQuickOptions(props: ChannelQuickOptionsProps) {
     name:
       | 'pass_through_body_enabled'
       | 'upstream_model_update_check_enabled'
-      | 'responses_websocket_enabled'
-      | 'codex_only'
-      | 'codex_forbidden',
+      | 'responses_websocket_enabled',
     value: boolean
   ) => form.setValue(name, value, { shouldDirty: true, shouldValidate: true })
-  // The two Codex restrictions are contradictory, so enabling one clears the
-  // other instead of relying on the backend rejection.
-  const setCodexRestriction = (
-    name: 'codex_only' | 'codex_forbidden',
-    value: boolean
-  ) => {
-    const other = name === 'codex_only' ? 'codex_forbidden' : 'codex_only'
-    if (value) form.setValue(other, false, { shouldDirty: true })
-    setOption(name, value)
-  }
   // The header switch is a shortcut for the "*" rule in Request Header
   // Override, so it reads and writes that JSON instead of a separate flag.
   const headerPassthroughState = getHeaderPassthroughState(headerOverride)
@@ -196,27 +184,68 @@ export function ChannelQuickOptions(props: ChannelQuickOptionsProps) {
     })
   }
 
-  options.push({
-    key: 'codex-only',
-    label: t('Codex only'),
-    description: t(
-      'Only route requests with Codex client headers to this channel. Client headers can be spoofed and do not replace authentication.'
-    ),
-    checked: codexOnly === true,
-    onCheckedChange: (value) => setCodexRestriction('codex_only', value),
-    disabled: sensitiveDisabled,
-  })
-
-  options.push({
-    key: 'codex-forbidden',
-    label: t('Block Codex'),
-    description: t(
-      'Keep requests with Codex client headers off this channel. Enable it for upstream keys that cannot serve Codex. Client headers can be spoofed and do not replace authentication.'
-    ),
-    checked: codexForbidden === true,
-    onCheckedChange: (value) => setCodexRestriction('codex_forbidden', value),
-    disabled: sensitiveDisabled,
-  })
+  const codexAccessOptions = [
+    {
+      value: '',
+      label: t('No restriction'),
+      description: t('Codex and ordinary clients may both use this channel'),
+    },
+    {
+      value: 'only',
+      label: t('Codex only'),
+      description: t('Only Codex clients may use this channel'),
+    },
+    {
+      value: 'forbidden',
+      label: t('Block Codex'),
+      description: t(
+        'Codex clients may not use this channel. Enable it for upstream keys that cannot serve Codex'
+      ),
+    },
+  ] as const
+  const codexAccessField = (
+    <fieldset className='min-w-0'>
+      <legend className='text-sm font-medium'>{t('Codex access')}</legend>
+      <p className='text-muted-foreground mb-2 text-xs'>
+        {t(
+          'Codex clients are identified from request headers, which can be spoofed; this shapes routing and does not replace authentication.'
+        )}
+      </p>
+      <RadioGroup
+        value={codexAccess ?? ''}
+        onValueChange={(value) =>
+          form.setValue(
+            'codex_access',
+            value as ChannelFormValues['codex_access'],
+            { shouldDirty: true, shouldValidate: true }
+          )
+        }
+        className='gap-2'
+      >
+        {codexAccessOptions.map((option) => (
+          <div key={option.value} className='flex items-start gap-2'>
+            <RadioGroupItem
+              value={option.value}
+              id={`${id}-codex-access-${option.value || 'unrestricted'}`}
+              disabled={sensitiveDisabled}
+              className='mt-0.5'
+            />
+            <div className='min-w-0'>
+              <Label
+                htmlFor={`${id}-codex-access-${option.value || 'unrestricted'}`}
+                className='cursor-pointer text-sm font-medium'
+              >
+                {option.label}
+              </Label>
+              <p className='text-muted-foreground text-xs'>
+                {option.description}
+              </p>
+            </div>
+          </div>
+        ))}
+      </RadioGroup>
+    </fieldset>
+  )
 
   if (props.layout === 'inline') {
     return (
@@ -250,6 +279,25 @@ export function ChannelQuickOptions(props: ChannelQuickOptionsProps) {
             </Label>
           </div>
         ))}
+        <NativeSelect
+          size='sm'
+          aria-label={t('Codex access')}
+          value={codexAccess ?? ''}
+          disabled={sensitiveDisabled}
+          onChange={(event) =>
+            form.setValue(
+              'codex_access',
+              event.target.value as ChannelFormValues['codex_access'],
+              { shouldDirty: true, shouldValidate: true }
+            )
+          }
+        >
+          {codexAccessOptions.map((option) => (
+            <NativeSelectOption key={option.value} value={option.value}>
+              {option.label}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
       </div>
     )
   }
@@ -279,6 +327,9 @@ export function ChannelQuickOptions(props: ChannelQuickOptionsProps) {
           />
         ))}
       </FieldGroup>
+      <div className='border-border/60 mt-2 border-t pt-3 pb-2'>
+        {codexAccessField}
+      </div>
     </section>
   )
 }

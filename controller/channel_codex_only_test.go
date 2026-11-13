@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relaydto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
@@ -66,14 +67,13 @@ func TestCodexClientRecognition(t *testing.T) {
 	require.False(t, common.IsCodexClientRequest(nil))
 }
 
-func setTestChannelCodexRestriction(t *testing.T, db *gorm.DB, id int, forbidden bool) {
+func setTestChannelCodexAccess(t *testing.T, db *gorm.DB, id int, access relaydto.CodexAccess) {
 	t.Helper()
 	require.NoError(t, i18n.Init())
 	channel, err := model.GetChannelById(id, true)
 	require.NoError(t, err)
 	settings := channel.GetSetting()
-	settings.CodexOnly = !forbidden
-	settings.CodexForbidden = forbidden
+	settings.CodexAccess = access
 	channel.SetSetting(settings)
 	require.NoError(t, db.Save(channel).Error)
 }
@@ -81,11 +81,11 @@ func setTestChannelCodexRestriction(t *testing.T, db *gorm.DB, id int, forbidden
 // runCodexRoutingCase routes one request through the distributor against a
 // restricted channel 801 and an unrestricted channel 802, so the Codex-only
 // and Codex-forbidden tables share one fixture.
-func runCodexRoutingCase(t *testing.T, cached bool, forbidden bool, tc codexRoutingCase) {
+func runCodexRoutingCase(t *testing.T, cached bool, access relaydto.CodexAccess, tc codexRoutingCase) {
 	t.Helper()
 	db := setupResponsesWebSocketHandlerTest(t)
 	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 801, priority: 10})
-	setTestChannelCodexRestriction(t, db, 801, forbidden)
+	setTestChannelCodexAccess(t, db, 801, access)
 	if !tc.onlyRestricted {
 		insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 802})
 	}
@@ -124,13 +124,13 @@ type codexRoutingCase struct {
 
 func TestCodexRestrictionHTTPRouting(t *testing.T) {
 	tests := []struct {
-		name      string
-		forbidden bool
-		cases     []codexRoutingCase
+		name   string
+		access relaydto.CodexAccess
+		cases  []codexRoutingCase
 	}{
 		{
-			name:      "codex only",
-			forbidden: false,
+			name:   "codex only",
+			access: relaydto.CodexAccessOnly,
 			cases: []codexRoutingCase{
 				{name: "ordinary skips restricted", codex: false, status: 200, channel: 802},
 				{name: "codex uses restricted", codex: true, status: 200, channel: 801},
@@ -140,8 +140,18 @@ func TestCodexRestrictionHTTPRouting(t *testing.T) {
 			},
 		},
 		{
-			name:      "codex forbidden",
-			forbidden: true,
+			name:   "unrestricted",
+			access: relaydto.CodexAccessUnrestricted,
+			cases: []codexRoutingCase{
+				{name: "codex uses channel", codex: true, status: 200, channel: 801},
+				{name: "ordinary uses channel", codex: false, status: 200, channel: 801},
+				{name: "codex pinned allowed", codex: true, pinned: true, status: 200, channel: 801},
+				{name: "ordinary pinned allowed", codex: false, pinned: true, status: 200, channel: 801},
+			},
+		},
+		{
+			name:   "codex forbidden",
+			access: relaydto.CodexAccessForbidden,
 			cases: []codexRoutingCase{
 				{name: "codex skips forbidden", codex: true, status: 200, channel: 802},
 				{name: "ordinary uses forbidden", codex: false, status: 200, channel: 801},
@@ -155,7 +165,7 @@ func TestCodexRestrictionHTTPRouting(t *testing.T) {
 		for _, restriction := range tests {
 			for _, tc := range restriction.cases {
 				t.Run(fmt.Sprintf("cache=%t/%s/%s", cached, restriction.name, tc.name), func(t *testing.T) {
-					runCodexRoutingCase(t, cached, restriction.forbidden, tc)
+					runCodexRoutingCase(t, cached, restriction.access, tc)
 				})
 			}
 		}
@@ -168,7 +178,7 @@ func TestCodexOnlyRetryExcludesRestrictedChannels(t *testing.T) {
 			db := setupResponsesWebSocketHandlerTest(t)
 			insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 801, priority: 10})
 			insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 802})
-			setTestChannelCodexRestriction(t, db, 801, false)
+			setTestChannelCodexAccess(t, db, 801, relaydto.CodexAccessOnly)
 			common.MemoryCacheEnabled = cached
 			if cached {
 				model.InitChannelCache()
@@ -199,7 +209,7 @@ func TestCodexOnlyWebSocketRouting(t *testing.T) {
 			ordinary := newResponsesWebSocketTestUpstream(t, serve)
 			insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 801, baseURL: restricted.server.URL, priority: 10})
 			insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 802, baseURL: ordinary.server.URL})
-			setTestChannelCodexRestriction(t, db, 801, false)
+			setTestChannelCodexAccess(t, db, 801, relaydto.CodexAccessOnly)
 			client := dialResponsesWebSocketTestClientWithContext(t, func(c *gin.Context) {
 				if codex {
 					c.Request.Header.Set("User-Agent", "codex_cli_rs/0.141.0")
@@ -223,7 +233,7 @@ func TestCodexOnlyWebSocketRouting(t *testing.T) {
 func TestCodexOnlyWebSocketPinnedRejectedBeforeUpgrade(t *testing.T) {
 	db := setupResponsesWebSocketHandlerTest(t)
 	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 801})
-	setTestChannelCodexRestriction(t, db, 801, false)
+	setTestChannelCodexAccess(t, db, 801, relaydto.CodexAccessOnly)
 	router := gin.New()
 	router.GET("/v1/responses", func(c *gin.Context) { common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, "801") }, middleware.ResponsesWebSocketPreflight(), func(c *gin.Context) { t.Error("restricted request reached upgrade") })
 	recorder := httptest.NewRecorder()
@@ -238,7 +248,7 @@ func TestCodexForbiddenOverridesSessionAffinity(t *testing.T) {
 			db := setupResponsesWebSocketHandlerTest(t)
 			insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 801})
 			insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 802})
-			setTestChannelCodexRestriction(t, db, 801, true)
+			setTestChannelCodexAccess(t, db, 801, relaydto.CodexAccessForbidden)
 			affinity := operation_setting.GetChannelAffinitySetting()
 			previous := *affinity
 			t.Cleanup(func() { *affinity = previous })
@@ -274,7 +284,7 @@ func TestCodexOnlyOverridesSessionAffinity(t *testing.T) {
 			db := setupResponsesWebSocketHandlerTest(t)
 			insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 801})
 			insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 802})
-			setTestChannelCodexRestriction(t, db, 801, false)
+			setTestChannelCodexAccess(t, db, 801, relaydto.CodexAccessOnly)
 			affinity := operation_setting.GetChannelAffinitySetting()
 			previous := *affinity
 			t.Cleanup(func() { *affinity = previous })

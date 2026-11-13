@@ -102,161 +102,155 @@ function QuickOptionsHarness(props: HarnessProps) {
 const HEADERS_SWITCH = { name: 'Pass Through Request Headers' }
 const BODY_SWITCH = { name: 'Pass Through Body' }
 
-describe('Codex only quick option', () => {
+describe('Codex access quick option', () => {
+  // The stacked layout renders one radio group; the compact inline strip uses
+  // a select. Both must persist the same three-state value.
+  const pickPolicy = async (
+    user: ReturnType<typeof userEvent.setup>,
+    layout: 'stacked' | 'inline',
+    label: string
+  ) => {
+    if (layout === 'stacked') {
+      await user.click(screen.getByRole('radio', { name: label }))
+      return
+    }
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Codex access' }),
+      label
+    )
+  }
+
+  const expectPolicy = (
+    layout: 'stacked' | 'inline',
+    label: string,
+    checked: boolean
+  ) => {
+    const control =
+      layout === 'stacked'
+        ? screen.getByRole('radio', { name: label })
+        : screen.getByRole('combobox', { name: 'Codex access' })
+    if (checked) {
+      expect(control).toBeChecked()
+      return
+    }
+    expect(control).not.toBeChecked()
+  }
+
   test.each(['stacked', 'inline'] as const)(
-    'saves, restores and disables the restriction in %s layout',
-    async (layout) => {
-      const user = userEvent.setup()
-      const saved: ChannelFormValues[] = []
-      const confirm = vi.fn(() => Promise.resolve(true))
+    'defaults to no restriction in %s layout',
+    (layout) => {
       render(
         <QuickOptionsHarness
           layout={layout}
-          confirm={confirm}
-          onSave={(values) => saved.push(values)}
+          confirm={() => Promise.resolve(true)}
         />
       )
-      const toggle = screen.getByRole('switch', { name: 'Codex only' })
-      expect(toggle).not.toBeChecked()
-      await user.click(toggle)
-      await user.click(screen.getByRole('button', { name: 'Save' }))
-      await waitFor(() => expect(saved).toHaveLength(1))
-      const setting = buildSettingJSON(saved[0])
-      expect(JSON.parse(setting).codex_only).toBe(true)
-      const channel = channelSchema.parse({
-        id: 1,
-        type: 1,
-        key: '',
-        status: 1,
-        name: 'Codex',
-        created_time: 0,
-        test_time: 0,
-        response_time: 0,
-        balance_updated_time: 0,
-        setting,
-      })
-      expect(transformChannelToFormDefaults(channel).codex_only).toBe(true)
-      await user.click(toggle)
-      await user.click(screen.getByRole('button', { name: 'Save' }))
-      await waitFor(() => expect(saved).toHaveLength(2))
-      expect(JSON.parse(buildSettingJSON(saved[1])).codex_only).toBeUndefined()
-      expect(confirm).not.toHaveBeenCalled()
+      if (layout === 'stacked') {
+        expect(
+          screen.getByRole('radio', { name: 'No restriction' })
+        ).toBeChecked()
+        return
+      }
+      expect(
+        screen.getByRole('combobox', { name: 'Codex access' })
+      ).toHaveValue('')
     }
   )
+
+  test.each([
+    ['Codex only', 'only'],
+    ['Block Codex', 'forbidden'],
+  ])('saves %s as codex_access=%s and restores it', async (label, expected) => {
+    const user = userEvent.setup()
+    const saved: ChannelFormValues[] = []
+    render(
+      <QuickOptionsHarness
+        confirm={() => Promise.resolve(true)}
+        onSave={(values) => saved.push(values)}
+      />
+    )
+    await pickPolicy(user, 'stacked', label)
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(saved).toHaveLength(1))
+    const setting = buildSettingJSON(saved[0])
+    expect(JSON.parse(setting).codex_access).toBe(expected)
+    const channel = channelSchema.parse({
+      id: 1,
+      type: 1,
+      key: '',
+      status: 1,
+      name: 'OpenAI API',
+      created_time: 0,
+      test_time: 0,
+      response_time: 0,
+      balance_updated_time: 0,
+      setting,
+    })
+    expect(transformChannelToFormDefaults(channel).codex_access).toBe(expected)
+  })
+
+  test('saves the inline select as codex_access', async () => {
+    const user = userEvent.setup()
+    const saved: ChannelFormValues[] = []
+    render(
+      <QuickOptionsHarness
+        layout='inline'
+        confirm={() => Promise.resolve(true)}
+        onSave={(values) => saved.push(values)}
+      />
+    )
+    await pickPolicy(user, 'inline', 'Block Codex')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(JSON.parse(buildSettingJSON(saved[0])).codex_access).toBe(
+      'forbidden'
+    )
+  })
+
+  test('omits codex_access when no restriction is chosen', async () => {
+    const user = userEvent.setup()
+    const saved: ChannelFormValues[] = []
+    render(
+      <QuickOptionsHarness
+        values={{ codex_access: 'only' }}
+        confirm={() => Promise.resolve(true)}
+        onSave={(values) => saved.push(values)}
+      />
+    )
+    expect(screen.getByRole('radio', { name: 'Codex only' })).toBeChecked()
+    await user.click(screen.getByRole('radio', { name: 'No restriction' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(JSON.parse(buildSettingJSON(saved[0])).codex_access).toBeUndefined()
+  })
+
+  test('selects exactly one policy at a time', async () => {
+    const user = userEvent.setup()
+    render(
+      <QuickOptionsHarness
+        values={{ codex_access: 'only' }}
+        confirm={() => Promise.resolve(true)}
+      />
+    )
+    await user.click(screen.getByRole('radio', { name: 'Block Codex' }))
+    expectPolicy('stacked', 'Block Codex', true)
+    expectPolicy('stacked', 'Codex only', false)
+  })
 
   test('prevents changes when sensitive settings are locked', async () => {
     const user = userEvent.setup()
     render(
       <QuickOptionsHarness
         sensitiveLocked
-        values={{ codex_only: true }}
+        values={{ codex_access: 'forbidden' }}
         confirm={() => Promise.resolve(true)}
       />
     )
-    const toggle = screen.getByRole('switch', { name: 'Codex only' })
-    expect(toggle).toHaveAttribute('aria-disabled', 'true')
-    await user.click(toggle)
-    expect(toggle).toBeChecked()
-  })
-})
-
-describe('Block Codex quick option', () => {
-  test.each(['stacked', 'inline'] as const)(
-    'enabling the switch in %s layout saves codex_forbidden',
-    async (layout) => {
-      const user = userEvent.setup()
-      const saved: ChannelFormValues[] = []
-      const confirm = vi.fn(() => Promise.resolve(true))
-      render(
-        <QuickOptionsHarness
-          layout={layout}
-          confirm={confirm}
-          onSave={(values) => saved.push(values)}
-        />
-      )
-      const toggle = screen.getByRole('switch', { name: 'Block Codex' })
-      expect(toggle).not.toBeChecked()
-      await user.click(toggle)
-      await user.click(screen.getByRole('button', { name: 'Save' }))
-      await waitFor(() => expect(saved).toHaveLength(1))
-      const setting = buildSettingJSON(saved[0])
-      expect(JSON.parse(setting).codex_forbidden).toBe(true)
-      const channel = channelSchema.parse({
-        id: 1,
-        type: 1,
-        key: '',
-        status: 1,
-        name: 'OpenAI API',
-        created_time: 0,
-        test_time: 0,
-        response_time: 0,
-        balance_updated_time: 0,
-        setting,
-      })
-      expect(transformChannelToFormDefaults(channel).codex_forbidden).toBe(true)
-      expect(confirm).not.toHaveBeenCalled()
-    }
-  )
-
-  test('turning the saved restriction back off omits codex_forbidden', async () => {
-    const user = userEvent.setup()
-    const saved: ChannelFormValues[] = []
-    render(
-      <QuickOptionsHarness
-        values={{ codex_forbidden: true }}
-        confirm={() => Promise.resolve(true)}
-        onSave={(values) => saved.push(values)}
-      />
-    )
-    await user.click(screen.getByRole('switch', { name: 'Block Codex' }))
-    await user.click(screen.getByRole('button', { name: 'Save' }))
-    await waitFor(() => expect(saved).toHaveLength(1))
-    expect(
-      JSON.parse(buildSettingJSON(saved[0])).codex_forbidden
-    ).toBeUndefined()
-  })
-
-  test.each([
-    ['Block Codex', 'Codex only'],
-    ['Codex only', 'Block Codex'],
-  ])(
-    'clears the conflicting restriction when %s is enabled',
-    async (name, other) => {
-      const user = userEvent.setup()
-      const saved: ChannelFormValues[] = []
-      render(
-        <QuickOptionsHarness
-          values={{}}
-          confirm={() => Promise.resolve(true)}
-          onSave={(values) => saved.push(values)}
-        />
-      )
-      await user.click(screen.getByRole('switch', { name: other }))
-      await user.click(screen.getByRole('switch', { name }))
-      expect(screen.getByRole('switch', { name: other })).not.toBeChecked()
-      await user.click(screen.getByRole('button', { name: 'Save' }))
-      await waitFor(() => expect(saved).toHaveLength(1))
-      const setting = JSON.parse(buildSettingJSON(saved[0]))
-      expect(
-        name === 'Block Codex' ? setting.codex_forbidden : setting.codex_only
-      ).toBe(true)
-      expect(
-        name === 'Block Codex' ? setting.codex_only : setting.codex_forbidden
-      ).toBeUndefined()
-    }
-  )
-
-  test('prevents changes when sensitive settings are locked', () => {
-    render(
-      <QuickOptionsHarness
-        sensitiveLocked
-        values={{ codex_forbidden: true }}
-        confirm={() => Promise.resolve(true)}
-      />
-    )
-    const toggle = screen.getByRole('switch', { name: 'Block Codex' })
-    expect(toggle).toHaveAttribute('aria-disabled', 'true')
-    expect(toggle).toBeChecked()
+    // Base UI radios expose the disabled state through aria-disabled.
+    const restricted = screen.getByRole('radio', { name: 'No restriction' })
+    expect(restricted).toHaveAttribute('aria-disabled', 'true')
+    await user.click(restricted)
+    expect(screen.getByRole('radio', { name: 'Block Codex' })).toBeChecked()
   })
 })
 

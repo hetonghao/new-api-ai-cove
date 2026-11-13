@@ -215,14 +215,13 @@ func channelSelectionFilters(c *gin.Context) []dto.ChannelFilter {
 
 func CheckChannelClient(c *gin.Context, channel *model.Channel) *types.NewAPIError {
 	codexClient := common.IsCodexClientRequest(c.Request)
-	setting := channel.GetSetting()
-	if setting.CodexOnly && !codexClient {
-		return types.NewErrorWithStatusCode(errors.New(i18n.T(c, i18n.MsgDistributorCodexOnly)), types.ErrorCode(dto.FilterCodexClient), http.StatusForbidden, types.ErrOptionWithSkipRetry())
+	if channel.GetSetting().CodexAccess.Accepts(codexClient) {
+		return nil
 	}
-	if setting.CodexForbidden && codexClient {
+	if codexClient {
 		return types.NewErrorWithStatusCode(errors.New(i18n.T(c, i18n.MsgDistributorCodexForbidden)), types.ErrorCodeCodexForbidden, http.StatusForbidden, types.ErrOptionWithSkipRetry())
 	}
-	return nil
+	return types.NewErrorWithStatusCode(errors.New(i18n.T(c, i18n.MsgDistributorCodexOnly)), types.ErrorCode(dto.FilterCodexClient), http.StatusForbidden, types.ErrOptionWithSkipRetry())
 }
 
 func collectRetryCandidates(param *RetryParam, group string) ([]*model.Channel, error) {
@@ -596,10 +595,10 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 		}
 		if ok, kind := model.ChannelSatisfiesFilters(channel, modelName, filters); !ok {
 			if kind == dto.FilterCodexClient {
-				// A forbidden channel rejected a Codex client, which is the
+				// A forbidden channel rejects Codex clients, which is the
 				// opposite reason from a Codex-only channel and must not report
 				// the Codex-only wording.
-				if channel.GetSetting().CodexForbidden {
+				if !channel.GetSetting().CodexAccess.Accepts(true) {
 					return nil, "", &ChannelSelectError{StatusCode: http.StatusForbidden, Code: types.ErrorCodeCodexForbidden, MessageID: i18n.MsgDistributorCodexForbidden, FilterKind: kind, Channel: channel}
 				}
 				return nil, "", &ChannelSelectError{StatusCode: http.StatusForbidden, Code: types.ErrorCode(kind), MessageID: i18n.MsgDistributorCodexOnly, FilterKind: kind, Channel: channel}

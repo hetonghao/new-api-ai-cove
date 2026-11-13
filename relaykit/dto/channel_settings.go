@@ -11,6 +11,35 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
+// CodexAccess is the Codex client policy of one channel. The empty value
+// means no restriction, so a channel that never set it keeps its old routing
+// for both Codex and ordinary clients.
+type CodexAccess string
+
+const (
+	CodexAccessUnrestricted CodexAccess = ""
+	CodexAccessOnly         CodexAccess = "only"
+	CodexAccessForbidden    CodexAccess = "forbidden"
+)
+
+// Accepts reports whether a request may use a channel with this policy.
+func (a CodexAccess) Accepts(codexClient bool) bool {
+	if codexClient {
+		return a != CodexAccessForbidden
+	}
+	return a != CodexAccessOnly
+}
+
+// Valid reports whether the value is one of the three known policies. An
+// unknown value would silently widen access, so save-time callers reject it.
+func (a CodexAccess) Valid() bool {
+	switch a {
+	case CodexAccessUnrestricted, CodexAccessOnly, CodexAccessForbidden:
+		return true
+	}
+	return false
+}
+
 type ChannelSettings struct {
 	TaskPluginKey             string `json:"task_plugin_key,omitempty"`
 	ForceFormat               bool   `json:"force_format,omitempty"`
@@ -18,14 +47,12 @@ type ChannelSettings struct {
 	Proxy                     string `json:"proxy"`
 	PassThroughBodyEnabled    bool   `json:"pass_through_body_enabled,omitempty"`
 	ResponsesWebSocketEnabled bool   `json:"responses_websocket_enabled,omitempty"`
-	CodexOnly                 bool   `json:"codex_only,omitempty"`
-	// CodexForbidden keeps Codex client traffic off a channel whose upstream
-	// keys cannot serve it, such as an API organization restricted by the
-	// ChatGPT subscription API credits benefit. It is mutually exclusive with
-	// CodexOnly.
-	CodexForbidden       bool   `json:"codex_forbidden,omitempty"`
-	SystemPrompt         string `json:"system_prompt,omitempty"`
-	SystemPromptOverride bool   `json:"system_prompt_override,omitempty"`
+	// CodexAccess decides which Codex client traffic this channel accepts.
+	// Codex clients are identified from caller-supplied headers, so this
+	// shapes routing; it is not an authentication boundary.
+	CodexAccess          CodexAccess `json:"codex_access,omitempty"`
+	SystemPrompt         string      `json:"system_prompt,omitempty"`
+	SystemPromptOverride bool        `json:"system_prompt_override,omitempty"`
 	// TaskExtendPluginKeys lists the task plugins a New API channel (type 60)
 	// is extended with. The upstream gateway may host many plugins, so the
 	// channel serves every listed plugin's models while the request still pins
@@ -90,6 +117,9 @@ func (s *ChannelSettings) ValidateHTTPTransport() error {
 	}
 	if protocol == HTTPProtocolHTTP1 && s.HTTP2ConnectionShards > 1 {
 		return fmt.Errorf("http2_connection_shards must be 1 when http_protocol is http1")
+	}
+	if !s.CodexAccess.Valid() {
+		return fmt.Errorf("invalid codex_access: %s", s.CodexAccess)
 	}
 	return nil
 }

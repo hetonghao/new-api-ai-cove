@@ -51,29 +51,42 @@ func TestChannelValidateSettingsRejectsInvalidHTTPTransport(t *testing.T) {
 	}
 }
 
-func TestChannelValidateSettingsRejectsConflictingCodexRestrictions(t *testing.T) {
+func TestChannelValidateSettingsRejectsUnknownCodexAccess(t *testing.T) {
 	channel := &Channel{}
-	channel.SetSetting(dto.ChannelSettings{CodexOnly: true, CodexForbidden: true})
+	channel.SetSetting(dto.ChannelSettings{CodexAccess: "sometimes"})
 	err := channel.ValidateSettings()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "codex_forbidden")
+	assert.Contains(t, err.Error(), "codex_access")
 
-	channel.SetSetting(dto.ChannelSettings{CodexForbidden: true})
-	require.NoError(t, channel.ValidateSettings())
+	for _, access := range []dto.CodexAccess{dto.CodexAccessUnrestricted, dto.CodexAccessOnly, dto.CodexAccessForbidden} {
+		channel.SetSetting(dto.ChannelSettings{CodexAccess: access})
+		require.NoError(t, channel.ValidateSettings(), "codex_access=%q", access)
+	}
 }
 
-func TestChannelCodexForbiddenFiltersCodexClients(t *testing.T) {
-	forbidden, restricted, ordinary := &Channel{}, &Channel{}, &Channel{}
-	forbidden.SetSetting(dto.ChannelSettings{CodexForbidden: true})
-	restricted.SetSetting(dto.ChannelSettings{CodexOnly: true})
-	for _, codex := range []bool{false, true} {
-		filters := []filterdto.ChannelFilter{{Kind: filterdto.FilterCodexClient, CodexClient: codex}}
-		forbiddenAllowed, _ := ChannelSatisfiesFilters(forbidden, "gpt-4o-mini", filters)
-		require.Equal(t, !codex, forbiddenAllowed)
-		restrictedAllowed, _ := ChannelSatisfiesFilters(restricted, "gpt-4o-mini", filters)
-		require.Equal(t, codex, restrictedAllowed)
-		ordinaryAllowed, _ := ChannelSatisfiesFilters(ordinary, "gpt-4o-mini", filters)
-		require.True(t, ordinaryAllowed)
+func TestChannelCodexAccessFiltersClients(t *testing.T) {
+	tests := []struct {
+		access          dto.CodexAccess
+		acceptsCodex    bool
+		acceptsOrdinary bool
+	}{
+		{dto.CodexAccessUnrestricted, true, true},
+		{dto.CodexAccessOnly, true, false},
+		{dto.CodexAccessForbidden, false, true},
+	}
+	for _, tc := range tests {
+		t.Run(string(tc.access), func(t *testing.T) {
+			channel := &Channel{}
+			channel.SetSetting(dto.ChannelSettings{CodexAccess: tc.access})
+			for _, codex := range []bool{false, true} {
+				allowed, _ := ChannelSatisfiesFilters(channel, "gpt-4o-mini", []filterdto.ChannelFilter{{Kind: filterdto.FilterCodexClient, CodexClient: codex}})
+				want := tc.acceptsOrdinary
+				if codex {
+					want = tc.acceptsCodex
+				}
+				require.Equal(t, want, allowed, "codex_client=%t", codex)
+			}
+		})
 	}
 }
 
@@ -119,20 +132,20 @@ func TestChannelCodexOnlySettingsRoundTrip(t *testing.T) {
 			t.Logf("%s version: %s", dialect, version)
 			channel := &Channel{Type: constant.ChannelTypeOpenAI, Key: "test", Name: "codex restriction"}
 			require.NoError(t, table.Create(channel).Error)
-			for _, enabled := range []bool{false, true, false} {
-				channel.SetSetting(dto.ChannelSettings{CodexOnly: enabled, ResponsesWebSocketEnabled: true})
+			for _, access := range []dto.CodexAccess{dto.CodexAccessUnrestricted, dto.CodexAccessOnly, dto.CodexAccessForbidden, dto.CodexAccessUnrestricted} {
+				channel.SetSetting(dto.ChannelSettings{CodexAccess: access, ResponsesWebSocketEnabled: true})
 				require.NoError(t, channel.ValidateSettings())
 				require.NoError(t, table.Save(channel).Error)
 				var loaded Channel
 				require.NoError(t, table.First(&loaded, channel.Id).Error)
-				require.Equal(t, enabled, loaded.GetSetting().CodexOnly)
+				require.Equal(t, access, loaded.GetSetting().CodexAccess)
 				require.True(t, loaded.GetSetting().ResponsesWebSocketEnabled)
 				for _, codex := range []bool{false, true} {
 					allowed, _ := ChannelSatisfiesFilters(&loaded, "gpt-4o-mini", []filterdto.ChannelFilter{{Kind: filterdto.FilterCodexClient, CodexClient: codex}})
-					require.Equal(t, !enabled || codex, allowed)
+					require.Equal(t, access.Accepts(codex), allowed)
 				}
 			}
-			channel.SetSetting(dto.ChannelSettings{CodexOnly: true})
+			channel.SetSetting(dto.ChannelSettings{CodexAccess: dto.CodexAccessOnly})
 			require.NoError(t, db.Save(channel).Error)
 			ordinary := &Channel{Type: constant.ChannelTypeOpenAI, Key: "test", Name: "ordinary"}
 			require.NoError(t, db.Create(ordinary).Error)

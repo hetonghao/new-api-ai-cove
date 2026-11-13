@@ -725,6 +725,24 @@ func TestChannelSettingsValidateHTTPTransport(t *testing.T) {
 	assert.Contains(t, err.Error(), "http2_connection_shards")
 }
 
+func TestCodexAccessAccepts(t *testing.T) {
+	for _, tc := range []struct {
+		access          CodexAccess
+		acceptsCodex    bool
+		acceptsOrdinary bool
+	}{
+		// An unset channel keeps serving both kinds of client.
+		{CodexAccessUnrestricted, true, true},
+		{CodexAccessOnly, true, false},
+		{CodexAccessForbidden, false, true},
+	} {
+		require.Equal(t, tc.acceptsCodex, tc.access.Accepts(true), "access=%q codex client", tc.access)
+		require.Equal(t, tc.acceptsOrdinary, tc.access.Accepts(false), "access=%q ordinary client", tc.access)
+		require.True(t, tc.access.Valid(), "access=%q", tc.access)
+	}
+	require.False(t, CodexAccess("sometimes").Valid())
+}
+
 func TestChannelOtherSettingsValidateToolLossPolicy(t *testing.T) {
 	require.NoError(t, (*ChannelOtherSettings)(nil).ValidateToolLossPolicy())
 	require.NoError(t, (&ChannelOtherSettings{}).ValidateToolLossPolicy())

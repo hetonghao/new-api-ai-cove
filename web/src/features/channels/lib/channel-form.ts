@@ -177,6 +177,15 @@ function isCodexCredential(value: string | undefined): boolean {
   }
 }
 
+/**
+ * Reads the stored Codex access policy. The value comes from untyped JSON, so
+ * anything outside the three known policies falls back to "no restriction".
+ */
+function readCodexAccess(value: unknown): ChannelFormValues['codex_access'] {
+  if (value === 'only' || value === 'forbidden') return value
+  return ''
+}
+
 function isVertexJsonKey(value: string | undefined): boolean {
   try {
     const parsed = parseOptionalJson(value)
@@ -272,8 +281,7 @@ export const channelFormSchema = z
     tls_insecure_skip_verify: z.boolean().optional(),
     pass_through_body_enabled: z.boolean().optional(),
     responses_websocket_enabled: z.boolean().optional(),
-    codex_only: z.boolean().optional(),
-    codex_forbidden: z.boolean().optional(),
+    codex_access: z.enum(['', 'only', 'forbidden']).optional(),
     system_prompt: z.string().optional(),
     system_prompt_override: z.boolean().optional(),
     // Type-specific settings (stored in settings JSON)
@@ -471,8 +479,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   tls_insecure_skip_verify: false,
   pass_through_body_enabled: false,
   responses_websocket_enabled: false,
-  codex_only: false,
-  codex_forbidden: false,
+  codex_access: '',
   system_prompt: '',
   system_prompt_override: false,
   // Type-specific settings
@@ -522,8 +529,7 @@ export function transformChannelToFormDefaults(
     tls_insecure_skip_verify: false,
     pass_through_body_enabled: false,
     responses_websocket_enabled: false,
-    codex_only: false,
-    codex_forbidden: false,
+    codex_access: '' as ChannelFormValues['codex_access'],
     system_prompt: '',
     system_prompt_override: false,
   }
@@ -547,8 +553,7 @@ export function transformChannelToFormDefaults(
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
         responses_websocket_enabled:
           parsed.responses_websocket_enabled === true,
-        codex_only: parsed.codex_only === true,
-        codex_forbidden: parsed.codex_forbidden === true,
+        codex_access: readCodexAccess(parsed.codex_access),
         system_prompt: parsed.system_prompt || '',
         system_prompt_override: parsed.system_prompt_override || false,
       }
@@ -704,11 +709,11 @@ export function buildSettingJSON(formData: ChannelFormValues): string {
       ? 1
       : normalizeHttp2ConnectionShards(formData.http2_connection_shards)
 
-  if (formData.codex_only === true) {
-    settingObj.codex_only = true
-  }
-  if (formData.codex_forbidden === true) {
-    settingObj.codex_forbidden = true
+  if (
+    formData.codex_access === 'only' ||
+    formData.codex_access === 'forbidden'
+  ) {
+    settingObj.codex_access = formData.codex_access
   }
 
   // Omit defaults so unchanged channels keep equivalent JSON.

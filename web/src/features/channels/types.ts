@@ -87,8 +87,7 @@ export interface ChannelSettings {
   proxy?: string
   pass_through_body_enabled?: boolean
   responses_websocket_enabled?: boolean
-  codex_only?: boolean
-  codex_forbidden?: boolean
+  codex_access?: 'only' | 'forbidden' | ''
   system_prompt?: string
   system_prompt_override?: boolean
   http_protocol?: 'auto' | 'http1' | string
