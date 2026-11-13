@@ -13,8 +13,8 @@ func IsOfficialOpenAIResponsesURL(rawURL string) bool {
 	return IsOfficialOpenAIURL(rawURL, "/v1/responses")
 }
 
-// NormalizeOfficialOpenAIResponsesItemIDs repairs replayed item IDs without
-// changing call_id links, opaque reasoning, or server-owned item references.
+// NormalizeOfficialOpenAIResponsesItemIDs repairs replayed item identifiers and
+// foreign reasoning metadata, preserving content and server-owned references.
 func NormalizeOfficialOpenAIResponsesItemIDs(rawURL string, body []byte) ([]byte, error) {
 	if !IsOfficialOpenAIResponsesURL(rawURL) {
 		return body, nil
@@ -53,6 +53,25 @@ func NormalizeOfficialOpenAIResponsesItemIDs(rawURL string, body []byte) ([]byte
 			prefix = "ctc"
 		case "custom_tool_call_output":
 			prefix = "ctco"
+		case "reasoning":
+			id := item.Get("id")
+			if id.Type != gjson.String || id.Str == "" || strings.HasPrefix(id.Str, "rs") || referenced[id.Str] {
+				continue
+			}
+			encrypted := item.Get("encrypted_content")
+			if encrypted.Type != gjson.Null && (encrypted.Type != gjson.String || encrypted.Str != "") {
+				continue
+			}
+			// Foreign summary-only items have no official server state to reference.
+			updated, err := sjson.Delete(item.Raw, "id")
+			if err == nil {
+				updated, err = sjson.Delete(updated, "status")
+			}
+			if err != nil {
+				return nil, fmt.Errorf("normalize Responses reasoning item %d: %w", i, err)
+			}
+			rawItems[i], changed = updated, true
+			continue
 		default:
 			continue
 		}
