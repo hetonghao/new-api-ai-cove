@@ -66,62 +66,98 @@ func TestCodexClientRecognition(t *testing.T) {
 	require.False(t, common.IsCodexClientRequest(nil))
 }
 
-func setTestChannelCodexOnly(t *testing.T, db *gorm.DB, id int) {
+func setTestChannelCodexRestriction(t *testing.T, db *gorm.DB, id int, forbidden bool) {
 	t.Helper()
 	require.NoError(t, i18n.Init())
 	channel, err := model.GetChannelById(id, true)
 	require.NoError(t, err)
 	settings := channel.GetSetting()
-	settings.CodexOnly = true
+	settings.CodexOnly = !forbidden
+	settings.CodexForbidden = forbidden
 	channel.SetSetting(settings)
 	require.NoError(t, db.Save(channel).Error)
 }
 
-func TestCodexOnlyHTTPRouting(t *testing.T) {
+// runCodexRoutingCase routes one request through the distributor against a
+// restricted channel 801 and an unrestricted channel 802, so the Codex-only
+// and Codex-forbidden tables share one fixture.
+func runCodexRoutingCase(t *testing.T, cached bool, forbidden bool, tc codexRoutingCase) {
+	t.Helper()
+	db := setupResponsesWebSocketHandlerTest(t)
+	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 801, priority: 10})
+	setTestChannelCodexRestriction(t, db, 801, forbidden)
+	if !tc.onlyRestricted {
+		insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 802})
+	}
+	common.MemoryCacheEnabled = cached
+	if cached {
+		model.InitChannelCache()
+	}
+	router := gin.New()
+	router.POST("/v1/responses", func(c *gin.Context) {
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+		if tc.pinned {
+			service.GetChannelConstraints(c).AddPin(filterdto.ChannelPin{ChannelId: 801, Source: filterdto.PinSourceToken})
+		}
+	}, middleware.Distribute(), func(c *gin.Context) { c.JSON(200, gin.H{"channel": c.GetInt("channel_id")}) })
+	request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-4o-mini","input":"hello"}`))
+	request.Header.Set("Content-Type", "application/json")
+	if tc.codex {
+		request.Header.Set("User-Agent", "codex_cli_rs/0.141.0")
+		request.Header.Set("X-Codex-Window-Id", "test")
+	}
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	require.Equal(t, tc.status, recorder.Code, recorder.Body.String())
+	require.Equal(t, int64(tc.channel), gjson.GetBytes(recorder.Body.Bytes(), "channel").Int())
+	if tc.deniedCode != "" {
+		require.Equal(t, tc.deniedCode, gjson.GetBytes(recorder.Body.Bytes(), "error.code").String())
+	}
+}
+
+type codexRoutingCase struct {
+	name                          string
+	codex, pinned, onlyRestricted bool
+	status, channel               int
+	deniedCode                    string
+}
+
+func TestCodexRestrictionHTTPRouting(t *testing.T) {
+	tests := []struct {
+		name      string
+		forbidden bool
+		cases     []codexRoutingCase
+	}{
+		{
+			name:      "codex only",
+			forbidden: false,
+			cases: []codexRoutingCase{
+				{name: "ordinary skips restricted", codex: false, status: 200, channel: 802},
+				{name: "codex uses restricted", codex: true, status: 200, channel: 801},
+				{name: "ordinary pinned denied", codex: false, pinned: true, status: 403, deniedCode: "codex_client"},
+				{name: "codex pinned allowed", codex: true, pinned: true, status: 200, channel: 801},
+				{name: "no unrestricted channel", codex: false, onlyRestricted: true, status: 503},
+			},
+		},
+		{
+			name:      "codex forbidden",
+			forbidden: true,
+			cases: []codexRoutingCase{
+				{name: "codex skips forbidden", codex: true, status: 200, channel: 802},
+				{name: "ordinary uses forbidden", codex: false, status: 200, channel: 801},
+				{name: "codex pinned denied", codex: true, pinned: true, status: 403, deniedCode: "codex_forbidden"},
+				{name: "ordinary pinned allowed", codex: false, pinned: true, status: 200, channel: 801},
+				{name: "no unrestricted channel", codex: true, onlyRestricted: true, status: 503},
+			},
+		},
+	}
 	for _, cached := range []bool{false, true} {
-		for _, tc := range []struct {
-			name                          string
-			codex, pinned, onlyRestricted bool
-			status, channel               int
-		}{
-			{"ordinary skips restricted", false, false, false, 200, 802},
-			{"codex uses restricted", true, false, false, 200, 801},
-			{"ordinary pinned denied", false, true, false, 403, 0},
-			{"codex pinned allowed", true, true, false, 200, 801},
-			{"no unrestricted channel", false, false, true, 503, 0},
-		} {
-			t.Run(fmt.Sprintf("cache=%t/%s", cached, tc.name), func(t *testing.T) {
-				db := setupResponsesWebSocketHandlerTest(t)
-				insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 801, priority: 10})
-				setTestChannelCodexOnly(t, db, 801)
-				if !tc.onlyRestricted {
-					insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 802})
-				}
-				common.MemoryCacheEnabled = cached
-				if cached {
-					model.InitChannelCache()
-				}
-				router := gin.New()
-				router.POST("/v1/responses", func(c *gin.Context) {
-					common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
-					if tc.pinned {
-						service.GetChannelConstraints(c).AddPin(filterdto.ChannelPin{ChannelId: 801, Source: filterdto.PinSourceToken})
-					}
-				}, middleware.Distribute(), func(c *gin.Context) { c.JSON(200, gin.H{"channel": c.GetInt("channel_id")}) })
-				request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-4o-mini","input":"hello"}`))
-				request.Header.Set("Content-Type", "application/json")
-				if tc.codex {
-					request.Header.Set("User-Agent", "codex_cli_rs/0.141.0")
-					request.Header.Set("X-Codex-Window-Id", "test")
-				}
-				recorder := httptest.NewRecorder()
-				router.ServeHTTP(recorder, request)
-				require.Equal(t, tc.status, recorder.Code, recorder.Body.String())
-				require.Equal(t, int64(tc.channel), gjson.GetBytes(recorder.Body.Bytes(), "channel").Int())
-				if tc.status == 403 {
-					require.Equal(t, "codex_client", gjson.GetBytes(recorder.Body.Bytes(), "error.code").String())
-				}
-			})
+		for _, restriction := range tests {
+			for _, tc := range restriction.cases {
+				t.Run(fmt.Sprintf("cache=%t/%s/%s", cached, restriction.name, tc.name), func(t *testing.T) {
+					runCodexRoutingCase(t, cached, restriction.forbidden, tc)
+				})
+			}
 		}
 	}
 }
@@ -132,7 +168,7 @@ func TestCodexOnlyRetryExcludesRestrictedChannels(t *testing.T) {
 			db := setupResponsesWebSocketHandlerTest(t)
 			insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 801, priority: 10})
 			insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 802})
-			setTestChannelCodexOnly(t, db, 801)
+			setTestChannelCodexRestriction(t, db, 801, false)
 			common.MemoryCacheEnabled = cached
 			if cached {
 				model.InitChannelCache()
@@ -163,7 +199,7 @@ func TestCodexOnlyWebSocketRouting(t *testing.T) {
 			ordinary := newResponsesWebSocketTestUpstream(t, serve)
 			insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 801, baseURL: restricted.server.URL, priority: 10})
 			insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 802, baseURL: ordinary.server.URL})
-			setTestChannelCodexOnly(t, db, 801)
+			setTestChannelCodexRestriction(t, db, 801, false)
 			client := dialResponsesWebSocketTestClientWithContext(t, func(c *gin.Context) {
 				if codex {
 					c.Request.Header.Set("User-Agent", "codex_cli_rs/0.141.0")
@@ -187,7 +223,7 @@ func TestCodexOnlyWebSocketRouting(t *testing.T) {
 func TestCodexOnlyWebSocketPinnedRejectedBeforeUpgrade(t *testing.T) {
 	db := setupResponsesWebSocketHandlerTest(t)
 	insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 801})
-	setTestChannelCodexOnly(t, db, 801)
+	setTestChannelCodexRestriction(t, db, 801, false)
 	router := gin.New()
 	router.GET("/v1/responses", func(c *gin.Context) { common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, "801") }, middleware.ResponsesWebSocketPreflight(), func(c *gin.Context) { t.Error("restricted request reached upgrade") })
 	recorder := httptest.NewRecorder()
@@ -196,13 +232,49 @@ func TestCodexOnlyWebSocketPinnedRejectedBeforeUpgrade(t *testing.T) {
 	require.Equal(t, "codex_client", gjson.GetBytes(recorder.Body.Bytes(), "error.code").String())
 }
 
+func TestCodexForbiddenOverridesSessionAffinity(t *testing.T) {
+	for _, transport := range []string{"http", "websocket"} {
+		t.Run(transport, func(t *testing.T) {
+			db := setupResponsesWebSocketHandlerTest(t)
+			insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 801})
+			insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 802})
+			setTestChannelCodexRestriction(t, db, 801, true)
+			affinity := operation_setting.GetChannelAffinitySetting()
+			previous := *affinity
+			t.Cleanup(func() { *affinity = previous })
+			*affinity = operation_setting.ChannelAffinitySetting{Enabled: true, SessionMode: "prefer", Rules: []operation_setting.ChannelAffinityRule{{Name: t.Name(), ModelRegex: []string{".*"}, IncludeRuleName: true, KeySources: []operation_setting.ChannelAffinityKeySource{{Type: "request_header", Key: "X-Session"}}}}}
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			c.Request.Header.Set("X-Session", t.Name())
+			c.Request.Header.Set("User-Agent", "codex_cli_rs/0.141.0")
+			c.Request.Header.Set("X-Codex-Window-Id", "test")
+			common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+			service.GetPreferredChannelByAffinity(c, responsesWebSocketTestModel, "default")
+			service.RecordChannelAffinity(c, 801)
+			t.Cleanup(func() { service.ClearCurrentChannelAffinityCache(c) })
+			preferred, found := service.GetPreferredChannelByAffinity(c, responsesWebSocketTestModel, "default")
+			require.True(t, found)
+			require.Equal(t, 801, preferred)
+			if transport == "http" {
+				selected, _, err := service.SelectChannelForRequest(c, responsesWebSocketTestModel, &service.RetryParam{Ctx: c, TokenGroup: "default", ModelName: responsesWebSocketTestModel})
+				require.Nil(t, err)
+				require.Equal(t, 802, selected.Id)
+			} else {
+				selected, err := selectResponsesWebSocketChannel(c, &relaycommon.RelayInfo{OriginModelName: responsesWebSocketTestModel}, nil)
+				require.Nil(t, err)
+				require.Equal(t, 802, selected.Id)
+			}
+		})
+	}
+}
+
 func TestCodexOnlyOverridesSessionAffinity(t *testing.T) {
 	for _, transport := range []string{"http", "websocket"} {
 		t.Run(transport, func(t *testing.T) {
 			db := setupResponsesWebSocketHandlerTest(t)
 			insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 801})
 			insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 802})
-			setTestChannelCodexOnly(t, db, 801)
+			setTestChannelCodexRestriction(t, db, 801, false)
 			affinity := operation_setting.GetChannelAffinitySetting()
 			previous := *affinity
 			t.Cleanup(func() { *affinity = previous })

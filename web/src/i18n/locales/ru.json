@@ -7888,6 +7888,8 @@
     "Rules run on normalized new user text and only decide whether cloud review is needed.": "Правила применяются к нормализованному новому тексту пользователя и решают только, нужна ли облачная проверка.",
     "Credentials are encrypted by the server and are never returned to this page.": "Учётные данные шифруются сервером и никогда не возвращаются на эту страницу.",
     "Codex only": "Только Codex",
+    "Block Codex": "Блокировать Codex",
+    "Keep requests with Codex client headers off this channel. Enable it for upstream keys that cannot serve Codex. Client headers can be spoofed and do not replace authentication.": "Не направлять запросы с заголовками клиента Codex на этот канал. Включайте для вышестоящих ключей, которые не могут обслуживать Codex. Заголовки клиента можно подделать, они не заменяют аутентификацию.",
     "Failed to load channels": "Не удалось загрузить каналы",
     "Sample preview": "Предпросмотр образца",
     "Observes the local gateway route; results reflect this execution token and group only.": "Наблюдает локальный маршрут шлюза; результаты отражают только этот токен выполнения и группу.",

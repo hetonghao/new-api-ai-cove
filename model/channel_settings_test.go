@@ -51,6 +51,32 @@ func TestChannelValidateSettingsRejectsInvalidHTTPTransport(t *testing.T) {
 	}
 }
 
+func TestChannelValidateSettingsRejectsConflictingCodexRestrictions(t *testing.T) {
+	channel := &Channel{}
+	channel.SetSetting(dto.ChannelSettings{CodexOnly: true, CodexForbidden: true})
+	err := channel.ValidateSettings()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "codex_forbidden")
+
+	channel.SetSetting(dto.ChannelSettings{CodexForbidden: true})
+	require.NoError(t, channel.ValidateSettings())
+}
+
+func TestChannelCodexForbiddenFiltersCodexClients(t *testing.T) {
+	forbidden, restricted, ordinary := &Channel{}, &Channel{}, &Channel{}
+	forbidden.SetSetting(dto.ChannelSettings{CodexForbidden: true})
+	restricted.SetSetting(dto.ChannelSettings{CodexOnly: true})
+	for _, codex := range []bool{false, true} {
+		filters := []filterdto.ChannelFilter{{Kind: filterdto.FilterCodexClient, CodexClient: codex}}
+		forbiddenAllowed, _ := ChannelSatisfiesFilters(forbidden, "gpt-4o-mini", filters)
+		require.Equal(t, !codex, forbiddenAllowed)
+		restrictedAllowed, _ := ChannelSatisfiesFilters(restricted, "gpt-4o-mini", filters)
+		require.Equal(t, codex, restrictedAllowed)
+		ordinaryAllowed, _ := ChannelSatisfiesFilters(ordinary, "gpt-4o-mini", filters)
+		require.True(t, ordinaryAllowed)
+	}
+}
+
 func TestChannelCodexOnlySettingsRoundTrip(t *testing.T) {
 	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
@@ -131,7 +157,7 @@ func TestChannelCodexOnlySettingsRoundTrip(t *testing.T) {
 	}
 }
 
-func TestChannelCodexOnlyLookupFailureRejectsCandidates(t *testing.T) {
+func TestChannelCodexRestrictionLookupFailureRejectsCandidates(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "unavailable-channels.db")), &gorm.Config{})
 	require.NoError(t, err)
 	sqlDB, err := db.DB()
@@ -140,8 +166,12 @@ func TestChannelCodexOnlyLookupFailureRejectsCandidates(t *testing.T) {
 	DB = db
 	t.Cleanup(func() { DB = previousDB; require.NoError(t, sqlDB.Close()) })
 	abilities := []Ability{{ChannelId: 1}}
-	filtered := filterAbilitiesByConstraints(abilities, "gpt-4o-mini", []filterdto.ChannelFilter{{Kind: filterdto.FilterCodexClient}})
-	require.Empty(t, filtered, "a failed settings lookup must not bypass the client restriction")
+	for _, codexClient := range []bool{false, true} {
+		// The unreadable settings could hold either Codex restriction, so both
+		// directions must stay closed.
+		filtered := filterAbilitiesByConstraints(abilities, "gpt-4o-mini", []filterdto.ChannelFilter{{Kind: filterdto.FilterCodexClient, CodexClient: codexClient}})
+		require.Empty(t, filtered, "a failed settings lookup must not bypass the Codex restriction (codex_client=%t)", codexClient)
+	}
 }
 
 func TestChannelWebSocketCapabilitySupportsResponsesChannelTypes(t *testing.T) {

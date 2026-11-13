@@ -7888,6 +7888,8 @@
     "Rules run on normalized new user text and only decide whether cloud review is needed.": "ルールは正規化された新しいユーザーテキストに適用され、クラウド審査が必要かどうかだけを判断します。",
     "Credentials are encrypted by the server and are never returned to this page.": "認証情報はサーバーで暗号化され、このページには返されません。",
     "Codex only": "Codex のみ許可",
+    "Block Codex": "Codex をブロック",
+    "Keep requests with Codex client headers off this channel. Enable it for upstream keys that cannot serve Codex. Client headers can be spoofed and do not replace authentication.": "Codex クライアントのヘッダーを持つリクエストをこのチャネルにルーティングしません。Codex を処理できない上流キーに有効にします。クライアントヘッダーは偽装可能であり、認証の代替にはなりません。",
     "Failed to load channels": "チャネルの読み込みに失敗しました",
     "Sample preview": "サンプルプレビュー",
     "Observes the local gateway route; results reflect this execution token and group only.": "ローカルゲートウェイルートを観測します。結果はこの実行トークンとグループのみを反映します。",

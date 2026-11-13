@@ -7888,6 +7888,8 @@
     "Rules run on normalized new user text and only decide whether cloud review is needed.": "规则匹配归一化新增文本，仅决定是否送审。",
     "Credentials are encrypted by the server and are never returned to this page.": "凭证由服务端加密保存，且不会返回到此页面。",
     "Codex only": "仅允许 Codex",
+    "Block Codex": "禁止 Codex",
+    "Keep requests with Codex client headers off this channel. Enable it for upstream keys that cannot serve Codex. Client headers can be spoofed and do not replace authentication.": "不将带有 Codex 客户端请求头的请求路由到此渠道。适用于无法服务 Codex 的上游密钥。请求头可伪造，不能替代身份认证。",
     "Failed to load channels": "加载渠道失败",
     "Sample preview": "样本预览",
     "Observes the local gateway route; results reflect this execution token and group only.": "观测本网关路由；结果仅反映此执行令牌与分组。",

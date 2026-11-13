@@ -7888,6 +7888,8 @@
     "Rules run on normalized new user text and only decide whether cloud review is needed.": "Les règles s’appliquent au nouveau texte utilisateur normalisé et déterminent uniquement si un contrôle cloud est nécessaire.",
     "Credentials are encrypted by the server and are never returned to this page.": "Les identifiants sont chiffrés par le serveur et ne sont jamais renvoyés sur cette page.",
     "Codex only": "Codex uniquement",
+    "Block Codex": "Bloquer Codex",
+    "Keep requests with Codex client headers off this channel. Enable it for upstream keys that cannot serve Codex. Client headers can be spoofed and do not replace authentication.": "Ne pas router les requêtes portant les en-têtes client Codex vers ce canal. À activer pour les clés amont incapables de servir Codex. Les en-têtes client peuvent être falsifiés et ne remplacent pas l'authentification.",
     "Failed to load channels": "Échec du chargement des canaux",
     "Sample preview": "Aperçu de l’échantillon",
     "Observes the local gateway route; results reflect this execution token and group only.": "Observe la route de la passerelle locale ; les résultats ne reflètent que ce jeton d’exécution et ce groupe.",

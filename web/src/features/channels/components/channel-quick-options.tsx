@@ -76,6 +76,7 @@ export function ChannelQuickOptions(props: ChannelQuickOptionsProps) {
     modelCheck,
     websocket,
     codexOnly,
+    codexForbidden,
   ] = useWatch({
     control: form.control,
     name: [
@@ -85,6 +86,7 @@ export function ChannelQuickOptions(props: ChannelQuickOptionsProps) {
       'upstream_model_update_check_enabled',
       'responses_websocket_enabled',
       'codex_only',
+      'codex_forbidden',
     ],
   })
   const sensitiveDisabled = props.sensitiveLocked || props.disabled
@@ -93,9 +95,20 @@ export function ChannelQuickOptions(props: ChannelQuickOptionsProps) {
       | 'pass_through_body_enabled'
       | 'upstream_model_update_check_enabled'
       | 'responses_websocket_enabled'
-      | 'codex_only',
+      | 'codex_only'
+      | 'codex_forbidden',
     value: boolean
   ) => form.setValue(name, value, { shouldDirty: true, shouldValidate: true })
+  // The two Codex restrictions are contradictory, so enabling one clears the
+  // other instead of relying on the backend rejection.
+  const setCodexRestriction = (
+    name: 'codex_only' | 'codex_forbidden',
+    value: boolean
+  ) => {
+    const other = name === 'codex_only' ? 'codex_forbidden' : 'codex_only'
+    if (value) form.setValue(other, false, { shouldDirty: true })
+    setOption(name, value)
+  }
   // The header switch is a shortcut for the "*" rule in Request Header
   // Override, so it reads and writes that JSON instead of a separate flag.
   const headerPassthroughState = getHeaderPassthroughState(headerOverride)
@@ -190,7 +203,18 @@ export function ChannelQuickOptions(props: ChannelQuickOptionsProps) {
       'Only route requests with Codex client headers to this channel. Client headers can be spoofed and do not replace authentication.'
     ),
     checked: codexOnly === true,
-    onCheckedChange: (value) => setOption('codex_only', value),
+    onCheckedChange: (value) => setCodexRestriction('codex_only', value),
+    disabled: sensitiveDisabled,
+  })
+
+  options.push({
+    key: 'codex-forbidden',
+    label: t('Block Codex'),
+    description: t(
+      'Keep requests with Codex client headers off this channel. Enable it for upstream keys that cannot serve Codex. Client headers can be spoofed and do not replace authentication.'
+    ),
+    checked: codexForbidden === true,
+    onCheckedChange: (value) => setCodexRestriction('codex_forbidden', value),
     disabled: sensitiveDisabled,
   })
 

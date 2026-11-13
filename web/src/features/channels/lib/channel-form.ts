@@ -273,6 +273,7 @@ export const channelFormSchema = z
     pass_through_body_enabled: z.boolean().optional(),
     responses_websocket_enabled: z.boolean().optional(),
     codex_only: z.boolean().optional(),
+    codex_forbidden: z.boolean().optional(),
     system_prompt: z.string().optional(),
     system_prompt_override: z.boolean().optional(),
     // Type-specific settings (stored in settings JSON)
@@ -471,6 +472,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   pass_through_body_enabled: false,
   responses_websocket_enabled: false,
   codex_only: false,
+  codex_forbidden: false,
   system_prompt: '',
   system_prompt_override: false,
   // Type-specific settings
@@ -521,6 +523,7 @@ export function transformChannelToFormDefaults(
     pass_through_body_enabled: false,
     responses_websocket_enabled: false,
     codex_only: false,
+    codex_forbidden: false,
     system_prompt: '',
     system_prompt_override: false,
   }
@@ -545,6 +548,7 @@ export function transformChannelToFormDefaults(
         responses_websocket_enabled:
           parsed.responses_websocket_enabled === true,
         codex_only: parsed.codex_only === true,
+        codex_forbidden: parsed.codex_forbidden === true,
         system_prompt: parsed.system_prompt || '',
         system_prompt_override: parsed.system_prompt_override || false,
       }
@@ -702,6 +706,9 @@ export function buildSettingJSON(formData: ChannelFormValues): string {
 
   if (formData.codex_only === true) {
     settingObj.codex_only = true
+  }
+  if (formData.codex_forbidden === true) {
+    settingObj.codex_forbidden = true
   }
 
   // Omit defaults so unchanged channels keep equivalent JSON.

@@ -7888,6 +7888,8 @@
     "Rules run on normalized new user text and only decide whether cloud review is needed.": "Rules run on normalized new user text and only decide whether cloud review is needed.",
     "Credentials are encrypted by the server and are never returned to this page.": "Credentials are encrypted by the server and are never returned to this page.",
     "Codex only": "Codex only",
+    "Block Codex": "Block Codex",
+    "Keep requests with Codex client headers off this channel. Enable it for upstream keys that cannot serve Codex. Client headers can be spoofed and do not replace authentication.": "Keep requests with Codex client headers off this channel. Enable it for upstream keys that cannot serve Codex. Client headers can be spoofed and do not replace authentication.",
     "Failed to load channels": "Failed to load channels",
     "Sample preview": "Sample preview",
     "Observes the local gateway route; results reflect this execution token and group only.": "Observes the local gateway route; results reflect this execution token and group only.",

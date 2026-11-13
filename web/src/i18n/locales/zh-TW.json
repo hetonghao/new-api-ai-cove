@@ -7888,6 +7888,8 @@
     "Rules run on normalized new user text and only decide whether cloud review is needed.": "規則作用於正規化後的新增使用者文字，只用來決定是否需要雲端審核。",
     "Credentials are encrypted by the server and are never returned to this page.": "憑證由伺服器加密儲存，且不會傳回此頁面。",
     "Codex only": "僅允許 Codex",
+    "Block Codex": "禁止 Codex",
+    "Keep requests with Codex client headers off this channel. Enable it for upstream keys that cannot serve Codex. Client headers can be spoofed and do not replace authentication.": "不將帶有 Codex 用戶端請求頭的請求路由到此管道。適用於無法服務 Codex 的上游密鑰。請求頭可偽造，不能替代身分驗證。",
     "Failed to load channels": "載入渠道失敗",
     "Sample preview": "樣本預覽",
     "Observes the local gateway route; results reflect this execution token and group only.": "觀測本閘道路由；結果僅反映此執行令牌與分組。",

@@ -56,6 +56,10 @@ const (
 	ErrorCodeSlowDown                      ErrorCode = "slow_down"
 	ErrorCodeAuthUnavailable               ErrorCode = "auth_unavailable"
 	ErrorCodeGenRelayInfoFailed            ErrorCode = "gen_relay_info_failed"
+	// ErrorCodeCodexForbidden marks a channel that refuses Codex client
+	// traffic, mirroring the codex_client code reported by a Codex-only
+	// channel.
+	ErrorCodeCodexForbidden ErrorCode = "codex_forbidden"
 
 	// channel error
 	ErrorCodeChannelNoAvailableKey        ErrorCode = "channel:no_available_key"

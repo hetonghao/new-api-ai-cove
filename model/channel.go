@@ -1043,6 +1043,9 @@ func (channel *Channel) ValidateSettings() error {
 	if err := channelParams.ValidateHTTPTransport(); err != nil {
 		return err
 	}
+	if channelParams.CodexOnly && channelParams.CodexForbidden {
+		return fmt.Errorf("codex_only and codex_forbidden cannot both be enabled")
+	}
 	if channelParams.ResponsesWebSocketEnabled && !isResponsesWebSocketChannelType(channel.Type) {
 		channelParams.ResponsesWebSocketEnabled = false
 		channel.SetSetting(*channelParams)

@@ -320,8 +320,12 @@ func filterAbilitiesByConstraints(abilities []Ability, modelName string, filters
 
 	var channels []*Channel
 	if err := DB.Where("id IN ?", channelIds).Find(&channels).Error; err != nil {
+		// Either Codex restriction may apply to this request, and the channel
+		// settings are exactly what could not be read, so fail closed for both
+		// directions instead of letting a Codex client reach a forbidden
+		// channel.
 		for _, filter := range filters {
-			if filter.Kind == dto.FilterCodexClient && !filter.CodexClient {
+			if filter.Kind == dto.FilterCodexClient {
 				return nil
 			}
 		}

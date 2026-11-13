@@ -7888,6 +7888,8 @@
     "Rules run on normalized new user text and only decide whether cloud review is needed.": "Quy tắc chạy trên văn bản người dùng mới đã chuẩn hóa và chỉ quyết định có cần kiểm duyệt đám mây hay không.",
     "Credentials are encrypted by the server and are never returned to this page.": "Thông tin xác thực được máy chủ mã hóa và không bao giờ được trả về trang này.",
     "Codex only": "Chỉ cho phép Codex",
+    "Block Codex": "Chặn Codex",
+    "Keep requests with Codex client headers off this channel. Enable it for upstream keys that cannot serve Codex. Client headers can be spoofed and do not replace authentication.": "Không định tuyến các yêu cầu có tiêu đề ứng dụng Codex đến kênh này. Bật cho các khóa thượng nguồn không thể phục vụ Codex. Tiêu đề ứng dụng có thể bị giả mạo và không thay thế xác thực.",
     "Failed to load channels": "Không thể tải kênh",
     "Sample preview": "Xem trước mẫu",
     "Observes the local gateway route; results reflect this execution token and group only.": "Quan sát route gateway cục bộ; kết quả chỉ phản ánh token thực thi và nhóm này.",

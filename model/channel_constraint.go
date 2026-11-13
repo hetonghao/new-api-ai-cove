@@ -92,7 +92,11 @@ func candidatePassesKindFilters(ch *Channel, exists bool, modelName string, kind
 func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilter) bool {
 	switch filter.Kind {
 	case dto.FilterCodexClient:
-		return filter.CodexClient || !ch.GetSetting().CodexOnly
+		setting := ch.GetSetting()
+		if filter.CodexClient {
+			return !setting.CodexForbidden
+		}
+		return !setting.CodexOnly
 	case dto.FilterRequestPath:
 		if filter.RequestPath == "" {
 			return true

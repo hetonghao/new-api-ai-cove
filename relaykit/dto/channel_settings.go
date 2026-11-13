@@ -19,8 +19,13 @@ type ChannelSettings struct {
 	PassThroughBodyEnabled    bool   `json:"pass_through_body_enabled,omitempty"`
 	ResponsesWebSocketEnabled bool   `json:"responses_websocket_enabled,omitempty"`
 	CodexOnly                 bool   `json:"codex_only,omitempty"`
-	SystemPrompt              string `json:"system_prompt,omitempty"`
-	SystemPromptOverride      bool   `json:"system_prompt_override,omitempty"`
+	// CodexForbidden keeps Codex client traffic off a channel whose upstream
+	// keys cannot serve it, such as an API organization restricted by the
+	// ChatGPT subscription API credits benefit. It is mutually exclusive with
+	// CodexOnly.
+	CodexForbidden       bool   `json:"codex_forbidden,omitempty"`
+	SystemPrompt         string `json:"system_prompt,omitempty"`
+	SystemPromptOverride bool   `json:"system_prompt_override,omitempty"`
 	// TaskExtendPluginKeys lists the task plugins a New API channel (type 60)
 	// is extended with. The upstream gateway may host many plugins, so the
 	// channel serves every listed plugin's models while the request still pins

@@ -160,6 +160,106 @@ describe('Codex only quick option', () => {
   })
 })
 
+describe('Block Codex quick option', () => {
+  test.each(['stacked', 'inline'] as const)(
+    'enabling the switch in %s layout saves codex_forbidden',
+    async (layout) => {
+      const user = userEvent.setup()
+      const saved: ChannelFormValues[] = []
+      const confirm = vi.fn(() => Promise.resolve(true))
+      render(
+        <QuickOptionsHarness
+          layout={layout}
+          confirm={confirm}
+          onSave={(values) => saved.push(values)}
+        />
+      )
+      const toggle = screen.getByRole('switch', { name: 'Block Codex' })
+      expect(toggle).not.toBeChecked()
+      await user.click(toggle)
+      await user.click(screen.getByRole('button', { name: 'Save' }))
+      await waitFor(() => expect(saved).toHaveLength(1))
+      const setting = buildSettingJSON(saved[0])
+      expect(JSON.parse(setting).codex_forbidden).toBe(true)
+      const channel = channelSchema.parse({
+        id: 1,
+        type: 1,
+        key: '',
+        status: 1,
+        name: 'OpenAI API',
+        created_time: 0,
+        test_time: 0,
+        response_time: 0,
+        balance_updated_time: 0,
+        setting,
+      })
+      expect(transformChannelToFormDefaults(channel).codex_forbidden).toBe(true)
+      expect(confirm).not.toHaveBeenCalled()
+    }
+  )
+
+  test('turning the saved restriction back off omits codex_forbidden', async () => {
+    const user = userEvent.setup()
+    const saved: ChannelFormValues[] = []
+    render(
+      <QuickOptionsHarness
+        values={{ codex_forbidden: true }}
+        confirm={() => Promise.resolve(true)}
+        onSave={(values) => saved.push(values)}
+      />
+    )
+    await user.click(screen.getByRole('switch', { name: 'Block Codex' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(
+      JSON.parse(buildSettingJSON(saved[0])).codex_forbidden
+    ).toBeUndefined()
+  })
+
+  test.each([
+    ['Block Codex', 'Codex only'],
+    ['Codex only', 'Block Codex'],
+  ])(
+    'clears the conflicting restriction when %s is enabled',
+    async (name, other) => {
+      const user = userEvent.setup()
+      const saved: ChannelFormValues[] = []
+      render(
+        <QuickOptionsHarness
+          values={{}}
+          confirm={() => Promise.resolve(true)}
+          onSave={(values) => saved.push(values)}
+        />
+      )
+      await user.click(screen.getByRole('switch', { name: other }))
+      await user.click(screen.getByRole('switch', { name }))
+      expect(screen.getByRole('switch', { name: other })).not.toBeChecked()
+      await user.click(screen.getByRole('button', { name: 'Save' }))
+      await waitFor(() => expect(saved).toHaveLength(1))
+      const setting = JSON.parse(buildSettingJSON(saved[0]))
+      expect(
+        name === 'Block Codex' ? setting.codex_forbidden : setting.codex_only
+      ).toBe(true)
+      expect(
+        name === 'Block Codex' ? setting.codex_only : setting.codex_forbidden
+      ).toBeUndefined()
+    }
+  )
+
+  test('prevents changes when sensitive settings are locked', () => {
+    render(
+      <QuickOptionsHarness
+        sensitiveLocked
+        values={{ codex_forbidden: true }}
+        confirm={() => Promise.resolve(true)}
+      />
+    )
+    const toggle = screen.getByRole('switch', { name: 'Block Codex' })
+    expect(toggle).toHaveAttribute('aria-disabled', 'true')
+    expect(toggle).toBeChecked()
+  })
+})
+
 beforeEach(() => {
   vi.spyOn(api, 'get').mockResolvedValue({
     data: { success: true, data: {} },
