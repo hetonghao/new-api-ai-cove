@@ -63,6 +63,25 @@ func PrepareResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, req *d
 		if err != nil {
 			return nil, nil, nil, nil, types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
 		}
+		requestURL, err := adaptor.GetRequestURL(info)
+		if err != nil {
+			return nil, nil, nil, nil, newConvertRequestFailedError(c, info, err)
+		}
+		if relaycommon.IsOfficialOpenAIResponsesURL(requestURL) {
+			raw, err := storage.Bytes()
+			if err != nil {
+				return nil, nil, nil, nil, types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
+			}
+			raw, err = relaycommon.NormalizeOfficialOpenAIResponsesItemIDs(requestURL, raw)
+			if err != nil {
+				return nil, nil, nil, nil, newConvertRequestFailedError(c, info, err)
+			}
+			body, closer, err := relaycommon.NewOutboundJSONBody(raw)
+			if err != nil {
+				return nil, nil, nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+			}
+			return adaptor, body, closer, deepSeekCapture, nil
+		}
 		body := common.NewReplayableBodyReader(storage)
 		return adaptor, body, io.NopCloser(body), deepSeekCapture, nil
 	}
@@ -104,6 +123,14 @@ func PrepareResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, req *d
 		}
 	}
 
+	requestURL, err := adaptor.GetRequestURL(info)
+	if err != nil {
+		return nil, nil, nil, nil, newConvertRequestFailedError(c, info, err)
+	}
+	jsonData, err = relaycommon.NormalizeOfficialOpenAIResponsesItemIDs(requestURL, jsonData)
+	if err != nil {
+		return nil, nil, nil, nil, newConvertRequestFailedError(c, info, err)
+	}
 	deepSeekCapture.ObserveOutbound(jsonData)
 	logger.LogDebug(c, "requestBody: %s", jsonData)
 	body, closer, err := relaycommon.NewOutboundJSONBody(jsonData)

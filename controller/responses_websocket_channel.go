@@ -202,6 +202,14 @@ func prepareResponsesWebSocketPayload(c *gin.Context, info *relaycommon.RelayInf
 	adaptor.Init(info)
 
 	if model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
+		requestURL, err := adaptor.GetRequestURL(info)
+		if err != nil {
+			return nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		}
+		payload, err = relaycommon.NormalizeOfficialOpenAIResponsesItemIDs(requestURL, payload)
+		if err != nil {
+			return nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		}
 		return payload, adaptor, nil
 	}
 	// WS 这条路只用 sjson 打补丁、其余字段照抄客户端 payload，因此 adaptor 里那层
@@ -243,6 +251,14 @@ func prepareResponsesWebSocketPayload(c *gin.Context, info *relaycommon.RelayInf
 		if err != nil {
 			return nil, nil, relay.NewAPIErrorFromParamOverride(err)
 		}
+	}
+	requestURL, err := adaptor.GetRequestURL(info)
+	if err != nil {
+		return nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+	outgoing, err = relaycommon.NormalizeOfficialOpenAIResponsesItemIDs(requestURL, outgoing)
+	if err != nil {
+		return nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 	return outgoing, adaptor, nil
 }

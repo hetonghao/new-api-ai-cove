@@ -14,12 +14,160 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestOfficialOpenAIResponsesReplayItemIDs(t *testing.T) {
+	settings := model_setting.GetGlobalSettings()
+	previous := settings.PassThroughRequestEnabled
+	t.Cleanup(func() { settings.PassThroughRequestEnabled = previous })
+	service.InitHttpClient()
+	client := service.GetHttpClient()
+	previousTransport := client.Transport
+	t.Cleanup(func() { client.Transport = previousTransport })
+	const input = `[{"type":"message","id":"item_legacy","role":"assistant","content":[{"type":"output_text","text":"ready"}],"vendor":9007199254740993},{"type":"message","id":"msg_existing","role":"assistant","content":[]},{"type":"function_call","id":"call_lookup","call_id":"call_lookup","name":"lookup","arguments":"{}"},{"type":"function_call_output","call_id":"call_lookup","output":"found"},{"type":"custom_tool_call","id":"call_patch","call_id":"call_patch","name":"apply_patch","input":"patch"},{"type":"custom_tool_call_output","id":"item_patch_result","call_id":"call_patch","output":"done"},{"type":"reasoning","id":"item_signed","encrypted_content":"opaque","summary":[]},{"type":"item_reference","id":"msg_server"}]`
+	for _, tc := range []struct {
+		name, endpoint, path                             string
+		passthrough, globalPassthrough, override, repair bool
+	}{
+		{name: "official", endpoint: "https://api.openai.com", repair: true},
+		{name: "channel passthrough", endpoint: "https://api.openai.com", passthrough: true, repair: true},
+		{name: "global passthrough", endpoint: "https://api.openai.com", globalPassthrough: true, repair: true},
+		{name: "official explicit port", endpoint: "https://API.OPENAI.COM:443", repair: true},
+		{name: "parameter override", endpoint: "https://api.openai.com", override: true, repair: true},
+		{name: "CPA", endpoint: "http://cpa-pro-1:8319"},
+		{name: "other OpenAI compatible", endpoint: "https://api.openai.com.example"},
+		{name: "other port", endpoint: "https://api.openai.com:8443"},
+		{name: "compact", endpoint: "https://api.openai.com", path: "/v1/responses/compact"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			settings.PassThroughRequestEnabled = tc.globalPassthrough
+			path := tc.path
+			if path == "" {
+				path = "/v1/responses"
+			}
+			raw := `{"model":"gpt-6-luna","input":` + input + `,"vendor_extension":9007199254740993}`
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, path, strings.NewReader(raw))
+			c.Request.Header.Set("Content-Type", "application/json")
+			t.Cleanup(func() { common.CleanupBodyStorage(c) })
+			common.SetContextKey(c, constant.ContextKeyChannelType, constant.ChannelTypeOpenAI)
+			common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, tc.endpoint)
+			common.SetContextKey(c, constant.ContextKeyOriginalModel, "gpt-6-luna")
+			common.SetContextKey(c, constant.ContextKeyChannelSetting, dto.ChannelSettings{PassThroughBodyEnabled: tc.passthrough})
+			if tc.override {
+				common.SetContextKey(c, constant.ContextKeyChannelParamOverride, map[string]any{"operations": []any{map[string]any{"path": "input.0.id", "mode": "set", "value": "item_override"}}})
+			}
+			var req dto.OpenAIResponsesRequest
+			require.NoError(t, common.Unmarshal([]byte(raw), &req))
+			info := relaycommon.GenRelayInfoResponses(c, &req)
+			info.RequestURLPath = path
+			adaptor, body, closer, _, apiErr := PrepareResponsesRequest(c, info, &req)
+			require.Nil(t, apiErr)
+			t.Cleanup(func() { require.NoError(t, closer.Close()) })
+			var received []byte
+			expectedID := "msg_item_legacy"
+			if tc.override {
+				expectedID = "msg_item_override"
+			}
+			client.Transport = responsesIDTransport(func(request *http.Request) (*http.Response, error) {
+				var err error
+				received, err = io.ReadAll(request.Body)
+				if err != nil {
+					return nil, err
+				}
+				status := http.StatusOK
+				if tc.repair && gjson.GetBytes(received, "input.0.id").String() != expectedID {
+					status = http.StatusBadRequest
+				}
+				return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"output":[]}`))}, nil
+			})
+			result, err := adaptor.DoRequest(c, info, body)
+			require.NoError(t, err)
+			response := result.(*http.Response)
+			t.Cleanup(func() { require.NoError(t, response.Body.Close()) })
+			require.Equal(t, http.StatusOK, response.StatusCode)
+			assert.JSONEq(t, input, string(req.Input), "client history must survive another channel attempt")
+			if !tc.repair {
+				assert.JSONEq(t, input, gjson.GetBytes(received, "input").Raw)
+				return
+			}
+			assert.Equal(t, "msg_existing", gjson.GetBytes(received, "input.1.id").String())
+			assert.Equal(t, "fc_call_lookup", gjson.GetBytes(received, "input.2.id").String())
+			assert.Equal(t, "ctc_call_patch", gjson.GetBytes(received, "input.4.id").String())
+			assert.Equal(t, "ctco_item_patch_result", gjson.GetBytes(received, "input.5.id").String())
+			assert.Equal(t, "call_lookup", gjson.GetBytes(received, "input.2.call_id").String())
+			assert.Equal(t, "call_lookup", gjson.GetBytes(received, "input.3.call_id").String())
+			assert.Equal(t, "call_patch", gjson.GetBytes(received, "input.4.call_id").String())
+			assert.Equal(t, "call_patch", gjson.GetBytes(received, "input.5.call_id").String())
+			assert.Equal(t, "9007199254740993", gjson.GetBytes(received, "input.0.vendor").Raw)
+			assert.JSONEq(t, gjson.Parse(input).Get("6").Raw, gjson.GetBytes(received, "input.6").Raw)
+			assert.JSONEq(t, gjson.Parse(input).Get("7").Raw, gjson.GetBytes(received, "input.7").Raw)
+			if tc.passthrough || tc.globalPassthrough {
+				assert.Equal(t, "9007199254740993", gjson.GetBytes(received, "vendor_extension").Raw)
+			}
+			storage, err := common.GetBodyStorage(c)
+			require.NoError(t, err)
+			clientBody, err := storage.Bytes()
+			require.NoError(t, err)
+			assert.Equal(t, raw, string(clientBody))
+		})
+	}
+}
+
+type responsesIDTransport func(*http.Request) (*http.Response, error)
+
+func (f responsesIDTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+func TestOfficialOpenAIResponsesItemIDCollisions(t *testing.T) {
+	const endpoint = "https://api.openai.com/v1/responses"
+	message, err := relaycommon.NormalizeOfficialOpenAIResponsesItemIDs(endpoint, []byte(`{"input":[{"role":"assistant","id":"item_implicit","content":"ready"}]}`))
+	require.NoError(t, err)
+	assert.Equal(t, "msg_item_implicit", gjson.GetBytes(message, "input.0.id").String())
+	for _, input := range []string{
+		`[{"type":"message","id":"item_x"},{"type":"message","id":"msg_item_x"}]`,
+		`[{"type":"message","id":"msg_item_x"},{"type":"message","id":"item_x"}]`,
+		`[{"type":"function_call","id":"` + strings.Repeat("x", 64) + `","call_id":"call_original"},{"type":"message","id":"msg_valid"}]`,
+	} {
+		body := []byte(`{"input":` + input + `}`)
+		first, err := relaycommon.NormalizeOfficialOpenAIResponsesItemIDs(endpoint, body)
+		require.NoError(t, err)
+		second, err := relaycommon.NormalizeOfficialOpenAIResponsesItemIDs(endpoint, body)
+		require.NoError(t, err)
+		again, err := relaycommon.NormalizeOfficialOpenAIResponsesItemIDs(endpoint, first)
+		require.NoError(t, err)
+		assert.Equal(t, string(first), string(second))
+		assert.Equal(t, string(first), string(again))
+		ids := map[string]bool{}
+		for i, item := range gjson.GetBytes(first, "input").Array() {
+			id := item.Get("id").String()
+			assert.False(t, ids[id], "distinct history items must remain distinct")
+			assert.LessOrEqual(t, len(id), 64)
+			ids[id] = true
+			original := gjson.Parse(input).Array()[i].Get("id").String()
+			if strings.HasPrefix(original, "msg") {
+				assert.Equal(t, original, id)
+			}
+		}
+	}
+	for _, body := range []string{
+		`{"input":"hello"}`,
+		`{"input":[{"type":"message","role":"user","content":"hello"}]}`,
+		`{"input":[{"type":"message","id":"msg_valid"},{"type":"reasoning","id":"item_signed","encrypted_content":"opaque"}]}`,
+		`{"previous_response_id":"resp_original","input":[{"type":"item_reference","id":"item_server"},{"type":"message","id":"item_server"}]}`,
+	} {
+		got, err := relaycommon.NormalizeOfficialOpenAIResponsesItemIDs(endpoint, []byte(body))
+		require.NoError(t, err)
+		assert.Equal(t, body, string(got))
+	}
+}
 
 // 2026-09-21 11:22 生产 400 现场（call_00_GLi6SIHQhqISBhtuwGpG3282）：Codex 把
 // <image_resize_notice> 这条 developer message 发在 view_image 的 call 与它自己的

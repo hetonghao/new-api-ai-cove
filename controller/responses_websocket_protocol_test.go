@@ -8,11 +8,46 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestResponsesWebSocketPayloadRepairsOfficialOpenAIItemIDs(t *testing.T) {
+	const raw = `{"type":"response.create","model":"gpt-6-luna","input":[{"type":"message","id":"item_client","role":"assistant","content":[]}],"vendor_extension":9007199254740993}`
+	for _, passthrough := range []bool{false, true} {
+		c, _ := gin.CreateTestContext(nil)
+		var request dto.OpenAIResponsesRequest
+		require.NoError(t, common.Unmarshal([]byte(raw), &request))
+		info := &relaycommon.RelayInfo{
+			RelayMode:      relayconstant.RelayModeResponses,
+			RequestURLPath: "/v1/responses",
+			ChannelMeta: &relaycommon.ChannelMeta{
+				ChannelType: constant.ChannelTypeOpenAI, ApiType: constant.APITypeOpenAI,
+				ChannelBaseUrl: "https://api.openai.com", UpstreamModelName: request.Model,
+				ChannelSetting: dto.ChannelSettings{PassThroughBodyEnabled: passthrough},
+				ParamOverride:  map[string]any{"operations": []any{map[string]any{"path": "input.0.id", "mode": "set", "value": "item_override"}}},
+			},
+		}
+		info.Request, info.OriginModelName = &request, request.Model
+		outgoing, _, apiErr := prepareResponsesWebSocketPayload(c, info, &request, []byte(raw))
+		require.Nil(t, apiErr)
+		expected := "msg_item_override"
+		if passthrough {
+			expected = "msg_item_client"
+		}
+		require.Equal(t, expected, gjson.GetBytes(outgoing, "input.0.id").String())
+		require.Equal(t, "9007199254740993", gjson.GetBytes(outgoing, "vendor_extension").Raw)
+		require.Equal(t, "item_client", gjson.GetBytes(request.Input, "0.id").String())
+	}
+}
 
 func TestResponsesWebSocketValidationPayload_inherits_session_model(t *testing.T) {
 	t.Parallel()
