@@ -82,6 +82,7 @@ func OaiChatToResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	// upstreamFailure is the upstream or conversion failure the client was
 	// told about with response.failed.
 	var upstreamFailure *types.NewAPIError
+	toolStream := newOpenDesignToolStream(resp, info)
 
 	sendEvent := func(event relayconvert.ChatToResponsesStreamEvent) bool {
 		data, err := common.Marshal(event.Payload)
@@ -156,7 +157,11 @@ func OaiChatToResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		}
 
 		info.ObserveResponseModel(chunk.Model)
-		results, err := service.ConvertStreamResponseChunk(c, info, state, &chunk)
+		repaired, err := toolStream.normalize(&chunk)
+		var results []relayconvert.ResponseResult
+		if err == nil {
+			results, err = service.ConvertStreamResponseChunk(c, info, state, &chunk)
+		}
 		if err != nil {
 			if failResponsesStream(err) {
 				upstreamFailure = types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
@@ -166,6 +171,13 @@ func OaiChatToResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 			streamErr = types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
 			stopStream(sr, streamErr)
 			return
+		}
+		if repaired {
+			info.RecordConversionDiagnostics(c, []types.ConversionDiagnostic{{
+				Code: "open_design_tool_index_repaired", Path: "choices[0].delta.tool_calls",
+				Message:  "Recovered sequential Open Design tool-call indices",
+				Severity: types.ConversionDiagnosticWarning, From: types.RelayFormatOpenAI, To: types.RelayFormatOpenAIResponses,
+			}})
 		}
 		for _, result := range results {
 			event, ok := result.Value.(relayconvert.ChatToResponsesStreamEvent)
@@ -183,6 +195,16 @@ func OaiChatToResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 
 	if streamErr != nil {
 		return nil, streamErr
+	}
+	if upstreamFailure == nil && info.StreamStatus.EndReason != relaycommon.StreamEndReasonClientGone {
+		if err := toolStream.finish(); err != nil {
+			upstreamFailure = types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
+			if !failResponsesStream(err) {
+				return nil, upstreamFailure
+			}
+			info.StreamStatus.RecordError(err.Error())
+			info.StreamStatus.MarkFailed(string(upstreamFailure.GetErrorCode()), "server_error", http.StatusInternalServerError)
+		}
 	}
 
 	usage := state.Usage()
