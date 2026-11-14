@@ -14,12 +14,13 @@ import (
 var openDesignToolCallID = regexp.MustCompile(`^call_[0-9]{2}_[A-Za-z0-9]{24}$`)
 
 type openDesignToolStream struct {
-	id        string
-	index     int
-	arguments strings.Builder
-	repaired  bool
-	disabled  bool
-	ended     bool
+	id            string
+	index         int
+	upstreamIndex int
+	arguments     strings.Builder
+	repaired      bool
+	disabled      bool
+	ended         bool
 }
 
 func newOpenDesignToolStream(resp *http.Response, info *relaycommon.RelayInfo) *openDesignToolStream {
@@ -52,7 +53,7 @@ func (s *openDesignToolStream) normalize(chunk *dto.ChatCompletionsStreamRespons
 	repaired := false
 	for i := range choice.Delta.ToolCalls {
 		call := &choice.Delta.ToolCalls[i]
-		if call.Index == nil || *call.Index != 0 {
+		if call.Index == nil || *call.Index < 0 || (!s.repaired && *call.Index != 0) {
 			if s.repaired {
 				return false, fmt.Errorf("ambiguous Open Design tool-call index after repair")
 			}
@@ -67,16 +68,19 @@ func (s *openDesignToolStream) normalize(chunk *dto.ChatCompletionsStreamRespons
 			}
 			s.id = id
 		} else if id != "" && id != s.id {
-			// shortcut: only sequential native IDs with complete JSON are repairable; reject other layouts.
+			// shortcut: only sequential native IDs with complete JSON and stable per-call indices are repairable.
 			if !isOpenDesignToolCallID(id, s.index+1) || strings.TrimSpace(call.Function.Name) == "" ||
-				call.Type != "function" || !s.completeArguments() {
+				call.Type != "function" || *call.Index > s.index+1 || !s.completeArguments() {
 				return false, fmt.Errorf("ambiguous Open Design tool-call index reuse")
 			}
 			s.index++
+			s.upstreamIndex = *call.Index
 			s.id = id
 			s.arguments.Reset()
 			s.repaired = true
 			repaired = true
+		} else if *call.Index != s.upstreamIndex {
+			return false, fmt.Errorf("ambiguous Open Design tool-call index after repair")
 		}
 		s.arguments.WriteString(call.Function.Arguments)
 		if s.repaired {

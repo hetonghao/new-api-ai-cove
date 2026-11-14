@@ -29,6 +29,7 @@ func TestOpenDesignToolStreamPreservesCallsAndCachedUsage(t *testing.T) {
 	normalIndex := func(frame string) string {
 		return strings.ReplaceAll(frame, `"tool_calls":[{"index":0`, `"tool_calls":[{"index":1`)
 	}
+	thirdStart := strings.ReplaceAll(strings.ReplaceAll(secondStart, secondID, thirdID), "probe_b", "probe_c")
 	frames := []string{firstStart, firstArgs, secondStart, secondArgs, secondTail}
 	tests := []struct {
 		name           string
@@ -46,7 +47,9 @@ func TestOpenDesignToolStreamPreservesCallsAndCachedUsage(t *testing.T) {
 		{name: "restores a custom tool without changing its input", frames: []string{firstStart, strings.ReplaceAll(firstArgs, "value", "input"), secondStart, secondArgs, secondTail}, custom: true},
 		{name: "accepts explicit TLS default port", endpoint: "https://AMR-LINK.OPEN-DESIGN.AI:443/v1/chat/completions", frames: frames},
 		{name: "keeps two calls to the same function separate", frames: []string{firstStart, firstArgs, strings.ReplaceAll(secondStart, "probe_b", "probe_a"), secondArgs, secondTail}, sameName: true},
-		{name: "repairs three sequential calls", frames: append(append([]string{}, frames...), strings.ReplaceAll(strings.ReplaceAll(secondStart, secondID, thirdID), "probe_b", "probe_c"), firstArgs), threeCalls: true},
+		{name: "repairs three sequential calls", frames: append(append([]string{}, frames...), thirdStart, firstArgs), threeCalls: true},
+		{name: "repairs a sequential nonzero call after index reuse", frames: append(append([]string{}, frames...), normalIndex(thirdStart), normalIndex(firstArgs)), threeCalls: true},
+		{name: "repairs a sequential call with its original ordinal after index reuse", frames: append(append([]string{}, frames...), strings.ReplaceAll(thirdStart, `"tool_calls":[{"index":0`, `"tool_calls":[{"index":2`), strings.ReplaceAll(firstArgs, `"tool_calls":[{"index":0`, `"tool_calls":[{"index":2`)), threeCalls: true},
 		{name: "preserves valid parallel indices", frames: []string{firstStart, firstArgs, normalIndex(secondStart), normalIndex(secondArgs), normalIndex(secondTail)}},
 		{name: "preserves valid interleaved arguments", frames: []string{firstStart, normalIndex(secondStart), firstArgs, normalIndex(secondArgs), normalIndex(secondTail)}},
 		{name: "does not repair OpenCode", endpoint: "https://opencode.ai/inference/go/v1/chat/completions", frames: frames, fail: true},
@@ -66,6 +69,12 @@ func TestOpenDesignToolStreamPreservesCallsAndCachedUsage(t *testing.T) {
 		{name: "rejects a missing upstream index", frames: []string{firstStart, firstArgs, strings.ReplaceAll(secondStart, `"tool_calls":[{"index":0,`, `"tool_calls":[{`)}, fail: true},
 		{name: "rejects an earlier id after repair", frames: append(append([]string{}, frames...), firstStart), fail: true},
 		{name: "rejects nonzero fragments after repair", frames: []string{firstStart, firstArgs, secondStart, normalIndex(secondArgs)}, fail: true},
+		{name: "rejects an older index fragment after a new sequential call", frames: append(append([]string{}, frames...), normalIndex(thirdStart), firstArgs), fail: true},
+		{name: "rejects a nonzero new call before previous arguments complete", frames: []string{firstStart, firstArgs, secondStart, secondArgs, normalIndex(thirdStart), normalIndex(firstArgs)}, fail: true},
+		{name: "rejects a nonzero call returning to an earlier id", frames: append(append([]string{}, frames...), normalIndex(firstStart), normalIndex(firstArgs)), fail: true},
+		{name: "rejects a missing index after repair", frames: append(append([]string{}, frames...), strings.ReplaceAll(thirdStart, `"tool_calls":[{"index":0,`, `"tool_calls":[{`)), fail: true},
+		{name: "rejects a negative index after repair", frames: append(append([]string{}, frames...), strings.ReplaceAll(thirdStart, `"tool_calls":[{"index":0`, `"tool_calls":[{"index":-1`), strings.ReplaceAll(firstArgs, `"tool_calls":[{"index":0`, `"tool_calls":[{"index":-1`)), fail: true},
+		{name: "rejects an index beyond the new call ordinal", frames: append(append([]string{}, frames...), strings.ReplaceAll(thirdStart, `"tool_calls":[{"index":0`, `"tool_calls":[{"index":3`), strings.ReplaceAll(firstArgs, `"tool_calls":[{"index":0`, `"tool_calls":[{"index":3`)), fail: true},
 		{name: "rejects multiple choices after repair", frames: append(append([]string{}, frames...), `data: {"choices":[{"index":0,"delta":{}},{"index":1,"delta":{}}]}`), fail: true},
 		{name: "rejects tools after finish", frames: append(append([]string{}, frames...), finish, secondStart), fail: true},
 		{name: "rejects starting repair after finish", frames: []string{firstStart, firstArgs, finish, secondStart, secondArgs, secondTail}, fail: true},
