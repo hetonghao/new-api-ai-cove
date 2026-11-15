@@ -19,10 +19,21 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import type { AxiosAdapter } from 'axios'
+import { StrictMode } from 'react'
+import { afterEach, describe, expect, it } from 'vitest'
 
+import { api } from '@/lib/api'
+
+import { UpstreamSubscriptions } from '..'
 import { SubscriptionRow } from '../components/subscription-row'
 import type { UpstreamSubscription } from '../types'
+
+const originalAdapter = api.defaults.adapter
+
+afterEach(() => {
+  api.defaults.adapter = originalAdapter
+})
 
 const subscription: UpstreamSubscription = {
   id: 1,
@@ -79,6 +90,44 @@ function renderSubscription(value: UpstreamSubscription) {
 }
 
 describe('subscription allowance windows', () => {
+  it('loads the list after StrictMode cancels its first mount request', async () => {
+    const adapter: AxiosAdapter = async (config) => {
+      expect(config.url).toBe('/api/upstream-subscriptions')
+      return {
+        config,
+        data: { success: true, data: [subscription] },
+        headers: {},
+        status: 200,
+        statusText: 'OK',
+      }
+    }
+    api.defaults.adapter = adapter
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const view = render(
+      <StrictMode>
+        <QueryClientProvider client={client}>
+          <UpstreamSubscriptions />
+        </QueryClientProvider>
+      </StrictMode>
+    )
+
+    try {
+      expect(
+        await screen.findByRole('progressbar', {
+          name: 'Quota account · Weekly window',
+        })
+      ).toHaveAttribute('aria-valuenow', '88')
+      expect(
+        screen.queryByText('Failed to load subscriptions')
+      ).not.toBeInTheDocument()
+    } finally {
+      view.unmount()
+      client.clear()
+    }
+  })
+
   it('shows all three OpenCode windows with independent labeled progress values', () => {
     renderSubscription(subscription)
 

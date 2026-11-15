@@ -40,7 +40,10 @@ function subscriptionData<T>(payload: unknown, schema: z.ZodType<T>): T {
 }
 
 export async function listUpstreamSubscriptions(signal?: AbortSignal) {
-  const response = await api.get<unknown>(BASE_PATH, { signal })
+  const response = await api.get<unknown>(BASE_PATH, {
+    signal,
+    disableDuplicate: true,
+  })
   return subscriptionData(response.data, z.array(upstreamSubscriptionSchema))
 }
 

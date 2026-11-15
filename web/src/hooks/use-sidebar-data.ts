@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   Activity,
   Box,
+  CalendarClock,
   ClipboardList,
   CreditCard,
   FileText,
@@ -217,7 +218,7 @@ export function useSidebarData(badges: SidebarBadges = {}): SidebarData {
           {
             title: t('Subscription operations'),
             url: '/upstream-subscriptions',
-            icon: Gauge,
+            icon: CalendarClock,
             requiredRole: ROLE.SUPER_ADMIN,
           },
           {
