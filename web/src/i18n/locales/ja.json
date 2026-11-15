@@ -1,5 +1,9 @@
 {
   "translation": {
+    "Automatically update quota": "割り当てを自動更新",
+    "Automatic quota updates off": "割り当ての自動更新はオフ",
+    "Manual quota refresh remains available.": "手動での割り当て更新は引き続き利用できます。",
+    "Automatically update quota for {{name}}": "{{name}} の割り当てを自動更新",
     "Search name or account...": "Search name or account...",
     "Sort subscriptions by": "Sort subscriptions by",
     "All platforms": "All platforms",

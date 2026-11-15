@@ -25,6 +25,7 @@ type subscriptionLoginPayload struct {
 	NextPollAt             int64                     `json:"next_poll_at"`
 	PollInterval           int                       `json:"poll_interval"`
 	RefreshIntervalMinutes int                       `json:"refresh_interval_minutes"`
+	AutoRefreshDisabled    *bool                     `json:"auto_refresh_disabled,omitempty"`
 }
 
 func subscriptionLoginIdentity(c *gin.Context) (model.AuthSessionIdentity, model.AuthFlowMatch, bool) {
@@ -47,6 +48,7 @@ func StartOpenDesignSubscriptionLogin(c *gin.Context) {
 		ChannelID              *int    `json:"channel_id"`
 		SubscriptionID         int     `json:"subscription_id"`
 		RefreshIntervalMinutes int     `json:"refresh_interval_minutes"`
+		AutoRefreshDisabled    *bool   `json:"auto_refresh_disabled"`
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2048)
 	if c.ShouldBindJSON(&input) != nil || input.SubscriptionID < 0 {
@@ -90,7 +92,7 @@ func StartOpenDesignSubscriptionLogin(c *gin.Context) {
 		subscriptionRequestError(c, http.StatusBadGateway, "Could not start OpenDesign login; try again or enter a controlKey")
 		return
 	}
-	payload := subscriptionLoginPayload{Identity: identity, Name: name, Account: input.Account, ChannelID: input.ChannelID, SubscriptionID: input.SubscriptionID, DeviceID: challenge.DeviceID, DeviceSecret: challenge.DeviceSecret, PollInterval: max(challenge.PollInterval, 2), NextPollAt: time.Now().Unix() + int64(max(challenge.PollInterval, 2)), RefreshIntervalMinutes: minutes}
+	payload := subscriptionLoginPayload{Identity: identity, Name: name, Account: input.Account, ChannelID: input.ChannelID, SubscriptionID: input.SubscriptionID, DeviceID: challenge.DeviceID, DeviceSecret: challenge.DeviceSecret, PollInterval: max(challenge.PollInterval, 2), NextPollAt: time.Now().Unix() + int64(max(challenge.PollInterval, 2)), RefreshIntervalMinutes: minutes, AutoRefreshDisabled: input.AutoRefreshDisabled}
 	encoded, err := common.Marshal(payload)
 	if err != nil {
 		subscriptionRequestError(c, http.StatusInternalServerError, "Could not save OpenDesign login state")
@@ -198,7 +200,7 @@ func PollOpenDesignSubscriptionLogin(c *gin.Context) {
 			return err
 		}
 		var saveErr error
-		subscription, saveErr = model.SaveUpstreamSubscriptionWithTx(tx, model.UpstreamSubscriptionConfig{ID: payload.SubscriptionID, Name: payload.Name, Account: payload.Account, ChannelID: payload.ChannelID, Platform: model.SubscriptionPlatformOpenDesign, CredentialEncrypted: encryptedCredential, RefreshIntervalMinutes: payload.RefreshIntervalMinutes})
+		subscription, saveErr = model.SaveUpstreamSubscriptionWithTx(tx, model.UpstreamSubscriptionConfig{ID: payload.SubscriptionID, Name: &payload.Name, Account: payload.Account, ChannelID: payload.ChannelID, Platform: model.SubscriptionPlatformOpenDesign, CredentialEncrypted: encryptedCredential, RefreshIntervalMinutes: payload.RefreshIntervalMinutes, AutoRefreshDisabled: payload.AutoRefreshDisabled})
 		return saveErr
 	})
 	if err != nil {

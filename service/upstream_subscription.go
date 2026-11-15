@@ -72,7 +72,6 @@ func fetchOpenDesignSubscriptionQuota(ctx context.Context, credential string) (*
 	var workspace struct {
 		ID   string `json:"workspaceId"`
 		Name string `json:"workspaceName"`
-		Type string `json:"workspaceType"`
 	}
 	if err := subscriptionJSONRequest(ctx, http.MethodGet, openDesignControlOrigin+"/api/v1/workspaces/current", credential, nil, &workspace); err != nil {
 		return nil, err
@@ -137,46 +136,42 @@ func fetchOpenDesignSubscriptionQuota(ctx context.Context, credential string) (*
 		quota.Windows = append(quota.Windows, window)
 	}
 	slices.SortFunc(quota.Windows, func(a, b model.SubscriptionQuotaWindow) int { return int(a.DurationSeconds - b.DurationSeconds) })
-	if workspace.Type == "personal" {
-		var summary struct {
-			PeriodEnd *time.Time `json:"subscriptionCurrentPeriodEnd"`
-		}
-		// Account billing describes the personal plan, not a team's workspace plan.
-		summaryContext, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		if subscriptionJSONRequest(summaryContext, http.MethodGet, openDesignControlOrigin+"/api/v1/billing/summary", credential, nil, &summary) == nil && summary.PeriodEnd != nil && !summary.PeriodEnd.IsZero() {
-			quota.SubscriptionPeriodEnd = summary.PeriodEnd
-		}
-	}
 	return quota, nil
 }
 
 func RefreshUpstreamSubscription(ctx context.Context, id int, manual bool) (*model.UpstreamSubscription, error) {
 	now := time.Now()
 	subscription, claimed, err := model.ClaimUpstreamSubscriptionRefresh(id, now.Unix(), manual)
-	if err != nil || !claimed {
+	if err != nil {
 		return subscription, err
 	}
-	credential, err := common.DecryptCredential(subscription.CredentialEncrypted)
-	var quota *model.SubscriptionQuota
-	code := "credential_error"
-	retryAfter := min(subscription.RefreshInterval()*time.Duration(1<<min(subscription.FailureCount, 3)), 24*time.Hour)
-	if err == nil {
-		quota, err = FetchSubscriptionQuota(ctx, subscription.Platform, credential)
-		code = ""
-		if err != nil {
-			code = "upstream_error"
-			var failure *subscriptionQuotaError
-			if errors.As(err, &failure) {
-				code = failure.Code
-				retryAfter = max(retryAfter, failure.RetryAfter)
+	if claimed {
+		credential, credentialErr := common.DecryptCredential(subscription.CredentialEncrypted)
+		var quota *model.SubscriptionQuota
+		code := "credential_error"
+		retryAfter := min(subscription.RefreshInterval()*time.Duration(1<<min(subscription.FailureCount, 3)), 24*time.Hour)
+		if credentialErr == nil {
+			quota, credentialErr = FetchSubscriptionQuota(ctx, subscription.Platform, credential)
+			code = ""
+			if credentialErr != nil {
+				code = "upstream_error"
+				var failure *subscriptionQuotaError
+				if errors.As(credentialErr, &failure) {
+					code = failure.Code
+					retryAfter = max(retryAfter, failure.RetryAfter)
+				}
+			} else {
+				retryAfter = subscription.RefreshInterval()
 			}
-		} else {
-			retryAfter = subscription.RefreshInterval()
+		}
+		if err := model.FinishUpstreamSubscriptionRefresh(subscription, quota, code, now.Add(retryAfter).Unix()); err != nil {
+			return nil, err
 		}
 	}
-	if err := model.FinishUpstreamSubscriptionRefresh(subscription, quota, code, now.Add(retryAfter).Unix()); err != nil {
-		return nil, err
+	if ctx.Err() == nil && subscription.SubscriptionInfoNextRefreshAt <= now.Unix() {
+		if err := refreshUpstreamSubscriptionInfo(ctx, id); err != nil {
+			return nil, err
+		}
 	}
 	return model.GetUpstreamSubscription(id)
 }

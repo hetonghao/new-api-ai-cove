@@ -30,10 +30,11 @@ import { useTranslation } from 'react-i18next'
 import { StatusBadge, type StatusVariant } from '@/components/status-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import dayjs from '@/lib/dayjs'
 import { formatTimestampToDate } from '@/lib/format'
 
-import { refreshUpstreamSubscription } from '../api'
+import { refreshUpstreamSubscription, saveUpstreamSubscription } from '../api'
 import type { UpstreamSubscription } from '../types'
 import { QuotaWindow } from './quota-window'
 import { SubscriptionPlatform } from './subscription-platform'
@@ -53,6 +54,18 @@ export function SubscriptionRow(props: SubscriptionRowProps) {
   const quota = subscription.quota
   const refresh = useMutation({
     mutationFn: () => refreshUpstreamSubscription(subscription.id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['upstream-subscriptions'],
+      })
+    },
+  })
+  const autoRefresh = useMutation({
+    mutationFn: (enabled: boolean) =>
+      saveUpstreamSubscription(subscription.id, {
+        platform: subscription.platform,
+        auto_refresh_disabled: !enabled,
+      }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: ['upstream-subscriptions'],
@@ -158,7 +171,22 @@ export function SubscriptionRow(props: SubscriptionRowProps) {
           </div>
         </div>
         <div className='ml-auto flex min-w-0 items-center justify-end gap-3'>
-          <div className='flex shrink-0 items-center gap-1'>
+          <div
+            role='group'
+            aria-label={`${t('Actions')} · ${subscription.name}`}
+            className='flex shrink-0 items-center gap-1'
+          >
+            <Switch
+              size='sm'
+              className='mx-2'
+              checked={!subscription.auto_refresh_disabled}
+              disabled={autoRefresh.isPending}
+              onCheckedChange={(checked) => autoRefresh.mutate(checked)}
+              aria-label={t('Automatically update quota for {{name}}', {
+                name: subscription.name,
+              })}
+              title={t('Automatically update quota')}
+            />
             <Button
               variant='outline'
               size='icon-sm'
@@ -221,9 +249,11 @@ export function SubscriptionRow(props: SubscriptionRowProps) {
       )}
       <p className='text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs'>
         <span>
-          {t('Refreshes every {{minutes}} minutes', {
-            minutes: subscription.refresh_interval_minutes,
-          })}
+          {subscription.auto_refresh_disabled
+            ? t('Automatic quota updates off')
+            : t('Refreshes every {{minutes}} minutes', {
+                minutes: subscription.refresh_interval_minutes,
+              })}
         </span>
         <span className='tabular-nums'>
           {t('Updated')}:{' '}

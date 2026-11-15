@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { AxiosAdapter } from 'axios'
 import { StrictMode } from 'react'
@@ -42,6 +42,7 @@ const subscription: UpstreamSubscription = {
   name: 'Quota account',
   platform: 'opencode',
   refresh_interval_minutes: 10,
+  auto_refresh_disabled: false,
   last_success_at: 1_800_000_000,
   last_attempt_at: 0,
   next_refresh_at: 0,
@@ -92,6 +93,66 @@ function renderSubscription(value: UpstreamSubscription) {
 }
 
 describe('subscription allowance windows', () => {
+  it('persists automatic quota toggles without replacing other configuration', async () => {
+    let current = { ...subscription }
+    const changes: unknown[] = []
+    api.defaults.adapter = async (config) => {
+      if (config.method === 'put') {
+        const change: unknown = JSON.parse(config.data)
+        changes.push(change)
+        current = {
+          ...current,
+          auto_refresh_disabled: !current.auto_refresh_disabled,
+        }
+      }
+      return {
+        config,
+        data: {
+          success: true,
+          data: config.method === 'put' ? current : [current],
+        },
+        headers: {},
+        status: 200,
+        statusText: 'OK',
+      }
+    }
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    const view = render(
+      <QueryClientProvider client={client}>
+        <UpstreamSubscriptions />
+      </QueryClientProvider>
+    )
+    const user = userEvent.setup()
+    try {
+      const toggle = await screen.findByRole('switch', {
+        name: 'Automatically update quota for Quota account',
+      })
+      expect(
+        screen.getByRole('group', { name: 'Actions · Quota account' })
+      ).toContainElement(toggle)
+      await user.click(toggle)
+      await waitFor(() => expect(toggle).not.toBeChecked())
+      expect(screen.getByText('Automatic quota updates off')).toBeVisible()
+      expect(
+        screen.getByRole('button', { name: 'Fetch quota for Quota account' })
+      ).toBeEnabled()
+      await user.click(toggle)
+      await waitFor(() => expect(toggle).toBeChecked())
+      expect(changes).toEqual([
+        { platform: 'opencode', auto_refresh_disabled: true },
+        { platform: 'opencode', auto_refresh_disabled: false },
+      ])
+    } finally {
+      view.unmount()
+      client.clear()
+    }
+  })
+
   it('loads the list after StrictMode cancels its first mount request', async () => {
     const adapter: AxiosAdapter = async (config) => {
       expect(config.url).toBe('/api/upstream-subscriptions')

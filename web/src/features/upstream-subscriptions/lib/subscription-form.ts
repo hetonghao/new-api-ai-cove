@@ -40,6 +40,7 @@ export function subscriptionFormSchema(
       channel_id: z.number().int().nonnegative(),
       platform: z.enum(['opencode', 'opendesign']),
       credential: z.string().trim().max(4096),
+      auto_refresh_disabled: z.boolean(),
       refresh_interval_minutes: z
         .number({ error: intervalError })
         .int(intervalError)

@@ -50,22 +50,26 @@ type SubscriptionQuota struct {
 }
 
 type UpstreamSubscription struct {
-	ID                     int                          `json:"id" gorm:"primaryKey"`
-	Name                   string                       `json:"name" gorm:"type:varchar(128);not null"`
-	Account                string                       `json:"account" gorm:"type:varchar(128);not null;default:''"`
-	ChannelID              int                          `json:"channel_id" gorm:"not null;default:0;index"`
-	Channel                *UpstreamSubscriptionChannel `json:"channel" gorm:"-"`
-	Platform               string                       `json:"platform" gorm:"type:varchar(32);not null"`
-	CredentialEncrypted    string                       `json:"-" gorm:"type:text;not null"`
-	RefreshIntervalMinutes int                          `json:"refresh_interval_minutes" gorm:"not null;default:10"`
-	QuotaJSON              string                       `json:"-" gorm:"type:text"`
-	LastSuccessAt          int64                        `json:"last_success_at"`
-	LastAttemptAt          int64                        `json:"last_attempt_at"`
-	NextRefreshAt          int64                        `json:"next_refresh_at" gorm:"index"`
-	FailureCount           int                          `json:"-"`
-	ErrorCode              string                       `json:"error_code" gorm:"type:varchar(32)"`
-	CreatedAt              time.Time                    `json:"created_at"`
-	UpdatedAt              time.Time                    `json:"updated_at"`
+	ID                            int                          `json:"id" gorm:"primaryKey"`
+	Name                          string                       `json:"name" gorm:"type:varchar(128);not null"`
+	Account                       string                       `json:"account" gorm:"type:varchar(128);not null;default:''"`
+	ChannelID                     int                          `json:"channel_id" gorm:"not null;default:0;index"`
+	Channel                       *UpstreamSubscriptionChannel `json:"channel" gorm:"-"`
+	Platform                      string                       `json:"platform" gorm:"type:varchar(32);not null"`
+	CredentialEncrypted           string                       `json:"-" gorm:"type:text;not null"`
+	RefreshIntervalMinutes        int                          `json:"refresh_interval_minutes" gorm:"not null;default:10"`
+	AutoRefreshDisabled           bool                         `json:"auto_refresh_disabled" gorm:"not null;default:false"`
+	SubscriptionPeriodEndAt       int64                        `json:"-" gorm:"not null;default:0"`
+	SubscriptionInfoLastAttemptAt int64                        `json:"-" gorm:"not null;default:0"`
+	SubscriptionInfoNextRefreshAt int64                        `json:"-" gorm:"not null;default:0;index"`
+	QuotaJSON                     string                       `json:"-" gorm:"type:text"`
+	LastSuccessAt                 int64                        `json:"last_success_at"`
+	LastAttemptAt                 int64                        `json:"last_attempt_at"`
+	NextRefreshAt                 int64                        `json:"next_refresh_at" gorm:"index"`
+	FailureCount                  int                          `json:"-"`
+	ErrorCode                     string                       `json:"error_code" gorm:"type:varchar(32)"`
+	CreatedAt                     time.Time                    `json:"created_at"`
+	UpdatedAt                     time.Time                    `json:"updated_at"`
 }
 
 type UpstreamSubscriptionResponse struct {
@@ -76,12 +80,13 @@ type UpstreamSubscriptionResponse struct {
 
 type UpstreamSubscriptionConfig struct {
 	ID                     int
-	Name                   string
+	Name                   *string
 	Account                *string
 	ChannelID              *int
 	Platform               string
 	CredentialEncrypted    string
 	RefreshIntervalMinutes int
+	AutoRefreshDisabled    *bool
 }
 
 func NormalizeSubscriptionRefreshMinutes(minutes int) (int, error) {
@@ -114,6 +119,15 @@ func (s UpstreamSubscription) Response() UpstreamSubscriptionResponse {
 		} else {
 			response.ErrorCode = "invalid_response"
 		}
+	}
+	if s.SubscriptionPeriodEndAt > 0 {
+		if response.Quota == nil {
+			response.Quota = &SubscriptionQuota{Windows: []SubscriptionQuotaWindow{}}
+		}
+		periodEnd := time.Unix(s.SubscriptionPeriodEndAt, 0).UTC()
+		response.Quota.SubscriptionPeriodEnd = &periodEnd
+	} else if s.SubscriptionInfoLastAttemptAt > 0 && response.Quota != nil {
+		response.Quota.SubscriptionPeriodEnd = nil
 	}
 	response.Stale = response.Quota != nil && (response.ErrorCode != "" || s.LastSuccessAt < time.Now().Add(-2*s.RefreshInterval()).Unix())
 	return response
@@ -204,6 +218,10 @@ func SaveUpstreamSubscriptionWithTx(tx *gorm.DB, config UpstreamSubscriptionConf
 		}
 	}
 	account := subscription.Account
+	autoRefreshDisabled := subscription.AutoRefreshDisabled
+	if config.AutoRefreshDisabled != nil {
+		autoRefreshDisabled = *config.AutoRefreshDisabled
+	}
 	if config.Account != nil {
 		account = strings.TrimSpace(*config.Account)
 	}
@@ -217,7 +235,10 @@ func SaveUpstreamSubscriptionWithTx(tx *gorm.DB, config UpstreamSubscriptionConf
 	if channelID < 0 {
 		return nil, ErrSubscriptionChannelUnavailable
 	}
-	nameInput := config.Name
+	nameInput := subscription.Name
+	if config.Name != nil {
+		nameInput = *config.Name
+	}
 	if channelID > 0 {
 		channel, err := GetUpstreamSubscriptionChannel(tx, channelID)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -247,6 +268,7 @@ func SaveUpstreamSubscriptionWithTx(tx *gorm.DB, config UpstreamSubscriptionConf
 		subscription.ChannelID = channelID
 		subscription.CredentialEncrypted = config.CredentialEncrypted
 		subscription.RefreshIntervalMinutes = minutes
+		subscription.AutoRefreshDisabled = autoRefreshDisabled
 		return &subscription, tx.Create(&subscription).Error
 	}
 	minutes := config.RefreshIntervalMinutes
@@ -257,10 +279,13 @@ func SaveUpstreamSubscriptionWithTx(tx *gorm.DB, config UpstreamSubscriptionConf
 	if err != nil {
 		return nil, err
 	}
-	if config.CredentialEncrypted == "" && name == subscription.Name && account == subscription.Account && channelID == subscription.ChannelID && minutes == subscription.RefreshIntervalMinutes {
+	if config.CredentialEncrypted == "" && name == subscription.Name && account == subscription.Account && channelID == subscription.ChannelID && minutes == subscription.RefreshIntervalMinutes && autoRefreshDisabled == subscription.AutoRefreshDisabled {
 		return &subscription, nil
 	}
-	updates := map[string]any{"name": name, "account": account, "channel_id": channelID, "refresh_interval_minutes": minutes}
+	updates := map[string]any{"name": name, "account": account, "channel_id": channelID, "refresh_interval_minutes": minutes, "auto_refresh_disabled": autoRefreshDisabled}
+	if subscription.AutoRefreshDisabled && !autoRefreshDisabled && subscription.ErrorCode != "rate_limited" {
+		updates["next_refresh_at"] = 0
+	}
 	if minutes != subscription.RefreshIntervalMinutes && subscription.LastAttemptAt > 0 {
 		next := subscription.LastAttemptAt + int64(minutes)*60
 		// The provider may have installed a retry hold after the initial read.
@@ -274,8 +299,11 @@ func SaveUpstreamSubscriptionWithTx(tx *gorm.DB, config UpstreamSubscriptionConf
 		updates["next_refresh_at"] = 0
 		updates["failure_count"] = 0
 		updates["error_code"] = ""
+		updates["subscription_period_end_at"] = 0
+		updates["subscription_info_last_attempt_at"] = 0
+		updates["subscription_info_next_refresh_at"] = 0
 	}
-	result := tx.Model(&subscription).Where("credential_encrypted = ? AND last_attempt_at = ? AND refresh_interval_minutes = ? AND channel_id = ?", subscription.CredentialEncrypted, subscription.LastAttemptAt, subscription.RefreshIntervalMinutes, subscription.ChannelID).Updates(updates)
+	result := tx.Model(&subscription).Where("credential_encrypted = ? AND last_attempt_at = ? AND refresh_interval_minutes = ? AND channel_id = ? AND auto_refresh_disabled = ?", subscription.CredentialEncrypted, subscription.LastAttemptAt, subscription.RefreshIntervalMinutes, subscription.ChannelID, subscription.AutoRefreshDisabled).Updates(updates)
 	if result.Error != nil {
 		return nil, result.Error
 	}
@@ -309,7 +337,7 @@ func ClaimUpstreamSubscriptionRefresh(id int, now int64, manual bool) (*Upstream
 	if manual {
 		query = query.Where("error_code <> ? OR next_refresh_at <= ?", "rate_limited", now)
 	} else {
-		query = query.Where("next_refresh_at <= ?", now)
+		query = query.Where("auto_refresh_disabled = ? AND next_refresh_at <= ?", false, now)
 	}
 	result := query.Updates(map[string]any{"last_attempt_at": now, "next_refresh_at": now + 60})
 	if result.Error != nil || result.RowsAffected == 0 {
@@ -333,6 +361,14 @@ func FinishUpstreamSubscriptionRefresh(subscription *UpstreamSubscription, quota
 	}
 	updates["next_refresh_at"] = next
 	if quota != nil {
+		if quota.WorkspaceID != "" {
+			var previous SubscriptionQuota
+			if common.UnmarshalJsonStr(subscription.QuotaJSON, &previous) != nil || previous.WorkspaceID != quota.WorkspaceID {
+				updates["subscription_period_end_at"] = 0
+				updates["subscription_info_last_attempt_at"] = 0
+				updates["subscription_info_next_refresh_at"] = 0
+			}
+		}
 		encoded, err := common.Marshal(quota)
 		if err != nil {
 			return err
@@ -348,9 +384,48 @@ func FinishUpstreamSubscriptionRefresh(subscription *UpstreamSubscription, quota
 
 func DueUpstreamSubscriptionIDs(now int64) ([]int, error) {
 	var ids []int
-	err := DB.Model(&UpstreamSubscription{}).Where("next_refresh_at <= ? AND last_attempt_at <= ?", now, now-60).
+	err := DB.Model(&UpstreamSubscription{}).Where("(auto_refresh_disabled = ? AND next_refresh_at <= ? AND last_attempt_at <= ?) OR (subscription_info_next_refresh_at <= ? AND subscription_info_last_attempt_at <= ?)", false, now, now-60, now, now-60).
 		Order("next_refresh_at asc, id asc").Limit(25).Pluck("id", &ids).Error
 	return ids, err
+}
+
+func ClaimUpstreamSubscriptionInfoRefresh(id int, now int64) (*UpstreamSubscription, bool, error) {
+	subscription, err := GetUpstreamSubscription(id)
+	if err != nil {
+		return nil, false, err
+	}
+	periodEnd := subscription.SubscriptionPeriodEndAt
+	// Carry forward the old OpenDesign snapshot until its first independent check succeeds.
+	if subscription.SubscriptionInfoLastAttemptAt == 0 && periodEnd == 0 {
+		if quota := subscription.Response().Quota; quota != nil && quota.SubscriptionPeriodEnd != nil {
+			periodEnd = quota.SubscriptionPeriodEnd.Unix()
+		}
+	}
+	result := DB.Model(&UpstreamSubscription{}).
+		Where("id = ? AND credential_encrypted = ? AND subscription_info_last_attempt_at = ? AND subscription_info_last_attempt_at <= ? AND subscription_info_next_refresh_at <= ?", id, subscription.CredentialEncrypted, subscription.SubscriptionInfoLastAttemptAt, now-60, now).
+		Updates(map[string]any{"subscription_period_end_at": periodEnd, "subscription_info_last_attempt_at": now, "subscription_info_next_refresh_at": now + 60})
+	if result.Error != nil || result.RowsAffected == 0 {
+		return subscription, false, result.Error
+	}
+	subscription.SubscriptionInfoLastAttemptAt = now
+	return subscription, true, nil
+}
+
+func FinishUpstreamSubscriptionInfoRefresh(subscription *UpstreamSubscription, periodEnd *time.Time, succeeded bool, nextAt int64) error {
+	updates := map[string]any{"subscription_info_next_refresh_at": nextAt}
+	if succeeded {
+		updates["subscription_period_end_at"] = int64(0)
+		if periodEnd != nil {
+			updates["subscription_period_end_at"] = periodEnd.Unix()
+		}
+	}
+	query := DB.Model(&UpstreamSubscription{}).
+		Where("id = ? AND credential_encrypted = ? AND subscription_info_last_attempt_at = ?", subscription.ID, subscription.CredentialEncrypted, subscription.SubscriptionInfoLastAttemptAt)
+	if subscription.Platform == SubscriptionPlatformOpenDesign {
+		// A controlKey can change workspaces while its information request is in flight.
+		query = query.Where("COALESCE(quota_json, '') = ?", subscription.QuotaJSON)
+	}
+	return query.Updates(updates).Error
 }
 
 func ClaimSubscriptionLoginPoll(flow *AuthFlow, encryptedPayload string) (bool, error) {

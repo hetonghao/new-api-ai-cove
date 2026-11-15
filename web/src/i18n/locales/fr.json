@@ -1,5 +1,9 @@
 {
   "translation": {
+    "Automatically update quota": "Actualiser automatiquement le quota",
+    "Automatic quota updates off": "Actualisation automatique du quota désactivée",
+    "Manual quota refresh remains available.": "L’actualisation manuelle du quota reste disponible.",
+    "Automatically update quota for {{name}}": "Actualiser automatiquement le quota de {{name}}",
     "Search name or account...": "Search name or account...",
     "Sort subscriptions by": "Sort subscriptions by",
     "All platforms": "All platforms",

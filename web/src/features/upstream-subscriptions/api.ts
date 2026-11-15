@@ -58,7 +58,8 @@ export async function listSubscriptionChannels(signal?: AbortSignal) {
 
 export async function saveUpstreamSubscription(
   id: number | undefined,
-  values: SubscriptionFormValues
+  values: Partial<SubscriptionFormValues> &
+    Pick<SubscriptionFormValues, 'platform'>
 ) {
   const response =
     id === undefined
@@ -82,7 +83,8 @@ export async function startOpenDesignLogin(
   refreshIntervalMinutes: number,
   subscriptionID?: number,
   channelID = 0,
-  account = ''
+  account = '',
+  autoRefreshDisabled = false
 ) {
   const response = await api.post<unknown>(`${BASE_PATH}/opendesign/login`, {
     name,
@@ -90,6 +92,7 @@ export async function startOpenDesignLogin(
     refresh_interval_minutes: refreshIntervalMinutes,
     channel_id: channelID,
     account,
+    auto_refresh_disabled: autoRefreshDisabled,
   })
   return subscriptionData(response.data, subscriptionLoginSchema)
 }

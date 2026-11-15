@@ -76,12 +76,13 @@ func SaveUpstreamSubscription(c *gin.Context) {
 		}
 	}
 	var input struct {
-		Name                   string  `json:"name"`
+		Name                   *string `json:"name"`
 		Account                *string `json:"account"`
 		ChannelID              *int    `json:"channel_id"`
 		Platform               string  `json:"platform"`
 		Credential             string  `json:"credential"`
 		RefreshIntervalMinutes int     `json:"refresh_interval_minutes"`
+		AutoRefreshDisabled    *bool   `json:"auto_refresh_disabled"`
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 8<<10)
 	if c.ShouldBindJSON(&input) != nil {
@@ -89,9 +90,13 @@ func SaveUpstreamSubscription(c *gin.Context) {
 		return
 	}
 	if input.ChannelID != nil && *input.ChannelID != 0 {
-		input.Name = ""
+		input.Name = nil
 	}
-	name, err := model.NormalizeUpstreamSubscription(input.Name, input.Platform)
+	name := ""
+	if input.Name != nil {
+		name = *input.Name
+	}
+	_, err := model.NormalizeUpstreamSubscription(name, input.Platform)
 	if err != nil {
 		subscriptionRequestError(c, http.StatusBadRequest, err.Error())
 		return
@@ -113,7 +118,7 @@ func SaveUpstreamSubscription(c *gin.Context) {
 			return
 		}
 	}
-	subscription, err := model.SaveUpstreamSubscriptionWithTx(model.DB, model.UpstreamSubscriptionConfig{ID: id, Name: name, Account: input.Account, ChannelID: input.ChannelID, Platform: input.Platform, CredentialEncrypted: encrypted, RefreshIntervalMinutes: input.RefreshIntervalMinutes})
+	subscription, err := model.SaveUpstreamSubscriptionWithTx(model.DB, model.UpstreamSubscriptionConfig{ID: id, Name: input.Name, Account: input.Account, ChannelID: input.ChannelID, Platform: input.Platform, CredentialEncrypted: encrypted, RefreshIntervalMinutes: input.RefreshIntervalMinutes, AutoRefreshDisabled: input.AutoRefreshDisabled})
 	if err == nil && (id == 0 || encrypted != "") {
 		if refreshed, refreshErr := service.RefreshUpstreamSubscription(c.Request.Context(), subscription.ID, true); refreshErr == nil {
 			subscription = refreshed

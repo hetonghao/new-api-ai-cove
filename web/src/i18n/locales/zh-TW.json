@@ -1,5 +1,9 @@
 {
   "translation": {
+    "Automatically update quota": "自動更新額度",
+    "Automatic quota updates off": "已關閉自動更新額度",
+    "Manual quota refresh remains available.": "關閉後仍可手動重新整理額度。",
+    "Automatically update quota for {{name}}": "自動更新 {{name}} 的額度",
     "Search name or account...": "搜尋名稱或訂閱帳號…",
     "Sort subscriptions by": "訂閱排序",
     "All platforms": "全部平台",

@@ -45,6 +45,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { getServerErrorMessage } from '@/lib/server-error-message'
 
 import {
@@ -91,10 +92,12 @@ export function SubscriptionFormDialog(props: SubscriptionFormDialogProps) {
       platform: 'opencode',
       credential: '',
       refresh_interval_minutes: 10,
+      auto_refresh_disabled: false,
     },
   })
   const platform = form.watch('platform')
   const channelID = form.watch('channel_id')
+  const autoRefreshDisabled = form.watch('auto_refresh_disabled')
   const channels = useQuery({
     queryKey: ['upstream-subscription-channels'],
     queryFn: ({ signal }) => listSubscriptionChannels(signal),
@@ -137,6 +140,7 @@ export function SubscriptionFormDialog(props: SubscriptionFormDialogProps) {
       credential: '',
       refresh_interval_minutes:
         props.subscription?.refresh_interval_minutes ?? 10,
+      auto_refresh_disabled: props.subscription?.auto_refresh_disabled ?? false,
     })
     setManual(false)
     setBindingChannel(!!props.subscription?.channel_id)
@@ -172,7 +176,8 @@ export function SubscriptionFormDialog(props: SubscriptionFormDialogProps) {
         values.refresh_interval_minutes,
         props.subscription?.id,
         values.channel_id,
-        values.account
+        values.account,
+        values.auto_refresh_disabled
       )
     )
   }
@@ -408,6 +413,24 @@ export function SubscriptionFormDialog(props: SubscriptionFormDialogProps) {
             />
           </Field>
         )}
+        <Field orientation='horizontal'>
+          <div className='flex-1 space-y-1'>
+            <FieldLabel htmlFor={`${id}-auto-refresh`}>
+              {t('Automatically update quota')}
+            </FieldLabel>
+            <FieldDescription>
+              {t('Manual quota refresh remains available.')}
+            </FieldDescription>
+          </div>
+          <Switch
+            id={`${id}-auto-refresh`}
+            checked={!autoRefreshDisabled}
+            disabled={locked}
+            onCheckedChange={(checked) =>
+              form.setValue('auto_refresh_disabled', !checked)
+            }
+          />
+        </Field>
         <Field>
           <FieldLabel htmlFor={`${id}-interval`}>
             {t('Refresh interval (minutes)')}
@@ -420,7 +443,7 @@ export function SubscriptionFormDialog(props: SubscriptionFormDialogProps) {
             max={1440}
             step={1}
             required
-            disabled={locked}
+            disabled={locked || autoRefreshDisabled}
             aria-invalid={!!form.formState.errors.refresh_interval_minutes}
             aria-describedby={`${id}-interval-help ${id}-interval-error`}
             {...form.register('refresh_interval_minutes', {

@@ -46,6 +46,7 @@ const subscription: UpstreamSubscription = {
   name: 'My account',
   platform: 'opendesign',
   refresh_interval_minutes: 10,
+  auto_refresh_disabled: false,
   last_success_at: 0,
   last_attempt_at: 0,
   next_refresh_at: 0,
@@ -95,6 +96,31 @@ beforeEach(() => {
 })
 
 describe('subscription creation', () => {
+  it('can turn off automatic quota updates while retaining the interval', async () => {
+    const { user, saved } = renderForm()
+    const toggle = screen.getByRole('switch', {
+      name: 'Automatically update quota',
+    })
+    expect(toggle).toBeChecked()
+    toggle.focus()
+    await user.keyboard(' ')
+    expect(toggle).not.toBeChecked()
+    expect(
+      screen.getByRole('spinbutton', { name: 'Refresh interval (minutes)' })
+    ).toBeDisabled()
+    await user.type(screen.getByLabelText('API Key *'), 'oc_sk_test-account')
+    await user.click(
+      screen.getByRole('button', { name: 'Create subscription' })
+    )
+    await waitFor(() => expect(saved).toHaveBeenCalledOnce())
+    expect(
+      vi.mocked(saveUpstreamSubscription).mock.calls[0]?.[1]
+    ).toMatchObject({
+      auto_refresh_disabled: true,
+      refresh_interval_minutes: 10,
+    })
+  })
+
   it('requires only an OpenCode API key and leaves the name optional', async () => {
     const { user, saved } = renderForm()
     await user.type(screen.getByLabelText('API Key *'), 'oc_sk_test-account')
@@ -110,6 +136,7 @@ describe('subscription creation', () => {
       platform: 'opencode',
       credential: 'oc_sk_test-account',
       refresh_interval_minutes: 10,
+      auto_refresh_disabled: false,
     })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
@@ -212,6 +239,7 @@ describe('subscription creation', () => {
       platform: 'opendesign',
       credential: 'vela_ctrl_manual',
       refresh_interval_minutes: 10,
+      auto_refresh_disabled: false,
     })
     expect(startOpenDesignLogin).not.toHaveBeenCalled()
   })
@@ -317,6 +345,7 @@ describe('subscription creation', () => {
       {
         name: 'My account',
         account: 'billing@example.com',
+        auto_refresh_disabled: false,
         channel_id: 8,
         platform: 'opendesign',
         credential: '',

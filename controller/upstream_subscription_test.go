@@ -34,7 +34,11 @@ type subscriptionAPIFixture struct {
 	summaryBody   string
 	summaryStatus int
 	workspaceType string
-	summaryCalls int
+	workspaceID   string
+	summaryCalls  int
+	infoBody      string
+	infoStatus    int
+	infoCalls     int
 }
 
 func (f *subscriptionAPIFixture) respond(t *testing.T, request *http.Request) *http.Response {
@@ -43,6 +47,17 @@ func (f *subscriptionAPIFixture) respond(t *testing.T, request *http.Request) *h
 	path := request.URL.Path
 	assert.Equal(t, "AI-Cove/1.0", request.Header.Get("User-Agent"))
 	switch {
+	case path == "/console/api/go/status":
+		f.infoCalls++
+		assert.Equal(t, "", request.Header.Get("Cookie"))
+		assert.Equal(t, "", request.Header.Get("x-org-id"))
+		body = `{"access":{"startsAt":"2026-11-12T14:54:44Z","endsAt":"2026-12-12T14:54:44Z"}}`
+		if f.infoBody != "" {
+			body = f.infoBody
+		}
+		if f.infoStatus != 0 {
+			status = f.infoStatus
+		}
 	case strings.HasSuffix(path, "/token"):
 		body = fmt.Sprintf(`{"status":%q}`, f.loginStatus)
 		if f.loginStatus == "approved" {
@@ -59,8 +74,14 @@ func (f *subscriptionAPIFixture) respond(t *testing.T, request *http.Request) *h
 	case path == "/api/v1/workspaces/current":
 		require.True(t, strings.HasPrefix(request.Header.Get("Authorization"), "Bearer vela_ctrl_"))
 		workspaceType := f.workspaceType
-		if workspaceType == "" { workspaceType = "personal" }
-		body = fmt.Sprintf(`{"workspaceId":"workspace-1","workspaceName":"Quota workspace","workspaceType":%q}`,workspaceType)
+		if workspaceType == "" {
+			workspaceType = "personal"
+		}
+		workspaceID := f.workspaceID
+		if workspaceID == "" {
+			workspaceID = "workspace-1"
+		}
+		body = fmt.Sprintf(`{"workspaceId":%q,"workspaceName":"Quota workspace","workspaceType":%q}`, workspaceID, workspaceType)
 	case path == "/api/v1/billing/summary":
 		f.summaryCalls++
 		body = `{"subscriptionCurrentPeriodEnd":"2027-11-11T05:50:51Z"}`
@@ -394,7 +415,7 @@ func TestUpstreamSubscriptionLoginCarriesChannelBinding(t *testing.T) {
 	require.NoError(t, s.db.AutoMigrate(&model.Channel{}))
 	channel := model.Channel{Name: "Login channel", Key: "channel-private"}
 	require.NoError(t, s.db.Create(&channel).Error)
-	response := s.request(t, http.MethodPost, "/opendesign/login", gin.H{"name": "Ignored", "account": "login@example.com", "channel_id": channel.Id, "refresh_interval_minutes": 17}, s.bundle.AccessToken)
+	response := s.request(t, http.MethodPost, "/opendesign/login", gin.H{"name": "Ignored", "account": "login@example.com", "channel_id": channel.Id, "refresh_interval_minutes": 17, "auto_refresh_disabled": true}, s.bundle.AccessToken)
 	require.Equal(t, http.StatusOK, response.Code)
 	var challenge struct {
 		Data struct {
@@ -409,6 +430,7 @@ func TestUpstreamSubscriptionLoginCarriesChannelBinding(t *testing.T) {
 	require.Equal(t, http.StatusOK, approved.Code)
 	assert.Contains(t, approved.Body.String(), `"name":"Login channel"`)
 	assert.Contains(t, approved.Body.String(), `"account":"login@example.com"`)
+	assert.Contains(t, approved.Body.String(), `"auto_refresh_disabled":true`)
 	assert.Contains(t, approved.Body.String(), fmt.Sprintf(`"channel_id":%d`, channel.Id))
 	assert.NotContains(t, approved.Body.String(), "channel-private")
 }
