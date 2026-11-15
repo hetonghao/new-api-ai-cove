@@ -45,8 +45,12 @@ func fetchSubscriptionPeriodEnd(ctx context.Context, subscription *model.Upstrea
 		return nil, err
 	}
 	var quota model.SubscriptionQuota
-	if !validSubscriptionDeviceID(workspace.ID) || (subscription.QuotaJSON != "" && (common.UnmarshalJsonStr(subscription.QuotaJSON, &quota) != nil || (quota.WorkspaceID != "" && quota.WorkspaceID != workspace.ID))) {
+	if !validSubscriptionDeviceID(workspace.ID) || (subscription.QuotaJSON != "" && common.UnmarshalJsonStr(subscription.QuotaJSON, &quota) != nil) {
 		return nil, invalidSubscriptionQuota()
+	}
+	// Quota pulls may be paused; discard the old workspace's expiry independently.
+	if quota.WorkspaceID != "" && quota.WorkspaceID != workspace.ID {
+		return nil, nil
 	}
 	if workspace.Type == "team" {
 		return nil, nil

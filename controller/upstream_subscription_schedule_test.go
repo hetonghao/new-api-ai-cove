@@ -195,3 +195,19 @@ func TestUpstreamSubscriptionWorkspaceChangeDiscardsPersonalExpiryAndOldCompleti
 	assert.Nil(t, updated.Response().Quota.SubscriptionPeriodEnd)
 	assert.Equal(t, 1, s.fixture.summaryCalls, "team quota must never inherit a personal subscription's expiry")
 }
+
+func TestUpstreamSubscriptionWorkspaceChangeClearsExpiryWhileAutomaticQuotaIsOff(t *testing.T) {
+	s := setupSubscriptionControllerTest(t)
+	created := s.create(t, "opendesign", "vela_ctrl_paused-workspace")
+	require.NoError(t, s.db.Model(&model.UpstreamSubscription{}).Where("id = ?", created.ID).Updates(map[string]any{
+		"auto_refresh_disabled": true, "subscription_info_next_refresh_at": 0, "subscription_info_last_attempt_at": 0,
+	}).Error)
+	s.fixture.workspaceID, s.fixture.workspaceType = "workspace-2", "team"
+	quotaCalls := s.fixture.quotaCalls
+	updated, err := service.RefreshUpstreamSubscription(context.Background(), created.ID, false)
+	require.NoError(t, err)
+	assert.Nil(t, updated.Response().Quota.SubscriptionPeriodEnd)
+	assert.Equal(t, quotaCalls, s.fixture.quotaCalls, "independent information refresh must not pull quota while it is disabled")
+	assert.Equal(t, created.LastSuccessAt, updated.LastSuccessAt)
+	assert.Equal(t, created.Quota.WorkspaceID, updated.Response().Quota.WorkspaceID, "do not relabel the old quota snapshot as another workspace")
+}
