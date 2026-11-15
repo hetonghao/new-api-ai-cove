@@ -38,7 +38,7 @@ export function subscriptionFormSchema(
           t('Subscription account must be at most 128 characters')
         ),
       channel_id: z.number().int().nonnegative(),
-      platform: z.enum(['opencode', 'opendesign']),
+      platform: z.enum(['opencode', 'opendesign', 'commandcode']),
       credential: z.string().trim().max(4096),
       auto_refresh_disabled: z.boolean(),
       refresh_interval_minutes: z
@@ -62,21 +62,27 @@ export function subscriptionFormSchema(
           message: t('Subscription name must be at most 128 characters'),
         })
       }
-      const required = !editing && (values.platform === 'opencode' || manual)
+      const required = !editing && (values.platform !== 'opendesign' || manual)
       const prefix = values.platform === 'opencode' ? 'oc_sk_' : 'vela_ctrl_'
+      const validCredential =
+        values.platform === 'commandcode'
+          ? /^[\x21-\x7e]+$/.test(values.credential)
+          : values.credential.startsWith(prefix) &&
+            values.credential.length > prefix.length &&
+            !/\s/.test(values.credential)
       if (
         (required && !values.credential) ||
-        (values.credential &&
-          (!values.credential.startsWith(prefix) ||
-            values.credential.length <= prefix.length ||
-            /\s/.test(values.credential)))
+        (values.credential && !validCredential)
       ) {
         context.addIssue({
           code: 'custom',
           path: ['credential'],
-          message: t(
-            'Use the platform subscription credential, not an inference key'
-          ),
+          message:
+            values.platform === 'commandcode'
+              ? t('Use a valid CommandCode API key')
+              : t(
+                  'Use the platform subscription credential, not an inference key'
+                ),
         })
       }
     })

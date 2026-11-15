@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +24,8 @@ import (
 
 const subscriptionOpenCodeFixture = `{"usage":{"rolling":{"status":"ok","percent":1,"resetsAt":"2026-12-15T02:30:17Z"},"weekly":{"status":"ok","percent":4,"resetsAt":"2026-12-16T00:00:00Z"},"monthly":{"status":"ok","percent":2,"resetsAt":"2027-01-12T14:54:44Z"}}}`
 const subscriptionOpenDesignFixture = `{"workspaceId":"workspace-1","balanceUsd":"0.1548","codingPlan":{"workspaceId":"workspace-1","eligible":true,"tier":"go","windows":[{"durationSeconds":18000,"usedCredits":"9007199254740993","limitCredits":"18014398509481986","remainingCredits":"9007199254740990","resetsAt":"2026-12-15T01:44:39Z"},{"durationSeconds":604800,"usedCredits":"150002","limitCredits":"150000","remainingCredits":"7","resetsAt":"2026-12-17T11:44:39Z"}]}}`
+const subscriptionCommandCodeFixture = `{"credits":{"monthlyCredits":68.6,"purchasedCredits":0},"windowLimits":{"limited":true,"fiveHour":{"used":1.4,"cap":14,"exceeded":false,"resetAt":1794764000392},"weekly":{"used":31.5,"cap":35,"exceeded":false,"resetAt":1795350800392}}}`
+const subscriptionCommandCodeKey = "opaque_test.key+123"
 
 type subscriptionAPIFixture struct {
 	status        int
@@ -39,6 +42,7 @@ type subscriptionAPIFixture struct {
 	infoBody      string
 	infoStatus    int
 	infoCalls     int
+	commandOrgID  string
 }
 
 func (f *subscriptionAPIFixture) respond(t *testing.T, request *http.Request) *http.Response {
@@ -47,6 +51,38 @@ func (f *subscriptionAPIFixture) respond(t *testing.T, request *http.Request) *h
 	path := request.URL.Path
 	assert.Equal(t, "AI-Cove/1.0", request.Header.Get("User-Agent"))
 	switch {
+	case path == "/alpha/whoami":
+		assert.Equal(t, "api.commandcode.ai", request.URL.Host)
+		assert.Equal(t, "1", request.URL.Query().Get("limits"))
+		assert.Equal(t, "Bearer "+subscriptionCommandCodeKey, request.Header.Get("Authorization"))
+		body = `{"success":true,"user":{"id":"person-1"},"org":null}`
+		if f.commandOrgID != "" {
+			body = fmt.Sprintf(`{"success":true,"user":{"id":"person-1"},"org":{"id":%q}}`, f.commandOrgID)
+		}
+	case path == "/alpha/billing/credits" || path == "/alpha/billing/subscriptions":
+		assert.Equal(t, "api.commandcode.ai", request.URL.Host)
+		assert.Equal(t, f.commandOrgID, request.URL.Query().Get("orgId"))
+		assert.Equal(t, "Bearer "+subscriptionCommandCodeKey, request.Header.Get("Authorization"))
+		assert.Empty(t, request.Header.Get("Cookie"))
+		if path == "/alpha/billing/credits" {
+			f.quotaCalls++
+			body = subscriptionCommandCodeFixture
+			if f.quotaBody != "" {
+				body = f.quotaBody
+			}
+			if f.status != 0 {
+				status = f.status
+			}
+		} else {
+			f.infoCalls++
+			body = `{"success":true,"data":{"planId":"individual-goat","quantity":1,"status":"active","currentPeriodEnd":"2026-12-15T12:24:45.000Z"}}`
+			if f.infoBody != "" {
+				body = f.infoBody
+			}
+			if f.infoStatus != 0 {
+				status = f.infoStatus
+			}
+		}
 	case path == "/console/api/go/status":
 		f.infoCalls++
 		assert.Equal(t, "", request.Header.Get("Cookie"))
@@ -252,6 +288,208 @@ func TestUpstreamSubscriptionAPICreatesEncryptedCredentialsAndPreservesMigration
 	assert.Equal(t, common.RoleRootUser, root.Role)
 	assert.True(t, s.db.Migrator().HasIndex(&model.UpstreamSubscription{}, "NextRefreshAt"))
 	assert.Equal(t, http.StatusOK, s.request(t, http.MethodDelete, "/"+strconv.Itoa(created.ID), nil, s.bundle.AccessToken).Code)
+}
+
+func TestUpstreamSubscriptionCommandCodeAcceptsPersonalAndOrganizationKeys(t *testing.T) {
+	for _, orgID := range []string{"", "org-test+one"} {
+		t.Run("organization="+orgID, func(t *testing.T) {
+			s := setupSubscriptionControllerTest(t)
+			s.fixture.commandOrgID = orgID
+			response := s.request(t, http.MethodPost, "", gin.H{"platform": "commandcode", "credential": subscriptionCommandCodeKey}, s.bundle.AccessToken)
+			created := subscriptionResponse(t, response)
+			assert.NotContains(t, response.Body.String(), subscriptionCommandCodeKey)
+			assert.Equal(t, "CommandCode", created.Name)
+			assert.Empty(t, created.ErrorCode)
+			require.NotNil(t, created.Quota)
+			require.Len(t, created.Quota.Windows, 3)
+			assert.InDelta(t, 10.0, *created.Quota.Windows[0].UsedPercent, 0.000001)
+			assert.InDelta(t, 90.0, *created.Quota.Windows[1].UsedPercent, 0.000001)
+			assert.InDelta(t, 2.0, *created.Quota.Windows[2].UsedPercent, 0.000001)
+			assert.Equal(t, created.Quota.SubscriptionPeriodEnd, created.Quota.Windows[2].ResetsAt)
+			assert.Equal(t, int64(1794764000392), created.Quota.Windows[0].ResetsAt.UnixMilli())
+			require.NotNil(t, created.Quota.SubscriptionPeriodEnd)
+			assert.Equal(t, "2026-12-15T12:24:45Z", created.Quota.SubscriptionPeriodEnd.Format(time.RFC3339))
+			stored, err := model.GetUpstreamSubscription(created.ID)
+			require.NoError(t, err)
+			assert.NotContains(t, stored.CredentialEncrypted, subscriptionCommandCodeKey)
+			credential, err := common.DecryptCredential(stored.CredentialEncrypted)
+			require.NoError(t, err)
+			assert.Equal(t, subscriptionCommandCodeKey, credential)
+		})
+	}
+}
+
+func TestUpstreamSubscriptionCommandCodeHandlesUnusedAndUnavailableWindows(t *testing.T) {
+	for _, test := range []struct {
+		name, window string
+		percent      *float64
+		status       string
+	}{
+		{name: "not started", window: `{"used":0,"cap":14,"resetAt":0}`, percent: new(0.0), status: "ok"},
+		{name: "no cap", window: `{"used":0,"cap":0,"resetAt":null}`, status: "unavailable"},
+		{name: "provider exhausted", window: `{"used":13.99,"cap":14,"exceeded":true,"resetAt":null}`, percent: new(100.0), status: "ok"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			s := setupSubscriptionControllerTest(t)
+			s.fixture.quotaBody = `{"windowLimits":{"fiveHour":` + test.window + `}}`
+			created := s.create(t, "commandcode", subscriptionCommandCodeKey)
+			assert.Empty(t, created.ErrorCode)
+			require.NotNil(t, created.Quota)
+			require.Len(t, created.Quota.Windows, 1)
+			assert.Equal(t, test.percent, created.Quota.Windows[0].UsedPercent)
+			assert.Equal(t, test.status, created.Quota.Windows[0].Status)
+			assert.Nil(t, created.Quota.Windows[0].ResetsAt)
+		})
+	}
+}
+
+func TestUpstreamSubscriptionCommandCodeExpiryIsCachedAndRunsWithQuotaDisabled(t *testing.T) {
+	s := setupSubscriptionControllerTest(t)
+	created := s.create(t, "commandcode", subscriptionCommandCodeKey)
+	s.fixture.quotaBody = strings.Replace(subscriptionCommandCodeFixture, `68.6`, `35`, 1)
+	require.NoError(t, s.db.Model(&model.UpstreamSubscription{}).Where("id = ?", created.ID).Update("last_attempt_at", 0).Error)
+	refreshed, err := service.RefreshUpstreamSubscription(context.Background(), created.ID, true)
+	require.NoError(t, err)
+	assert.Equal(t, 2, s.fixture.quotaCalls)
+	assert.Equal(t, 1, s.fixture.infoCalls)
+	assert.Equal(t, created.Quota.SubscriptionPeriodEnd, refreshed.Response().Quota.SubscriptionPeriodEnd)
+	require.Len(t, refreshed.Response().Quota.Windows, 3)
+	assert.Equal(t, 50.0, *refreshed.Response().Quota.Windows[2].UsedPercent)
+
+	require.NoError(t, s.db.Model(&model.UpstreamSubscription{}).Where("id = ?", created.ID).Updates(map[string]any{
+		"auto_refresh_disabled": true, "subscription_info_next_refresh_at": 0, "subscription_info_last_attempt_at": 0,
+	}).Error)
+	s.fixture.infoStatus = http.StatusServiceUnavailable
+	refreshed, err = service.RefreshUpstreamSubscription(context.Background(), created.ID, false)
+	require.NoError(t, err)
+	assert.Equal(t, 2, s.fixture.quotaCalls)
+	assert.Equal(t, created.Quota.SubscriptionPeriodEnd, refreshed.Response().Quota.SubscriptionPeriodEnd)
+	assert.InDelta(t, time.Now().Add(15*time.Minute).Unix(), refreshed.SubscriptionInfoNextRefreshAt, 3)
+
+	require.NoError(t, s.db.Model(&model.UpstreamSubscription{}).Where("id = ?", created.ID).Updates(map[string]any{
+		"subscription_info_next_refresh_at": 0, "subscription_info_last_attempt_at": 0,
+	}).Error)
+	s.fixture.infoStatus = 0
+	s.fixture.infoBody = `{"success":true,"data":null}`
+	refreshed, err = service.RefreshUpstreamSubscription(context.Background(), created.ID, false)
+	require.NoError(t, err)
+	assert.Equal(t, 2, s.fixture.quotaCalls)
+	assert.Nil(t, refreshed.Response().Quota.SubscriptionPeriodEnd)
+	assert.Len(t, refreshed.Response().Quota.Windows, 2)
+}
+
+func TestUpstreamSubscriptionCommandCodeMonthlyWindowUsesStudioPlanAndGrantRules(t *testing.T) {
+	for _, test := range []struct {
+		name, plan, status, credits, end string
+		quantity                         int
+		percent                          *float64
+	}{
+		{name: "advertised 100 is not the goat base pool", plan: "individual-goat", credits: `{"monthlyCredits":35}`, percent: new(50.0)},
+		{name: "dynamic grant exceeds base", plan: "individual-goat", credits: `{"monthlyCredits":99,"monthlyCreditsGranted":100}`, percent: new(1.0)},
+		{name: "smaller grant retains plan base", plan: "individual-goat", credits: `{"monthlyCredits":35,"monthlyCreditsGranted":30}`, percent: new(50.0)},
+		{name: "organization seats without grant", plan: "teams-pro", quantity: 3, credits: `{"monthlyCredits":60}`, percent: new(50.0)},
+		{name: "grant already covers organization seats", plan: "teams-pro", quantity: 3, credits: `{"monthlyCredits":60,"monthlyCreditsGranted":100}`, percent: new(40.0)},
+		{name: "legacy pro retains its own pool", plan: "individual-pro", credits: `{"monthlyCredits":15}`, percent: new(50.0)},
+		{name: "current pro has a different pool", plan: "individual-pro-v1", credits: `{"monthlyCredits":40}`, percent: new(50.0)},
+		{name: "unknown plan stays unknown despite grant", plan: "future-plan", credits: `{"monthlyCredits":60,"monthlyCreditsGranted":100}`},
+		{name: "past due hides monthly allowance", plan: "individual-goat", status: "past_due", credits: `{"monthlyCredits":35}`},
+		{name: "unknown reset does not hide known allowance", plan: "individual-goat", credits: `{"monthlyCredits":35}`, end: "null", percent: new(50.0)},
+		{name: "negative remaining is exhausted", plan: "individual-goat", credits: `{"monthlyCredits":-1}`, percent: new(100.0)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			s := setupSubscriptionControllerTest(t)
+			status, end := test.status, test.end
+			if status == "" {
+				status = "active"
+			}
+			if end == "" {
+				end = `"2026-12-15T12:24:45Z"`
+			}
+			s.fixture.infoBody = fmt.Sprintf(`{"success":true,"data":{"planId":%q,"status":%q,"quantity":%d,"currentPeriodEnd":%s}}`, test.plan, status, max(1, test.quantity), end)
+			s.fixture.quotaBody = `{"credits":` + test.credits + `,"windowLimits":{"fiveHour":{"used":0,"cap":14,"resetAt":0}}}`
+			created := s.create(t, "commandcode", subscriptionCommandCodeKey)
+			assert.Empty(t, created.ErrorCode)
+			require.NotNil(t, created.Quota)
+			if test.percent == nil {
+				assert.Len(t, created.Quota.Windows, 1)
+				return
+			}
+			require.Len(t, created.Quota.Windows, 2)
+			monthly := created.Quota.Windows[1]
+			assert.Equal(t, "monthly", monthly.Key)
+			require.NotNil(t, monthly.UsedPercent)
+			assert.InDelta(t, *test.percent, *monthly.UsedPercent, 0.000001)
+			assert.Equal(t, created.Quota.SubscriptionPeriodEnd, monthly.ResetsAt)
+		})
+	}
+}
+
+func TestUpstreamSubscriptionCommandCodeRejectsMalformedKeysBeforeContactingPlatform(t *testing.T) {
+	s := setupSubscriptionControllerTest(t)
+	for _, credential := range []string{"", "opaque invalid-key", "opaque\x01key", strings.Repeat("a", 4097)} {
+		response := s.request(t, http.MethodPost, "", gin.H{"platform": "commandcode", "credential": credential}, s.bundle.AccessToken)
+		assert.Equal(t, http.StatusBadRequest, response.Code)
+		assert.Contains(t, response.Body.String(), `"message_key":"Use a valid CommandCode API key"`)
+	}
+	assert.Zero(t, s.fixture.quotaCalls)
+	assert.Zero(t, s.fixture.infoCalls)
+}
+
+func TestUpstreamSubscriptionCommandCodeInflightQuotaCannotOverwriteNewPlanMetadata(t *testing.T) {
+	s := setupSubscriptionControllerTest(t)
+	created := s.create(t, "commandcode", subscriptionCommandCodeKey)
+	require.NoError(t, s.db.Model(&model.UpstreamSubscription{}).Where("id = ?", created.ID).Updates(map[string]any{
+		"last_attempt_at": 0, "subscription_info_next_refresh_at": 0, "subscription_info_last_attempt_at": 0,
+	}).Error)
+	old, claimed, err := model.ClaimUpstreamSubscriptionRefresh(created.ID, time.Now().Unix(), true)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.NoError(t, s.db.Model(&model.UpstreamSubscription{}).Where("id = ?", created.ID).Update("auto_refresh_disabled", true).Error)
+	s.fixture.infoBody = `{"success":true,"data":{"planId":"individual-pro-v1","status":"active","currentPeriodEnd":"2026-12-15T12:24:45Z"}}`
+	updated, err := service.RefreshUpstreamSubscription(context.Background(), created.ID, false)
+	require.NoError(t, err)
+	assert.Equal(t, "individual-pro-v1", updated.Response().Quota.Tier)
+	s.fixture.quotaBody = strings.Replace(subscriptionCommandCodeFixture, `68.6`, `35`, 1)
+	quota, err := service.FetchSubscriptionQuota(context.Background(), "commandcode", subscriptionCommandCodeKey)
+	require.NoError(t, err)
+	require.NoError(t, model.FinishUpstreamSubscriptionRefresh(old, quota, "", time.Now().Add(time.Hour).Unix()))
+	stored, err := model.GetUpstreamSubscription(created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "individual-pro-v1", stored.Response().Quota.Tier)
+	assert.InDelta(t, 14.25, *stored.Response().Quota.Windows[2].UsedPercent, 0.000001)
+}
+
+func TestUpstreamSubscriptionCommandCodeInvalidPeriodDoesNotDiscardCachedExpiry(t *testing.T) {
+	for _, body := range []string{`{"success":false,"data":null}`, `{"success":true,"data":{}}`, `{"success":true,"data":{"currentPeriodEnd":"not-a-date"}}`} {
+		t.Run(body, func(t *testing.T) {
+			s := setupSubscriptionControllerTest(t)
+			created := s.create(t, "commandcode", subscriptionCommandCodeKey)
+			require.NoError(t, s.db.Model(&model.UpstreamSubscription{}).Where("id = ?", created.ID).Updates(map[string]any{
+				"auto_refresh_disabled": true, "subscription_info_next_refresh_at": 0, "subscription_info_last_attempt_at": 0,
+			}).Error)
+			s.fixture.infoBody = body
+			updated, err := service.RefreshUpstreamSubscription(context.Background(), created.ID, false)
+			require.NoError(t, err)
+			assert.Equal(t, created.Quota.SubscriptionPeriodEnd, updated.Response().Quota.SubscriptionPeriodEnd)
+			assert.Empty(t, updated.ErrorCode)
+			assert.InDelta(t, time.Now().Add(15*time.Minute).Unix(), updated.SubscriptionInfoNextRefreshAt, 3)
+		})
+	}
+}
+
+func TestUpstreamSubscriptionCommandCodeScopeChangeClearsExpiryWhileQuotaIsDisabled(t *testing.T) {
+	s := setupSubscriptionControllerTest(t)
+	created := s.create(t, "commandcode", subscriptionCommandCodeKey)
+	require.NoError(t, s.db.Model(&model.UpstreamSubscription{}).Where("id = ?", created.ID).Updates(map[string]any{
+		"auto_refresh_disabled": true, "subscription_info_next_refresh_at": 0, "subscription_info_last_attempt_at": 0,
+	}).Error)
+	s.fixture.commandOrgID = "org-other"
+	updated, err := service.RefreshUpstreamSubscription(context.Background(), created.ID, false)
+	require.NoError(t, err)
+	assert.Nil(t, updated.Response().Quota.SubscriptionPeriodEnd)
+	assert.Equal(t, created.Quota.WorkspaceID, updated.Response().Quota.WorkspaceID)
+	assert.Equal(t, 1, s.fixture.quotaCalls)
+	assert.Equal(t, 1, s.fixture.infoCalls, "a new billing scope must not supply the old scope's expiry")
 }
 
 func TestUpstreamSubscriptionAPIKeepsExactCreditsAndProviderRemaining(t *testing.T) {
@@ -464,12 +702,19 @@ func TestUpstreamSubscriptionAPIFailuresPreserveLastSnapshot(t *testing.T) {
 		{name: "missing percentage", platform: "opencode", body: `{"usage":{"rolling":{"status":"ok"}}}`, code: "invalid_response"},
 		{name: "workspace mismatch", platform: "opendesign", body: strings.Replace(subscriptionOpenDesignFixture, `"workspaceId":"workspace-1"`, `"workspaceId":"wrong-workspace"`, 1), code: "invalid_response"},
 		{name: "duplicate window", platform: "opendesign", body: strings.Replace(subscriptionOpenDesignFixture, `604800`, `18000`, 1), code: "invalid_response"},
+		{name: "commandcode rate limit", platform: "commandcode", status: 429, code: "rate_limited"},
+		{name: "commandcode missing windows", platform: "commandcode", body: `{"credits":{}}`, code: "invalid_response"},
+		{name: "commandcode missing usage", platform: "commandcode", body: `{"windowLimits":{"fiveHour":{"cap":14}}}`, code: "invalid_response"},
+		{name: "commandcode negative cap", platform: "commandcode", body: `{"windowLimits":{"fiveHour":{"used":1,"cap":-1}}}`, code: "invalid_response"},
+		{name: "commandcode invalid reset", platform: "commandcode", body: `{"windowLimits":{"fiveHour":{"used":1,"cap":14,"resetAt":-1}}}`, code: "invalid_response"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			s := setupSubscriptionControllerTest(t)
 			credential := "oc_sk_subscription"
 			if test.platform == "opendesign" {
 				credential = "vela_ctrl_subscription"
+			} else if test.platform == "commandcode" {
+				credential = subscriptionCommandCodeKey
 			}
 			created := s.create(t, test.platform, credential)
 			require.NoError(t, s.db.Model(&model.UpstreamSubscription{}).Where("id = ?", created.ID).Updates(map[string]any{"last_attempt_at": 0, "next_refresh_at": 0}).Error)

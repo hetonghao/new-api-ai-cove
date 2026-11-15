@@ -133,7 +133,7 @@ func TestUpstreamSubscriptionExpiryLeaseAndCredentialRotationRejectOldCompletion
 	s.fixture.infoBody = `{"access":{"endsAt":"2027-12-12T14:54:44Z"}}`
 	rotated := subscriptionResponse(t, s.request(t, http.MethodPut, "/"+strconv.Itoa(created.ID), gin.H{"platform": "opencode", "credential": "oc_sk_after"}, s.bundle.AccessToken))
 	oldEnd := time.Now().Add(-time.Hour)
-	require.NoError(t, model.FinishUpstreamSubscriptionInfoRefresh(old, &oldEnd, true, time.Now().Add(24*time.Hour).Unix()))
+	require.NoError(t, model.FinishUpstreamSubscriptionInfoRefresh(old, model.UpstreamSubscriptionInfo{PeriodEnd: &oldEnd}, true, time.Now().Add(24*time.Hour).Unix()))
 	stored, err := model.GetUpstreamSubscription(created.ID)
 	require.NoError(t, err)
 	assert.Equal(t, rotated.Quota.SubscriptionPeriodEnd, stored.Response().Quota.SubscriptionPeriodEnd)
@@ -189,7 +189,7 @@ func TestUpstreamSubscriptionWorkspaceChangeDiscardsPersonalExpiryAndOldCompleti
 	require.NoError(t, err)
 	assert.Equal(t, "workspace-2", updated.Response().Quota.WorkspaceID)
 	assert.Nil(t, updated.Response().Quota.SubscriptionPeriodEnd)
-	require.NoError(t, model.FinishUpstreamSubscriptionInfoRefresh(old, created.Quota.SubscriptionPeriodEnd, true, time.Now().Add(6*time.Hour).Unix()))
+	require.NoError(t, model.FinishUpstreamSubscriptionInfoRefresh(old, model.UpstreamSubscriptionInfo{PeriodEnd: created.Quota.SubscriptionPeriodEnd}, true, time.Now().Add(6*time.Hour).Unix()))
 	updated, err = model.GetUpstreamSubscription(created.ID)
 	require.NoError(t, err)
 	assert.Nil(t, updated.Response().Quota.SubscriptionPeriodEnd)

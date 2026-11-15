@@ -20,6 +20,8 @@ func FetchSubscriptionQuota(ctx context.Context, platform, credential string) (*
 		return fetchOpenCodeSubscriptionQuota(ctx, credential)
 	case model.SubscriptionPlatformOpenDesign:
 		return fetchOpenDesignSubscriptionQuota(ctx, credential)
+	case model.SubscriptionPlatformCommandCode:
+		return fetchCommandCodeSubscriptionQuota(ctx, credential)
 	default:
 		return nil, invalidSubscriptionQuota()
 	}

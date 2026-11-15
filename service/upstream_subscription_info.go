@@ -12,66 +12,72 @@ import (
 	"github.com/QuantumNous/new-api/model"
 )
 
-func fetchSubscriptionPeriodEnd(ctx context.Context, subscription *model.UpstreamSubscription, credential string) (*time.Time, error) {
+func fetchUpstreamSubscriptionInfo(ctx context.Context, subscription *model.UpstreamSubscription, credential string) (model.UpstreamSubscriptionInfo, error) {
+	var info model.UpstreamSubscriptionInfo
+	if subscription.Platform == model.SubscriptionPlatformCommandCode {
+		return fetchCommandCodeSubscriptionInfo(ctx, subscription, credential)
+	}
 	if subscription.Platform == model.SubscriptionPlatformOpenCode {
 		var response struct {
 			Access json.RawMessage `json:"access"`
 		}
 		if err := subscriptionJSONRequest(ctx, http.MethodGet, "https://opencode.ai/console/api/go/status", credential, nil, &response); err != nil {
-			return nil, err
+			return info, err
 		}
 		if len(response.Access) == 0 {
-			return nil, invalidSubscriptionQuota()
+			return info, invalidSubscriptionQuota()
 		}
 		if strings.TrimSpace(string(response.Access)) == "null" {
-			return nil, nil
+			return info, nil
 		}
 		var access struct {
 			EndsAt *time.Time `json:"endsAt"`
 		}
 		if common.Unmarshal(response.Access, &access) != nil || access.EndsAt == nil || access.EndsAt.IsZero() {
-			return nil, invalidSubscriptionQuota()
+			return info, invalidSubscriptionQuota()
 		}
-		return access.EndsAt, nil
+		info.PeriodEnd = access.EndsAt
+		return info, nil
 	}
 	if subscription.Platform != model.SubscriptionPlatformOpenDesign {
-		return nil, invalidSubscriptionQuota()
+		return info, invalidSubscriptionQuota()
 	}
 	var workspace struct {
 		ID   string `json:"workspaceId"`
 		Type string `json:"workspaceType"`
 	}
 	if err := subscriptionJSONRequest(ctx, http.MethodGet, openDesignControlOrigin+"/api/v1/workspaces/current", credential, nil, &workspace); err != nil {
-		return nil, err
+		return info, err
 	}
 	var quota model.SubscriptionQuota
 	if !validSubscriptionDeviceID(workspace.ID) || (subscription.QuotaJSON != "" && common.UnmarshalJsonStr(subscription.QuotaJSON, &quota) != nil) {
-		return nil, invalidSubscriptionQuota()
+		return info, invalidSubscriptionQuota()
 	}
 	// Quota pulls may be paused; discard the old workspace's expiry independently.
 	if quota.WorkspaceID != "" && quota.WorkspaceID != workspace.ID {
-		return nil, nil
+		return info, nil
 	}
 	if workspace.Type == "team" {
-		return nil, nil
+		return info, nil
 	}
 	if workspace.Type != "personal" {
-		return nil, invalidSubscriptionQuota()
+		return info, invalidSubscriptionQuota()
 	}
 	var summary struct {
 		PeriodEnd json.RawMessage `json:"subscriptionCurrentPeriodEnd"`
 	}
 	if err := subscriptionJSONRequest(ctx, http.MethodGet, openDesignControlOrigin+"/api/v1/billing/summary", credential, nil, &summary); err != nil {
-		return nil, err
+		return info, err
 	}
 	if len(summary.PeriodEnd) == 0 {
-		return nil, invalidSubscriptionQuota()
+		return info, invalidSubscriptionQuota()
 	}
 	var periodEnd *time.Time
 	if common.Unmarshal(summary.PeriodEnd, &periodEnd) != nil || (periodEnd != nil && periodEnd.IsZero()) {
-		return nil, invalidSubscriptionQuota()
+		return info, invalidSubscriptionQuota()
 	}
-	return periodEnd, nil
+	info.PeriodEnd = periodEnd
+	return info, nil
 }
 
 func refreshUpstreamSubscriptionInfo(ctx context.Context, id int) error {
@@ -81,11 +87,11 @@ func refreshUpstreamSubscriptionInfo(ctx context.Context, id int) error {
 		return err
 	}
 	credential, err := common.DecryptCredential(subscription.CredentialEncrypted)
-	var periodEnd *time.Time
+	var info model.UpstreamSubscriptionInfo
 	if err == nil {
 		infoContext, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		periodEnd, err = fetchSubscriptionPeriodEnd(infoContext, subscription, credential)
+		info, err = fetchUpstreamSubscriptionInfo(infoContext, subscription, credential)
 	}
 	next := now.Add(6 * time.Hour)
 	if err != nil {
@@ -94,7 +100,7 @@ func refreshUpstreamSubscriptionInfo(ctx context.Context, id int) error {
 		if errors.As(err, &failure) {
 			next = now.Add(max(15*time.Minute, failure.RetryAfter))
 		}
-	} else if periodEnd != nil {
+	} else if periodEnd := info.PeriodEnd; periodEnd != nil {
 		if periodEnd.After(now.Add(time.Hour)) {
 			if approaching := periodEnd.Add(-time.Hour); approaching.Before(next) {
 				next = approaching
@@ -103,5 +109,5 @@ func refreshUpstreamSubscriptionInfo(ctx context.Context, id int) error {
 			next = now.Add(5 * time.Minute)
 		}
 	}
-	return model.FinishUpstreamSubscriptionInfoRefresh(subscription, periodEnd, err == nil, next.Unix())
+	return model.FinishUpstreamSubscriptionInfoRefresh(subscription, info, err == nil, next.Unix())
 }

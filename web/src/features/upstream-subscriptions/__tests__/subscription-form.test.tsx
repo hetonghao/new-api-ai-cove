@@ -141,6 +141,42 @@ describe('subscription creation', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('connects CommandCode with one API key without starting a login flow', async () => {
+    const { user, saved } = renderForm()
+    await user.click(screen.getByRole('combobox', { name: 'Platform' }))
+    await user.click(screen.getByRole('option', { name: 'CommandCode' }))
+    await user.type(screen.getByLabelText('API Key *'), 'opaque_test.key+123')
+    await user.click(
+      screen.getByRole('button', { name: 'Create subscription' })
+    )
+
+    await waitFor(() => expect(saved).toHaveBeenCalledOnce())
+    expect(
+      vi.mocked(saveUpstreamSubscription).mock.calls[0]?.[1]
+    ).toMatchObject({
+      name: '',
+      platform: 'commandcode',
+      credential: 'opaque_test.key+123',
+      refresh_interval_minutes: 10,
+      auto_refresh_disabled: false,
+    })
+    expect(startOpenDesignLogin).not.toHaveBeenCalled()
+  })
+
+  it('keeps a CommandCode key containing whitespace out of the save request', async () => {
+    const { user } = renderForm()
+    await user.click(screen.getByRole('combobox', { name: 'Platform' }))
+    await user.click(screen.getByRole('option', { name: 'CommandCode' }))
+    await user.type(screen.getByLabelText('API Key *'), 'opaque invalid-key')
+    await user.click(
+      screen.getByRole('button', { name: 'Create subscription' })
+    )
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Use a valid CommandCode API key'
+    )
+    expect(saveUpstreamSubscription).not.toHaveBeenCalled()
+  })
+
   it('rejects an inference key with a field error and keeps the dialog open', async () => {
     const { user } = renderForm()
     await user.type(screen.getByLabelText('API Key *'), 'sk-amr-wrong-key')

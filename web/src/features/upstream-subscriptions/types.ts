@@ -43,7 +43,7 @@ export const upstreamSubscriptionSchema = z.object({
   channel_id: z.number().int().nonnegative().optional(),
   account: z.string().optional(),
   channel: subscriptionChannelSchema.nullable().optional(),
-  platform: z.enum(['opencode', 'opendesign']),
+  platform: z.enum(['opencode', 'opendesign', 'commandcode']),
   refresh_interval_minutes: z.number().int().min(1).max(1440).default(10),
   auto_refresh_disabled: z.boolean().default(false),
   last_success_at: z.number().int(),
@@ -96,7 +96,7 @@ export type SubscriptionFormValues = {
   readonly name: string
   readonly account: string
   readonly channel_id: number
-  readonly platform: 'opencode' | 'opendesign'
+  readonly platform: UpstreamSubscription['platform']
   readonly credential: string
   readonly refresh_interval_minutes: number
   readonly auto_refresh_disabled: boolean

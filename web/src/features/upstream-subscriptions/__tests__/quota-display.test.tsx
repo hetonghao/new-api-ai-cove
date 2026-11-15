@@ -203,6 +203,16 @@ describe('subscription allowance windows', () => {
           { ...subscription, id: 1, name: 'Code Alpha' },
           {
             ...subscription,
+            id: 4,
+            name: 'Command Account',
+            platform: 'commandcode',
+            quota: {
+              windows: [],
+              subscription_period_end: '2027-03-01T00:00:00Z',
+            },
+          },
+          {
+            ...subscription,
             id: 2,
             name: 'Design Later',
             account: 'Team-Billing@Example.com',
@@ -238,7 +248,25 @@ describe('subscription allowance windows', () => {
       await screen.findByRole('heading', { name: 'Code Alpha' })
       expect(
         screen.getAllByRole('heading', { level: 3 }).map((el) => el.textContent)
-      ).toEqual(['Code Alpha', 'Design Earlier', 'Design Later'])
+      ).toEqual([
+        'Command Account',
+        'Code Alpha',
+        'Design Earlier',
+        'Design Later',
+      ])
+      expect(screen.getByText(/^Current period ends:/)).toBeVisible()
+      await user.click(screen.getByRole('button', { name: 'Platform' }))
+      await user.click(
+        await screen.findByRole('option', { name: /^CommandCode/ })
+      )
+      expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(1)
+      const selected = await screen.findByRole('option', {
+        name: /^CommandCode/,
+      })
+      expect(selected).toHaveAttribute('aria-selected', 'true')
+      await user.click(selected)
+      expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(4)
+      await user.keyboard('{Escape}')
       await user.click(
         screen.getByRole('combobox', { name: 'Sort subscriptions by' })
       )
@@ -247,11 +275,21 @@ describe('subscription allowance windows', () => {
       )
       expect(
         screen.getAllByRole('heading', { level: 3 }).map((el) => el.textContent)
-      ).toEqual(['Design Earlier', 'Design Later', 'Code Alpha'])
+      ).toEqual([
+        'Design Earlier',
+        'Design Later',
+        'Command Account',
+        'Code Alpha',
+      ])
       await user.click(screen.getByRole('button', { name: 'Ascending' }))
       expect(
         screen.getAllByRole('heading', { level: 3 }).map((el) => el.textContent)
-      ).toEqual(['Design Later', 'Design Earlier', 'Code Alpha'])
+      ).toEqual([
+        'Command Account',
+        'Design Later',
+        'Design Earlier',
+        'Code Alpha',
+      ])
       await user.click(screen.getByRole('button', { name: 'Platform' }))
       await user.click(
         await screen.findByRole('option', { name: /^OpenDesign Go/ })
@@ -278,7 +316,7 @@ describe('subscription allowance windows', () => {
       )
       expect(screen.getByText('No matching subscriptions')).toBeVisible()
       await user.click(screen.getByRole('button', { name: 'Clear filters' }))
-      expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(3)
+      expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(4)
     } finally {
       view.unmount()
       client.clear()

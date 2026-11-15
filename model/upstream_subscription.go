@@ -13,6 +13,7 @@ import (
 const (
 	SubscriptionPlatformOpenCode      = "opencode"
 	SubscriptionPlatformOpenDesign    = "opendesign"
+	SubscriptionPlatformCommandCode   = "commandcode"
 	AuthFlowPurposeSubscription       = "subscription_device"
 	DefaultSubscriptionRefreshMinutes = 10
 )
@@ -47,6 +48,21 @@ type SubscriptionQuota struct {
 	Eligible              *bool                     `json:"eligible,omitempty"`
 	BalanceUSD            *string                   `json:"balance_usd,omitempty"`
 	SubscriptionPeriodEnd *time.Time                `json:"subscription_period_end,omitempty"`
+	Monthly               *SubscriptionMonthlyQuota `json:"monthly,omitempty"`
+}
+
+type SubscriptionMonthlyQuota struct {
+	Remaining *float64 `json:"remaining,omitempty"`
+	Granted   *float64 `json:"granted,omitempty"`
+	BaseLimit float64  `json:"base_limit"`
+	Seats     int64    `json:"seats"`
+}
+
+type UpstreamSubscriptionInfo struct {
+	PeriodEnd *time.Time
+	ScopeID   string
+	Tier      string
+	Monthly   *SubscriptionMonthlyQuota
 }
 
 type UpstreamSubscription struct {
@@ -129,6 +145,19 @@ func (s UpstreamSubscription) Response() UpstreamSubscriptionResponse {
 	} else if s.SubscriptionInfoLastAttemptAt > 0 && response.Quota != nil {
 		response.Quota.SubscriptionPeriodEnd = nil
 	}
+	if s.Platform == SubscriptionPlatformCommandCode && response.Quota != nil {
+		monthly := response.Quota.Monthly
+		if monthly != nil && monthly.Remaining != nil && monthly.BaseLimit > 0 {
+			limit := monthly.BaseLimit * float64(max(1, monthly.Seats))
+			if monthly.Granted != nil && *monthly.Granted > 0 {
+				limit = max(*monthly.Granted, monthly.BaseLimit)
+			}
+			used := min(limit, max(0, limit-max(0, *monthly.Remaining))) / limit * 100
+			response.Quota.Windows = append(response.Quota.Windows, SubscriptionQuotaWindow{
+				Key: "monthly", UsedPercent: &used, Status: "ok", ResetsAt: response.Quota.SubscriptionPeriodEnd,
+			})
+		}
+	}
 	response.Stale = response.Quota != nil && (response.ErrorCode != "" || s.LastSuccessAt < time.Now().Add(-2*s.RefreshInterval()).Unix())
 	return response
 }
@@ -146,6 +175,10 @@ func NormalizeUpstreamSubscription(name, platform string) (string, error) {
 	case SubscriptionPlatformOpenDesign:
 		if name == "" {
 			name = "OpenDesign Go"
+		}
+	case SubscriptionPlatformCommandCode:
+		if name == "" {
+			name = "CommandCode"
 		}
 	default:
 		return "", errors.New("Unsupported subscription platform")
@@ -367,6 +400,10 @@ func FinishUpstreamSubscriptionRefresh(subscription *UpstreamSubscription, quota
 				updates["subscription_period_end_at"] = 0
 				updates["subscription_info_last_attempt_at"] = 0
 				updates["subscription_info_next_refresh_at"] = 0
+			} else if subscription.Platform == SubscriptionPlatformCommandCode && quota.Monthly != nil && previous.Monthly != nil {
+				quota.Tier = previous.Tier
+				quota.Monthly.BaseLimit = previous.Monthly.BaseLimit
+				quota.Monthly.Seats = previous.Monthly.Seats
 			}
 		}
 		encoded, err := common.Marshal(quota)
@@ -377,9 +414,13 @@ func FinishUpstreamSubscriptionRefresh(subscription *UpstreamSubscription, quota
 		updates["last_success_at"] = time.Now().Unix()
 		updates["failure_count"] = 0
 	}
-	return DB.Model(&UpstreamSubscription{}).
-		Where("id = ? AND credential_encrypted = ? AND last_attempt_at = ?", subscription.ID, subscription.CredentialEncrypted, subscription.LastAttemptAt).
-		Updates(updates).Error
+	query := DB.Model(&UpstreamSubscription{}).
+		Where("id = ? AND credential_encrypted = ? AND last_attempt_at = ?", subscription.ID, subscription.CredentialEncrypted, subscription.LastAttemptAt)
+	if subscription.Platform == SubscriptionPlatformCommandCode {
+		// Do not overwrite plan metadata updated while this quota request was in flight.
+		query = query.Where("COALESCE(quota_json, '') = ?", subscription.QuotaJSON)
+	}
+	return query.Updates(updates).Error
 }
 
 func DueUpstreamSubscriptionIDs(now int64) ([]int, error) {
@@ -411,18 +452,43 @@ func ClaimUpstreamSubscriptionInfoRefresh(id int, now int64) (*UpstreamSubscript
 	return subscription, true, nil
 }
 
-func FinishUpstreamSubscriptionInfoRefresh(subscription *UpstreamSubscription, periodEnd *time.Time, succeeded bool, nextAt int64) error {
+func FinishUpstreamSubscriptionInfoRefresh(subscription *UpstreamSubscription, info UpstreamSubscriptionInfo, succeeded bool, nextAt int64) error {
 	updates := map[string]any{"subscription_info_next_refresh_at": nextAt}
 	if succeeded {
 		updates["subscription_period_end_at"] = int64(0)
-		if periodEnd != nil {
-			updates["subscription_period_end_at"] = periodEnd.Unix()
+		if info.PeriodEnd != nil {
+			updates["subscription_period_end_at"] = info.PeriodEnd.Unix()
+		}
+		if subscription.Platform == SubscriptionPlatformCommandCode {
+			quota := SubscriptionQuota{Windows: []SubscriptionQuotaWindow{}}
+			if subscription.QuotaJSON != "" {
+				if err := common.UnmarshalJsonStr(subscription.QuotaJSON, &quota); err != nil {
+					return err
+				}
+			}
+			if quota.WorkspaceID == "" {
+				quota.WorkspaceID = info.ScopeID
+			}
+			quota.Tier = info.Tier
+			if quota.Monthly == nil {
+				quota.Monthly = &SubscriptionMonthlyQuota{}
+			}
+			quota.Monthly.BaseLimit, quota.Monthly.Seats = 0, 0
+			if info.Monthly != nil {
+				quota.Monthly.BaseLimit = info.Monthly.BaseLimit
+				quota.Monthly.Seats = info.Monthly.Seats
+			}
+			encoded, err := common.Marshal(quota)
+			if err != nil {
+				return err
+			}
+			updates["quota_json"] = string(encoded)
 		}
 	}
 	query := DB.Model(&UpstreamSubscription{}).
 		Where("id = ? AND credential_encrypted = ? AND subscription_info_last_attempt_at = ?", subscription.ID, subscription.CredentialEncrypted, subscription.SubscriptionInfoLastAttemptAt)
-	if subscription.Platform == SubscriptionPlatformOpenDesign {
-		// A controlKey can change workspaces while its information request is in flight.
+	if subscription.Platform == SubscriptionPlatformOpenDesign || subscription.Platform == SubscriptionPlatformCommandCode {
+		// Billing scope can change while its information request is in flight.
 		query = query.Where("COALESCE(quota_json, '') = ?", subscription.QuotaJSON)
 	}
 	return query.Updates(updates).Error

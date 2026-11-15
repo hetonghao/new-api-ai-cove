@@ -262,7 +262,10 @@ export function SubscriptionRow(props: SubscriptionRowProps) {
             : t('Not fetched yet')}
         </span>
         <span className='tabular-nums'>
-          {t('Subscription expires')}:{' '}
+          {subscription.platform === 'commandcode'
+            ? t('Current period ends')
+            : t('Subscription expires')}
+          :{' '}
           {quota?.subscription_period_end ? (
             <time dateTime={quota.subscription_period_end}>
               {dayjs(quota.subscription_period_end).format('YYYY-MM-DD HH:mm')}

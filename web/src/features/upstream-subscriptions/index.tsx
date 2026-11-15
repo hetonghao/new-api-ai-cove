@@ -71,6 +71,11 @@ const PLATFORM_FILTERS = [
         label: 'OpenDesign Go',
         iconNode: <SubscriptionPlatform platform='opendesign' iconOnly />,
       },
+      {
+        value: 'commandcode',
+        label: 'CommandCode',
+        iconNode: <SubscriptionPlatform platform='commandcode' iconOnly />,
+      },
     ],
   },
 ]

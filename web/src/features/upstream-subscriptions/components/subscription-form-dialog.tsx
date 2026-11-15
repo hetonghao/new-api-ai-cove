@@ -208,7 +208,30 @@ export function SubscriptionFormDialog(props: SubscriptionFormDialogProps) {
 
   const busy = form.formState.isSubmitting
   const locked = busy || challenge !== null
-  const useKey = platform === 'opencode' || manual
+  const useKey = platform !== 'opendesign' || manual
+  const credentialFields = {
+    opencode: {
+      label: 'API Key',
+      placeholder: 'oc_sk_…',
+      help: t(
+        'Use an API key from the OpenCode console with an active Go subscription.'
+      ),
+    },
+    opendesign: {
+      label: 'controlKey',
+      placeholder: 'vela_ctrl_…',
+      help: t(
+        'Use the controlKey from your OpenDesign login profile, not a sk-amr inference key.'
+      ),
+    },
+    commandcode: {
+      label: 'API Key',
+      placeholder: 'API Key',
+      help: t(
+        'Use the API key from CommandCode settings. No sign-in is required.'
+      ),
+    },
+  }[platform]
   let submitLabel = t('Create subscription')
   if (props.subscription) {
     submitLabel = t('Save changes')
@@ -258,7 +281,13 @@ export function SubscriptionFormDialog(props: SubscriptionFormDialogProps) {
             value={platform}
             disabled={locked || props.subscription !== null}
             onValueChange={(value) => {
-              if (value !== 'opencode' && value !== 'opendesign') return
+              if (
+                value !== 'opencode' &&
+                value !== 'opendesign' &&
+                value !== 'commandcode'
+              ) {
+                return
+              }
               form.setValue('platform', value)
               form.setValue('credential', '')
               form.clearErrors()
@@ -273,6 +302,10 @@ export function SubscriptionFormDialog(props: SubscriptionFormDialogProps) {
                 value: 'opendesign',
                 label: <SubscriptionPlatform platform='opendesign' />,
               },
+              {
+                value: 'commandcode',
+                label: <SubscriptionPlatform platform='commandcode' />,
+              },
             ]}
           >
             <SelectTrigger id={`${id}-platform`} className='w-full'>
@@ -284,6 +317,9 @@ export function SubscriptionFormDialog(props: SubscriptionFormDialogProps) {
               </SelectItem>
               <SelectItem value='opendesign'>
                 <SubscriptionPlatform platform='opendesign' />
+              </SelectItem>
+              <SelectItem value='commandcode'>
+                <SubscriptionPlatform platform='commandcode' />
               </SelectItem>
             </SelectContent>
           </Select>
@@ -480,7 +516,7 @@ export function SubscriptionFormDialog(props: SubscriptionFormDialogProps) {
         {useKey && (
           <Field>
             <FieldLabel htmlFor={`${id}-credential`}>
-              {platform === 'opencode' ? 'API Key' : 'controlKey'}
+              {credentialFields.label}
               {props.subscription
                 ? ` · ${t('Leave blank to keep current credential')}`
                 : ' *'}
@@ -494,19 +530,13 @@ export function SubscriptionFormDialog(props: SubscriptionFormDialogProps) {
               autoCapitalize='none'
               autoCorrect='off'
               spellCheck={false}
-              placeholder={platform === 'opencode' ? 'oc_sk_…' : 'vela_ctrl_…'}
+              placeholder={credentialFields.placeholder}
               aria-invalid={!!form.formState.errors.credential}
               aria-describedby={`${id}-credential-help ${id}-credential-error`}
               {...form.register('credential')}
             />
             <FieldDescription id={`${id}-credential-help`}>
-              {platform === 'opencode'
-                ? t(
-                    'Use an API key from the OpenCode console with an active Go subscription.'
-                  )
-                : t(
-                    'Use the controlKey from your OpenDesign login profile, not a sk-amr inference key.'
-                  )}
+              {credentialFields.help}
             </FieldDescription>
             <FieldError
               id={`${id}-credential-error`}

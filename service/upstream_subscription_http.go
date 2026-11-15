@@ -29,6 +29,12 @@ func (e *subscriptionQuotaError) Error() string {
 func invalidSubscriptionQuota() error { return &subscriptionQuotaError{Code: "invalid_response"} }
 
 func ValidateSubscriptionCredential(platform, credential string) error {
+	if platform == model.SubscriptionPlatformCommandCode {
+		if credential == "" || len(credential) > 4096 || strings.ContainsFunc(credential, func(r rune) bool { return r < '!' || r > '~' }) {
+			return errors.New("Use a valid CommandCode API key")
+		}
+		return nil
+	}
 	prefix := "oc_sk_"
 	if platform == model.SubscriptionPlatformOpenDesign {
 		prefix = "vela_ctrl_"
