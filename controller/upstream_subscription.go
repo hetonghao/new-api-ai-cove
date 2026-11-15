@@ -30,7 +30,9 @@ func upstreamSubscriptionID(c *gin.Context) (int, bool) {
 
 func writeUpstreamSubscription(c *gin.Context, subscription *model.UpstreamSubscription, err error) {
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, model.ErrSubscriptionChannelUnavailable) || errors.Is(err, model.ErrSubscriptionAccountTooLong) {
+			subscriptionRequestError(c, http.StatusBadRequest, err.Error())
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
 			subscriptionRequestError(c, http.StatusNotFound, "Subscription was not found")
 		} else {
 			subscriptionRequestError(c, http.StatusConflict, "Subscription changed; reload and try again")
@@ -54,6 +56,16 @@ func ListUpstreamSubscriptions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": responses})
 }
 
+func ListUpstreamSubscriptionChannels(c *gin.Context) {
+	channels, err := model.ListUpstreamSubscriptionChannels()
+	if err != nil {
+		subscriptionRequestError(c, http.StatusInternalServerError, "Failed to load channels")
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": channels})
+}
+
 func SaveUpstreamSubscription(c *gin.Context) {
 	id := 0
 	if c.Param("id") != "" {
@@ -64,15 +76,20 @@ func SaveUpstreamSubscription(c *gin.Context) {
 		}
 	}
 	var input struct {
-		Name                   string `json:"name"`
-		Platform               string `json:"platform"`
-		Credential             string `json:"credential"`
-		RefreshIntervalMinutes int    `json:"refresh_interval_minutes"`
+		Name                   string  `json:"name"`
+		Account                *string `json:"account"`
+		ChannelID              *int    `json:"channel_id"`
+		Platform               string  `json:"platform"`
+		Credential             string  `json:"credential"`
+		RefreshIntervalMinutes int     `json:"refresh_interval_minutes"`
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 8<<10)
 	if c.ShouldBindJSON(&input) != nil {
 		subscriptionRequestError(c, http.StatusBadRequest, "Invalid subscription configuration")
 		return
+	}
+	if input.ChannelID != nil && *input.ChannelID != 0 {
+		input.Name = ""
 	}
 	name, err := model.NormalizeUpstreamSubscription(input.Name, input.Platform)
 	if err != nil {
@@ -96,7 +113,7 @@ func SaveUpstreamSubscription(c *gin.Context) {
 			return
 		}
 	}
-	subscription, err := model.SaveUpstreamSubscriptionWithTx(model.DB, model.UpstreamSubscriptionConfig{ID: id, Name: name, Platform: input.Platform, CredentialEncrypted: encrypted, RefreshIntervalMinutes: input.RefreshIntervalMinutes})
+	subscription, err := model.SaveUpstreamSubscriptionWithTx(model.DB, model.UpstreamSubscriptionConfig{ID: id, Name: name, Account: input.Account, ChannelID: input.ChannelID, Platform: input.Platform, CredentialEncrypted: encrypted, RefreshIntervalMinutes: input.RefreshIntervalMinutes})
 	if err == nil && (id == 0 || encrypted != "") {
 		if refreshed, refreshErr := service.RefreshUpstreamSubscription(c.Request.Context(), subscription.ID, true); refreshErr == nil {
 			subscription = refreshed

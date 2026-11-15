@@ -25,6 +25,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   cancelOpenDesignLogin,
+  listSubscriptionChannels,
   pollOpenDesignLogin,
   saveUpstreamSubscription,
   startOpenDesignLogin,
@@ -34,6 +35,7 @@ import type { UpstreamSubscription } from '../types'
 
 vi.mock('../api', () => ({
   cancelOpenDesignLogin: vi.fn(),
+  listSubscriptionChannels: vi.fn(),
   pollOpenDesignLogin: vi.fn(),
   saveUpstreamSubscription: vi.fn(),
   startOpenDesignLogin: vi.fn(),
@@ -60,7 +62,7 @@ const challenge = {
   expires_at: '2027-01-01T01:00:00Z',
 }
 
-function renderForm() {
+function renderForm(current: UpstreamSubscription | null = null) {
   const saved = vi.fn()
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -71,7 +73,7 @@ function renderForm() {
       <QueryClientProvider client={queryClient}>
         <SubscriptionFormDialog
           open={open}
-          subscription={null}
+          subscription={current}
           onOpenChange={setOpen}
           onSaved={saved}
         />
@@ -83,6 +85,9 @@ function renderForm() {
 }
 
 beforeEach(() => {
+  vi.mocked(listSubscriptionChannels).mockResolvedValue([
+    { id: 8, name: 'Channel account', priority: 9, weight: 20 },
+  ])
   vi.mocked(saveUpstreamSubscription).mockResolvedValue(subscription)
   vi.mocked(startOpenDesignLogin).mockResolvedValue(challenge)
   vi.mocked(cancelOpenDesignLogin).mockResolvedValue(undefined)
@@ -100,6 +105,8 @@ describe('subscription creation', () => {
     await waitFor(() => expect(saved).toHaveBeenCalledOnce())
     expect(vi.mocked(saveUpstreamSubscription).mock.calls[0]?.[1]).toEqual({
       name: '',
+      account: '',
+      channel_id: 0,
       platform: 'opencode',
       credential: 'oc_sk_test-account',
       refresh_interval_minutes: 10,
@@ -137,7 +144,8 @@ describe('subscription creation', () => {
     })
     vi.mocked(pollOpenDesignLogin).mockReturnValue(approval)
     const { user, saved } = renderForm()
-    await user.click(screen.getByRole('radio', { name: 'OpenDesign Go' }))
+    await user.click(screen.getByRole('combobox', { name: 'Platform' }))
+    await user.click(screen.getByRole('option', { name: 'OpenDesign Go' }))
     expect(screen.queryByLabelText('API Key *')).not.toBeInTheDocument()
     await user.click(
       screen.getByRole('button', { name: 'Sign in to OpenDesign' })
@@ -152,12 +160,10 @@ describe('subscription creation', () => {
     expect(
       screen.getByRole('spinbutton', { name: 'Refresh interval (minutes)' })
     ).toBeDisabled()
-    expect(screen.getByRole('radio', { name: 'OpenCode Go' })).toHaveAttribute(
-      'aria-disabled',
-      'true'
-    )
-    await user.click(screen.getByRole('radio', { name: 'OpenCode Go' }))
-    expect(screen.getByRole('radio', { name: 'OpenDesign Go' })).toBeChecked()
+    const platform = screen.getByRole('combobox', { name: 'Platform' })
+    expect(platform).toBeDisabled()
+    await user.click(platform)
+    expect(platform).toHaveTextContent('OpenDesign Go')
     await act(async () => {
       approve({ status: 'approved', subscription })
     })
@@ -169,7 +175,8 @@ describe('subscription creation', () => {
 
   it('cancels the pending flow when the dialog is dismissed', async () => {
     const { user, saved } = renderForm()
-    await user.click(screen.getByRole('radio', { name: 'OpenDesign Go' }))
+    await user.click(screen.getByRole('combobox', { name: 'Platform' }))
+    await user.click(screen.getByRole('option', { name: 'OpenDesign Go' }))
     await user.click(
       screen.getByRole('button', { name: 'Sign in to OpenDesign' })
     )
@@ -187,7 +194,8 @@ describe('subscription creation', () => {
 
   it('keeps manual OpenDesign controlKey entry available as a fallback', async () => {
     const { user, saved } = renderForm()
-    await user.click(screen.getByRole('radio', { name: 'OpenDesign Go' }))
+    await user.click(screen.getByRole('combobox', { name: 'Platform' }))
+    await user.click(screen.getByRole('option', { name: 'OpenDesign Go' }))
     await user.click(
       screen.getByRole('button', { name: 'Enter a controlKey manually' })
     )
@@ -199,6 +207,8 @@ describe('subscription creation', () => {
     await waitFor(() => expect(saved).toHaveBeenCalledOnce())
     expect(vi.mocked(saveUpstreamSubscription).mock.calls[0]?.[1]).toEqual({
       name: '',
+      account: '',
+      channel_id: 0,
       platform: 'opendesign',
       credential: 'vela_ctrl_manual',
       refresh_interval_minutes: 10,
@@ -208,7 +218,8 @@ describe('subscription creation', () => {
 
   it('discards a manual key when switching back to OpenDesign sign-in', async () => {
     const { user } = renderForm()
-    await user.click(screen.getByRole('radio', { name: 'OpenDesign Go' }))
+    await user.click(screen.getByRole('combobox', { name: 'Platform' }))
+    await user.click(screen.getByRole('option', { name: 'OpenDesign Go' }))
     await user.click(
       screen.getByRole('button', { name: 'Enter a controlKey manually' })
     )
@@ -260,5 +271,78 @@ describe('subscription creation', () => {
     )
     expect(interval).toHaveAttribute('aria-invalid', 'true')
     expect(saveUpstreamSubscription).not.toHaveBeenCalled()
+  })
+
+  it('uses the selected channel name read-only and can switch back to an independent name', async () => {
+    const { user, saved } = renderForm()
+    await user.click(screen.getByRole('radio', { name: 'Bind to channel' }))
+    const channel = screen.getByRole('combobox', { name: 'Channel' })
+    await user.click(channel)
+    await user.click(
+      await screen.findByRole('option', { name: /Channel account/ })
+    )
+    expect(screen.queryByLabelText('Name (optional)')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('radio', { name: 'Independent name' }))
+    const name = screen.getByLabelText('Name (optional)')
+    expect(name).not.toHaveAttribute('readonly')
+    expect(name).toHaveValue('Channel account')
+    await user.clear(name)
+    await user.type(name, 'Independent')
+    await user.type(screen.getByLabelText('API Key *'), 'oc_sk_independent')
+    await user.click(
+      screen.getByRole('button', { name: 'Create subscription' })
+    )
+    await waitFor(() => expect(saved).toHaveBeenCalledOnce())
+    expect(
+      vi.mocked(saveUpstreamSubscription).mock.calls[0]?.[1]
+    ).toMatchObject({ channel_id: 0, name: 'Independent' })
+  })
+
+  it('binds an existing subscription without replacing its credential', async () => {
+    const consoleError = vi.spyOn(console, 'error')
+    const { user, saved } = renderForm(subscription)
+    await user.type(
+      screen.getByLabelText('Subscription account (optional)'),
+      'billing@example.com'
+    )
+    await user.click(screen.getByRole('radio', { name: 'Bind to channel' }))
+    await user.click(screen.getByRole('combobox', { name: 'Channel' }))
+    await user.click(
+      await screen.findByRole('option', { name: /Channel account/ })
+    )
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(saved).toHaveBeenCalledOnce())
+    expect(vi.mocked(saveUpstreamSubscription).mock.calls[0]).toEqual([
+      4,
+      {
+        name: 'My account',
+        account: 'billing@example.com',
+        channel_id: 8,
+        platform: 'opendesign',
+        credential: '',
+        refresh_interval_minutes: 10,
+      },
+    ])
+    expect(consoleError.mock.calls.flat().join(' ')).not.toContain(
+      'nativeButton'
+    )
+  })
+
+  it('requires an explicit channel selection and keeps an empty selector recoverable', async () => {
+    vi.mocked(listSubscriptionChannels).mockResolvedValue([])
+    const { user } = renderForm()
+    await user.click(screen.getByRole('radio', { name: 'Bind to channel' }))
+    await user.type(screen.getByLabelText('API Key *'), 'oc_sk_bound')
+    await user.click(
+      screen.getByRole('button', { name: 'Create subscription' })
+    )
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Select a channel'
+    )
+    expect(saveUpstreamSubscription).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('radio', { name: 'Independent name' }))
+    expect(screen.getByLabelText('Name (optional)')).not.toHaveAttribute(
+      'readonly'
+    )
   })
 })

@@ -31,12 +31,17 @@ type subscriptionAPIFixture struct {
 	loginStatus   string
 	activationURL string
 	quotaCalls    int
+	summaryBody   string
+	summaryStatus int
+	workspaceType string
+	summaryCalls int
 }
 
 func (f *subscriptionAPIFixture) respond(t *testing.T, request *http.Request) *http.Response {
 	t.Helper()
 	status, body := http.StatusOK, subscriptionOpenCodeFixture
 	path := request.URL.Path
+	assert.Equal(t, "AI-Cove/1.0", request.Header.Get("User-Agent"))
 	switch {
 	case strings.HasSuffix(path, "/token"):
 		body = fmt.Sprintf(`{"status":%q}`, f.loginStatus)
@@ -53,7 +58,18 @@ func (f *subscriptionAPIFixture) respond(t *testing.T, request *http.Request) *h
 		body = string(encoded)
 	case path == "/api/v1/workspaces/current":
 		require.True(t, strings.HasPrefix(request.Header.Get("Authorization"), "Bearer vela_ctrl_"))
-		body = `{"workspaceId":"workspace-1","workspaceName":"Quota workspace"}`
+		workspaceType := f.workspaceType
+		if workspaceType == "" { workspaceType = "personal" }
+		body = fmt.Sprintf(`{"workspaceId":"workspace-1","workspaceName":"Quota workspace","workspaceType":%q}`,workspaceType)
+	case path == "/api/v1/billing/summary":
+		f.summaryCalls++
+		body = `{"subscriptionCurrentPeriodEnd":"2027-11-11T05:50:51Z"}`
+		if f.summaryBody != "" {
+			body = f.summaryBody
+		}
+		if f.summaryStatus != 0 {
+			status = f.summaryStatus
+		}
 	case strings.HasSuffix(path, "/billing/preflight"):
 		f.quotaCalls++
 		body = subscriptionOpenDesignFixture
@@ -113,6 +129,7 @@ func setupSubscriptionControllerTest(t *testing.T) *subscriptionControllerTest {
 	router := gin.New()
 	group := router.Group("/api/upstream-subscriptions", middleware.RootAuth())
 	group.GET("", ListUpstreamSubscriptions)
+	group.GET("/channels", ListUpstreamSubscriptionChannels)
 	group.POST("", SaveUpstreamSubscription)
 	group.PUT("/:id", SaveUpstreamSubscription)
 	group.DELETE("/:id", DeleteUpstreamSubscription)
@@ -227,6 +244,173 @@ func TestUpstreamSubscriptionAPIKeepsExactCreditsAndProviderRemaining(t *testing
 	assert.Equal(t, "7", created.Quota.Windows[1].RemainingCredits)
 	assert.InDelta(t, 100.0013333333, *created.Quota.Windows[1].UsedPercent, 0.00000001)
 	assert.Equal(t, "0.1548", *created.Quota.BalanceUSD)
+	require.NotNil(t, created.Quota.SubscriptionPeriodEnd)
+	assert.Equal(t, "2027-11-11T05:50:51Z", created.Quota.SubscriptionPeriodEnd.Format(time.RFC3339))
+}
+
+func TestUpstreamSubscriptionAccountIsOptionalAndPreservedWhenOmitted(t *testing.T) {
+	s := setupSubscriptionControllerTest(t)
+	created := subscriptionResponse(t, s.request(t, http.MethodPost, "", gin.H{"name": "Account label", "account": " team@example.com ", "platform": "opencode", "credential": "oc_sk_account-label"}, s.bundle.AccessToken))
+	assert.Equal(t, "team@example.com", created.Account)
+	updated := subscriptionResponse(t, s.request(t, http.MethodPut, "/"+strconv.Itoa(created.ID), gin.H{"name": "Renamed", "platform": "opencode"}, s.bundle.AccessToken))
+	assert.Equal(t, created.Account, updated.Account)
+	invalid := s.request(t, http.MethodPut, "/"+strconv.Itoa(created.ID), gin.H{"platform": "opencode", "account": strings.Repeat("x", 129)}, s.bundle.AccessToken)
+	assert.Equal(t, http.StatusBadRequest, invalid.Code)
+	cleared := subscriptionResponse(t, s.request(t, http.MethodPut, "/"+strconv.Itoa(created.ID), gin.H{"platform": "opencode", "account": ""}, s.bundle.AccessToken))
+	assert.Empty(t, cleared.Account)
+	assert.Equal(t, created.Quota, cleared.Quota)
+}
+
+func TestUpstreamSubscriptionOptionalExpiryFailurePreservesQuota(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{name: "unavailable", status: http.StatusForbidden},
+		{name: "missing", body: `{}`},
+		{name: "invalid", body: `{"subscriptionCurrentPeriodEnd":"not-a-date"}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			s := setupSubscriptionControllerTest(t)
+			s.fixture.summaryBody, s.fixture.summaryStatus = test.body, test.status
+			created := s.create(t, "opendesign", "vela_ctrl_optional-expiry")
+			require.NotNil(t, created.Quota)
+			assert.Len(t, created.Quota.Windows, 2)
+			assert.Nil(t, created.Quota.SubscriptionPeriodEnd)
+			assert.Empty(t, created.ErrorCode)
+		})
+	}
+}
+
+func TestUpstreamSubscriptionDoesNotUsePersonalExpiryForTeamWorkspace(t *testing.T) {
+	s := setupSubscriptionControllerTest(t)
+	s.fixture.workspaceType = "team"
+	created := s.create(t, "opendesign", "vela_ctrl_team")
+	require.NotNil(t, created.Quota)
+	assert.Nil(t, created.Quota.SubscriptionPeriodEnd)
+	assert.Zero(t, s.fixture.summaryCalls)
+	assert.Len(t, created.Quota.Windows, 2)
+}
+
+func TestUpstreamSubscriptionAPIChannelBindingUsesLiveChannelName(t *testing.T) {
+	s := setupSubscriptionControllerTest(t)
+	require.NoError(t, s.db.AutoMigrate(&model.Channel{}))
+	priority, weight := int64(7), uint(30)
+	channel := model.Channel{Name: "Channel original", Key: "private-channel-key", Priority: &priority, Weight: &weight}
+	require.NoError(t, s.db.Create(&channel).Error)
+	response := s.request(t, http.MethodPost, "", gin.H{"name": "Must not rename channel", "platform": "opencode", "credential": "oc_sk_bound", "channel_id": channel.Id}, s.bundle.AccessToken)
+	require.Equal(t, http.StatusOK, response.Code)
+	var body struct {
+		Data struct {
+			ID        int    `json:"id"`
+			Name      string `json:"name"`
+			ChannelID int    `json:"channel_id"`
+			Channel   struct {
+				Name     string `json:"name"`
+				Priority int64  `json:"priority"`
+				Weight   int    `json:"weight"`
+			} `json:"channel"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
+	assert.Equal(t, "Channel original", body.Data.Name)
+	assert.Equal(t, channel.Id, body.Data.ChannelID)
+	assert.Equal(t, int64(7), body.Data.Channel.Priority)
+	assert.Equal(t, 30, body.Data.Channel.Weight)
+	assert.NotContains(t, response.Body.String(), "private-channel-key")
+	require.NoError(t, s.db.Model(&channel).Updates(map[string]any{"name": "Channel renamed", "priority": 9, "weight": 20}).Error)
+	listed := s.request(t, http.MethodGet, "", nil, s.bundle.AccessToken)
+	require.Equal(t, http.StatusOK, listed.Code)
+	var list struct {
+		Data []struct {
+			Name    string `json:"name"`
+			Channel struct {
+				Priority int64 `json:"priority"`
+				Weight   int   `json:"weight"`
+			} `json:"channel"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(listed.Body.Bytes(), &list))
+	require.Len(t, list.Data, 1)
+	assert.Equal(t, "Channel renamed", list.Data[0].Name)
+	assert.Equal(t, int64(9), list.Data[0].Channel.Priority)
+	assert.Equal(t, 20, list.Data[0].Channel.Weight)
+	independent := subscriptionResponse(t, s.request(t, http.MethodPut, "/"+strconv.Itoa(body.Data.ID), gin.H{"name": "Independent again", "platform": "opencode", "channel_id": 0}, s.bundle.AccessToken))
+	assert.Equal(t, "Independent again", independent.Name)
+	require.NotNil(t, independent.Quota)
+	assert.Equal(t, 4.0, *independent.Quota.Windows[1].UsedPercent)
+	var unchanged model.Channel
+	require.NoError(t, s.db.First(&unchanged, channel.Id).Error)
+	assert.Equal(t, "Channel renamed", unchanged.Name)
+	assert.Equal(t, "private-channel-key", unchanged.Key)
+	rebound := s.request(t, http.MethodPut, "/"+strconv.Itoa(body.Data.ID), gin.H{"name": "Ignored", "platform": "opencode", "channel_id": channel.Id}, s.bundle.AccessToken)
+	require.Equal(t, http.StatusOK, rebound.Code)
+	assert.Equal(t, "Channel renamed", subscriptionResponse(t, rebound).Name)
+	options := s.request(t, http.MethodGet, "/channels", nil, s.bundle.AccessToken)
+	require.Equal(t, http.StatusOK, options.Code)
+	assert.Contains(t, options.Body.String(), `"priority":9`)
+	assert.NotContains(t, options.Body.String(), "private-channel-key")
+	for _, invalidID := range []int{-1, channel.Id + 1000} {
+		invalid := s.request(t, http.MethodPut, "/"+strconv.Itoa(body.Data.ID), gin.H{"platform": "opencode", "channel_id": invalidID}, s.bundle.AccessToken)
+		assert.Equal(t, http.StatusBadRequest, invalid.Code)
+		assert.Contains(t, invalid.Body.String(), `"message_key":"Selected channel was not found; select another channel or use an independent name"`)
+	}
+	require.NoError(t, s.db.Delete(&channel).Error)
+	listed = s.request(t, http.MethodGet, "", nil, s.bundle.AccessToken)
+	require.Equal(t, http.StatusOK, listed.Code)
+	assert.Contains(t, listed.Body.String(), `"channel":null`)
+	assert.Contains(t, listed.Body.String(), fmt.Sprintf(`"channel_id":%d`, channel.Id))
+	independent = subscriptionResponse(t, s.request(t, http.MethodPut, "/"+strconv.Itoa(body.Data.ID), gin.H{"name": "Recovered", "platform": "opencode", "channel_id": 0}, s.bundle.AccessToken))
+	assert.Equal(t, "Recovered", independent.Name)
+}
+
+func TestUpstreamSubscriptionChannelBindingMigrationPreservesExistingConnection(t *testing.T) {
+	s := setupSubscriptionControllerTest(t)
+	created := s.create(t, "opencode", "oc_sk_migration")
+	before, err := model.GetUpstreamSubscription(created.ID)
+	require.NoError(t, err)
+	require.NoError(t, s.db.Migrator().DropColumn(&model.UpstreamSubscription{}, "channel_id"))
+	require.NoError(t, s.db.Migrator().DropColumn(&model.UpstreamSubscription{}, "account"))
+	reopened, err := gorm.Open(s.db.Dialector, &gorm.Config{})
+	require.NoError(t, err)
+	s.db, model.DB = reopened, reopened
+	t.Cleanup(func() { pool, err := reopened.DB(); require.NoError(t, err); require.NoError(t, pool.Close()) })
+	for range 2 {
+		require.NoError(t, reopened.AutoMigrate(&model.UpstreamSubscription{}))
+	}
+	after, err := model.GetUpstreamSubscription(created.ID)
+	require.NoError(t, err)
+	assert.Zero(t, after.ChannelID)
+	assert.Empty(t, after.Account)
+	assert.Equal(t, before.CredentialEncrypted, after.CredentialEncrypted)
+	assert.Equal(t, before.Name, after.Name)
+	assert.Equal(t, before.QuotaJSON, after.QuotaJSON)
+	assert.Equal(t, before.RefreshIntervalMinutes, after.RefreshIntervalMinutes)
+}
+
+func TestUpstreamSubscriptionLoginCarriesChannelBinding(t *testing.T) {
+	s := setupSubscriptionControllerTest(t)
+	require.NoError(t, s.db.AutoMigrate(&model.Channel{}))
+	channel := model.Channel{Name: "Login channel", Key: "channel-private"}
+	require.NoError(t, s.db.Create(&channel).Error)
+	response := s.request(t, http.MethodPost, "/opendesign/login", gin.H{"name": "Ignored", "account": "login@example.com", "channel_id": channel.Id, "refresh_interval_minutes": 17}, s.bundle.AccessToken)
+	require.Equal(t, http.StatusOK, response.Code)
+	var challenge struct {
+		Data struct {
+			Token string `json:"flow_token"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &challenge))
+	require.NotEmpty(t, challenge.Data.Token)
+	s.allowPoll(t, challenge.Data.Token)
+	s.fixture.loginStatus = "approved"
+	approved := s.request(t, http.MethodPost, "/opendesign/login/poll", gin.H{"flow_token": challenge.Data.Token}, s.bundle.AccessToken)
+	require.Equal(t, http.StatusOK, approved.Code)
+	assert.Contains(t, approved.Body.String(), `"name":"Login channel"`)
+	assert.Contains(t, approved.Body.String(), `"account":"login@example.com"`)
+	assert.Contains(t, approved.Body.String(), fmt.Sprintf(`"channel_id":%d`, channel.Id))
+	assert.NotContains(t, approved.Body.String(), "channel-private")
 }
 
 func TestUpstreamSubscriptionAPIDiscardsAnOldCredentialRefreshAfterRotation(t *testing.T) {

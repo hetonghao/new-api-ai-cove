@@ -19,6 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { z } from 'zod'
 
+export const subscriptionChannelSchema = z.object({
+  id: z.number().int().positive(),
+  name: z.string(),
+  priority: z.number().int(),
+  weight: z.number().int().nonnegative(),
+})
+
 const quotaWindowSchema = z.object({
   key: z.enum(['rolling', 'weekly', 'monthly']),
   duration_seconds: z.number().int().nonnegative(),
@@ -33,6 +40,9 @@ const quotaWindowSchema = z.object({
 export const upstreamSubscriptionSchema = z.object({
   id: z.number().int().positive(),
   name: z.string(),
+  channel_id: z.number().int().nonnegative().optional(),
+  account: z.string().optional(),
+  channel: subscriptionChannelSchema.nullable().optional(),
   platform: z.enum(['opencode', 'opendesign']),
   refresh_interval_minutes: z.number().int().min(1).max(1440).default(10),
   last_success_at: z.number().int(),
@@ -48,6 +58,7 @@ export const upstreamSubscriptionSchema = z.object({
       tier: z.string().optional(),
       eligible: z.boolean().optional(),
       balance_usd: z.string().optional(),
+      subscription_period_end: z.iso.datetime({ offset: true }).optional(),
     })
     .nullable(),
 })
@@ -78,9 +89,12 @@ export const subscriptionLoginResultSchema = z.discriminatedUnion('status', [
 export type UpstreamSubscription = z.infer<typeof upstreamSubscriptionSchema>
 export type SubscriptionQuotaWindow = z.infer<typeof quotaWindowSchema>
 export type SubscriptionLogin = z.infer<typeof subscriptionLoginSchema>
+export type SubscriptionChannel = z.infer<typeof subscriptionChannelSchema>
 
 export type SubscriptionFormValues = {
   readonly name: string
+  readonly account: string
+  readonly channel_id: number
   readonly platform: 'opencode' | 'opendesign'
   readonly credential: string
   readonly refresh_interval_minutes: number

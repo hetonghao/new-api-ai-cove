@@ -280,6 +280,7 @@ func SetApiRouter(router *gin.Engine) {
 		upstreamSubscriptionRoute.Use(middleware.RootAuth())
 		{
 			upstreamSubscriptionRoute.GET("", controller.ListUpstreamSubscriptions)
+			upstreamSubscriptionRoute.GET("/channels", controller.ListUpstreamSubscriptionChannels)
 			upstreamSubscriptionRoute.POST("", controller.SaveUpstreamSubscription)
 			upstreamSubscriptionRoute.PUT("/:id", controller.SaveUpstreamSubscription)
 			upstreamSubscriptionRoute.DELETE("/:id", controller.DeleteUpstreamSubscription)

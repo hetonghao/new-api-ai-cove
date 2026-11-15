@@ -56,6 +56,7 @@ func subscriptionJSONRequest(ctx context.Context, method, target, credential str
 		return invalidSubscriptionQuota()
 	}
 	request.Header.Set("Accept", "application/json")
+	request.Header.Set("User-Agent", "AI-Cove/1.0")
 	if payload != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}

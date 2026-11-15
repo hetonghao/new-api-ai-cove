@@ -18,19 +18,29 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Pencil, RefreshCw, Trash2 } from 'lucide-react'
+import {
+  CircleAlert,
+  CircleCheck,
+  Pencil,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { StatusBadge, type StatusVariant } from '@/components/status-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import dayjs from '@/lib/dayjs'
 import { formatTimestampToDate } from '@/lib/format'
 
 import { refreshUpstreamSubscription } from '../api'
 import type { UpstreamSubscription } from '../types'
 import { QuotaWindow } from './quota-window'
+import { SubscriptionPlatform } from './subscription-platform'
 
 type SubscriptionRowProps = {
   readonly subscription: UpstreamSubscription
+  readonly now?: number
   readonly onEdit: (subscription: UpstreamSubscription) => void
   readonly onRemove: (subscription: UpstreamSubscription) => void
 }
@@ -39,6 +49,7 @@ export function SubscriptionRow(props: SubscriptionRowProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const subscription = props.subscription
+  const now = props.now ?? Date.now()
   const quota = subscription.quota
   const refresh = useMutation({
     mutationFn: () => refreshUpstreamSubscription(subscription.id),
@@ -69,74 +80,114 @@ export function SubscriptionRow(props: SubscriptionRowProps) {
     ),
   }
   const coolingDown =
-    subscription.last_attempt_at > Date.now() / 1000 - 60 ||
+    subscription.last_attempt_at > now / 1000 - 60 ||
     (subscription.error_code === 'rate_limited' &&
-      subscription.next_refresh_at > Date.now() / 1000)
+      subscription.next_refresh_at > now / 1000)
+  let availability = t('Quota status unknown')
+  let availabilityVariant: StatusVariant = 'neutral'
+  let availabilityIcon: typeof CircleCheck | undefined
+  let availabilityColor: string | undefined
+  if (
+    !subscription.stale &&
+    !subscription.error_code &&
+    quota &&
+    quota.eligible !== false &&
+    quota.windows.length > 0
+  ) {
+    if (
+      quota.windows.some(
+        (window) =>
+          (window.used_percent !== null && window.used_percent >= 100) ||
+          (window.status === 'ok' && window.remaining_credits === '0')
+      )
+    ) {
+      availability = t('Quota exhausted now')
+      availabilityVariant = 'danger'
+      availabilityIcon = CircleAlert
+      availabilityColor = 'var(--destructive)'
+    } else if (
+      quota.windows.every(
+        (window) =>
+          window.status === 'ok' &&
+          window.used_percent !== null &&
+          window.used_percent < 100
+      )
+    ) {
+      availability = t('Available now')
+      availabilityVariant = 'success'
+      availabilityIcon = CircleCheck
+      availabilityColor = 'var(--success)'
+    }
+  }
 
   return (
-    <li className='space-y-4 p-4 sm:p-5'>
-      <div className='flex flex-wrap items-start justify-between gap-3'>
-        <div className='min-w-0 flex-1 space-y-1.5'>
+    <li className='space-y-2.5 px-3 py-3 sm:px-4'>
+      <div className='flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5'>
+        <div className='min-w-0 flex-1'>
           <div className='flex flex-wrap items-center gap-2'>
             <h3 className='min-w-0 text-sm font-semibold [overflow-wrap:anywhere]'>
               {subscription.name}
             </h3>
             <Badge variant='secondary'>
-              {subscription.platform === 'opencode'
-                ? 'OpenCode Go'
-                : 'OpenDesign Go'}
+              <SubscriptionPlatform platform={subscription.platform} />
             </Badge>
+            <StatusBadge
+              variant={availabilityVariant}
+              icon={availabilityIcon}
+              copyable={false}
+              label={availability}
+              className='shrink-0'
+              style={
+                availabilityColor
+                  ? {
+                      color: `color-mix(in oklab, ${availabilityColor} 70%, var(--foreground))`,
+                    }
+                  : undefined
+              }
+            />
             {subscription.stale && (
               <Badge variant='outline'>{t('Stale data')}</Badge>
             )}
+            {subscription.channel && (
+              <span className='text-muted-foreground text-xs tabular-nums'>
+                {t('Channel')} #{subscription.channel.id} · {t('Priority')}{' '}
+                {subscription.channel.priority} · {t('Weight')}{' '}
+                {subscription.channel.weight}
+              </span>
+            )}
           </div>
-          {(quota?.workspace_name ||
-            quota?.tier ||
-            quota?.balance_usd !== undefined) && (
-            <p className='text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 text-xs [overflow-wrap:anywhere]'>
-              {quota?.workspace_name && <span>{quota.workspace_name}</span>}
-              {quota?.tier && (
-                <span>
-                  {t('Plan')}: {quota.tier}
-                </span>
-              )}
-              {quota?.balance_usd !== undefined && (
-                <span className='tabular-nums'>
-                  {t('Wallet balance (USD)')}: {quota.balance_usd}
-                </span>
-              )}
-            </p>
-          )}
         </div>
-        <div className='flex shrink-0 items-center gap-1'>
-          <Button
-            variant='outline'
-            size='sm'
-            disabled={refresh.isPending || coolingDown}
-            onClick={() => refresh.mutate()}
-            aria-label={t('Fetch quota for {{name}}', {
-              name: subscription.name,
-            })}
-          >
-            <RefreshCw className='size-3.5' aria-hidden='true' />
-            {refresh.isPending ? t('Fetching...') : t('Fetch quota')}
-          </Button>
-          <Button
-            variant='ghost'
-            size='icon'
-            onClick={() => props.onEdit(subscription)}
-            aria-label={t('Edit {{name}}', { name: subscription.name })}
-          >
-            <Pencil className='size-4' aria-hidden='true' />
-          </Button>
-          <Button
-            variant='ghost'
-            size='icon'
-            onClick={() => props.onRemove(subscription)}
-            aria-label={t('Remove {{name}}', { name: subscription.name })}
-          >
-            <Trash2 className='size-4' aria-hidden='true' />
-          </Button>
+        <div className='ml-auto flex min-w-0 items-center justify-end gap-3'>
+          <div className='flex shrink-0 items-center gap-1'>
+            <Button
+              variant='outline'
+              size='icon-sm'
+              disabled={refresh.isPending || coolingDown}
+              onClick={() => refresh.mutate()}
+              aria-label={t('Fetch quota for {{name}}', {
+                name: subscription.name,
+              })}
+              title={refresh.isPending ? t('Fetching...') : t('Fetch quota')}
+            >
+              <RefreshCw aria-hidden='true' />
+            </Button>
+            <Button
+              variant='ghost'
+              size='icon-sm'
+              onClick={() => props.onEdit(subscription)}
+              aria-label={t('Edit {{name}}', { name: subscription.name })}
+            >
+              <Pencil aria-hidden='true' />
+            </Button>
+            <Button
+              variant='ghost'
+              size='icon-sm'
+              onClick={() => props.onRemove(subscription)}
+              aria-label={t('Remove {{name}}', { name: subscription.name })}
+            >
+              <Trash2 aria-hidden='true' />
+            </Button>
+          </div>
         </div>
       </div>
       {subscription.error_code && (
@@ -151,12 +202,13 @@ export function SubscriptionRow(props: SubscriptionRowProps) {
         </p>
       )}
       {quota && quota.windows.length > 0 ? (
-        <div className='grid min-w-0 gap-x-8 gap-y-5 sm:grid-cols-2 xl:grid-cols-3'>
+        <div className='grid min-w-0 gap-x-5 gap-y-3 sm:grid-cols-3'>
           {quota.windows.map((window) => (
             <QuotaWindow
               key={window.key}
               window={window}
               subscriptionName={subscription.name}
+              now={now}
             />
           ))}
         </div>
@@ -173,17 +225,27 @@ export function SubscriptionRow(props: SubscriptionRowProps) {
             minutes: subscription.refresh_interval_minutes,
           })}
         </span>
-        <span>
-          {t('Last successful refresh')}:{' '}
-          <span className='tabular-nums'>
-            {subscription.last_success_at
-              ? formatTimestampToDate(subscription.last_success_at)
-              : t('Not fetched yet')}
-          </span>
+        <span className='tabular-nums'>
+          {t('Updated')}:{' '}
+          {subscription.last_success_at
+            ? formatTimestampToDate(subscription.last_success_at)
+            : t('Not fetched yet')}
         </span>
-        {coolingDown && (
-          <span>
-            {t('Refresh is temporarily paused to respect platform limits.')}
+        <span className='tabular-nums'>
+          {t('Subscription expires')}:{' '}
+          {quota?.subscription_period_end ? (
+            <time dateTime={quota.subscription_period_end}>
+              {dayjs(quota.subscription_period_end).format('YYYY-MM-DD HH:mm')}
+            </time>
+          ) : (
+            t('Not provided')
+          )}
+        </span>
+        {!!subscription.channel_id && !subscription.channel && (
+          <span className='text-warning'>
+            {t(
+              'Bound channel was deleted. Select another channel or use an independent name.'
+            )}
           </span>
         )}
         {subscription.error_code && (
@@ -192,6 +254,11 @@ export function SubscriptionRow(props: SubscriptionRowProps) {
             <span className='tabular-nums'>
               {formatTimestampToDate(subscription.next_refresh_at)}
             </span>
+          </span>
+        )}
+        {subscription.account && (
+          <span className='min-w-0 [overflow-wrap:anywhere]'>
+            {t('Subscription account')}: {subscription.account}
           </span>
         )}
       </p>

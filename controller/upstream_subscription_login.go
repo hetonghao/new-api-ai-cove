@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
@@ -10,11 +11,14 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type subscriptionLoginPayload struct {
 	Identity               model.AuthSessionIdentity `json:"identity"`
 	Name                   string                    `json:"name"`
+	Account                *string                   `json:"account,omitempty"`
+	ChannelID              *int                      `json:"channel_id,omitempty"`
 	SubscriptionID         int                       `json:"subscription_id"`
 	DeviceID               string                    `json:"device_id"`
 	DeviceSecret           string                    `json:"device_secret"`
@@ -38,14 +42,31 @@ func StartOpenDesignSubscriptionLogin(c *gin.Context) {
 		return
 	}
 	var input struct {
-		Name                   string `json:"name"`
-		SubscriptionID         int    `json:"subscription_id"`
-		RefreshIntervalMinutes int    `json:"refresh_interval_minutes"`
+		Name                   string  `json:"name"`
+		Account                *string `json:"account"`
+		ChannelID              *int    `json:"channel_id"`
+		SubscriptionID         int     `json:"subscription_id"`
+		RefreshIntervalMinutes int     `json:"refresh_interval_minutes"`
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2048)
 	if c.ShouldBindJSON(&input) != nil || input.SubscriptionID < 0 {
 		subscriptionRequestError(c, http.StatusBadRequest, "Invalid subscription configuration")
 		return
+	}
+	if input.Account != nil && utf8.RuneCountInString(strings.TrimSpace(*input.Account)) > 128 {
+		subscriptionRequestError(c, http.StatusBadRequest, model.ErrSubscriptionAccountTooLong.Error())
+		return
+	}
+	if input.ChannelID != nil && *input.ChannelID != 0 {
+		if *input.ChannelID < 0 {
+			subscriptionRequestError(c, http.StatusBadRequest, model.ErrSubscriptionChannelUnavailable.Error())
+			return
+		}
+		if _, err := model.GetUpstreamSubscriptionChannel(model.DB, *input.ChannelID); err != nil {
+			subscriptionRequestError(c, http.StatusBadRequest, model.ErrSubscriptionChannelUnavailable.Error())
+			return
+		}
+		input.Name = ""
 	}
 	name, err := model.NormalizeUpstreamSubscription(input.Name, model.SubscriptionPlatformOpenDesign)
 	if err != nil {
@@ -69,7 +90,7 @@ func StartOpenDesignSubscriptionLogin(c *gin.Context) {
 		subscriptionRequestError(c, http.StatusBadGateway, "Could not start OpenDesign login; try again or enter a controlKey")
 		return
 	}
-	payload := subscriptionLoginPayload{Identity: identity, Name: name, SubscriptionID: input.SubscriptionID, DeviceID: challenge.DeviceID, DeviceSecret: challenge.DeviceSecret, PollInterval: max(challenge.PollInterval, 2), NextPollAt: time.Now().Unix() + int64(max(challenge.PollInterval, 2)), RefreshIntervalMinutes: minutes}
+	payload := subscriptionLoginPayload{Identity: identity, Name: name, Account: input.Account, ChannelID: input.ChannelID, SubscriptionID: input.SubscriptionID, DeviceID: challenge.DeviceID, DeviceSecret: challenge.DeviceSecret, PollInterval: max(challenge.PollInterval, 2), NextPollAt: time.Now().Unix() + int64(max(challenge.PollInterval, 2)), RefreshIntervalMinutes: minutes}
 	encoded, err := common.Marshal(payload)
 	if err != nil {
 		subscriptionRequestError(c, http.StatusInternalServerError, "Could not save OpenDesign login state")
@@ -177,10 +198,14 @@ func PollOpenDesignSubscriptionLogin(c *gin.Context) {
 			return err
 		}
 		var saveErr error
-		subscription, saveErr = model.SaveUpstreamSubscriptionWithTx(tx, model.UpstreamSubscriptionConfig{ID: payload.SubscriptionID, Name: payload.Name, Platform: model.SubscriptionPlatformOpenDesign, CredentialEncrypted: encryptedCredential, RefreshIntervalMinutes: payload.RefreshIntervalMinutes})
+		subscription, saveErr = model.SaveUpstreamSubscriptionWithTx(tx, model.UpstreamSubscriptionConfig{ID: payload.SubscriptionID, Name: payload.Name, Account: payload.Account, ChannelID: payload.ChannelID, Platform: model.SubscriptionPlatformOpenDesign, CredentialEncrypted: encryptedCredential, RefreshIntervalMinutes: payload.RefreshIntervalMinutes})
 		return saveErr
 	})
 	if err != nil {
+		if errors.Is(err, model.ErrSubscriptionChannelUnavailable) || errors.Is(err, model.ErrSubscriptionAccountTooLong) {
+			subscriptionRequestError(c, http.StatusBadRequest, err.Error())
+			return
+		}
 		subscriptionRequestError(c, http.StatusGone, "OpenDesign login expired or was cancelled; start again")
 		return
 	}

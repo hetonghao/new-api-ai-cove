@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { AxiosAdapter } from 'axios'
 import { StrictMode } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -26,6 +27,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { api } from '@/lib/api'
 
 import { UpstreamSubscriptions } from '..'
+import { QuotaWindow } from '../components/quota-window'
 import { SubscriptionRow } from '../components/subscription-row'
 import type { UpstreamSubscription } from '../types'
 
@@ -116,9 +118,9 @@ describe('subscription allowance windows', () => {
     try {
       expect(
         await screen.findByRole('progressbar', {
-          name: 'Quota account · Weekly window',
+          name: 'Quota account · 7-day window',
         })
-      ).toHaveAttribute('aria-valuenow', '88')
+      ).toHaveAttribute('aria-valuenow', '12')
       expect(
         screen.queryByText('Failed to load subscriptions')
       ).not.toBeInTheDocument()
@@ -128,26 +130,121 @@ describe('subscription allowance windows', () => {
     }
   })
 
-  it('shows all three OpenCode windows with independent labeled progress values', () => {
+  it('filters by platform and fuzzy name and sorts expiry with unknown dates last', async () => {
+    api.defaults.adapter = async (config) => ({
+      config,
+      headers: {},
+      status: 200,
+      statusText: 'OK',
+      data: {
+        success: true,
+        data: [
+          { ...subscription, id: 1, name: 'Code Alpha' },
+          {
+            ...subscription,
+            id: 2,
+            name: 'Design Later',
+            account: 'Team-Billing@Example.com',
+            platform: 'opendesign',
+            quota: {
+              windows: [],
+              subscription_period_end: '2027-02-01T00:00:00Z',
+            },
+          },
+          {
+            ...subscription,
+            id: 3,
+            name: 'Design Earlier',
+            platform: 'opendesign',
+            quota: {
+              windows: [],
+              subscription_period_end: '2027-01-01T00:00:00Z',
+            },
+          },
+        ],
+      },
+    })
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const view = render(
+      <QueryClientProvider client={client}>
+        <UpstreamSubscriptions />
+      </QueryClientProvider>
+    )
+    const user = userEvent.setup()
+    try {
+      await screen.findByRole('heading', { name: 'Code Alpha' })
+      expect(
+        screen.getAllByRole('heading', { level: 3 }).map((el) => el.textContent)
+      ).toEqual(['Code Alpha', 'Design Earlier', 'Design Later'])
+      await user.click(
+        screen.getByRole('combobox', { name: 'Sort subscriptions by' })
+      )
+      await user.click(
+        screen.getByRole('option', { name: 'Subscription expiry' })
+      )
+      expect(
+        screen.getAllByRole('heading', { level: 3 }).map((el) => el.textContent)
+      ).toEqual(['Design Earlier', 'Design Later', 'Code Alpha'])
+      await user.click(screen.getByRole('button', { name: 'Ascending' }))
+      expect(
+        screen.getAllByRole('heading', { level: 3 }).map((el) => el.textContent)
+      ).toEqual(['Design Later', 'Design Earlier', 'Code Alpha'])
+      await user.click(screen.getByRole('button', { name: 'Platform' }))
+      await user.click(
+        await screen.findByRole('option', { name: /^OpenDesign Go/ })
+      )
+      await user.type(
+        screen.getByPlaceholderText('Search name or account...'),
+        'LATER'
+      )
+      expect(
+        screen.getAllByRole('heading', { level: 3 }).map((el) => el.textContent)
+      ).toEqual(['Design Later'])
+      await user.clear(screen.getByPlaceholderText('Search name or account...'))
+      await user.type(
+        screen.getByPlaceholderText('Search name or account...'),
+        'billing@EXAMPLE'
+      )
+      expect(
+        screen.getAllByRole('heading', { level: 3 }).map((el) => el.textContent)
+      ).toEqual(['Design Later'])
+      await user.clear(screen.getByPlaceholderText('Search name or account...'))
+      await user.type(
+        screen.getByPlaceholderText('Search name or account...'),
+        'missing'
+      )
+      expect(screen.getByText('No matching subscriptions')).toBeVisible()
+      await user.click(screen.getByRole('button', { name: 'Clear filters' }))
+      expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(3)
+    } finally {
+      view.unmount()
+      client.clear()
+    }
+  })
+
+  it('shows all three windows as independently remaining allowance', () => {
     renderSubscription(subscription)
 
     expect(screen.getAllByRole('progressbar')).toHaveLength(3)
     expect(
       screen.getByRole('progressbar', { name: 'Quota account · 5-hour window' })
-    ).toHaveAttribute('aria-valuenow', '1.25')
+    ).toHaveAttribute('aria-valuenow', '98.75')
     expect(
-      screen.getByRole('progressbar', { name: 'Quota account · Weekly window' })
-    ).toHaveAttribute('aria-valuenow', '88')
+      screen.getByRole('progressbar', { name: 'Quota account · 7-day window' })
+    ).toHaveAttribute('aria-valuenow', '12')
     expect(
       screen.getByRole('progressbar', {
-        name: 'Quota account · Monthly window',
+        name: 'Quota account · 30-day window',
       })
-    ).toHaveAttribute('aria-valuenow', '100')
-    expect(screen.getByText('Limit reached')).toBeVisible()
-    expect(screen.getAllByText('Resets at')).toHaveLength(3)
+    ).toHaveAttribute('aria-valuenow', '0')
+    expect(screen.getByText('Window quota exhausted')).toBeVisible()
+    expect(screen.getByText('Quota exhausted now')).toBeVisible()
+    expect(screen.getAllByText(/^Resets in/)).toHaveLength(3)
   })
 
-  it('keeps exact large credits and the provider remaining value when usage exceeds its limit', () => {
+  it('shows exhaustion for over-limit usage without exposing credit details', () => {
     renderSubscription({
       ...subscription,
       platform: 'opendesign',
@@ -169,13 +266,12 @@ describe('subscription allowance windows', () => {
 
     expect(screen.getByRole('progressbar')).toHaveAttribute(
       'aria-valuenow',
-      '100'
+      '0'
     )
-    expect(screen.getByText('Over limit')).toBeVisible()
-    expect(
-      screen.getByText(/9,007,199,254,740,993 \/ 9,007,199,254,740,992/)
-    ).toBeVisible()
-    expect(screen.getByText('Remaining credits: 7')).toBeVisible()
+    expect(screen.getByText('Window quota exhausted')).toBeVisible()
+    expect(screen.getByText('Quota exhausted now')).toBeVisible()
+    expect(screen.queryByText(/9,007,199,254,740,993/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Remaining credits: 7')).not.toBeInTheDocument()
   })
 
   it('labels an unavailable percentage without showing a fabricated zero progress value', () => {
@@ -195,7 +291,8 @@ describe('subscription allowance windows', () => {
     })
 
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
-    expect(screen.getByText('Unknown used')).toBeVisible()
+    expect(screen.getByText('Quota unknown')).toBeVisible()
+    expect(screen.getByText('Quota status unknown')).toBeVisible()
     expect(screen.getByText('Restricted by platform')).toBeVisible()
   })
 
@@ -209,10 +306,109 @@ describe('subscription allowance windows', () => {
     expect(screen.getByText('Stale data')).toBeVisible()
     expect(screen.getByRole('status')).toHaveTextContent('Credential expired.')
     expect(
-      screen.getByRole('progressbar', { name: 'Quota account · Weekly window' })
-    ).toHaveAttribute('aria-valuenow', '88')
+      screen.getByRole('progressbar', { name: 'Quota account · 7-day window' })
+    ).toHaveAttribute('aria-valuenow', '12')
+    expect(screen.getByText('Quota status unknown')).toBeVisible()
     expect(
       screen.getByText('Showing the last successful quota snapshot.')
     ).toBeVisible()
   })
+
+  it.each([
+    [0, 100, 'success'],
+    [49.99, 50.01, 'success'],
+    [50, 50, 'info'],
+    [89.99, 10.01, 'info'],
+    [90, 10, 'warning'],
+    [97.99, 2.01, 'warning'],
+    [98, 2, 'destructive'],
+    [99.999, 0.001, 'destructive'],
+    [100, 0, 'destructive'],
+    [101, 0, 'destructive'],
+  ])(
+    'uses remaining progress and the correct color at %s percent used',
+    (used, remaining, tone) => {
+      render(
+        <QuotaWindow
+          window={{
+            key: 'rolling',
+            duration_seconds: 18000,
+            status: 'ok',
+            used_percent: used,
+            resets_at: null,
+          }}
+          subscriptionName='Threshold'
+        />
+      )
+      const bar = screen.getByRole('progressbar')
+      expect(Number(bar.getAttribute('aria-valuenow'))).toBeCloseTo(
+        remaining,
+        6
+      )
+      expect(bar).toHaveClass(`[&_[data-slot=progress-indicator]]:bg-${tone}`)
+      expect(screen.queryByText('Window quota exhausted') !== null).toBe(
+        used >= 100
+      )
+    }
+  )
+
+  it('shows available status and bound channel routing metadata', () => {
+    renderSubscription({
+      ...subscription,
+      account: 'account@example.com',
+      channel_id: 8,
+      channel: { id: 8, name: 'Quota account', priority: 9, weight: 20 },
+      quota: {
+        windows: [
+          {
+            key: 'rolling',
+            duration_seconds: 18000,
+            status: 'ok',
+            used_percent: 0,
+            resets_at: null,
+          },
+        ],
+      },
+    })
+    expect(screen.getByText('Available now')).toBeVisible()
+    expect(
+      screen.getByText(/Channel #8 · Priority 9 · Weight 20/)
+    ).toBeVisible()
+    const account = screen.getByText(
+      'Subscription account: account@example.com'
+    )
+    expect(account.parentElement?.lastElementChild).toBe(account)
+  })
+
+  it.each([
+    [199020000, 'Resets in 2 days 7 hours 17 minutes'],
+    [26220000, 'Resets in 7 hours 17 minutes'],
+    [1020000, 'Resets in 17 minutes'],
+    [30000, 'Resets in less than 1 minute'],
+    [0, 'Reset due'],
+    [-60000, 'Reset due'],
+  ])(
+    'shows the reset countdown for a %s millisecond offset',
+    (offset, expected) => {
+      const now = Date.parse('2026-11-15T00:00:00Z')
+      render(
+        <QuotaWindow
+          window={{
+            key: 'rolling',
+            duration_seconds: 18000,
+            status: 'ok',
+            used_percent: 10,
+            resets_at: new Date(now + offset).toISOString(),
+          }}
+          subscriptionName='Countdown'
+          now={now}
+        />
+      )
+      expect(screen.getByText(expected)).toBeVisible()
+      expect(screen.getByText(expected)).toHaveAttribute(
+        'datetime',
+        new Date(now + offset).toISOString()
+      )
+    }
+  )
 })

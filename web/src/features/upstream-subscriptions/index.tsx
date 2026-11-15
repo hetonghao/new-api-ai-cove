@@ -18,24 +18,62 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CreditCard, Plus, RefreshCw } from 'lucide-react'
-import { useState } from 'react'
+import type { ColumnDef, ColumnFiltersState } from '@tanstack/react-table'
+import { ArrowDown, ArrowUp, CreditCard, Plus, RefreshCw } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { DataTableToolbar, useDataTable } from '@/components/data-table'
 import { EmptyState } from '@/components/empty-state'
 import { ErrorState } from '@/components/error-state'
 import { SectionPageLayout } from '@/components/layout'
 import { Button } from '@/components/ui/button'
+import { ButtonGroup } from '@/components/ui/button-group'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 
 import { deleteUpstreamSubscription, listUpstreamSubscriptions } from './api'
 import { SubscriptionFormDialog } from './components/subscription-form-dialog'
+import { SubscriptionPlatform } from './components/subscription-platform'
 import { SubscriptionRow } from './components/subscription-row'
 import type { UpstreamSubscription } from './types'
 
 const QUERY_KEY = ['upstream-subscriptions'] as const
+const FILTER_COLUMNS: ColumnDef<UpstreamSubscription, unknown>[] = [
+  { accessorKey: 'name' },
+  {
+    accessorKey: 'platform',
+    filterFn: (row, columnID, value: unknown) =>
+      Array.isArray(value) && value.includes(row.getValue(columnID)),
+  },
+]
+const PLATFORM_FILTERS = [
+  {
+    columnId: 'platform',
+    title: 'Platform',
+    singleSelect: true,
+    options: [
+      {
+        value: 'opencode',
+        label: 'OpenCode Go',
+        iconNode: <SubscriptionPlatform platform='opencode' iconOnly />,
+      },
+      {
+        value: 'opendesign',
+        label: 'OpenDesign Go',
+        iconNode: <SubscriptionPlatform platform='opendesign' iconOnly />,
+      },
+    ],
+  },
+]
 
 export function UpstreamSubscriptions() {
   const { t } = useTranslation()
@@ -43,11 +81,40 @@ export function UpstreamSubscriptions() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<UpstreamSubscription | null>(null)
   const [removing, setRemoving] = useState<UpstreamSubscription | null>(null)
+  const [now, setNow] = useState(Date.now)
+  const [sortBy, setSortBy] = useState('platform')
+  const [sortDesc, setSortDesc] = useState(false)
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [search, setSearch] = useState('')
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
   const subscriptions = useQuery({
     queryKey: QUERY_KEY,
     queryFn: ({ signal }) => listUpstreamSubscriptions(signal),
     refetchInterval: 15_000,
     retry: false,
+  })
+  const { table } = useDataTable({
+    data: subscriptions.data ?? [],
+    columns: FILTER_COLUMNS,
+    columnFilters,
+    onColumnFiltersChange: setColumnFilters,
+    globalFilter: search,
+    onGlobalFilterChange: setSearch,
+    withPaginationRowModel: false,
+    withSortedRowModel: false,
+    enableRowSelection: false,
+    columnVisibilityStorageKey: false,
+    globalFilterFn: (row, _columnID, value: unknown) => {
+      const search =
+        typeof value === 'string' ? value.trim().toLocaleLowerCase() : ''
+      return (
+        row.original.name.toLocaleLowerCase().includes(search) ||
+        (row.original.account ?? '').toLocaleLowerCase().includes(search)
+      )
+    },
   })
   const remove = useMutation({
     mutationFn: deleteUpstreamSubscription,
@@ -66,6 +133,30 @@ export function UpstreamSubscriptions() {
     setEditing(subscription)
     setFormOpen(true)
   }
+  const visibleSubscriptions = table
+    .getFilteredRowModel()
+    .rows.map((row) => row.original)
+    .sort((a, b) => {
+      if (sortBy === 'expiry') {
+        const aEnd = a.quota?.subscription_period_end
+          ? Date.parse(a.quota.subscription_period_end)
+          : Infinity
+        const bEnd = b.quota?.subscription_period_end
+          ? Date.parse(b.quota.subscription_period_end)
+          : Infinity
+        if (aEnd !== bEnd) {
+          if (!Number.isFinite(aEnd)) return 1
+          if (!Number.isFinite(bEnd)) return -1
+          return sortDesc ? bEnd - aEnd : aEnd - bEnd
+        }
+      }
+      const platformOrder = a.platform.localeCompare(b.platform)
+      return (sortDesc ? -platformOrder : platformOrder) || b.id - a.id
+    })
+  const sortOptions = [
+    { value: 'platform', label: t('Platform') },
+    { value: 'expiry', label: t('Subscription expiry') },
+  ]
 
   return (
     <>
@@ -89,11 +180,57 @@ export function UpstreamSubscriptions() {
           </Button>
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <p className='text-muted-foreground mb-4 text-sm leading-relaxed'>
-            {t(
-              'Quota refresh intervals are configurable and default to 10 minutes. Each bar uses its own window limit.'
-            )}
-          </p>
+          <DataTableToolbar
+            table={table}
+            hideViewOptions
+            className='mb-3'
+            searchPlaceholder={t('Search name or account...')}
+            filters={PLATFORM_FILTERS.map((filter) => ({
+              ...filter,
+              title: t('Platform'),
+            }))}
+            preActions={
+              <ButtonGroup
+                aria-label={t('Sort subscriptions by')}
+                className='shrink-0'
+              >
+                <Select
+                  value={sortBy}
+                  onValueChange={(value) => {
+                    if (value) setSortBy(value)
+                  }}
+                  items={sortOptions}
+                >
+                  <SelectTrigger
+                    aria-label={t('Sort subscriptions by')}
+                    className='bg-background min-w-24'
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sortOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant='outline'
+                  size='icon'
+                  aria-label={sortDesc ? t('Descending') : t('Ascending')}
+                  title={sortDesc ? t('Descending') : t('Ascending')}
+                  onClick={() => setSortDesc(!sortDesc)}
+                >
+                  {sortDesc ? (
+                    <ArrowDown aria-hidden='true' />
+                  ) : (
+                    <ArrowUp aria-hidden='true' />
+                  )}
+                </Button>
+              </ButtonGroup>
+            }
+          />
           {subscriptions.isLoading && (
             <div
               role='status'
@@ -125,15 +262,35 @@ export function UpstreamSubscriptions() {
               }
             />
           )}
-          {subscriptions.data && subscriptions.data.length > 0 && (
+          {subscriptions.data &&
+            subscriptions.data.length > 0 &&
+            visibleSubscriptions.length === 0 && (
+              <EmptyState
+                title={t('No matching subscriptions')}
+                description={t('Try another name or platform.')}
+                action={
+                  <Button
+                    variant='outline'
+                    onClick={() => {
+                      table.resetColumnFilters()
+                      table.setGlobalFilter('')
+                    }}
+                  >
+                    {t('Clear filters')}
+                  </Button>
+                }
+              />
+            )}
+          {visibleSubscriptions.length > 0 && (
             <ul
               className='bg-card divide-y overflow-hidden rounded-lg border'
               aria-label={t('Subscriptions')}
             >
-              {subscriptions.data.map((subscription) => (
+              {visibleSubscriptions.map((subscription) => (
                 <SubscriptionRow
                   key={subscription.id}
                   subscription={subscription}
+                  now={now}
                   onEdit={edit}
                   onRemove={setRemoving}
                 />

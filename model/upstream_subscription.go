@@ -18,6 +18,15 @@ const (
 )
 
 var ErrSubscriptionChanged = errors.New("Subscription changed; reload and try again")
+var ErrSubscriptionChannelUnavailable = errors.New("Selected channel was not found; select another channel or use an independent name")
+var ErrSubscriptionAccountTooLong = errors.New("Subscription account must be at most 128 characters")
+
+type UpstreamSubscriptionChannel struct {
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	Priority int64  `json:"priority"`
+	Weight   uint   `json:"weight"`
+}
 
 type SubscriptionQuotaWindow struct {
 	Key              string     `json:"key"`
@@ -31,28 +40,32 @@ type SubscriptionQuotaWindow struct {
 }
 
 type SubscriptionQuota struct {
-	Windows       []SubscriptionQuotaWindow `json:"windows"`
-	WorkspaceID   string                    `json:"workspace_id,omitempty"`
-	WorkspaceName string                    `json:"workspace_name,omitempty"`
-	Tier          string                    `json:"tier,omitempty"`
-	Eligible      *bool                     `json:"eligible,omitempty"`
-	BalanceUSD    *string                   `json:"balance_usd,omitempty"`
+	Windows               []SubscriptionQuotaWindow `json:"windows"`
+	WorkspaceID           string                    `json:"workspace_id,omitempty"`
+	WorkspaceName         string                    `json:"workspace_name,omitempty"`
+	Tier                  string                    `json:"tier,omitempty"`
+	Eligible              *bool                     `json:"eligible,omitempty"`
+	BalanceUSD            *string                   `json:"balance_usd,omitempty"`
+	SubscriptionPeriodEnd *time.Time                `json:"subscription_period_end,omitempty"`
 }
 
 type UpstreamSubscription struct {
-	ID                     int       `json:"id" gorm:"primaryKey"`
-	Name                   string    `json:"name" gorm:"type:varchar(128);not null"`
-	Platform               string    `json:"platform" gorm:"type:varchar(32);not null"`
-	CredentialEncrypted    string    `json:"-" gorm:"type:text;not null"`
-	RefreshIntervalMinutes int       `json:"refresh_interval_minutes" gorm:"not null;default:10"`
-	QuotaJSON              string    `json:"-" gorm:"type:text"`
-	LastSuccessAt          int64     `json:"last_success_at"`
-	LastAttemptAt          int64     `json:"last_attempt_at"`
-	NextRefreshAt          int64     `json:"next_refresh_at" gorm:"index"`
-	FailureCount           int       `json:"-"`
-	ErrorCode              string    `json:"error_code" gorm:"type:varchar(32)"`
-	CreatedAt              time.Time `json:"created_at"`
-	UpdatedAt              time.Time `json:"updated_at"`
+	ID                     int                          `json:"id" gorm:"primaryKey"`
+	Name                   string                       `json:"name" gorm:"type:varchar(128);not null"`
+	Account                string                       `json:"account" gorm:"type:varchar(128);not null;default:''"`
+	ChannelID              int                          `json:"channel_id" gorm:"not null;default:0;index"`
+	Channel                *UpstreamSubscriptionChannel `json:"channel" gorm:"-"`
+	Platform               string                       `json:"platform" gorm:"type:varchar(32);not null"`
+	CredentialEncrypted    string                       `json:"-" gorm:"type:text;not null"`
+	RefreshIntervalMinutes int                          `json:"refresh_interval_minutes" gorm:"not null;default:10"`
+	QuotaJSON              string                       `json:"-" gorm:"type:text"`
+	LastSuccessAt          int64                        `json:"last_success_at"`
+	LastAttemptAt          int64                        `json:"last_attempt_at"`
+	NextRefreshAt          int64                        `json:"next_refresh_at" gorm:"index"`
+	FailureCount           int                          `json:"-"`
+	ErrorCode              string                       `json:"error_code" gorm:"type:varchar(32)"`
+	CreatedAt              time.Time                    `json:"created_at"`
+	UpdatedAt              time.Time                    `json:"updated_at"`
 }
 
 type UpstreamSubscriptionResponse struct {
@@ -64,6 +77,8 @@ type UpstreamSubscriptionResponse struct {
 type UpstreamSubscriptionConfig struct {
 	ID                     int
 	Name                   string
+	Account                *string
+	ChannelID              *int
 	Platform               string
 	CredentialEncrypted    string
 	RefreshIntervalMinutes int
@@ -89,6 +104,9 @@ func (s UpstreamSubscription) RefreshInterval() time.Duration {
 
 func (s UpstreamSubscription) Response() UpstreamSubscriptionResponse {
 	response := UpstreamSubscriptionResponse{UpstreamSubscription: s}
+	if s.Channel != nil {
+		response.Name = s.Channel.Name
+	}
 	if s.QuotaJSON != "" {
 		var quota SubscriptionQuota
 		if common.UnmarshalJsonStr(s.QuotaJSON, &quota) == nil {
@@ -124,17 +142,94 @@ func NormalizeUpstreamSubscription(name, platform string) (string, error) {
 func ListUpstreamSubscriptions() ([]UpstreamSubscription, error) {
 	subscriptions := make([]UpstreamSubscription, 0)
 	err := DB.Order("id desc").Find(&subscriptions).Error
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int, 0)
+	for _, subscription := range subscriptions {
+		if subscription.ChannelID > 0 {
+			ids = append(ids, subscription.ChannelID)
+		}
+	}
+	if len(ids) > 0 {
+		channels := make([]UpstreamSubscriptionChannel, 0)
+		if err := DB.Model(&Channel{}).Select("id", "name", "priority", "weight").Where("id IN ?", ids).Find(&channels).Error; err != nil {
+			return nil, err
+		}
+		byID := make(map[int]*UpstreamSubscriptionChannel, len(channels))
+		for i := range channels {
+			byID[channels[i].ID] = &channels[i]
+		}
+		for i := range subscriptions {
+			subscriptions[i].Channel = byID[subscriptions[i].ChannelID]
+		}
+	}
 	return subscriptions, err
+}
+
+func ListUpstreamSubscriptionChannels() ([]UpstreamSubscriptionChannel, error) {
+	channels := make([]UpstreamSubscriptionChannel, 0)
+	err := DB.Model(&Channel{}).Select("id", "name", "priority", "weight").Order("name").Order("id").Find(&channels).Error
+	return channels, err
+}
+
+func GetUpstreamSubscriptionChannel(tx *gorm.DB, id int) (*UpstreamSubscriptionChannel, error) {
+	var channel UpstreamSubscriptionChannel
+	err := tx.Model(&Channel{}).Select("id", "name", "priority", "weight").Where("id = ?", id).Take(&channel).Error
+	return &channel, err
 }
 
 func GetUpstreamSubscription(id int) (*UpstreamSubscription, error) {
 	var subscription UpstreamSubscription
 	err := DB.First(&subscription, id).Error
+	if err == nil && subscription.ChannelID > 0 {
+		channel, channelErr := GetUpstreamSubscriptionChannel(DB, subscription.ChannelID)
+		if channelErr == nil {
+			subscription.Channel = channel
+		} else if !errors.Is(channelErr, gorm.ErrRecordNotFound) {
+			return nil, channelErr
+		}
+	}
 	return &subscription, err
 }
 
 func SaveUpstreamSubscriptionWithTx(tx *gorm.DB, config UpstreamSubscriptionConfig) (*UpstreamSubscription, error) {
-	name, err := NormalizeUpstreamSubscription(config.Name, config.Platform)
+	var subscription UpstreamSubscription
+	if config.ID > 0 {
+		if err := tx.First(&subscription, config.ID).Error; err != nil {
+			return nil, err
+		}
+		if subscription.Platform != config.Platform {
+			return nil, errors.New("Subscription platform cannot be changed")
+		}
+	}
+	account := subscription.Account
+	if config.Account != nil {
+		account = strings.TrimSpace(*config.Account)
+	}
+	if utf8.RuneCountInString(account) > 128 {
+		return nil, ErrSubscriptionAccountTooLong
+	}
+	channelID := subscription.ChannelID
+	if config.ChannelID != nil {
+		channelID = *config.ChannelID
+	}
+	if channelID < 0 {
+		return nil, ErrSubscriptionChannelUnavailable
+	}
+	nameInput := config.Name
+	if channelID > 0 {
+		channel, err := GetUpstreamSubscriptionChannel(tx, channelID)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrSubscriptionChannelUnavailable
+		}
+		if err != nil {
+			return nil, err
+		}
+		subscription.Channel = channel
+		nameInput = subscription.Name
+	}
+	name, err := NormalizeUpstreamSubscription(nameInput, config.Platform)
 	if err != nil {
 		return nil, err
 	}
@@ -146,15 +241,13 @@ func SaveUpstreamSubscriptionWithTx(tx *gorm.DB, config UpstreamSubscriptionConf
 		if err != nil {
 			return nil, err
 		}
-		subscription := &UpstreamSubscription{Name: name, Platform: config.Platform, CredentialEncrypted: config.CredentialEncrypted, RefreshIntervalMinutes: minutes}
-		return subscription, tx.Create(subscription).Error
-	}
-	var subscription UpstreamSubscription
-	if err := tx.First(&subscription, config.ID).Error; err != nil {
-		return nil, err
-	}
-	if subscription.Platform != config.Platform {
-		return nil, errors.New("Subscription platform cannot be changed")
+		subscription.Name = name
+		subscription.Account = account
+		subscription.Platform = config.Platform
+		subscription.ChannelID = channelID
+		subscription.CredentialEncrypted = config.CredentialEncrypted
+		subscription.RefreshIntervalMinutes = minutes
+		return &subscription, tx.Create(&subscription).Error
 	}
 	minutes := config.RefreshIntervalMinutes
 	if minutes == 0 {
@@ -164,10 +257,10 @@ func SaveUpstreamSubscriptionWithTx(tx *gorm.DB, config UpstreamSubscriptionConf
 	if err != nil {
 		return nil, err
 	}
-	if config.CredentialEncrypted == "" && name == subscription.Name && minutes == subscription.RefreshIntervalMinutes {
+	if config.CredentialEncrypted == "" && name == subscription.Name && account == subscription.Account && channelID == subscription.ChannelID && minutes == subscription.RefreshIntervalMinutes {
 		return &subscription, nil
 	}
-	updates := map[string]any{"name": name, "refresh_interval_minutes": minutes}
+	updates := map[string]any{"name": name, "account": account, "channel_id": channelID, "refresh_interval_minutes": minutes}
 	if minutes != subscription.RefreshIntervalMinutes && subscription.LastAttemptAt > 0 {
 		next := subscription.LastAttemptAt + int64(minutes)*60
 		// The provider may have installed a retry hold after the initial read.
@@ -182,7 +275,7 @@ func SaveUpstreamSubscriptionWithTx(tx *gorm.DB, config UpstreamSubscriptionConf
 		updates["failure_count"] = 0
 		updates["error_code"] = ""
 	}
-	result := tx.Model(&subscription).Where("credential_encrypted = ? AND last_attempt_at = ? AND refresh_interval_minutes = ?", subscription.CredentialEncrypted, subscription.LastAttemptAt, subscription.RefreshIntervalMinutes).Updates(updates)
+	result := tx.Model(&subscription).Where("credential_encrypted = ? AND last_attempt_at = ? AND refresh_interval_minutes = ? AND channel_id = ?", subscription.CredentialEncrypted, subscription.LastAttemptAt, subscription.RefreshIntervalMinutes, subscription.ChannelID).Updates(updates)
 	if result.Error != nil {
 		return nil, result.Error
 	}

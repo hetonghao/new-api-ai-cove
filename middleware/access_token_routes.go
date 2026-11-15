@@ -43,6 +43,7 @@ func accessTokenScopeRule(scope string) accessTokenRouteRule {
 var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	// AI Cove management panels require a dashboard login, including for legacy PATs.
 	"GET /api/upstream-subscriptions":                              accessTokenSessionRule,
+	"GET /api/upstream-subscriptions/channels":                     accessTokenSessionRule,
 	"POST /api/upstream-subscriptions":                             accessTokenSessionRule,
 	"PUT /api/upstream-subscriptions/:id":                          accessTokenSessionRule,
 	"DELETE /api/upstream-subscriptions/:id":                       accessTokenSessionRule,

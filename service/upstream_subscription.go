@@ -72,6 +72,7 @@ func fetchOpenDesignSubscriptionQuota(ctx context.Context, credential string) (*
 	var workspace struct {
 		ID   string `json:"workspaceId"`
 		Name string `json:"workspaceName"`
+		Type string `json:"workspaceType"`
 	}
 	if err := subscriptionJSONRequest(ctx, http.MethodGet, openDesignControlOrigin+"/api/v1/workspaces/current", credential, nil, &workspace); err != nil {
 		return nil, err
@@ -136,6 +137,17 @@ func fetchOpenDesignSubscriptionQuota(ctx context.Context, credential string) (*
 		quota.Windows = append(quota.Windows, window)
 	}
 	slices.SortFunc(quota.Windows, func(a, b model.SubscriptionQuotaWindow) int { return int(a.DurationSeconds - b.DurationSeconds) })
+	if workspace.Type == "personal" {
+		var summary struct {
+			PeriodEnd *time.Time `json:"subscriptionCurrentPeriodEnd"`
+		}
+		// Account billing describes the personal plan, not a team's workspace plan.
+		summaryContext, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if subscriptionJSONRequest(summaryContext, http.MethodGet, openDesignControlOrigin+"/api/v1/billing/summary", credential, nil, &summary) == nil && summary.PeriodEnd != nil && !summary.PeriodEnd.IsZero() {
+			quota.SubscriptionPeriodEnd = summary.PeriodEnd
+		}
+	}
 	return quota, nil
 }
 

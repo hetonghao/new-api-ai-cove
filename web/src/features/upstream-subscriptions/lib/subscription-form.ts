@@ -23,15 +23,21 @@ import { z } from 'zod'
 export function subscriptionFormSchema(
   t: TFunction,
   editing: boolean,
-  manual: boolean
+  manual: boolean,
+  bindingChannel: boolean
 ) {
   const intervalError = t('Refresh interval must be between 1 and 1440 minutes')
   return z
     .object({
-      name: z
+      name: z.string().trim(),
+      account: z
         .string()
         .trim()
-        .max(128, t('Subscription name must be at most 128 characters')),
+        .refine(
+          (value) => [...value].length <= 128,
+          t('Subscription account must be at most 128 characters')
+        ),
+      channel_id: z.number().int().nonnegative(),
       platform: z.enum(['opencode', 'opendesign']),
       credential: z.string().trim().max(4096),
       refresh_interval_minutes: z
@@ -41,6 +47,20 @@ export function subscriptionFormSchema(
         .max(1440, intervalError),
     })
     .superRefine((values, context) => {
+      if (bindingChannel && values.channel_id === 0) {
+        context.addIssue({
+          code: 'custom',
+          path: ['channel_id'],
+          message: t('Select a channel'),
+        })
+      }
+      if (!bindingChannel && [...values.name].length > 128) {
+        context.addIssue({
+          code: 'custom',
+          path: ['name'],
+          message: t('Subscription name must be at most 128 characters'),
+        })
+      }
       const required = !editing && (values.platform === 'opencode' || manual)
       const prefix = values.platform === 'opencode' ? 'oc_sk_' : 'vela_ctrl_'
       if (

@@ -27,6 +27,7 @@ import {
   upstreamSubscriptionSchema,
   subscriptionLoginSchema,
   subscriptionLoginResultSchema,
+  subscriptionChannelSchema,
   type SubscriptionFormValues,
 } from './types'
 
@@ -45,6 +46,14 @@ export async function listUpstreamSubscriptions(signal?: AbortSignal) {
     disableDuplicate: true,
   })
   return subscriptionData(response.data, z.array(upstreamSubscriptionSchema))
+}
+
+export async function listSubscriptionChannels(signal?: AbortSignal) {
+  const response = await api.get<unknown>(`${BASE_PATH}/channels`, {
+    signal,
+    disableDuplicate: true,
+  })
+  return subscriptionData(response.data, z.array(subscriptionChannelSchema))
 }
 
 export async function saveUpstreamSubscription(
@@ -71,12 +80,16 @@ export async function deleteUpstreamSubscription(id: number) {
 export async function startOpenDesignLogin(
   name: string,
   refreshIntervalMinutes: number,
-  subscriptionID?: number
+  subscriptionID?: number,
+  channelID = 0,
+  account = ''
 ) {
   const response = await api.post<unknown>(`${BASE_PATH}/opendesign/login`, {
     name,
     subscription_id: subscriptionID ?? 0,
     refresh_interval_minutes: refreshIntervalMinutes,
+    channel_id: channelID,
+    account,
   })
   return subscriptionData(response.data, subscriptionLoginSchema)
 }

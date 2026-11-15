@@ -21,7 +21,8 @@ import { useTranslation } from 'react-i18next'
 
 import { Progress } from '@/components/ui/progress'
 import { toIntlLocale } from '@/i18n/languages'
-import { formatDateTimeStr, formatNumber } from '@/lib/format'
+import dayjs from '@/lib/dayjs'
+import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import type { SubscriptionQuotaWindow } from '../types'
@@ -29,6 +30,7 @@ import type { SubscriptionQuotaWindow } from '../types'
 type QuotaWindowProps = {
   readonly window: SubscriptionQuotaWindow
   readonly subscriptionName: string
+  readonly now?: number
 }
 
 export function QuotaWindow(props: QuotaWindowProps) {
@@ -38,72 +40,107 @@ export function QuotaWindow(props: QuotaWindowProps) {
   const percentage = window.used_percent
   const labels = {
     rolling: t('5-hour window'),
-    weekly: t('Weekly window'),
-    monthly: t('Monthly window'),
+    weekly: t('7-day window'),
+    monthly: t('30-day window'),
   }
   const label = labels[window.key]
-  const percentText =
-    percentage === null ? t('Unknown') : `${formatNumber(percentage, locale)}%`
+  const remaining = percentage === null ? null : Math.max(0, 100 - percentage)
+  let percentText =
+    remaining === null ? t('Unknown') : `${formatNumber(remaining, locale)}%`
+  if (remaining !== null && remaining > 0 && remaining < 0.01) {
+    percentText = `<${formatNumber(0.01, locale)}%`
+  }
   const exhausted = percentage !== null && percentage >= 100
   const restricted = window.status !== 'ok'
-  const overLimit = percentage !== null && percentage > 100
+  let severity: 'success' | 'info' | 'warning' | 'destructive' = 'success'
+  if (percentage !== null && percentage >= 98) {
+    severity = 'destructive'
+  } else if (percentage !== null && percentage >= 90) {
+    severity = 'warning'
+  } else if (percentage !== null && percentage >= 50) {
+    severity = 'info'
+  }
+  const barTones = {
+    success: '[&_[data-slot=progress-indicator]]:bg-success',
+    info: '[&_[data-slot=progress-indicator]]:bg-info',
+    warning: '[&_[data-slot=progress-indicator]]:bg-warning',
+    destructive: '[&_[data-slot=progress-indicator]]:bg-destructive',
+  }
+  let valueText = t('{{percent}} remaining', { percent: percentText })
+  if (exhausted) valueText = t('Window quota exhausted')
+  else if (percentage === null) valueText = t('Quota unknown')
+  let resetText = ''
+  if (window.resets_at) {
+    const milliseconds =
+      Date.parse(window.resets_at) - (props.now ?? Date.now())
+    const minutes = Math.ceil(milliseconds / 60_000)
+    const days = Math.floor(minutes / 1440)
+    const hours = Math.floor((minutes % 1440) / 60)
+    const remainderMinutes = minutes % 60
+    if (milliseconds <= 0) {
+      resetText = t('Reset due')
+    } else if (milliseconds < 60_000) {
+      resetText = t('Resets in less than 1 minute')
+    } else if (days > 0) {
+      resetText = t(
+        'Resets in {{days}} days {{hours}} hours {{minutes}} minutes',
+        { days, hours, minutes: remainderMinutes }
+      )
+    } else if (hours > 0) {
+      resetText = t('Resets in {{hours}} hours {{minutes}} minutes', {
+        hours,
+        minutes: remainderMinutes,
+      })
+    } else {
+      resetText = t('Resets in {{minutes}} minutes', { minutes })
+    }
+  }
 
   return (
-    <div className='min-w-0 space-y-2.5'>
+    <div className='min-w-0 space-y-1.5'>
       <div className='flex flex-wrap items-baseline justify-between gap-1 text-sm'>
         <span className='font-medium'>{label}</span>
-        <span className={cn('tabular-nums', exhausted && 'text-destructive')}>
-          {t('{{percent}} used', { percent: percentText })}
+        <span
+          className='tabular-nums'
+          style={
+            percentage === null
+              ? undefined
+              : {
+                  color: `color-mix(in oklab, var(--${severity}) 70%, var(--foreground))`,
+                }
+          }
+        >
+          {valueText}
         </span>
       </div>
       {percentage === null ? (
         <div className='bg-muted h-1 rounded-full' aria-hidden='true' />
       ) : (
         <Progress
-          value={Math.min(percentage, 100)}
+          value={remaining}
           max={100}
           aria-label={`${props.subscriptionName} · ${label}`}
-          aria-valuetext={t('{{percent}} used', { percent: percentText })}
+          aria-valuetext={valueText}
           className={cn(
             'gap-0 [&_[data-slot=progress-indicator]]:transition-none',
-            percentage >= 80 &&
-              '[&_[data-slot=progress-indicator]]:bg-amber-600 dark:[&_[data-slot=progress-indicator]]:bg-amber-400',
-            exhausted &&
-              '[&_[data-slot=progress-indicator]]:bg-destructive dark:[&_[data-slot=progress-indicator]]:bg-destructive'
+            barTones[severity],
+            exhausted && '[&_[data-slot=progress-track]]:bg-destructive/15'
           )}
         />
       )}
-      {window.used_credits !== undefined &&
-        window.limit_credits !== undefined && (
-          <p className='text-muted-foreground text-xs leading-relaxed [overflow-wrap:anywhere] tabular-nums'>
-            {t('Credits used / limit')}{' '}
-            {BigInt(window.used_credits).toLocaleString(locale)} /{' '}
-            {BigInt(window.limit_credits).toLocaleString(locale)}
-            {window.remaining_credits !== undefined && (
-              <span className='mt-0.5 block'>
-                {t('Remaining credits: {{amount}}', {
-                  amount: BigInt(window.remaining_credits).toLocaleString(
-                    locale
-                  ),
-                })}
-              </span>
-            )}
-          </p>
-        )}
-      {(exhausted || restricted) && (
-        <p
-          className={cn('text-xs font-medium', exhausted && 'text-destructive')}
-        >
-          {overLimit && t('Over limit')}
-          {exhausted && !overLimit && t('Limit reached')}
-          {!exhausted && restricted && t('Restricted by platform')}
+      {!exhausted && restricted && (
+        <p className='text-muted-foreground text-xs'>
+          {t('Restricted by platform')}
         </p>
       )}
       {window.resets_at && (
         <p className='text-muted-foreground text-xs leading-relaxed'>
-          {t('Resets at')}{' '}
-          <time className='tabular-nums' dateTime={window.resets_at}>
-            {formatDateTimeStr(new Date(window.resets_at))}
+          <time
+            className='tabular-nums'
+            dateTime={window.resets_at}
+            title={dayjs(window.resets_at).format('YYYY-MM-DD HH:mm:ss')}
+          >
+            {resetText}
           </time>
         </p>
       )}

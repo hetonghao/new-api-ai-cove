@@ -36,14 +36,29 @@ const filters = [
   {
     columnId: 'status',
     title: 'Status',
+    singleSelect: true,
     options: [{ value: 'enabled', label: 'Enabled' }],
   },
 ]
+const multiFilters = [
+  {
+    ...filters[0],
+    singleSelect: false,
+    options: [
+      { value: 'enabled', label: 'Enabled' },
+      { value: 'disabled', label: 'Disabled' },
+    ],
+  },
+]
 
-function Fixture(props: { collapsibleOnMobile?: boolean }) {
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([
-    { id: 'status', value: ['enabled'] },
-  ])
+function Fixture(props: {
+  collapsibleOnMobile?: boolean
+  initialFilters?: ColumnFiltersState
+  multiple?: boolean
+}) {
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(
+    props.initialFilters ?? [{ id: 'status', value: ['enabled'] }]
+  )
   const table = useReactTable({
     data: rows,
     columns: [
@@ -61,7 +76,7 @@ function Fixture(props: { collapsibleOnMobile?: boolean }) {
       collapsibleOnMobile={props.collapsibleOnMobile}
       searchPlaceholder='Search channels'
       searchDebounceMs={50}
-      filters={filters}
+      filters={props.multiple ? multiFilters : filters}
       additionalSearch={
         <Input
           aria-label='Model'
@@ -158,4 +173,53 @@ it.each([
   expect(
     screen.queryByRole('button', { name: /^(Collapse|Expand)$/ })
   ).not.toBeInTheDocument()
+})
+
+it('reflects a selected facet immediately and clears it when the same option is selected again', async () => {
+  setMobileViewport(false)
+  const user = userEvent.setup()
+  render(<Fixture initialFilters={[]} />)
+  await user.click(screen.getByRole('button', { name: 'Status' }))
+  await user.click(screen.getByRole('option', { name: 'Enabled' }))
+  expect(screen.getByRole('button', { name: /^Status/ })).toHaveTextContent(
+    'Enabled'
+  )
+  if (!screen.queryByRole('option', { name: 'Enabled' })) {
+    await user.click(screen.getByRole('button', { name: /^Status/ }))
+  }
+  await user.click(screen.getByRole('option', { name: 'Enabled' }))
+  expect(screen.getByRole('button', { name: 'Status' })).not.toHaveTextContent(
+    'Enabled'
+  )
+  expect(
+    screen.queryByRole('button', { name: 'Reset' })
+  ).not.toBeInTheDocument()
+})
+
+it('keeps the other selected value when toggling a multi-select facet', async () => {
+  setMobileViewport(false)
+  const user = userEvent.setup()
+  render(<Fixture initialFilters={[]} multiple />)
+  await user.click(screen.getByRole('button', { name: 'Status' }))
+  await user.click(screen.getByRole('option', { name: 'Enabled' }))
+  if (!screen.queryByRole('option', { name: 'Disabled' })) {
+    await user.click(screen.getByRole('button', { name: /^Status/ }))
+  }
+  await user.click(screen.getByRole('option', { name: 'Disabled' }))
+  expect(screen.getByRole('button', { name: /^Status/ })).toHaveTextContent(
+    'Enabled'
+  )
+  expect(screen.getByRole('button', { name: /^Status/ })).toHaveTextContent(
+    'Disabled'
+  )
+  if (!screen.queryByRole('option', { name: 'Enabled' })) {
+    await user.click(screen.getByRole('button', { name: /^Status/ }))
+  }
+  await user.click(screen.getByRole('option', { name: 'Enabled' }))
+  expect(screen.getByRole('button', { name: /^Status/ })).toHaveTextContent(
+    'Disabled'
+  )
+  expect(screen.getByRole('button', { name: /^Status/ })).not.toHaveTextContent(
+    'Enabled'
+  )
 })

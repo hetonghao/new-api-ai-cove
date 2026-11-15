@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import { useEffect, useId, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -28,6 +28,7 @@ import { toast } from 'sonner'
 import { Dialog } from '@/components/dialog'
 import { PasswordInput } from '@/components/password-input'
 import { Button } from '@/components/ui/button'
+import { Combobox } from '@/components/ui/combobox'
 import {
   Field,
   FieldDescription,
@@ -37,10 +38,18 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { getServerErrorMessage } from '@/lib/server-error-message'
 
 import {
   cancelOpenDesignLogin,
+  listSubscriptionChannels,
   saveUpstreamSubscription,
   startOpenDesignLogin,
 } from '../api'
@@ -51,6 +60,7 @@ import type {
   UpstreamSubscription,
 } from '../types'
 import { SubscriptionLoginPanel } from './subscription-login-panel'
+import { SubscriptionPlatform } from './subscription-platform'
 
 type SubscriptionFormDialogProps = {
   readonly open: boolean
@@ -63,19 +73,48 @@ export function SubscriptionFormDialog(props: SubscriptionFormDialogProps) {
   const { t } = useTranslation()
   const id = useId()
   const [manual, setManual] = useState(false)
+  const [bindingChannel, setBindingChannel] = useState(false)
   const [challenge, setChallenge] = useState<SubscriptionLogin | null>(null)
   const form = useForm<SubscriptionFormValues>({
     resolver: zodResolver(
-      subscriptionFormSchema(t, props.subscription !== null, manual)
+      subscriptionFormSchema(
+        t,
+        props.subscription !== null,
+        manual,
+        bindingChannel
+      )
     ),
     defaultValues: {
       name: '',
+      account: '',
+      channel_id: 0,
       platform: 'opencode',
       credential: '',
       refresh_interval_minutes: 10,
     },
   })
   const platform = form.watch('platform')
+  const channelID = form.watch('channel_id')
+  const channels = useQuery({
+    queryKey: ['upstream-subscription-channels'],
+    queryFn: ({ signal }) => listSubscriptionChannels(signal),
+    enabled: props.open,
+    retry: false,
+    meta: { errorToast: false },
+  })
+  const selectedChannel = channels.data?.find(
+    (channel) => channel.id === channelID
+  )
+  const channelOptions = (channels.data ?? []).map((channel) => ({
+    value: String(channel.id),
+    label: `${channel.name} · #${channel.id}`,
+  }))
+  if (channelID > 0 && !selectedChannel) {
+    channelOptions.unshift({
+      value: String(channelID),
+      label: props.subscription?.name ?? `#${channelID}`,
+    })
+  }
   const cancelLogin = useMutation({
     mutationFn: cancelOpenDesignLogin,
     meta: { errorToast: false },
@@ -92,12 +131,15 @@ export function SubscriptionFormDialog(props: SubscriptionFormDialogProps) {
     if (!props.open) return
     form.reset({
       name: props.subscription?.name ?? '',
+      account: props.subscription?.account ?? '',
+      channel_id: props.subscription?.channel_id ?? 0,
       platform: props.subscription?.platform ?? 'opencode',
       credential: '',
       refresh_interval_minutes:
         props.subscription?.refresh_interval_minutes ?? 10,
     })
     setManual(false)
+    setBindingChannel(!!props.subscription?.channel_id)
     setChallenge(null)
   }, [props.open, props.subscription, form])
 
@@ -128,7 +170,9 @@ export function SubscriptionFormDialog(props: SubscriptionFormDialogProps) {
       await startOpenDesignLogin(
         values.name,
         values.refresh_interval_minutes,
-        props.subscription?.id
+        props.subscription?.id,
+        values.channel_id,
+        values.account
       )
     )
   }
@@ -200,16 +244,13 @@ export function SubscriptionFormDialog(props: SubscriptionFormDialogProps) {
         id={id}
         noValidate
         onSubmit={form.handleSubmit(submit)}
-        className='space-y-5'
+        className='space-y-4'
       >
-        <fieldset
-          className='space-y-2'
-          disabled={locked || props.subscription !== null}
-        >
-          <legend className='mb-2 text-sm font-medium'>{t('Platform')}</legend>
-          <RadioGroup
+        <Field>
+          <FieldLabel htmlFor={`${id}-platform`}>{t('Platform')}</FieldLabel>
+          <Select
+            name='platform'
             value={platform}
-            className='grid-cols-2'
             disabled={locked || props.subscription !== null}
             onValueChange={(value) => {
               if (value !== 'opencode' && value !== 'opendesign') return
@@ -218,34 +259,155 @@ export function SubscriptionFormDialog(props: SubscriptionFormDialogProps) {
               form.clearErrors()
               setManual(false)
             }}
-            aria-label={t('Platform')}
+            items={[
+              {
+                value: 'opencode',
+                label: <SubscriptionPlatform platform='opencode' />,
+              },
+              {
+                value: 'opendesign',
+                label: <SubscriptionPlatform platform='opendesign' />,
+              },
+            ]}
+          >
+            <SelectTrigger id={`${id}-platform`} className='w-full'>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='opencode'>
+                <SubscriptionPlatform platform='opencode' />
+              </SelectItem>
+              <SelectItem value='opendesign'>
+                <SubscriptionPlatform platform='opendesign' />
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={`${id}-account`}>
+            {t('Subscription account (optional)')}
+          </FieldLabel>
+          <Input
+            id={`${id}-account`}
+            maxLength={128}
+            disabled={locked}
+            aria-invalid={!!form.formState.errors.account}
+            aria-describedby={`${id}-account-error`}
+            {...form.register('account')}
+          />
+          <FieldError
+            id={`${id}-account-error`}
+            errors={[form.formState.errors.account]}
+          />
+        </Field>
+        <fieldset disabled={locked} className='space-y-2'>
+          <legend className='mb-2 text-sm font-medium'>
+            {t('Subscription name')}
+          </legend>
+          <RadioGroup
+            value={bindingChannel ? 'channel' : 'independent'}
+            disabled={locked}
+            className='grid-cols-2'
+            aria-label={t('Name source')}
+            onValueChange={(value) => {
+              if (value === 'independent') {
+                form.setValue(
+                  'name',
+                  selectedChannel?.name ??
+                    props.subscription?.name ??
+                    form.getValues('name')
+                )
+                form.setValue('channel_id', 0)
+                setBindingChannel(false)
+              } else if (value === 'channel') {
+                setBindingChannel(true)
+              }
+              form.clearErrors('root')
+            }}
           >
             <div className='flex items-center gap-2 py-1'>
-              <RadioGroupItem id={`${id}-opencode`} value='opencode' />
-              <Label htmlFor={`${id}-opencode`}>OpenCode Go</Label>
+              <RadioGroupItem id={`${id}-independent`} value='independent' />
+              <Label htmlFor={`${id}-independent`}>
+                {t('Independent name')}
+              </Label>
             </div>
             <div className='flex items-center gap-2 py-1'>
-              <RadioGroupItem id={`${id}-opendesign`} value='opendesign' />
-              <Label htmlFor={`${id}-opendesign`}>OpenDesign Go</Label>
+              <RadioGroupItem id={`${id}-channel`} value='channel' />
+              <Label htmlFor={`${id}-channel`}>{t('Bind to channel')}</Label>
             </div>
           </RadioGroup>
         </fieldset>
-        <Field>
-          <FieldLabel htmlFor={`${id}-name`}>{t('Name (optional)')}</FieldLabel>
-          <Input
-            id={`${id}-name`}
-            maxLength={128}
-            disabled={locked}
-            placeholder={t('For example, team account')}
-            aria-invalid={!!form.formState.errors.name}
-            aria-describedby={`${id}-name-error`}
-            {...form.register('name')}
-          />
-          <FieldError
-            id={`${id}-name-error`}
-            errors={[form.formState.errors.name]}
-          />
-        </Field>
+        {bindingChannel && (
+          <Field>
+            <FieldLabel htmlFor={`${id}-channel-select`}>
+              {t('Channel')}
+            </FieldLabel>
+            <Combobox
+              id={`${id}-channel-select`}
+              name='channel_id'
+              options={channelOptions}
+              value={String(channelID)}
+              onValueChange={(value) => {
+                if (value) form.setValue('channel_id', Number(value))
+              }}
+              placeholder={t('Select a channel')}
+              emptyText={t('No channels found')}
+              disabled={locked || channels.isPending || !!channels.error}
+              aria-invalid={!!form.formState.errors.channel_id}
+              aria-describedby={`${id}-channel-help ${id}-channel-error`}
+            />
+            <FieldDescription id={`${id}-channel-help`}>
+              {t('The name follows the channel. Rename it in Channels.')}
+            </FieldDescription>
+            <FieldError
+              id={`${id}-channel-error`}
+              errors={[form.formState.errors.channel_id]}
+            />
+            {!channels.isPending &&
+              !channels.error &&
+              channelID > 0 &&
+              !selectedChannel && (
+                <FieldError>
+                  {t(
+                    'Bound channel was deleted. Select another channel or use an independent name.'
+                  )}
+                </FieldError>
+              )}
+          </Field>
+        )}
+        {bindingChannel && channels.error && (
+          <Field>
+            <FieldError>{t('Failed to load channels')}</FieldError>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              onClick={() => void channels.refetch()}
+            >
+              {t('Retry')}
+            </Button>
+          </Field>
+        )}
+        {!bindingChannel && (
+          <Field>
+            <FieldLabel htmlFor={`${id}-name`}>
+              {t('Name (optional)')}
+            </FieldLabel>
+            <Input
+              {...form.register('name')}
+              id={`${id}-name`}
+              maxLength={128}
+              disabled={locked}
+              placeholder={t('For example, team account')}
+              aria-invalid={!!form.formState.errors.name}
+              aria-describedby={`${id}-name-error`}
+            />
+            <FieldError
+              id={`${id}-name-error`}
+              errors={[form.formState.errors.name]}
+            />
+          </Field>
+        )}
         <Field>
           <FieldLabel htmlFor={`${id}-interval`}>
             {t('Refresh interval (minutes)')}
