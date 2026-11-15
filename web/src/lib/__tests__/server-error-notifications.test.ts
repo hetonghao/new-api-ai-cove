@@ -30,6 +30,10 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 import { saveModelPricing } from '@/features/model-pricing/api'
 import { useUpdateOption } from '@/features/system-settings/hooks/use-update-option'
+import {
+  cancelOpenDesignLogin,
+  pollOpenDesignLogin,
+} from '@/features/upstream-subscriptions/api'
 import { handleServerError } from '@/lib/handle-server-error'
 import { api } from '@/lib/http-client'
 import { createAppQueryClient } from '@/lib/query-client'
@@ -304,23 +308,23 @@ it.each([200, 401])(
       access_expires_at: 2_000_000_000,
     }
     const open = vi.spyOn(XMLHttpRequest.prototype, 'open')
-    vi.spyOn(XMLHttpRequest.prototype, 'send').mockImplementation(
-      function (this: XMLHttpRequest) {
-        Object.defineProperties(this, {
-          status: { value: refreshStatus, configurable: true },
-          statusText: { value: 'Refresh response', configurable: true },
-          responseText: {
-            value: JSON.stringify({
-              success: refreshStatus === 200,
-              data: fresh,
-            }),
-            configurable: true,
-          },
-          readyState: { value: 4, configurable: true },
-        })
-        this.onloadend?.(new ProgressEvent('loadend'))
-      }
-    )
+    vi.spyOn(XMLHttpRequest.prototype, 'send').mockImplementation(function (
+      this: XMLHttpRequest
+    ) {
+      Object.defineProperties(this, {
+        status: { value: refreshStatus, configurable: true },
+        statusText: { value: 'Refresh response', configurable: true },
+        responseText: {
+          value: JSON.stringify({
+            success: refreshStatus === 200,
+            data: fresh,
+          }),
+          configurable: true,
+        },
+        readyState: { value: 4, configurable: true },
+      })
+      this.onloadend?.(new ProgressEvent('loadend'))
+    })
     let requests = 0
     api.defaults.adapter = async (config) => {
       requests++
@@ -368,52 +372,70 @@ it.each([200, 401])(
   }
 )
 
-it('never refreshes or replays a failed single-use authorization request', async () => {
-  useAuthStore.getState().auth.setBundle({
-    access_token: 'access',
-    token_type: 'Bearer',
-    access_expires_at: 2_000_000_000,
-    user: { id: 1, username: 'test-user', role: 1 },
-    session: {
-      sid: 'proof-session',
-      current: true,
-      login_method: 'password',
-      ip: '',
-      user_agent: '',
-      created_at: 1,
-      last_active_at: 1,
-      expires_at: 2_000_000_000,
-    },
-  })
-  const send = vi.spyOn(XMLHttpRequest.prototype, 'send')
-  const adapter = vi.fn<AxiosAdapter>(async (config) => {
-    throw new AxiosError('Unauthorized', 'ERR_BAD_REQUEST', config, undefined, {
-      data: { message: 'Proof rejected' },
-      status: 401,
-      statusText: 'Unauthorized',
-      headers: {},
-      config,
+it.each([
+  [
+    'security proof',
+    () =>
+      api.post(
+        '/sensitive',
+        {},
+        {
+          singleUseAuthorization: true,
+          skipErrorHandler: true,
+          headers: { 'X-Security-Proof': 'test-proof' },
+        }
+      ),
+  ],
+  ['OpenDesign authorization polling', () => pollOpenDesignLogin('test-flow')],
+  [
+    'OpenDesign authorization cancellation',
+    () => cancelOpenDesignLogin('test-flow'),
+  ],
+] as const)(
+  'never refreshes or replays a failed single-use request: %s',
+  async (_name, request) => {
+    useAuthStore.getState().auth.setBundle({
+      access_token: 'access',
+      token_type: 'Bearer',
+      access_expires_at: 2_000_000_000,
+      user: { id: 1, username: 'test-user', role: 1 },
+      session: {
+        sid: 'proof-session',
+        current: true,
+        login_method: 'password',
+        ip: '',
+        user_agent: '',
+        created_at: 1,
+        last_active_at: 1,
+        expires_at: 2_000_000_000,
+      },
     })
-  })
-  api.defaults.adapter = adapter
-  const notify = vi.spyOn(toast, 'error').mockReturnValue('error')
-  await api
-    .post(
-      '/sensitive',
-      {},
-      {
-        singleUseAuthorization: true,
-        skipErrorHandler: true,
-        headers: { 'X-Security-Proof': 'test-proof' },
-      }
-    )
-    .catch(handleServerError)
-  expect(adapter).toHaveBeenCalledTimes(1)
-  expect(send).not.toHaveBeenCalled()
-  expect(notify.mock.calls.map(([message]) => message)).toEqual([
-    'Proof rejected',
-  ])
-})
+    const send = vi.spyOn(XMLHttpRequest.prototype, 'send')
+    const adapter = vi.fn<AxiosAdapter>(async (config) => {
+      throw new AxiosError(
+        'Unauthorized',
+        'ERR_BAD_REQUEST',
+        config,
+        undefined,
+        {
+          data: { message: 'Proof rejected' },
+          status: 401,
+          statusText: 'Unauthorized',
+          headers: {},
+          config,
+        }
+      )
+    })
+    api.defaults.adapter = adapter
+    const notify = vi.spyOn(toast, 'error').mockReturnValue('error')
+    await request().catch(handleServerError)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    expect(send).not.toHaveBeenCalled()
+    expect(notify.mock.calls.map(([message]) => message)).toEqual([
+      'Proof rejected',
+    ])
+  }
+)
 
 it('rejects an unsuccessful setting update so callers cannot proceed as if it saved, with one useful notification', async () => {
   const client = createAppQueryClient()

@@ -374,6 +374,7 @@ func migrateDB() error {
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
 		&RiskProvider{},
+		&UpstreamSubscription{},
 		&RiskPolicy{},
 		&RiskRule{},
 		&RiskRecord{},

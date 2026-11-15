@@ -276,6 +276,18 @@ func SetApiRouter(router *gin.Engine) {
 			performanceRoute.GET("/logs", controller.GetLogFiles)
 			performanceRoute.DELETE("/logs", controller.CleanupLogFiles)
 		}
+		upstreamSubscriptionRoute := apiRouter.Group("/upstream-subscriptions")
+		upstreamSubscriptionRoute.Use(middleware.RootAuth())
+		{
+			upstreamSubscriptionRoute.GET("", controller.ListUpstreamSubscriptions)
+			upstreamSubscriptionRoute.POST("", controller.SaveUpstreamSubscription)
+			upstreamSubscriptionRoute.PUT("/:id", controller.SaveUpstreamSubscription)
+			upstreamSubscriptionRoute.DELETE("/:id", controller.DeleteUpstreamSubscription)
+			upstreamSubscriptionRoute.POST("/:id/refresh", controller.RefreshUpstreamSubscription)
+			upstreamSubscriptionRoute.POST("/opendesign/login", middleware.CriticalRateLimit(), controller.StartOpenDesignSubscriptionLogin)
+			upstreamSubscriptionRoute.POST("/opendesign/login/poll", controller.PollOpenDesignSubscriptionLogin)
+			upstreamSubscriptionRoute.POST("/opendesign/login/cancel", controller.PollOpenDesignSubscriptionLogin)
+		}
 		riskProviderRoute := apiRouter.Group("/risk/providers")
 		riskProviderRoute.Use(middleware.RootAuth())
 		{

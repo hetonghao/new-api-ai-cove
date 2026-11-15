@@ -42,6 +42,14 @@ func accessTokenScopeRule(scope string) accessTokenRouteRule {
 // DeclareAccessTokenPermissionRoute when they are registered.
 var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	// AI Cove management panels require a dashboard login, including for legacy PATs.
+	"GET /api/upstream-subscriptions":                              accessTokenSessionRule,
+	"POST /api/upstream-subscriptions":                             accessTokenSessionRule,
+	"PUT /api/upstream-subscriptions/:id":                          accessTokenSessionRule,
+	"DELETE /api/upstream-subscriptions/:id":                       accessTokenSessionRule,
+	"POST /api/upstream-subscriptions/:id/refresh":                 accessTokenSessionRule,
+	"POST /api/upstream-subscriptions/opendesign/login":            accessTokenSessionRule,
+	"POST /api/upstream-subscriptions/opendesign/login/poll":       accessTokenSessionRule,
+	"POST /api/upstream-subscriptions/opendesign/login/cancel":     accessTokenSessionRule,
 	"DELETE /api/model-quality/cases/:id":                          accessTokenSessionRule,
 	"DELETE /api/risk/providers/:id":                               accessTokenSessionRule,
 	"DELETE /api/risk/rules/:id":                                   accessTokenSessionRule,
