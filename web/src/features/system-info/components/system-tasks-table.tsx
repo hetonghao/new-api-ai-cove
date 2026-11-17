@@ -75,6 +75,15 @@ const TYPE_DISPLAY_ID: Record<string, string> = {
 
 function getProgress(task: SystemTask): number | null {
   const progress = (task.state as { progress?: unknown } | undefined)?.progress
+  // Progress writes are best-effort; a successful task has finished all steps.
+  if (
+    task.status === 'succeeded' &&
+    (task.type === 'model_quality_schedule' ||
+      task.type === 'upstream_subscription_quota') &&
+    (progress == null || typeof progress === 'number')
+  ) {
+    return 100
+  }
   if (typeof progress !== 'number' || Number.isNaN(progress)) return null
   return Math.min(100, Math.max(0, progress))
 }
@@ -141,7 +150,8 @@ export function SystemTasksTable(props: SystemTasksTableProps) {
               <TableCell className='py-3 align-middle'>
                 <div className='flex items-center gap-2'>
                   <Progress
-                    value={progress ?? 0}
+                    aria-label={t('Progress')}
+                    value={progress}
                     className={cn('w-24', PROGRESS_BAR_CLASS_NAME[task.status])}
                   />
                   <span className='text-muted-foreground w-10 text-right text-xs tabular-nums'>

@@ -981,4 +981,5 @@ export const STATIC_I18N_KEYS = [
   'Invalid channel priority move',
   'Channel priority is outside the sortable range',
   'Subscription quota refresh',
+  'Model quality inspection scheduling',
 ] as const

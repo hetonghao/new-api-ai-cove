@@ -265,6 +265,43 @@ func testModelQualityStoreScheduleDeduplicatesAndSkipsBusySlots(t *testing.T, di
 	assert.Len(t, runs, 1)
 }
 
+func testModelQualityStoreScheduleSkipsMissedSlots(t *testing.T, dialect string) {
+	now := setupQualityStoreTest(t, dialect)
+	interval := QualitySchedule{Enabled: true, Kind: "interval", IntervalMinutes: 1, Timezone: "UTC"}
+	body, err := common.Marshal(interval)
+	require.NoError(t, err)
+	withinGrace := createQualityStoreCase(t, now, 1)
+	require.NoError(t, DB.Model(&ModelQualityCase{}).Where("id = ?", withinGrace.ID).Updates(map[string]any{"schedule_json": string(body), "schedule_version": 1, "next_run_at": now.Add(-59 * time.Second).UnixMilli()}).Error)
+	require.NoError(t, ScheduleQualityRuns(now))
+	runs, total, err := ListQualityRuns(QualityRunFilter{}, 0, 10)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, runs, 1)
+	assert.Equal(t, "scheduled", runs[0].Source)
+
+	missed := createQualityStoreCase(t, now, 1)
+	require.NoError(t, DB.Model(&ModelQualityCase{}).Where("id = ?", missed.ID).Updates(map[string]any{"schedule_json": string(body), "schedule_version": 1, "next_run_at": now.Add(-75 * time.Second).UnixMilli()}).Error)
+	daily := createQualityStoreCase(t, now, 1)
+	dailySchedule, err := common.Marshal(QualitySchedule{Enabled: true, Kind: "daily", Time: "11:58", Timezone: "UTC"})
+	require.NoError(t, err)
+	require.NoError(t, DB.Model(&ModelQualityCase{}).Where("id = ?", daily.ID).Updates(map[string]any{"schedule_json": string(dailySchedule), "schedule_version": 1, "next_run_at": now.Add(-2 * time.Minute).UnixMilli()}).Error)
+
+	require.NoError(t, ScheduleQualityRuns(now))
+	for _, id := range []int64{missed.ID, daily.ID} {
+		stored, err := GetQualityCase(id)
+		require.NoError(t, err)
+		assert.Equal(t, "missed", stored.LastScheduleReason)
+	}
+	_, total, err = ListQualityRuns(QualityRunFilter{}, 0, 10)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total, "missed slots must not launch new model requests")
+}
+
+func testModelQualityStoreTaskProgressUsesCurrentLock(t *testing.T, dialect string) {
+	setupQualityStoreTest(t, dialect)
+	runUpdateSystemTaskStateIdenticalPayloadKeepsLock(t, "quality_schedule_progress")
+}
+
 func testModelQualityStoreLeaseLossCannotClaimOrOverwriteRecovery(t *testing.T, dialect string) {
 	now := setupQualityStoreTest(t, dialect)
 	c := createQualityStoreCase(t, now, 2)
@@ -347,6 +384,8 @@ func TestModelQualityStoreDialects(t *testing.T) {
 		{"finish_preserves_attribution_and_rejects_oversize", testModelQualityStoreFinishPreservesAttributionAndRejectsOversize},
 		{"retention_protects_pinned_artifacts", testModelQualityStoreRetentionProtectsPinnedArtifacts},
 		{"schedule_deduplicates_and_skips_busy_slots", testModelQualityStoreScheduleDeduplicatesAndSkipsBusySlots},
+		{"schedule_skips_missed_slots", testModelQualityStoreScheduleSkipsMissedSlots},
+		{"task_progress_uses_current_lock", testModelQualityStoreTaskProgressUsesCurrentLock},
 		{"lease_loss_cannot_claim_or_overwrite_recovery", testModelQualityStoreLeaseLossCannotClaimOrOverwriteRecovery},
 		{"preflight_skip_refunds_only_unsent_sample", testModelQualityStorePreflightSkipRefundsOnlyUnsentSample},
 		{"kill_switch_cancels_pending_and_releases_budget", testModelQualityStoreKillSwitchCancelsPendingAndReleasesBudget},

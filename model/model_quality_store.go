@@ -1032,12 +1032,12 @@ func releaseQualityActiveRunTx(tx *gorm.DB, caseID int64, runID string) error {
 // Worker seam
 // ---------------------------------------------------------------------------
 
-func HasPendingQualityWork() bool {
+func HasPendingQualityWork() (bool, error) {
 	var count int64
 	err := DB.Model(&ModelQualitySample{}).
 		Where("status IN ?", []string{qualitySampleStatusPending, qualitySampleStatusRequesting}).
 		Limit(1).Count(&count).Error
-	return err == nil && count > 0
+	return count > 0, err
 }
 
 // ClaimQualitySample moves the oldest eligible pending sample to requesting

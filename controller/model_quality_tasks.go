@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/qualityinspect"
@@ -14,22 +15,40 @@ import (
 type modelQualityScheduleHandler struct{}
 
 func (modelQualityScheduleHandler) Type() string            { return model.ModelQualityScheduleTask }
-func (modelQualityScheduleHandler) Interval() time.Duration { return 15 * time.Second }
+func (modelQualityScheduleHandler) Interval() time.Duration { return time.Minute }
 func (modelQualityScheduleHandler) NewPayload() any         { return nil }
 func (modelQualityScheduleHandler) Enabled() bool {
 	cfg, _, err := model.GetQualitySettings()
 	return err == nil && (cfg.Enabled || cfg.RetentionEnabled)
 }
 func (modelQualityScheduleHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	report := service.NewUnthrottledSystemTaskProgressReporter(task, runnerID)
+	report(0, 3)
 	err := ctx.Err()
 	if err == nil {
 		err = model.ScheduleQualityRuns(time.Now())
+		if err == nil {
+			report(1, 3)
+		}
 	}
 	if err == nil && ctx.Err() == nil {
 		err = model.CleanupQualityRetention(time.Now())
+		if err == nil {
+			report(2, 3)
+		}
 	}
-	if err == nil && ctx.Err() == nil && model.HasPendingQualityWork() {
-		_, _, err = service.EnqueueSystemTask(model.ModelQualityExecuteTask, nil)
+	if err == nil && ctx.Err() == nil {
+		var pending bool
+		pending, err = model.HasPendingQualityWork()
+		if err == nil && pending {
+			_, _, err = service.EnqueueSystemTask(model.ModelQualityExecuteTask, nil)
+		}
+	}
+	if err == nil {
+		err = ctx.Err()
+	}
+	if err == nil {
+		report(3, 3)
 	}
 	finishModelQualityTask(task, runnerID, err)
 }
@@ -39,7 +58,13 @@ type modelQualityExecuteHandler struct{}
 func (modelQualityExecuteHandler) Type() string            { return model.ModelQualityExecuteTask }
 func (modelQualityExecuteHandler) Interval() time.Duration { return 15 * time.Second }
 func (modelQualityExecuteHandler) NewPayload() any         { return nil }
-func (modelQualityExecuteHandler) Enabled() bool           { return model.HasPendingQualityWork() }
+func (modelQualityExecuteHandler) Enabled() bool {
+	pending, err := model.HasPendingQualityWork()
+	if err != nil {
+		common.SysLog(common.LogText("model quality pending work query failed: %v", err))
+	}
+	return err == nil && pending
+}
 func (modelQualityExecuteHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
 	err := runModelQualityQueue(ctx, task.TaskID, qualityinspect.RunSample)
 	finishModelQualityTask(task, runnerID, err)

@@ -468,15 +468,21 @@ type SystemTaskProgress struct {
 	Progress  int `json:"progress"`
 }
 
-// NewSystemTaskProgressReporter returns a throttled progress callback bound to a
-// running task. Handlers call it with (processed, total) as they iterate work;
-// it persists a {processed,total,progress} state at most once every ~2s, always
-// emitting the first update and the final 100%.
-// Lock-loss errors are ignored: the lease heartbeat cancels the handler ctx on
-// loss, so progress writes are best-effort and never abort the run themselves.
-// The returned func is single-goroutine only (call it from the handler loop).
+// NewSystemTaskProgressReporter throttles progress writes to once every ~2s,
+// while always emitting the first update and the final 100%.
 func NewSystemTaskProgressReporter(task *model.SystemTask, runnerID string) func(processed, total int) {
-	const minWriteInterval = 2 * time.Second
+	return newSystemTaskProgressReporter(task, runnerID, 2*time.Second)
+}
+
+// NewUnthrottledSystemTaskProgressReporter reports every percentage change for
+// small batches whose next step can block before the throttled update is saved.
+func NewUnthrottledSystemTaskProgressReporter(task *model.SystemTask, runnerID string) func(processed, total int) {
+	return newSystemTaskProgressReporter(task, runnerID, 0)
+}
+
+// Both callbacks are single-goroutine only. Writes are best-effort: the lease
+// heartbeat cancels the handler context if the task loses its lock.
+func newSystemTaskProgressReporter(task *model.SystemTask, runnerID string, minWriteInterval time.Duration) func(processed, total int) {
 	var (
 		lastWriteAt  time.Time
 		lastProgress = -1
@@ -500,11 +506,18 @@ func NewSystemTaskProgressReporter(task *model.SystemTask, runnerID string) func
 				return
 			}
 		}
-		lastProgress = progress
-		lastWriteAt = time.Now()
-
 		state := SystemTaskProgress{Total: total, Processed: processed, Progress: progress}
-		_ = model.UpdateSystemTaskState(task.TaskID, runnerID, state)
+		err := model.UpdateSystemTaskState(task.TaskID, runnerID, state)
+		if err != nil && minWriteInterval == 0 && !errors.Is(err, model.ErrSystemTaskLockLost) {
+			// ponytail: one immediate retry; durable queuing if progress must survive a longer outage.
+			err = model.UpdateSystemTaskState(task.TaskID, runnerID, state)
+		}
+		if err == nil {
+			lastProgress = progress
+		}
+		if err == nil || minWriteInterval > 0 {
+			lastWriteAt = time.Now()
+		}
 	}
 }
 

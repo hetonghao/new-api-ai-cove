@@ -11,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -79,6 +80,58 @@ func setupQualityQueueTest(t *testing.T, targets []int, samples int) (*model.Mod
 	run, _, err := model.CreateQualityRun(c.ID, model.QualityRunRequest{}, 1, "fixture", "manual", 0, now)
 	require.NoError(t, err)
 	return run, now
+}
+
+func TestModelQualityScheduleTaskReportsProgress(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		cancelled        bool
+		retentionFailure bool
+		pendingFailure   bool
+		status           model.SystemTaskStatus
+		progress         service.SystemTaskProgress
+	}{
+		{name: "completed", status: model.SystemTaskStatusSucceeded, progress: service.SystemTaskProgress{Total: 3, Processed: 3, Progress: 100}},
+		{name: "cancelled", cancelled: true, status: model.SystemTaskStatusFailed, progress: service.SystemTaskProgress{Total: 3}},
+		{name: "retention failed after scheduling", retentionFailure: true, status: model.SystemTaskStatusFailed, progress: service.SystemTaskProgress{Total: 3, Processed: 1, Progress: 33}},
+		{name: "pending lookup failed after cleanup", pendingFailure: true, status: model.SystemTaskStatusFailed, progress: service.SystemTaskProgress{Total: 3, Processed: 2, Progress: 66}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setupQualityQueueTest(t, []int{7}, 1)
+			if tc.retentionFailure {
+				settings, version, err := model.GetQualitySettings()
+				require.NoError(t, err)
+				settings.RetentionEnabled = true
+				require.NoError(t, model.SaveQualitySettings(settings, version, time.Now()))
+				require.NoError(t, model.DB.Migrator().DropTable(&model.ModelQualityArtifact{}))
+			}
+			if tc.pendingFailure {
+				require.NoError(t, model.DB.Migrator().DropTable(&model.ModelQualitySample{}))
+			}
+			task, err := model.CreateSystemTask(model.ModelQualityScheduleTask, nil, nil)
+			require.NoError(t, err)
+			claimed, ok, err := model.ClaimSystemTask(task.ID, task.Type, "schedule-runner", time.Now().Add(time.Minute).Unix())
+			require.NoError(t, err)
+			require.True(t, ok)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if tc.cancelled {
+				cancel()
+			}
+
+			modelQualityScheduleHandler{}.Run(ctx, claimed, "schedule-runner")
+			stored, err := model.GetSystemTaskByTaskID(task.TaskID)
+			require.NoError(t, err)
+			require.Equal(t, tc.status, stored.Status)
+			var progress service.SystemTaskProgress
+			require.NoError(t, stored.DecodeState(&progress))
+			assert.Equal(t, tc.progress, progress)
+		})
+	}
+}
+
+func TestModelQualityScheduleTaskIntervalIsOneMinute(t *testing.T) {
+	assert.Equal(t, time.Minute, (modelQualityScheduleHandler{}).Interval())
 }
 
 func TestModelQualityQueueLimitsConcurrentChannelsAndPersistsResults(t *testing.T) {
