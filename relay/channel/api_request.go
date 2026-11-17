@@ -514,6 +514,11 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		}
 	}
 
+	// Cancellation belongs to the logical retry, not the fallback provider or
+	// protocol: a Responses rejection can fall back to native Chat or Azure.
+	if info.IsStream && info.RetryIndex > 0 {
+		req = req.WithContext(c.Request.Context())
+	}
 	common2.SetContextKey(c, appconstant.ContextKeyUpstreamRequestOrigin, req.URL.Scheme+"://"+req.URL.Host)
 	resp, err := relayClient.Do(req)
 	if err != nil {

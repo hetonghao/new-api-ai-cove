@@ -340,7 +340,7 @@ func TestRelayResponsesRetriesRateLimitBeforeOutput(t *testing.T) {
 			name, prefix, failure, wantText, paramOverride                                       string
 			fallback, noBudget, pin, strict, continuation, stateHeader, hold, cancel, nativeOnly bool
 			retry500, writeFailure, cancelOnClose, cancelBeforeSend, itemReference, requestState bool
-			settled                                                                              bool
+			settled, chatFallback, azureFallback                                                 bool
 		}{
 			{name: "nested limit", prefix: startup, failure: limited, fallback: true, settled: true},
 			{name: "standard response metadata", prefix: strings.Replace(startup, `"output":[]`, `"completed_at":null,"output_text":"","tool_usage":{"web_search":{"num_requests":0}},"billing":{"payer":"developer"},"moderation":null,"prompt_cache_diagnostics":{"cache_missed_tokens":7,"reason":"model_changed","type":"cache_miss","comparison_reusable_tokens":0},"output":[]`, 1), failure: strings.Replace(limited, `"output":[]`, `"completed_at":null,"output_text":"","tool_usage":{"web_search":{"num_requests":0}},"billing":{"payer":"developer"},"moderation":null,"prompt_cache_diagnostics":{"cache_missed_tokens":7,"reason":"model_changed","type":"cache_miss","comparison_reusable_tokens":0},"output":[]`, 1), fallback: true, settled: true},
@@ -377,8 +377,12 @@ func TestRelayResponsesRetriesRateLimitBeforeOutput(t *testing.T) {
 			{name: "client cancellation", prefix: startup, hold: true, cancel: true},
 			{name: "cancel during stream cleanup", prefix: startup, failure: limited, cancelOnClose: true},
 			{name: "cancel before fallback network send", prefix: startup, failure: limited, cancelBeforeSend: true},
+			{name: "native chat fallback", prefix: startup, failure: limited, chatFallback: true, fallback: true, settled: true},
+			{name: "cancel before native chat fallback", prefix: startup, failure: limited, chatFallback: true, cancelBeforeSend: true},
+			{name: "azure fallback", prefix: startup, failure: limited, azureFallback: true, fallback: true, settled: true},
+			{name: "cancel before azure fallback", prefix: startup, failure: limited, azureFallback: true, cancelBeforeSend: true},
 		} {
-			if tc.nativeOnly && format != types.RelayFormatOpenAIResponses {
+			if tc.nativeOnly && format != types.RelayFormatOpenAIResponses || tc.chatFallback && format != types.RelayFormatOpenAI {
 				continue
 			}
 			t.Run(string(format)+"/"+tc.name, func(t *testing.T) {
@@ -391,6 +395,9 @@ func TestRelayResponsesRetriesRateLimitBeforeOutput(t *testing.T) {
 				previousCount, previousQuotaUnit, previousTimeout := constant.CountToken, common.QuotaPerUnit, constant.StreamingTimeout
 				global.PassThroughRequestEnabled = false
 				global.ChatCompletionsToResponsesPolicy = model_setting.ChatCompletionsToResponsesPolicy{Enabled: true, ChannelIDs: []int{2401, 2402}, ModelPatterns: []string{"^" + modelName + "$"}}
+				if tc.chatFallback {
+					global.ChatCompletionsToResponsesPolicy.ChannelIDs = []int{2401}
+				}
 				retryCodes := "429"
 				if tc.settled && !tc.fallback || tc.retry500 {
 					retryCodes = "429,500"
@@ -457,8 +464,20 @@ func TestRelayResponsesRetriesRateLimitBeforeOutput(t *testing.T) {
 						return
 					}
 					requests <- string(body)
-					assert.Equal(t, "/v1/responses", r.URL.Path)
+					expectedPath := "/v1/responses"
+					if tc.azureFallback {
+						expectedPath = "/openai/v1/responses"
+					}
+					if tc.chatFallback {
+						expectedPath = "/v1/chat/completions"
+					}
+					assert.Equal(t, expectedPath, r.URL.Path)
 					w.Header().Set("Content-Type", "text/event-stream")
+					if tc.chatFallback {
+						_, _ = io.WriteString(w, "data: "+`{"id":"chat_fallback","object":"chat.completion.chunk","model":"gpt-6.1-sol","choices":[{"index":0,"delta":{"role":"assistant","content":"fallback-ok"},"finish_reason":null}]}`+"\n\n"+
+							"data: "+`{"id":"chat_fallback","object":"chat.completion.chunk","model":"gpt-6.1-sol","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":5,"total_tokens":12}}`+"\n\ndata: [DONE]\n\n")
+						return
+					}
 					_, _ = io.WriteString(w, "data: "+`{"type":"response.created","response":{"id":"resp_fallback","status":"in_progress","output":[],"usage":null}}`+"\n\n"+
 						"data: "+`{"type":"response.output_text.delta","delta":"fallback-ok"}`+"\n\n"+
 						"data: "+`{"type":"response.completed","response":{"id":"resp_fallback","status":"completed","output":[],"usage":{"input_tokens":7,"output_tokens":5,"total_tokens":12}}}`+"\n\n")
@@ -481,6 +500,9 @@ func TestRelayResponsesRetriesRateLimitBeforeOutput(t *testing.T) {
 				}
 				insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 2401, baseURL: primary.URL, priority: 100, models: []string{modelName}})
 				insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 2402, baseURL: fallback.URL, priority: 0, models: []string{modelName}})
+				if tc.azureFallback {
+					require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 2402).Update("type", constant.ChannelTypeAzure).Error)
+				}
 				if tc.paramOverride != "" {
 					require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 2401).Update("param_override", tc.paramOverride).Error)
 				}
@@ -537,7 +559,17 @@ func TestRelayResponsesRetriesRateLimitBeforeOutput(t *testing.T) {
 					assert.NotContains(t, recorder.Body.String(), "resp_primary")
 					assert.NotContains(t, recorder.Body.String(), "rate_limit_exceeded")
 					require.Len(t, requests, 2)
-					assert.JSONEq(t, <-requests, <-requests, "fallback must replay the same model and request")
+					primaryRequest, fallbackRequest := <-requests, <-requests
+					if tc.chatFallback {
+						var primaryPayload, fallbackPayload map[string]any
+						require.NoError(t, common.UnmarshalJsonStr(primaryRequest, &primaryPayload))
+						require.NoError(t, common.UnmarshalJsonStr(fallbackRequest, &fallbackPayload))
+						assert.Equal(t, primaryPayload["model"], fallbackPayload["model"])
+						assert.Contains(t, primaryPayload, "input")
+						assert.Contains(t, fallbackPayload, "messages")
+					} else {
+						assert.JSONEq(t, primaryRequest, fallbackRequest, "fallback must replay the same model and request")
+					}
 				}
 				if tc.cancelOnClose {
 					assert.Equal(t, "0", recorder.Header().Get("X-AI-Cove-Retry-Count"))
