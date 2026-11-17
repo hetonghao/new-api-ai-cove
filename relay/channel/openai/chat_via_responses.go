@@ -263,7 +263,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		}
 	}
 
-	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+	retryErr, outputCommitted := scanResponsesStream(c, resp, info, func(data string, sr *helper.StreamResult) {
 		if streamErr != nil {
 			stopStream(sr, streamErr)
 			return
@@ -308,8 +308,14 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		}
 	})
 
+	if retryErr != nil {
+		return nil, retryErr
+	}
 	if streamErr != nil {
-		if !upstreamFailed || state.UsageText() == "" {
+		if outputCommitted || c.Request.Context().Err() != nil {
+			types.ErrOptionWithSkipRetry()(streamErr)
+		}
+		if !upstreamFailed || state.UsageText() == "" && !outputCommitted {
 			return nil, streamErr
 		}
 		// The upstream failed after output reached the client: bill the
@@ -341,7 +347,10 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		logger.LogError(c, common.LogText("responses stream failed after output was delivered, billing the delivered output: %s", streamErr.Error()))
 		streamErr.SetMessage(common.MessageWithRequestId(streamErr.Error(), c.GetString(common.RequestIdKey)))
 		if info.RelayFormat == types.RelayFormatClaude {
-			c.JSON(streamErr.StatusCode, gin.H{"type": "error", "error": streamErr.ToClaudeError(common.UpstreamAddresses(c)...)})
+			_ = helper.ClaudeData(c, dto.ClaudeResponse{Type: "error", Error: streamErr.ToClaudeError(common.UpstreamAddresses(c)...)})
+		} else if info.RelayFormat == types.RelayFormatOpenAI {
+			_ = helper.ObjectData(c, gin.H{"error": streamErr.ToOpenAIError(common.UpstreamAddresses(c)...)})
+			helper.Done(c)
 		} else {
 			c.JSON(streamErr.StatusCode, gin.H{"error": streamErr.ToOpenAIError(common.UpstreamAddresses(c)...)})
 		}

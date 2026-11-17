@@ -16,12 +16,18 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	hostdto "github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -322,4 +328,234 @@ func TestStreamKeepAliveCancellation(t *testing.T) {
 	_, err := c.Writer.WriteString("data: done\n\n")
 	require.NoError(t, err)
 	require.True(t, strings.HasSuffix(recorder.Body.String(), "data: done\n\n"))
+}
+
+func TestRelayResponsesRetriesRateLimitBeforeOutput(t *testing.T) {
+	const modelName = "gpt-6.1-sol"
+	const created = `{"type":"response.created","response":{"id":"resp_primary","status":"in_progress","output":[],"usage":null,"reasoning":{"effort":"high"},"tools":[{"type":"function","name":"lookup"}]}}`
+	const limited = `{"type":"response.failed","response":{"id":"resp_primary","status":"failed","output":[],"usage":null,"error":{"code":"rate_limit_exceeded","type":"rate_limit_error","message":"TPM limit reached"}}}`
+	startup := "data: " + created + "\n\n" + "data: " + `{"type":"response.in_progress","response":{"id":"resp_primary","status":"in_progress","output":[],"usage":null}}` + "\n\n"
+	for _, format := range []types.RelayFormat{types.RelayFormatOpenAIResponses, types.RelayFormatOpenAI} {
+		for _, tc := range []struct {
+			name, prefix, failure, wantText                                                      string
+			fallback, noBudget, pin, strict, continuation, stateHeader, hold, cancel, nativeOnly bool
+			writeFailure                                                                         bool
+			settled                                                                              bool
+		}{
+			{name: "nested limit", prefix: startup, failure: limited, fallback: true, settled: true},
+			{name: "flat limit", prefix: startup, failure: `{"type":"error","code":"rate_limit_exceeded","message":"TPM limit reached"}`, fallback: true, settled: true},
+			{name: "nested error envelope", prefix: startup, failure: `{"type":"error","error":{"code":"rate_limit_exceeded","type":"rate_limit_error","message":"TPM limit reached"}}`, fallback: true, settled: true},
+			{name: "explicit zero usage", prefix: startup, failure: strings.Replace(limited, `"usage":null`, `"usage":{"input_tokens":0,"output_tokens_details":{"reasoning_tokens":"0"},"future":{"cost":0}}`, 1), fallback: true, settled: true},
+			{name: "text already emitted", prefix: startup + "data: " + `{"type":"response.output_text.delta","delta":"already-visible"}` + "\n\n", failure: limited, wantText: "already-visible", settled: true},
+			{name: "reasoning already emitted", prefix: startup + "data: " + `{"type":"response.reasoning_summary_text.delta","delta":"already-thinking"}` + "\n\n", failure: limited, settled: true},
+			{name: "tool already emitted", prefix: startup + "data: " + `{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"lookup","arguments":""}}` + "\n\n", failure: limited, wantText: "lookup", settled: true},
+			{name: "reported input usage", prefix: startup, failure: strings.Replace(limited, `"usage":null`, `"usage":{"input_tokens":7,"output_tokens":0,"total_tokens":7}`, 1), settled: true},
+			{name: "reasoning-only usage", prefix: startup, failure: strings.Replace(limited, `"usage":null`, `"usage":{"output_tokens_details":{"reasoning_tokens":1}}`, 1), settled: true},
+			{name: "unknown usage extension", prefix: startup, failure: strings.Replace(limited, `"usage":null`, `"usage":{"future_charge":{"tokens":1}}`, 1), settled: true},
+			{name: "top-level usage", prefix: startup, failure: strings.Replace(limited, `"type":"response.failed"`, `"type":"response.failed","usage":{"input_tokens":7}`, 1), settled: true},
+			{name: "unknown startup field", prefix: strings.Replace(startup, `"output":[]`, `"vendor_output":"opaque","output":[]`, 1), failure: limited, settled: true},
+			{name: "oversized startup", prefix: strings.Replace(startup, `"output":[]`, `"instructions":"`+strings.Repeat("x", 128<<10)+`end-instructions","output":[]`, 1), failure: limited, wantText: "end-instructions", nativeOnly: true, settled: true},
+			{name: "bare EOF preserves prefix", prefix: startup, wantText: "resp_primary", nativeOnly: true},
+			{name: "DONE preserves prefix", prefix: startup + "data: [DONE]\n\n", wantText: "resp_primary", nativeOnly: true},
+			{name: "EOF prefix write fails", prefix: startup, nativeOnly: true, writeFailure: true},
+			{name: "quota error is not transient", prefix: startup, failure: strings.ReplaceAll(limited, "rate_limit_exceeded", "insufficient_quota")},
+			{name: "no retry budget", prefix: startup, failure: limited, noBudget: true},
+			{name: "fixed channel", prefix: startup, failure: limited, pin: true},
+			{name: "strict affinity", prefix: startup, failure: limited, strict: true},
+			{name: "server continuation", prefix: startup, failure: limited, continuation: true, nativeOnly: true},
+			{name: "provider turn state", prefix: startup, failure: limited, stateHeader: true, nativeOnly: true},
+			{name: "idle timeout", prefix: startup, hold: true},
+			{name: "client cancellation", prefix: startup, hold: true, cancel: true},
+		} {
+			if tc.nativeOnly && format != types.RelayFormatOpenAIResponses {
+				continue
+			}
+			t.Run(string(format)+"/"+tc.name, func(t *testing.T) {
+				db := setupResponsesWebSocketHandlerTest(t)
+				global := model_setting.GetGlobalSettings()
+				previousGlobal := *global
+				previousRetryCodes := operation_setting.AutomaticRetryStatusCodesToString()
+				general, affinity := operation_setting.GetGeneralSetting(), operation_setting.GetChannelAffinitySetting()
+				previousGeneral, previousAffinity := *general, *affinity
+				previousCount, previousQuotaUnit, previousTimeout := constant.CountToken, common.QuotaPerUnit, constant.StreamingTimeout
+				global.PassThroughRequestEnabled = false
+				global.ChatCompletionsToResponsesPolicy = model_setting.ChatCompletionsToResponsesPolicy{Enabled: true, ChannelIDs: []int{2401, 2402}, ModelPatterns: []string{"^" + modelName + "$"}}
+				retryCodes := "429"
+				if tc.settled && !tc.fallback {
+					retryCodes = "429,500"
+				}
+				require.NoError(t, operation_setting.AutomaticRetryStatusCodesFromString(retryCodes))
+				general.PingIntervalEnabled, affinity.Enabled, constant.CountToken = false, false, false
+				common.QuotaPerUnit = 500000
+				if tc.noBudget {
+					common.RetryTimes = 0
+				}
+				if tc.hold {
+					constant.StreamingTimeout = 1
+				}
+				if tc.strict {
+					*affinity = operation_setting.ChannelAffinitySetting{Enabled: true, DefaultTTLSeconds: 60, MaxEntries: 100, Rules: []operation_setting.ChannelAffinityRule{{Name: t.Name(), ModelRegex: []string{".*"}, SessionMode: "strict", KeySources: []operation_setting.ChannelAffinityKeySource{{Type: "request_header", Key: "X-Session"}}}}}
+				}
+				t.Cleanup(func() {
+					*global, *general, *affinity = previousGlobal, previousGeneral, previousAffinity
+					constant.CountToken, common.QuotaPerUnit, constant.StreamingTimeout = previousCount, previousQuotaUnit, previousTimeout
+					require.NoError(t, operation_setting.AutomaticRetryStatusCodesFromString(previousRetryCodes))
+				})
+				withTieredBillingConfig(t, map[string]string{modelName: "tiered_expr"}, map[string]string{modelName: `tier("base", fixed(0.01))`})
+				require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1}`))
+				require.NoError(t, db.AutoMigrate(&model.Token{}))
+				require.NoError(t, db.Create(&model.Token{Id: 43, UserId: 42, Key: "sse-retry-token", Status: common.TokenStatusEnabled, UnlimitedQuota: true}).Error)
+				service.InitHttpClient()
+				requestContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				var primaryCalls, fallbackCalls atomic.Int32
+				requests := make(chan string, 2)
+				primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					primaryCalls.Add(1)
+					body, err := io.ReadAll(r.Body)
+					if !assert.NoError(t, err) {
+						return
+					}
+					requests <- string(body)
+					assert.Equal(t, "/v1/responses", r.URL.Path)
+					w.Header().Set("Content-Type", "text/event-stream")
+					if tc.stateHeader {
+						w.Header().Set("X-Codex-Turn-State", "provider-owned-state")
+					}
+					_, _ = io.WriteString(w, tc.prefix)
+					if tc.hold {
+						w.(http.Flusher).Flush()
+						if tc.cancel {
+							cancel()
+						}
+						<-r.Context().Done()
+						return
+					}
+					if tc.failure != "" {
+						_, _ = io.WriteString(w, "data: "+tc.failure+"\n\n")
+					}
+				}))
+				t.Cleanup(primary.Close)
+				fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					fallbackCalls.Add(1)
+					body, err := io.ReadAll(r.Body)
+					if !assert.NoError(t, err) {
+						return
+					}
+					requests <- string(body)
+					assert.Equal(t, "/v1/responses", r.URL.Path)
+					w.Header().Set("Content-Type", "text/event-stream")
+					_, _ = io.WriteString(w, "data: "+`{"type":"response.created","response":{"id":"resp_fallback","status":"in_progress","output":[],"usage":null}}`+"\n\n"+
+						"data: "+`{"type":"response.output_text.delta","delta":"fallback-ok"}`+"\n\n"+
+						"data: "+`{"type":"response.completed","response":{"id":"resp_fallback","status":"completed","output":[],"usage":{"input_tokens":7,"output_tokens":5,"total_tokens":12}}}`+"\n\n")
+				}))
+				t.Cleanup(fallback.Close)
+				t.Cleanup(cancel)
+				insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 2401, baseURL: primary.URL, priority: 100, models: []string{modelName}})
+				insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 2402, baseURL: fallback.URL, priority: 0, models: []string{modelName}})
+				model.InitChannelCache()
+				path, body := "/v1/responses", `{"model":"`+modelName+`","input":"hello","reasoning":{"effort":"high"},"tools":[{"type":"function","name":"lookup","parameters":{"type":"object","properties":{}}}],"stream":true}`
+				if format == types.RelayFormatOpenAI {
+					path, body = "/v1/chat/completions", `{"model":"`+modelName+`","messages":[{"role":"user","content":"hello"}],"reasoning_effort":"high","tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{}}}}],"stream":true}`
+				}
+				if tc.continuation {
+					body = strings.TrimSuffix(body, "}") + `,"previous_response_id":"resp_previous"}`
+				}
+				engine := gin.New()
+				engine.POST(path, func(c *gin.Context) {
+					common.SetContextKey(c, constant.ContextKeyUserId, 42)
+					common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
+					common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+					common.SetContextKey(c, constant.ContextKeyUserQuota, 1_000_000)
+					common.SetContextKey(c, constant.ContextKeyUserSetting, dto.UserSetting{BillingPreference: "wallet_only"})
+					common.SetContextKey(c, constant.ContextKeyTokenId, 43)
+					common.SetContextKey(c, constant.ContextKeyTokenKey, "sse-retry-token")
+					common.SetContextKey(c, constant.ContextKeyTokenGroup, "default")
+					common.SetContextKey(c, constant.ContextKeyTokenUnlimited, true)
+					c.Set("username", "responses-ws-test")
+					c.Set("token_name", "sse-retry-token")
+					if tc.pin {
+						service.GetChannelConstraints(c).AddPin(hostdto.ChannelPin{ChannelId: 2401, Source: hostdto.PinSourceToken, Rank: hostdto.PinRankToken, RetryMode: hostdto.PinRetrySingleAttempt})
+					}
+				}, middleware.Distribute(), func(c *gin.Context) { Relay(c, format) })
+				recorder := httptest.NewRecorder()
+				request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)).WithContext(requestContext)
+				request.Header.Set("Content-Type", "application/json")
+				request.Header.Set("X-Session", t.Name())
+				if tc.writeFailure {
+					engine.ServeHTTP(&responsesRetryFailingWriter{ResponseRecorder: recorder}, request)
+				} else {
+					engine.ServeHTTP(recorder, request)
+				}
+				require.Equal(t, int32(1), primaryCalls.Load(), recorder.Body.String())
+				wantFallback := int32(0)
+				if tc.fallback {
+					wantFallback = 1
+				}
+				require.Equal(t, wantFallback, fallbackCalls.Load(), recorder.Body.String())
+				if tc.fallback {
+					assert.Equal(t, http.StatusOK, recorder.Code)
+					assert.Contains(t, recorder.Body.String(), "fallback-ok")
+					assert.NotContains(t, recorder.Body.String(), "resp_primary")
+					assert.NotContains(t, recorder.Body.String(), "rate_limit_exceeded")
+					require.Len(t, requests, 2)
+					assert.JSONEq(t, <-requests, <-requests, "fallback must replay the same model and request")
+				}
+				if tc.wantText != "" {
+					assert.Contains(t, recorder.Body.String(), tc.wantText)
+				}
+				var logs []model.Log
+				require.NoError(t, db.Where("type = ?", model.LogTypeConsume).Find(&logs).Error)
+				assert.LessOrEqual(t, len(logs), 1, "only one attempt may be settled")
+				if tc.writeFailure {
+					require.Len(t, logs, 1)
+					var details struct {
+						StreamStatus struct {
+							Status     string `json:"status"`
+							EndReason  string `json:"end_reason"`
+							ErrorCount int    `json:"error_count"`
+						} `json:"stream_status"`
+					}
+					require.NoError(t, common.UnmarshalJsonStr(logs[0].Other, &details))
+					assert.Equal(t, "error", details.StreamStatus.Status)
+					assert.Equal(t, "eof", details.StreamStatus.EndReason)
+					assert.Positive(t, details.StreamStatus.ErrorCount)
+				}
+				charged := 0
+				for _, log := range logs {
+					charged += log.Quota
+				}
+				assert.LessOrEqual(t, charged, 5000)
+				if tc.settled {
+					require.Len(t, logs, 1)
+					assert.Equal(t, 5000, charged)
+					wantChannel := 2401
+					if tc.fallback {
+						wantChannel = 2402
+					}
+					assert.Equal(t, wantChannel, logs[0].ChannelId)
+				}
+				if tc.noBudget || tc.pin || tc.strict {
+					assert.Empty(t, logs)
+					assert.Zero(t, charged)
+				}
+				if tc.hold && !tc.cancel {
+					require.Len(t, logs, 1)
+					assert.Contains(t, logs[0].Other, `"end_reason":"timeout"`)
+				}
+				var user model.User
+				require.Eventually(t, func() bool {
+					return db.First(&user, 42).Error == nil && user.UsedQuota == charged && user.Quota == 1_000_000-charged
+				}, 5*time.Second, time.Millisecond, "asynchronous refunds must restore the exact balance")
+			})
+		}
+	}
+}
+
+type responsesRetryFailingWriter struct{ *httptest.ResponseRecorder }
+
+func (w *responsesRetryFailingWriter) Write([]byte) (int, error) {
+	return 0, errors.New("downstream write failed")
+}
+func (w *responsesRetryFailingWriter) WriteString(string) (int, error) {
+	return 0, errors.New("downstream write failed")
 }
