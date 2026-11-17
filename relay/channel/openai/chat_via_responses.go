@@ -263,7 +263,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		}
 	}
 
-	retryErr, outputCommitted := scanResponsesStream(c, resp, info, func(data string, sr *helper.StreamResult) {
+	retryErr, outputCommitted, retryRestricted := scanResponsesStream(c, resp, info, func(data string, sr *helper.StreamResult) {
 		if streamErr != nil {
 			stopStream(sr, streamErr)
 			return
@@ -312,7 +312,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		return nil, retryErr
 	}
 	if streamErr != nil {
-		if outputCommitted || c.Request.Context().Err() != nil {
+		if outputCommitted || retryRestricted || c.Request.Context().Err() != nil {
 			types.ErrOptionWithSkipRetry()(streamErr)
 		}
 		if !upstreamFailed || state.UsageText() == "" && !outputCommitted {

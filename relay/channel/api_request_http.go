@@ -5,8 +5,10 @@ import (
 	"io"
 	"net/http"
 
+	appconstant "github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/gin-gonic/gin"
 )
 
@@ -35,6 +37,12 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
+	}
+	// A cancellation after pre-output rejection must still stop the selected
+	// fallback before (or during) network I/O. Leave other transports unchanged.
+	if info.RetryIndex > 0 && info.IsStream && info.ChannelMeta != nil &&
+		info.GetChannelType() == appconstant.ChannelTypeOpenAI && info.RelayMode == relayconstant.RelayModeResponses {
+		req = req.WithContext(c.Request.Context())
 	}
 	ApplyUpstreamBodyMetadata(req, requestBody)
 	headers := req.Header

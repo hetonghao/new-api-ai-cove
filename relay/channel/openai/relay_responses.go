@@ -81,7 +81,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	accumulator := service.NewResponsesUsageAccumulator(info)
 	captureDeepSeek := relaycommon.IsDeepSeekReasoningRelay(info, info.OriginModelName)
 
-	retryErr, _ := scanResponsesStream(c, resp, info, func(data string, sr *helper.StreamResult) {
+	retryErr, _, _ := scanResponsesStream(c, resp, info, func(data string, sr *helper.StreamResult) {
 
 		// 检查当前数据是否包含 completed 状态和 usage 信息
 		var streamResponse dto.ResponsesStreamResponse

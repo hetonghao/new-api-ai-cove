@@ -337,18 +337,21 @@ func TestRelayResponsesRetriesRateLimitBeforeOutput(t *testing.T) {
 	startup := "data: " + created + "\n\n" + "data: " + `{"type":"response.in_progress","response":{"id":"resp_primary","status":"in_progress","output":[],"usage":null}}` + "\n\n"
 	for _, format := range []types.RelayFormat{types.RelayFormatOpenAIResponses, types.RelayFormatOpenAI} {
 		for _, tc := range []struct {
-			name, prefix, failure, wantText                                                      string
+			name, prefix, failure, wantText, paramOverride                                       string
 			fallback, noBudget, pin, strict, continuation, stateHeader, hold, cancel, nativeOnly bool
-			writeFailure                                                                         bool
+			retry500, writeFailure, cancelOnClose, cancelBeforeSend, itemReference, requestState bool
 			settled                                                                              bool
 		}{
 			{name: "nested limit", prefix: startup, failure: limited, fallback: true, settled: true},
+			{name: "standard response metadata", prefix: strings.Replace(startup, `"output":[]`, `"completed_at":null,"output_text":"","tool_usage":{"web_search":{"num_requests":0}},"billing":{"payer":"developer"},"moderation":null,"prompt_cache_diagnostics":{"cache_missed_tokens":7,"reason":"model_changed","type":"cache_miss","comparison_reusable_tokens":0},"output":[]`, 1), failure: strings.Replace(limited, `"output":[]`, `"completed_at":null,"output_text":"","tool_usage":{"web_search":{"num_requests":0}},"billing":{"payer":"developer"},"moderation":null,"prompt_cache_diagnostics":{"cache_missed_tokens":7,"reason":"model_changed","type":"cache_miss","comparison_reusable_tokens":0},"output":[]`, 1), fallback: true, settled: true},
+			{name: "nonzero tool usage", prefix: startup, failure: strings.Replace(limited, `"output":[]`, `"tool_usage":{"future_tool":{"calls":1}},"output":[]`, 1), settled: true},
 			{name: "flat limit", prefix: startup, failure: `{"type":"error","code":"rate_limit_exceeded","message":"TPM limit reached"}`, fallback: true, settled: true},
 			{name: "nested error envelope", prefix: startup, failure: `{"type":"error","error":{"code":"rate_limit_exceeded","type":"rate_limit_error","message":"TPM limit reached"}}`, fallback: true, settled: true},
 			{name: "explicit zero usage", prefix: startup, failure: strings.Replace(limited, `"usage":null`, `"usage":{"input_tokens":0,"output_tokens_details":{"reasoning_tokens":"0"},"future":{"cost":0}}`, 1), fallback: true, settled: true},
 			{name: "text already emitted", prefix: startup + "data: " + `{"type":"response.output_text.delta","delta":"already-visible"}` + "\n\n", failure: limited, wantText: "already-visible", settled: true},
 			{name: "reasoning already emitted", prefix: startup + "data: " + `{"type":"response.reasoning_summary_text.delta","delta":"already-thinking"}` + "\n\n", failure: limited, settled: true},
 			{name: "tool already emitted", prefix: startup + "data: " + `{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"lookup","arguments":""}}` + "\n\n", failure: limited, wantText: "lookup", settled: true},
+			{name: "terminal then tool conversion error", prefix: startup + "data: " + `{"type":"error","code":"insufficient_quota","message":"stop"}` + "\n\n" + "data: " + `{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"lookup","arguments":""}}` + "\n\n" + "data: " + `{"type":"response.output_text.annotation.added","annotation":[]}` + "\n\n", failure: limited, wantText: "lookup", retry500: true},
 			{name: "reported input usage", prefix: startup, failure: strings.Replace(limited, `"usage":null`, `"usage":{"input_tokens":7,"output_tokens":0,"total_tokens":7}`, 1), settled: true},
 			{name: "reasoning-only usage", prefix: startup, failure: strings.Replace(limited, `"usage":null`, `"usage":{"output_tokens_details":{"reasoning_tokens":1}}`, 1), settled: true},
 			{name: "unknown usage extension", prefix: startup, failure: strings.Replace(limited, `"usage":null`, `"usage":{"future_charge":{"tokens":1}}`, 1), settled: true},
@@ -363,9 +366,17 @@ func TestRelayResponsesRetriesRateLimitBeforeOutput(t *testing.T) {
 			{name: "fixed channel", prefix: startup, failure: limited, pin: true},
 			{name: "strict affinity", prefix: startup, failure: limited, strict: true},
 			{name: "server continuation", prefix: startup, failure: limited, continuation: true, nativeOnly: true},
+			{name: "body override continuation", prefix: startup, failure: limited, paramOverride: `{"previous_response_id":"resp_server"}`, nativeOnly: true},
+			{name: "operation override continuation", prefix: startup, failure: limited, paramOverride: `{"operations":[{"mode":"set","path":"conversation","value":"conv_server"}]}`, nativeOnly: true},
+			{name: "echoed continuation", prefix: strings.Replace(startup, `"output":[]`, `"previous_response_id":"resp_server","output":[]`, 1), failure: limited, nativeOnly: true},
+			{name: "item reference input", prefix: startup, failure: limited, itemReference: true, nativeOnly: true},
+			{name: "header passthrough remains replayable", prefix: startup, failure: limited, paramOverride: `{"operations":[{"mode":"pass_headers","keep_origin":true,"value":["User-Agent"]}]}`, fallback: true, settled: true},
+			{name: "request turn state", prefix: startup, failure: limited, paramOverride: `{"operations":[{"mode":"pass_headers","value":["X-Codex-Turn-State"]}]}`, requestState: true, nativeOnly: true},
 			{name: "provider turn state", prefix: startup, failure: limited, stateHeader: true, nativeOnly: true},
 			{name: "idle timeout", prefix: startup, hold: true},
 			{name: "client cancellation", prefix: startup, hold: true, cancel: true},
+			{name: "cancel during stream cleanup", prefix: startup, failure: limited, cancelOnClose: true},
+			{name: "cancel before fallback network send", prefix: startup, failure: limited, cancelBeforeSend: true},
 		} {
 			if tc.nativeOnly && format != types.RelayFormatOpenAIResponses {
 				continue
@@ -381,7 +392,7 @@ func TestRelayResponsesRetriesRateLimitBeforeOutput(t *testing.T) {
 				global.PassThroughRequestEnabled = false
 				global.ChatCompletionsToResponsesPolicy = model_setting.ChatCompletionsToResponsesPolicy{Enabled: true, ChannelIDs: []int{2401, 2402}, ModelPatterns: []string{"^" + modelName + "$"}}
 				retryCodes := "429"
-				if tc.settled && !tc.fallback {
+				if tc.settled && !tc.fallback || tc.retry500 {
 					retryCodes = "429,500"
 				}
 				require.NoError(t, operation_setting.AutomaticRetryStatusCodesFromString(retryCodes))
@@ -433,6 +444,10 @@ func TestRelayResponsesRetriesRateLimitBeforeOutput(t *testing.T) {
 					if tc.failure != "" {
 						_, _ = io.WriteString(w, "data: "+tc.failure+"\n\n")
 					}
+					if tc.cancelOnClose {
+						w.(http.Flusher).Flush()
+						<-r.Context().Done()
+					}
 				}))
 				t.Cleanup(primary.Close)
 				fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -450,8 +465,25 @@ func TestRelayResponsesRetriesRateLimitBeforeOutput(t *testing.T) {
 				}))
 				t.Cleanup(fallback.Close)
 				t.Cleanup(cancel)
+				if tc.cancelOnClose || tc.cancelBeforeSend {
+					client := service.GetHttpClient()
+					previous := client.Transport
+					base := previous
+					if base == nil {
+						base = http.DefaultTransport
+					}
+					origin := primary.URL
+					if tc.cancelBeforeSend {
+						origin = fallback.URL
+					}
+					client.Transport = &responsesRetryCancelTransport{RoundTripper: base, origin: origin, cancel: cancel, beforeSend: tc.cancelBeforeSend}
+					t.Cleanup(func() { client.Transport = previous })
+				}
 				insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 2401, baseURL: primary.URL, priority: 100, models: []string{modelName}})
 				insertResponsesWebSocketTestChannel(t, db, responsesWebSocketTestChannel{id: 2402, baseURL: fallback.URL, priority: 0, models: []string{modelName}})
+				if tc.paramOverride != "" {
+					require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 2401).Update("param_override", tc.paramOverride).Error)
+				}
 				model.InitChannelCache()
 				path, body := "/v1/responses", `{"model":"`+modelName+`","input":"hello","reasoning":{"effort":"high"},"tools":[{"type":"function","name":"lookup","parameters":{"type":"object","properties":{}}}],"stream":true}`
 				if format == types.RelayFormatOpenAI {
@@ -459,6 +491,9 @@ func TestRelayResponsesRetriesRateLimitBeforeOutput(t *testing.T) {
 				}
 				if tc.continuation {
 					body = strings.TrimSuffix(body, "}") + `,"previous_response_id":"resp_previous"}`
+				}
+				if tc.itemReference {
+					body = strings.Replace(body, `"input":"hello"`, `"input":[{"type":"item_reference","id":"msg_server"}]`, 1)
 				}
 				engine := gin.New()
 				engine.POST(path, func(c *gin.Context) {
@@ -481,6 +516,10 @@ func TestRelayResponsesRetriesRateLimitBeforeOutput(t *testing.T) {
 				request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)).WithContext(requestContext)
 				request.Header.Set("Content-Type", "application/json")
 				request.Header.Set("X-Session", t.Name())
+				request.Header.Set("User-Agent", "responses-retry-test")
+				if tc.requestState {
+					request.Header.Set("X-Codex-Turn-State", "client-state")
+				}
 				if tc.writeFailure {
 					engine.ServeHTTP(&responsesRetryFailingWriter{ResponseRecorder: recorder}, request)
 				} else {
@@ -499,6 +538,9 @@ func TestRelayResponsesRetriesRateLimitBeforeOutput(t *testing.T) {
 					assert.NotContains(t, recorder.Body.String(), "rate_limit_exceeded")
 					require.Len(t, requests, 2)
 					assert.JSONEq(t, <-requests, <-requests, "fallback must replay the same model and request")
+				}
+				if tc.cancelOnClose {
+					assert.Equal(t, "0", recorder.Header().Get("X-AI-Cove-Retry-Count"))
 				}
 				if tc.wantText != "" {
 					assert.Contains(t, recorder.Body.String(), tc.wantText)
@@ -534,7 +576,7 @@ func TestRelayResponsesRetriesRateLimitBeforeOutput(t *testing.T) {
 					}
 					assert.Equal(t, wantChannel, logs[0].ChannelId)
 				}
-				if tc.noBudget || tc.pin || tc.strict {
+				if tc.noBudget || tc.pin || tc.strict || tc.cancelOnClose || tc.cancelBeforeSend {
 					assert.Empty(t, logs)
 					assert.Zero(t, charged)
 				}
@@ -558,4 +600,33 @@ func (w *responsesRetryFailingWriter) Write([]byte) (int, error) {
 }
 func (w *responsesRetryFailingWriter) WriteString(string) (int, error) {
 	return 0, errors.New("downstream write failed")
+}
+
+type responsesRetryCancelTransport struct {
+	http.RoundTripper
+	origin     string
+	cancel     context.CancelFunc
+	beforeSend bool
+}
+
+func (t *responsesRetryCancelTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	matched := request.URL.Scheme+"://"+request.URL.Host == t.origin
+	if matched && t.beforeSend {
+		t.cancel()
+	}
+	response, err := t.RoundTripper.RoundTrip(request)
+	if err == nil && matched && !t.beforeSend {
+		response.Body = &responsesRetryCancelBody{ReadCloser: response.Body, cancel: t.cancel}
+	}
+	return response, err
+}
+
+type responsesRetryCancelBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (b *responsesRetryCancelBody) Close() error {
+	b.cancel()
+	return b.ReadCloser.Close()
 }
