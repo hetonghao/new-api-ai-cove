@@ -72,6 +72,52 @@ describe('formatTimeRange', () => {
 })
 
 describe('sanitizeSvg', () => {
+  test.each(['href', 'xlink:href'])(
+    'preserves both wheel instances when %s references a local shape',
+    (attribute) => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 80 20">
+        <defs><circle id="wheel" cy="10" r="8"/></defs>
+        <use ${attribute}="#wheel" x="10"/><use ${attribute}="#wheel" x="70"/>
+      </svg>`
+      const preview = new DOMParser().parseFromString(
+        sanitizeSvg(svg),
+        'image/svg+xml'
+      )
+
+      expect(preview.querySelector('defs #wheel')).not.toBeNull()
+      expect(
+        Array.from(preview.querySelectorAll('use'), (wheel) => [
+          wheel.getAttribute(attribute),
+          wheel.getAttribute('x'),
+        ])
+      ).toEqual([
+        ['#wheel', '10'],
+        ['#wheel', '70'],
+      ])
+    }
+  )
+
+  test('strips external references from reused shapes', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:base="https://example.invalid/wheel.svg">
+      <defs><circle id="wheel" r="8"/></defs>
+      <use href="#wheel"/>
+      <use href="https://example.invalid/wheel.svg#wheel"/>
+      <use xlink:href="wheel.svg#wheel"/>
+    </svg>`
+    const preview = new DOMParser().parseFromString(
+      sanitizeSvg(svg),
+      'image/svg+xml'
+    )
+
+    expect(preview.documentElement.hasAttribute('xml:base')).toBe(false)
+    expect(
+      Array.from(
+        preview.querySelectorAll('use[href], use[xlink\\:href]'),
+        (element) => element.getAttribute('href')
+      )
+    ).toEqual(['#wheel'])
+  })
+
   test('removes script elements and event handlers, keeps shapes', () => {
     const dirty =
       '<svg viewBox="0 0 10 10" onload="alert(1)"><script>alert(2)</script><rect width="10" height="10"/></svg>'

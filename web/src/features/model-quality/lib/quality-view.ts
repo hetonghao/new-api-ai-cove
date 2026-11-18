@@ -88,9 +88,22 @@ export function scheduleSummary(
 
 // Second defense layer for stored SVG: strict allowlist profile plus explicit
 // scriptable-content bans. Never rendered as inline DOM — img src only.
+const svgPurifier = DOMPurify.isSupported ? DOMPurify() : undefined
+svgPurifier?.addHook('uponSanitizeAttribute', (_node, attribute) => {
+  if (
+    (attribute.attrName === 'href' || attribute.attrName === 'xlink:href') &&
+    !/^#[A-Za-z_][A-Za-z0-9_.-]{0,127}$/.test(attribute.attrValue)
+  ) {
+    attribute.keepAttr = false
+  }
+})
+
 export function sanitizeSvg(raw: string): string {
-  return DOMPurify.sanitize(raw, {
+  if (!svgPurifier) return ''
+  return svgPurifier.sanitize(raw, {
     USE_PROFILES: { svg: true, svgFilters: true },
+    ADD_TAGS: ['use'],
+    FORBID_ATTR: ['xml:base'],
     FORBID_TAGS: ['foreignObject', 'script', 'a', 'image', 'iframe'],
   })
 }
