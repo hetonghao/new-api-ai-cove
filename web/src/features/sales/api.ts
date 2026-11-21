@@ -17,11 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
+
 import type {
   ApiResponse,
   QuotaDataPoint,
   SalesCommissionAdminPage,
   SalesCommissionAdminParams,
+  SalesCommissionSettlementInput,
   SalesCommissionSettlementPage,
   SalesDataParams,
   SalesStats,
@@ -84,13 +86,15 @@ export async function updateSalesCommissionRatio(
   return res.data
 }
 
-export async function createSalesCommissionSettlement(
-  salesUserId: number,
-  payload: { amount: number; note?: string }
-): Promise<ApiResponse> {
+export async function createSalesCommissionSettlement({
+  salesUserId,
+  amount,
+  note,
+  creditToBalance,
+}: SalesCommissionSettlementInput): Promise<ApiResponse> {
   const res = await api.post(
     `/api/sales/admin/commissions/${salesUserId}/settlements`,
-    payload
+    { amount, note, credit_to_balance: creditToBalance }
   )
   return res.data
 }

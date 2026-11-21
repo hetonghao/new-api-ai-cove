@@ -20,8 +20,9 @@ type updateSalesCommissionRatioRequest struct {
 }
 
 type createSalesCommissionSettlementRequest struct {
-	Amount float64 `json:"amount"`
-	Note   string  `json:"note"`
+	Amount          float64 `json:"amount"`
+	Note            string  `json:"note"`
+	CreditToBalance bool    `json:"credit_to_balance"`
 }
 
 func GetSalesUsers(c *gin.Context) {
@@ -237,7 +238,7 @@ func CreateSalesCommissionSettlementByRoot(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	settlement, err := model.CreateSalesCommissionSettlement(salesUserID, c.GetInt("id"), req.Amount, req.Note)
+	settlement, err := model.CreateSalesCommissionSettlement(salesUserID, c.GetInt("id"), req.Amount, req.Note, req.CreditToBalance)
 	if err != nil {
 		common.ApiError(c, err)
 		return

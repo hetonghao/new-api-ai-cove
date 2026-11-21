@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -13,8 +14,12 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/go-redis/redis/v8"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -234,22 +239,105 @@ func TestGetSalesStatsIncludesCommissionSummary(t *testing.T) {
 }
 
 func TestCreateSalesCommissionSettlementByRootRecordsSettlement(t *testing.T) {
-	db := setupSalesControllerTestDB(t)
-	require.NoError(t, db.Create(&[]model.User{
-		{Id: 1, Username: "seller", Role: common.RoleSalesUser, Status: common.UserStatusEnabled, Group: "default", AffCode: "ctrl-root-commission-1", CommissionRatio: 10},
-		{Id: 2, Username: "alice", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", InviterId: 1, AffCode: "ctrl-root-commission-2"},
-	}).Error)
-	require.NoError(t, db.Create(&model.TopUp{UserId: 2, Amount: 10000, Money: 100, Status: common.TopUpStatusSuccess, TradeNo: "ctrl-root-commission-topup"}).Error)
+	gin.SetMode(gin.TestMode)
+	oldDB, oldLogDB := model.DB, model.LOG_DB
+	oldMainType, oldLogType := common.MainDatabaseType(), common.LogDatabaseType()
+	oldRedis, oldQuotaPerUnit, oldRate := common.RedisEnabled, common.QuotaPerUnit, operation_setting.USDExchangeRate
+	common.RedisEnabled, common.QuotaPerUnit, operation_setting.USDExchangeRate = false, 500_000, 7.3
+	t.Cleanup(func() {
+		model.DB, model.LOG_DB = oldDB, oldLogDB
+		common.SetDatabaseTypes(oldMainType, oldLogType)
+		common.RedisEnabled, common.QuotaPerUnit, operation_setting.USDExchangeRate = oldRedis, oldQuotaPerUnit, oldRate
+	})
 
-	ctx, recorder := newSalesControllerContext(t, http.MethodPost, "/api/sales/admin/commissions/1/settlements", gin.H{"amount": 5, "note": "offline paid"}, 99)
-	ctx.Set("role", common.RoleRootUser)
-	ctx.Params = gin.Params{{Key: "sales_user_id", Value: "1"}}
+	for _, dialect := range []common.DatabaseType{common.DatabaseTypeSQLite, common.DatabaseTypeMySQL, common.DatabaseTypePostgreSQL} {
+		t.Run(string(dialect), func(t *testing.T) {
+			dsn := os.Getenv("TEST_" + strings.ToUpper(string(dialect)) + "_DSN")
+			if dialect != common.DatabaseTypeSQLite && dsn == "" {
+				t.Skip("test database DSN is not configured")
+			}
+			db, _ := newAuditTestDatabase(t, string(dialect), dsn)
+			model.DB, model.LOG_DB = db, db
+			common.SetDatabaseTypes(dialect, dialect)
+			require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}, &model.SalesCommissionSettlement{}, &model.Log{}))
+			versionQuery := "SELECT version()"
+			if dialect == common.DatabaseTypeSQLite {
+				versionQuery = "SELECT sqlite_version()"
+			}
+			var version string
+			require.NoError(t, db.Raw(versionQuery).Scan(&version).Error)
+			t.Logf("database version: %s", version)
 
-	CreateSalesCommissionSettlementByRoot(ctx)
+			cases := []struct {
+				name       string
+				payload    gin.H
+				before     int
+				wantQuota  int
+				wantCredit bool
+				wantError  error
+			}{
+				{"offline", gin.H{"amount": 7.31, "note": "offline paid"}, 1234, 1234, false, nil},
+				{"wallet", gin.H{"amount": 7.31, "note": "wallet payment", "credit_to_balance": true}, 1234, 501919, true, nil},
+				{"wallet_limit", gin.H{"amount": 7.31, "credit_to_balance": true}, common.MaxWalletQuota - 500684, common.MaxWalletQuota - 500684, false, model.ErrWalletQuotaLimitExceeded},
+			}
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					seller := model.User{Username: tc.name, AffCode: tc.name, Role: common.RoleSalesUser, CommissionRatio: 10, Quota: tc.before}
+					require.NoError(t, db.Create(&seller).Error)
+					invitee := model.User{Username: tc.name + "_buyer", AffCode: tc.name + "_buyer", InviterId: seller.Id}
+					require.NoError(t, db.Create(&invitee).Error)
+					require.NoError(t, db.Create(&model.TopUp{UserId: invitee.Id, Money: 100, Status: common.TopUpStatusSuccess, TradeNo: tc.name}).Error)
+					if dialect == common.DatabaseTypeSQLite {
+						server := miniredis.RunT(t)
+						cache := redis.NewClient(&redis.Options{Addr: server.Addr()})
+						previousCache := common.RDB
+						common.RDB, common.RedisEnabled = cache, true
+						t.Cleanup(func() {
+							common.RDB, common.RedisEnabled = previousCache, false
+							assert.NoError(t, cache.Close())
+						})
+						_, err := model.GetUserCache(seller.Id)
+						require.NoError(t, err)
+					}
 
-	response := decodeSalesAPIResponse(t, recorder)
-	require.True(t, response.Success)
-	require.Contains(t, recorder.Body.String(), "offline paid")
+					id := fmt.Sprint(seller.Id)
+					ctx, recorder := newSalesControllerContext(t, http.MethodPost, "/api/sales/admin/commissions/"+id+"/settlements", tc.payload, 99)
+					ctx.Set("role", common.RoleRootUser)
+					ctx.Params = gin.Params{{Key: "sales_user_id", Value: id}}
+					CreateSalesCommissionSettlementByRoot(ctx)
+
+					response := decodeSalesAPIResponse(t, recorder)
+					quota, err := model.GetUserQuota(seller.Id, true)
+					require.NoError(t, err)
+					assert.Equal(t, tc.wantQuota, quota)
+					if common.RedisEnabled {
+						cache, err := model.GetUserCache(seller.Id)
+						require.NoError(t, err)
+						assert.Equal(t, tc.wantQuota, cache.Quota)
+					}
+					var credits int64
+					require.NoError(t, db.Model(&model.Log{}).Where("user_id = ? AND type = ?", seller.Id, model.LogTypeTopup).Count(&credits).Error)
+					if tc.wantCredit {
+						assert.EqualValues(t, 1, credits)
+					} else {
+						assert.Zero(t, credits)
+					}
+					var settlements []model.SalesCommissionSettlement
+					require.NoError(t, db.Where("sales_user_id = ?", seller.Id).Find(&settlements).Error)
+					if tc.wantError != nil {
+						assert.False(t, response.Success)
+						assert.Equal(t, tc.wantError.Error(), response.Message)
+						assert.Empty(t, settlements)
+						return
+					}
+					require.True(t, response.Success, response.Message)
+					require.Len(t, settlements, 1)
+					assert.Equal(t, 7.31, settlements[0].Amount)
+					assert.Equal(t, tc.payload["note"], settlements[0].Note)
+				})
+			}
+		})
+	}
 }
 
 func TestGetSalesLogsStatPassesThroughRequestFiltersAndOnlyCountsConsumeLogs(t *testing.T) {

@@ -2,9 +2,12 @@ package model
 
 import (
 	"errors"
+	"fmt"
+	"math"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
@@ -52,6 +55,7 @@ var (
 	ErrInvalidSalesCommissionAmount      = errors.New("invalid sales commission amount")
 	ErrSalesCommissionAmountTooLarge     = errors.New("sales commission amount exceeds pending amount")
 	ErrSalesCommissionRatioNotConfigured = errors.New("sales commission ratio is not configured")
+	errSalesCommissionWalletConversion   = common.NewMessage("Cannot convert the settlement amount to wallet credit")
 )
 
 func GetSalesCommissionSummary(salesUserID int) (*SalesCommissionSummary, error) {
@@ -168,19 +172,38 @@ func ListSalesCommissionAdminRows(keyword string, pageInfo *common.PageInfo) ([]
 	return rows, total, nil
 }
 
-func CreateSalesCommissionSettlement(salesUserID int, operatorUserID int, amount float64, note string) (*SalesCommissionSettlement, error) {
-	if salesUserID == 0 || operatorUserID == 0 {
+func CreateSalesCommissionSettlement(salesUserID int, operatorUserID int, amount float64, note string, creditToBalance bool) (*SalesCommissionSettlement, error) {
+	if salesUserID == 0 || operatorUserID == 0 || amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
 		return nil, ErrInvalidSalesCommissionAmount
 	}
 	amountDec := decimal.NewFromFloat(amount)
-	if !amountDec.IsPositive() {
-		return nil, ErrInvalidSalesCommissionAmount
+	var creditedQuota int
+	var creditedAmount string
+	if creditToBalance {
+		common.OptionMapRWMutex.RLock()
+		exchangeRate, quotaPerUnit := operation_setting.USDExchangeRate, common.QuotaPerUnit
+		common.OptionMapRWMutex.RUnlock()
+		if exchangeRate <= 0 || math.IsNaN(exchangeRate) || math.IsInf(exchangeRate, 0) ||
+			quotaPerUnit <= 0 || math.IsNaN(quotaPerUnit) || math.IsInf(quotaPerUnit, 0) {
+			return nil, errSalesCommissionWalletConversion
+		}
+		// Sales settlements are in CNY; the wallet stores quota units per USD.
+		quota := amountDec.Mul(decimal.NewFromFloat(quotaPerUnit)).DivRound(decimal.NewFromFloat(exchangeRate), 0)
+		var err error
+		creditedQuota, err = common.WalletQuotaFromDecimalStrict(quota)
+		if err != nil {
+			return nil, ErrWalletQuotaLimitExceeded
+		}
+		if creditedQuota == 0 {
+			return nil, errSalesCommissionWalletConversion
+		}
+		creditedAmount = fmt.Sprintf("＄%.6f", float64(creditedQuota)/quotaPerUnit)
 	}
 
 	var settlement SalesCommissionSettlement
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var user User
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := lockForUpdate(tx).
 			Where("id = ? AND role = ? AND deleted_at IS NULL", salesUserID, common.RoleSalesUser).
 			First(&user).Error; err != nil {
 			return err
@@ -209,10 +232,23 @@ func CreateSalesCommissionSettlement(salesUserID int, operatorUserID int, amount
 			Note:            strings.TrimSpace(note),
 			CreatedAt:       common.GetTimestamp(),
 		}
-		return tx.Create(&settlement).Error
+		if err := tx.Create(&settlement).Error; err != nil || creditedQuota == 0 {
+			return err
+		}
+		err = creditTopUpQuota(tx, salesUserID, creditedQuota, nil)
+		if errors.Is(err, ErrTopUpQuotaLimitExceeded) {
+			return ErrWalletQuotaLimitExceeded
+		}
+		return err
 	})
 	if err != nil {
 		return nil, err
+	}
+	if creditedQuota > 0 {
+		syncCreditUserQuotaCache(salesUserID, creditedQuota, "sales commission settlement")
+		RecordLog(salesUserID, LogTypeTopup, common.NewMessage("Commission settlement #{{id}} credited to account balance: {{quota}}", map[string]any{
+			"id": settlement.Id, "quota": creditedAmount,
+		}))
 	}
 	return &settlement, nil
 }

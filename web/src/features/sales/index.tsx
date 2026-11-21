@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Activity,
@@ -28,13 +27,12 @@ import {
   Wallet,
   Users as UsersIcon,
 } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { useAuthStore } from '@/stores/auth-store'
-import { formatNumber, formatQuota, formatTimestampToDate } from '@/lib/format'
-import { ROLE } from '@/lib/roles'
-import { cn } from '@/lib/utils'
-import type { NavigateFn } from '@/hooks/use-table-url-state'
+
+import { GroupBadge } from '@/components/group-badge'
+import { SectionPageLayout } from '@/components/layout'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -54,14 +52,18 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { GroupBadge } from '@/components/group-badge'
-import { SectionPageLayout } from '@/components/layout'
 import { UserInfoDialog } from '@/features/usage-logs/components/dialogs/user-info-dialog'
 import {
   UsageLogsProvider,
   useUsageLogsContext,
 } from '@/features/usage-logs/components/usage-logs-provider'
 import { UsageLogsTable } from '@/features/usage-logs/components/usage-logs-table'
+import type { NavigateFn } from '@/hooks/use-table-url-state'
+import { formatNumber, formatQuota, formatTimestampToDate } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
+import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
+
 import {
   createSalesCommissionSettlement,
   getSalesCommissionAdminRows,
@@ -388,15 +390,7 @@ export function Sales() {
   })
 
   const createSettlementMutation = useMutation({
-    mutationFn: ({
-      salesUserId,
-      amount,
-      note,
-    }: {
-      salesUserId: number
-      amount: number
-      note: string
-    }) => createSalesCommissionSettlement(salesUserId, { amount, note }),
+    mutationFn: createSalesCommissionSettlement,
     onSuccess: (result, variables) => {
       if (result.success) {
         toast.success(t('Settlement recorded successfully'))

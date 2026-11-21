@@ -1,4 +1,3 @@
-import { type ReactNode, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   BadgePercent,
@@ -11,11 +10,12 @@ import {
   Search,
   Wallet,
 } from 'lucide-react'
+import { type ReactNode, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { formatNumber, formatTimestampToDate } from '@/lib/format'
-import { cn } from '@/lib/utils'
+
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -40,6 +40,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { formatNumber, formatTimestampToDate } from '@/lib/format'
+import { cn } from '@/lib/utils'
+
 import { getSalesCommissionSettlementsByRoot } from '../api'
 import {
   canCreateCommissionSettlement,
@@ -54,6 +57,7 @@ import {
 import type {
   SalesCommissionAdminRow,
   SalesCommissionSettlement,
+  SalesCommissionSettlementInput,
   SalesStats,
 } from '../types'
 
@@ -586,17 +590,13 @@ export function SettlementDialog({
   open: boolean
   isSubmitting: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (payload: {
-    salesUserId: number
-    amount: number
-    note: string
-  }) => void
+  onSubmit: (payload: SalesCommissionSettlementInput) => void
 }) {
   const { t } = useTranslation()
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-2xl'>
+      <DialogContent className='grid-cols-1 sm:max-w-2xl'>
         {row ? (
           <SettlementDialogForm
             key={row.sales_user_id}
@@ -630,13 +630,10 @@ function SettlementDialogForm({
   mode: SettlementDialogMode
   isSubmitting: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (payload: {
-    salesUserId: number
-    amount: number
-    note: string
-  }) => void
+  onSubmit: (payload: SalesCommissionSettlementInput) => void
 }) {
   const { t } = useTranslation()
+  const balanceCheckboxId = useId()
   const canCreateSettlement = canCreateCommissionSettlement(
     row.pending_commission_amount,
     row.commission_ratio
@@ -654,6 +651,7 @@ function SettlementDialogForm({
     )
   )
   const [note, setNote] = useState('')
+  const [creditToBalance, setCreditToBalance] = useState(false)
   const pendingAmount = row.pending_commission_amount ?? 0
   const amount = Number(amountInput)
   const amountError = getSettlementAmountError(amount, pendingAmount)
@@ -698,6 +696,7 @@ function SettlementDialogForm({
       salesUserId: row.sales_user_id,
       amount: roundMoney(amount),
       note: note.trim(),
+      creditToBalance,
     })
   }
 
@@ -731,7 +730,7 @@ function SettlementDialogForm({
           />
         </div>
 
-        {showSettlementForm ? (
+        {showSettlementForm && (
           <>
             <div className='space-y-2'>
               <Label>{t('Settlement percentage')}</Label>
@@ -803,8 +802,21 @@ function SettlementDialogForm({
                 placeholder={t('Optional settlement note')}
               />
             </div>
+            <div className='flex items-center gap-2'>
+              <Checkbox
+                id={balanceCheckboxId}
+                className='border-muted-foreground'
+                checked={creditToBalance}
+                onCheckedChange={setCreditToBalance}
+                disabled={isSubmitting}
+              />
+              <Label htmlFor={balanceCheckboxId} className='leading-normal'>
+                {t('Credit this settlement to the account balance')}
+              </Label>
+            </div>
           </>
-        ) : canCreateSettlement ? null : (
+        )}
+        {!canCreateSettlement && (
           <div className='text-muted-foreground rounded-md border px-3 py-2 text-sm'>
             {t('No pending commission available')}
           </div>

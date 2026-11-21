@@ -70,6 +70,13 @@ export interface SalesStats {
 
 export type SalesUserInfo = UserInfo
 
+export type SalesCommissionSettlementInput = {
+  readonly salesUserId: number
+  readonly amount: number
+  readonly note: string
+  readonly creditToBalance: boolean
+}
+
 export interface SalesCommissionSettlement {
   id: number
   sales_user_id: number

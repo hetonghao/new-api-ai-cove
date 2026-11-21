@@ -215,7 +215,7 @@ func TestGetSalesCommissionSummaryArchivesSettledAmountAndRepricesPendingRevenue
 		{UserId: 3, Amount: 10000, Money: 400, Status: common.TopUpStatusSuccess, TradeNo: "commission-topup-2"},
 	}).Error)
 
-	settlement, err := CreateSalesCommissionSettlement(1, 99, 30, "first settlement")
+	settlement, err := CreateSalesCommissionSettlement(1, 99, 30, "first settlement", false)
 	require.NoError(t, err)
 	require.InDelta(t, 300, settlement.CoveredRevenue, 0.0001)
 
@@ -238,7 +238,7 @@ func TestCreateSalesCommissionSettlementRejectsAmountAbovePending(t *testing.T) 
 	require.NoError(t, db.Model(&User{}).Where("id = ?", 1).Update("commission_ratio", 10).Error)
 	require.NoError(t, db.Create(&TopUp{UserId: 2, Amount: 10000, Money: 100, Status: common.TopUpStatusSuccess, TradeNo: "commission-topup-limit"}).Error)
 
-	_, err := CreateSalesCommissionSettlement(1, 99, 11, "too much")
+	_, err := CreateSalesCommissionSettlement(1, 99, 11, "too much", false)
 
 	require.Error(t, err)
 }
