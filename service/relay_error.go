@@ -202,8 +202,8 @@ func RecordRelayErrorLog(c *gin.Context, channelId int, err *types.NewAPIError, 
 	other.SetPublic("error_type", publicErr.GetErrorType())
 	other.SetPublic("error_code", publicErr.GetErrorCode())
 	other.SetPublic("status_code", err.StatusCode)
-	if err.IsUpstreamHTTP429() {
-		other.SetAdmin("reject_reason", err.MaskSensitiveUpstreamErrorWithStatusCode(common.UpstreamAddresses(c)...))
+	if reason := err.AdminUpstreamRejection(); reason != "" {
+		other.SetAdmin("reject_reason", reason)
 	}
 	if history := RelayAttemptErrors(c); len(history) > 0 {
 		attemptErrors := make([]map[string]any, 0, len(history))

@@ -3,8 +3,6 @@ package types
 import (
 	"fmt"
 	"net/http"
-
-	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 )
 
 // IsUpstreamHTTP429 uses the original response status, before channel remapping.
@@ -31,12 +29,12 @@ func ErrOptionWithUpstreamError(source *NewAPIError) NewAPIErrorOptions {
 	}
 }
 
-func (e *NewAPIError) MaskSensitiveUpstreamErrorWithStatusCode(upstreamURLs ...string) string {
-	if e == nil || !e.IsUpstreamHTTP429() {
-		return e.MaskSensitiveErrorWithStatusCode(upstreamURLs...)
+func (e *NewAPIError) AdminUpstreamRejection() string {
+	if !e.IsUpstreamHTTP429() {
+		return ""
 	}
 	if e.upstreamRejection == "" {
 		return fmt.Sprintf("status_code=%d", e.upstreamHTTPStatus)
 	}
-	return fmt.Sprintf("status_code=%d, %s", e.upstreamHTTPStatus, kitutil.MaskSensitiveInfo(e.upstreamRejection, upstreamURLs...))
+	return fmt.Sprintf("status_code=%d, %s", e.upstreamHTTPStatus, e.upstreamRejection)
 }
