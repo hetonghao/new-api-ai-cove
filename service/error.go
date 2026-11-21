@@ -84,9 +84,27 @@ func ClaudeErrorWrapperLocal(err error, code string, statusCode int) *dto.Claude
 	return claudeErr
 }
 
+type originalHTTPStatusKey struct{}
+
+// WithOriginalHTTPStatus keeps the wire status on a converted response even if its body is reread.
+func WithOriginalHTTPStatus(resp *http.Response, status int) *http.Response {
+	req := resp.Request
+	if req == nil {
+		req = &http.Request{}
+	}
+	resp.Request = req.WithContext(context.WithValue(req.Context(), originalHTTPStatusKey{}, status))
+	return resp
+}
+
 func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFail bool) (newApiErr *types.NewAPIError) {
+	upstreamStatus := resp.StatusCode
+	if resp.Request != nil {
+		if status, ok := resp.Request.Context().Value(originalHTTPStatusKey{}).(int); ok {
+			upstreamStatus = status
+		}
+	}
 	defer func() {
-		types.ErrOptionWithUpstreamHTTPStatusCode(resp.StatusCode)(newApiErr)
+		types.ErrOptionWithUpstreamHTTPStatusCode(upstreamStatus)(newApiErr)
 	}()
 	newApiErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
 
@@ -98,7 +116,7 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 	var errResponse dto.GeneralErrorResponse
 	responseBodyText := string(responseBody)
 	responseBodyPreview := common.LocalLogPreview(responseBodyText)
-	if resp.StatusCode == http.StatusTooManyRequests {
+	if upstreamStatus == http.StatusTooManyRequests {
 		defer func() {
 			reason := errResponse.ToMessage()
 			if common.GetJsonType(errResponse.Error) != "object" && common.GetJsonType(errResponse.Error) != "string" {

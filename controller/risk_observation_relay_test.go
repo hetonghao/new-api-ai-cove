@@ -13,56 +13,12 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
-func TestApplyRelayRiskGate_keeps_sensitive_word_error_before_ai_and_upstream(t *testing.T) {
-	// Given
-	gin.SetMode(gin.TestMode)
-	originalCheckEnabled := setting.CheckSensitiveEnabled
-	originalPromptCheck := setting.CheckSensitiveOnPromptEnabled
-	originalWords := setting.SensitiveWords
-	setting.SensitiveWords = []string{"test_sensitive"}
-	setting.CheckSensitiveEnabled = true
-	setting.CheckSensitiveOnPromptEnabled = true
-	t.Cleanup(func() {
-		setting.CheckSensitiveEnabled = originalCheckEnabled
-		setting.CheckSensitiveOnPromptEnabled = originalPromptCheck
-		setting.SensitiveWords = originalWords
-	})
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	processorCalls := 0
-	upstreamCalls := 0
-
-	// When
-	err, _ := applyRelayRiskGate(ctx, relayRiskContext{
-		request: &dto.GeneralOpenAIRequest{},
-		info:    &relaycommon.RelayInfo{OriginModelName: "gpt-test"},
-		meta:    &types.TokenCountMeta{CombineText: "test_sensitive"},
-	}, func(_ *gin.Context, _ service.RiskObservationJob) service.RiskObservationRelayDecision {
-		processorCalls++
-		return service.RiskObservationRelayDecision{}
-	})
-	if err == nil {
-		upstreamCalls++
-	}
-
-	// Then
-	require.NotNil(t, err)
-	require.Equal(t, http.StatusBadRequest, err.StatusCode)
-	require.Equal(t, types.ErrorCodeSensitiveWordsDetected, err.GetErrorCode())
-	require.Zero(t, processorCalls)
-	require.Zero(t, upstreamCalls)
-}
-
 func TestApplyRelayRiskGate_maps_block_and_builds_governed_job(t *testing.T) {
 	// Given
-	originalCheckEnabled := setting.CheckSensitiveEnabled
-	setting.CheckSensitiveEnabled = false
-	t.Cleanup(func() { setting.CheckSensitiveEnabled = originalCheckEnabled })
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses?secret=hidden", nil)
 	ctx.Set(common.RequestIdKey, "req-1")
@@ -83,7 +39,6 @@ func TestApplyRelayRiskGate_maps_block_and_builds_governed_job(t *testing.T) {
 	err, _ := applyRelayRiskGate(ctx, relayRiskContext{
 		request: request,
 		info:    &relaycommon.RelayInfo{OriginModelName: "gpt-test"},
-		meta:    &types.TokenCountMeta{},
 	}, func(_ *gin.Context, got service.RiskObservationJob) service.RiskObservationRelayDecision {
 		job = got
 		return service.RiskObservationRelayDecision{Blocked: true}
@@ -106,9 +61,6 @@ func TestApplyRelayRiskGate_maps_block_and_builds_governed_job(t *testing.T) {
 
 func TestApplyRelayRiskGate_routes_empty_current_turn_to_processor(t *testing.T) {
 	// Given
-	originalCheckEnabled := setting.CheckSensitiveEnabled
-	setting.CheckSensitiveEnabled = false
-	t.Cleanup(func() { setting.CheckSensitiveEnabled = originalCheckEnabled })
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	processorCalls := 0
@@ -129,9 +81,6 @@ func TestApplyRelayRiskGate_routes_empty_current_turn_to_processor(t *testing.T)
 }
 
 func TestApplyRelayRiskGate_skips_ai_risk_for_authenticated_internal_review_token(t *testing.T) {
-	originalCheckEnabled := setting.CheckSensitiveEnabled
-	setting.CheckSensitiveEnabled = false
-	t.Cleanup(func() { setting.CheckSensitiveEnabled = originalCheckEnabled })
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	common.SetContextKey(ctx, constant.ContextKeyRiskInternalReview, true)

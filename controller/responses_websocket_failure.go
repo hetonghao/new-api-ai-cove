@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relay/requestplugin"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 
@@ -78,12 +79,12 @@ func failPreparedResponsesWebSocketRequest(state *responsesWebSocketRequestState
 		if channel != nil {
 			channelError := *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(state.ctx, constant.ContextKeyChannelKey), channel.GetAutoBan())
 			service.HandleSevereRiskFromRelay(service.SevereRiskRelayInput{Context: state.ctx, Request: state.info.Request, Channel: channelError, Model: state.info.OriginModelName, UpstreamErr: apiErr, ChannelTest: state.info.IsChannelTest})
-			processChannelError(state.ctx, channelError, apiErr)
+			processChannelError(state.ctx, channelError, apiErr, state.info)
 		} else {
 			if len(state.ctx.GetStringSlice("use_channel")) == 0 {
 				logger.LogError(state.ctx, fmt.Sprintf("relay error before channel selection (status code: %d): %s", apiErr.StatusCode, common.LocalLogPreview(apiErr.Error())))
 			}
-			recordRelayErrorLog(state.ctx, apiErr)
+			recordRelayErrorLog(state.ctx, apiErr, state.info)
 		}
 	}
 	finalizeFailedResponsesWebSocketRequest(state, apiErr)
@@ -99,6 +100,7 @@ func finalizeFailedResponsesWebSocketRequest(state *responsesWebSocketRequestSta
 	if state.info != nil && state.info.Billing != nil {
 		state.info.Billing.Refund(state.ctx)
 	}
+	requestplugin.Report(state.ctx, types.RelayFormatOpenAIResponses, state.info, nil, service.PublicRelayError(state.ctx, apiErr))
 	common.CleanupBodyStorage(state.ctx)
 	if apiErr == nil {
 		apiErr = types.NewError(context.Canceled, types.ErrorCodeDoRequestFailed)
@@ -125,12 +127,12 @@ func recordResponsesWebSocketRetryFailure(state *responsesWebSocketRequestState,
 	}
 	state.info.LastError = apiErr
 	if channel == nil {
-		recordRelayErrorLog(state.ctx, apiErr)
+		recordRelayErrorLog(state.ctx, apiErr, state.info)
 		return
 	}
 	channelError := *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(state.ctx, constant.ContextKeyChannelKey), channel.GetAutoBan())
 	service.HandleSevereRiskFromRelay(service.SevereRiskRelayInput{Context: state.ctx, Request: state.info.Request, Channel: channelError, Model: state.info.OriginModelName, UpstreamErr: apiErr, ChannelTest: state.info.IsChannelTest})
-	processChannelError(state.ctx, channelError, apiErr)
+	processChannelError(state.ctx, channelError, apiErr, state.info)
 }
 
 func refundResponsesWebSocketBillingIfPending(ctx *gin.Context, billing relaycommon.BillingSettler) {

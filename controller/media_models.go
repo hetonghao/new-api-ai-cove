@@ -734,7 +734,7 @@ func pluginDeclaresOpenAIVideo(plugin *jsplugin.LoadedPlugin) bool {
 
 func mediaChannelBillingOK(plugin *jsplugin.LoadedPlugin, modelName string, mappedModel string, acceptUnset bool) bool {
 	if plugin != nil {
-		expr, exists := billing_setting.ResolveTaskBillingExpr(plugin.Meta.Key, modelName, mappedModel)
+		expr, _, exists := billing_setting.ResolveTaskBillingExpr(plugin.Meta.Key, modelName, mappedModel)
 		if exists || billing_setting.GetBillingMode(modelName) == billing_setting.BillingModeTieredExpr {
 			schemaModel := mappedModel
 			if schemaModel == "" {

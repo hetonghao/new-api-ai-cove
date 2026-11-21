@@ -171,7 +171,7 @@ func TestChannelHTTP429LogKeepsPublicAndAdminViews(t *testing.T) {
 			originalMessage, originalCode := upstreamErr.Error(), upstreamErr.GetErrorCode()
 			originalStatus := upstreamErr.StatusCode
 
-			service.RecordRelayErrorLog(ctx, upstreamErr, 101, nil)
+			service.RecordRelayErrorLog(ctx, 101, upstreamErr, nil)
 
 			logs, total, err := model.GetUserLogs(71, model.LogFilter{Type: model.LogTypeError, RequestId: tc.name}, 0, 10)
 			require.NoError(t, err)

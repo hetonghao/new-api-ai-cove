@@ -772,15 +772,14 @@ type terminalEventRecorder struct {
 	terminalWritten chan struct{}
 }
 
-func (r *terminalEventRecorder) Write(p []byte) (int, error) {
-	n, err := r.ResponseRecorder.Write(p)
-	if bytes.Contains(p, []byte("response.completed")) {
+func (r *terminalEventRecorder) Flush() {
+	r.ResponseRecorder.Flush()
+	if strings.Contains(r.Body.String(), "response.completed") {
 		select {
 		case r.terminalWritten <- struct{}{}:
 		default:
 		}
 	}
-	return n, err
 }
 
 func TestOaiResponsesStreamHandlerOnlyMarksSuccessfulTerminalEvent(t *testing.T) {

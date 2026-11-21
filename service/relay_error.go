@@ -162,7 +162,7 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		return
 	}
 	ProcessChannelFailure(c, channelError, err)
-	RecordRelayErrorLog(c, err, channelError.ChannelId, relayInfo)
+	RecordRelayErrorLog(c, channelError.ChannelId, err, relayInfo)
 }
 
 // ProcessChannelFailure logs the failed attempt and schedules channel auto-disable
@@ -185,7 +185,7 @@ func ProcessChannelFailure(c *gin.Context, channelError types.ChannelError, err 
 }
 
 // RecordRelayErrorLog persists the error log row for one failed relay attempt.
-func RecordRelayErrorLog(c *gin.Context, err *types.NewAPIError, channelId int, relayInfo *relaycommon.RelayInfo) {
+func RecordRelayErrorLog(c *gin.Context, channelId int, err *types.NewAPIError, relayInfo *relaycommon.RelayInfo) {
 	if err == nil || !constant.ErrorLogEnabled || !types.IsRecordErrorLog(err) {
 		return
 	}
@@ -213,6 +213,7 @@ func RecordRelayErrorLog(c *gin.Context, err *types.NewAPIError, channelId int, 
 		other.SetAdmin("attempt_errors", attemptErrors)
 	}
 	AppendRelayLogAdminInfo(c, relayInfo, other)
+	appendRequestPluginRecord(relayInfo, other)
 	AppendResponseModelLogInfo(relayInfo, other)
 	AppendTaskPluginContextAuditInfo(c, other)
 	AppendRelayTransportLogInfo(c, other)

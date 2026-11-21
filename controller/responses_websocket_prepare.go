@@ -16,10 +16,10 @@ import (
 	openai "github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relay/requestplugin"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
@@ -30,6 +30,9 @@ import (
 type responsesWebSocketRequestState struct {
 	ctx                   *gin.Context
 	info                  *relaycommon.RelayInfo
+	pluginBody            []byte
+	pluginReply           *requestplugin.SocketResponse
+	pluginResponseID      string
 	pricingMeta           *types.TokenCountMeta
 	tracker               *openai.ResponsesWebSocketUsageTracker
 	rateLimit             *middleware.ModelRequestRateLimitTicket
@@ -88,6 +91,21 @@ func prepareResponsesWebSocketRequestWithInheritedState(baseCtx *gin.Context, pa
 	if validationErr != nil {
 		return state, nil, validationErr
 	}
+	changed, steps, record, pluginErr := requestplugin.SocketIngress(requestCtx, types.RelayFormatOpenAIResponses)
+	state.info.SetRequestPluginIngress(steps, record)
+	if pluginErr != nil {
+		return state, nil, pluginErr
+	}
+	if changed {
+		storage, err := common.GetBodyStorage(requestCtx)
+		if err != nil {
+			return state, nil, err
+		}
+		state.pluginBody, err = storage.Bytes()
+		if err != nil {
+			return state, nil, err
+		}
+	}
 	if accessErr := middleware.CheckTokenModelAccess(requestCtx, modelName); accessErr != nil {
 		common.CleanupBodyStorage(requestCtx)
 		return state, nil, types.NewErrorWithStatusCode(accessErr, types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())
@@ -104,6 +122,7 @@ func prepareResponsesWebSocketRequestWithInheritedState(baseCtx *gin.Context, pa
 		common.CleanupBodyStorage(requestCtx)
 		return state, nil, types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 	}
+	info.SetRequestPluginIngress(steps, record)
 	info.IsResponsesWebSocket = true
 	info.IsStream = true
 	state.info = info
@@ -112,15 +131,11 @@ func prepareResponsesWebSocketRequestWithInheritedState(baseCtx *gin.Context, pa
 	}
 
 	var meta *types.TokenCountMeta
-	if setting.ShouldCheckPromptSensitive() || constant.CountToken {
+	if constant.CountToken {
 		meta = request.GetTokenCountMeta()
 	} else {
 		// Avoid building CombineText when only the pricing quantities are needed.
 		meta = &types.TokenCountMeta{TokenType: types.TokenTypeTokenizer, MaxTokens: int(lo.FromPtr(request.MaxOutputTokens))}
-	}
-	if apiErr := applyRelaySensitiveWordGate(requestCtx, meta); apiErr != nil {
-		common.CleanupBodyStorage(requestCtx)
-		return state, nil, apiErr
 	}
 	tokens, err := service.EstimateRequestToken(requestCtx, meta, info)
 	if err != nil {

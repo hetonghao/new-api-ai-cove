@@ -3,25 +3,20 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 )
 
 type relayRiskContext struct {
 	request       dto.Request
 	info          *relaycommon.RelayInfo
-	meta          *types.TokenCountMeta
 	originalModel string
 }
 
@@ -34,22 +29,7 @@ type relayAttemptRiskGate struct {
 	recordDirect func(context.Context, service.RiskObservationDirectRecord)
 }
 
-func applyRelaySensitiveWordGate(c *gin.Context, meta *types.TokenCountMeta) *types.NewAPIError {
-	if !setting.ShouldCheckPromptSensitive() || meta == nil {
-		return nil
-	}
-	contains, words := service.CheckSensitiveText(meta.CombineText)
-	if contains {
-		logger.LogWarn(c, fmt.Sprintf("user sensitive words detected: %s", strings.Join(words, ", ")))
-		return newSensitiveWordsDetectedError()
-	}
-	return nil
-}
-
 func applyRelayRiskGate(c *gin.Context, risk relayRiskContext, process relayRiskProcessor) (*types.NewAPIError, *service.RiskObservationDirectRecord) {
-	if err := applyRelaySensitiveWordGate(c, risk.meta); err != nil {
-		return err, nil
-	}
 	if common.GetContextKeyBool(c, constant.ContextKeyRiskInternalReview) {
 		return nil, nil
 	}

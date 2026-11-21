@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/deepseek"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relay/requestplugin"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
@@ -100,6 +101,10 @@ func prepareFirstResponsesWebSocketRequestWithBilling(baseCtx *gin.Context, payl
 		}
 		state.info.InitChannelMeta(state.ctx)
 
+		if state.pluginBody != nil {
+			payload = state.pluginBody
+		}
+
 		outgoing, adaptor, payloadErr := prepareResponsesWebSocketPayload(state.ctx, state.info, request, payload)
 		if payloadErr != nil {
 			if refundOnFailure {
@@ -175,6 +180,9 @@ func preparePinnedResponsesWebSocketRequest(pinnedCtx *gin.Context, payload []by
 		return state, nil, billingErr
 	}
 	state.info.InitChannelMeta(state.ctx)
+	if state.pluginBody != nil {
+		payload = state.pluginBody
+	}
 	outgoing, _, payloadErr := prepareResponsesWebSocketPayload(state.ctx, state.info, request, payload)
 	if payloadErr != nil {
 		failPreparedResponsesWebSocketRequest(state, pinnedChannel, payloadErr)
@@ -202,6 +210,13 @@ func prepareResponsesWebSocketPayload(c *gin.Context, info *relaycommon.RelayInf
 	adaptor.Init(info)
 
 	if model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
+		storage, err := common.GetBodyStorage(c)
+		if err != nil {
+			return nil, nil, types.NewError(err, types.ErrorCodeReadRequestBodyFailed)
+		}
+		if apiErr := requestplugin.PassThrough(c, info, storage); apiErr != nil {
+			return nil, nil, apiErr
+		}
 		requestURL, err := adaptor.GetRequestURL(info)
 		if err != nil {
 			return nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
@@ -246,6 +261,10 @@ func prepareResponsesWebSocketPayload(c *gin.Context, info *relaycommon.RelayInf
 	if err != nil {
 		return nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
+	outgoing, pluginErr := requestplugin.Outbound(c, info, outgoing)
+	if pluginErr != nil {
+		return nil, nil, pluginErr
+	}
 	if len(info.ParamOverride) > 0 {
 		outgoing, err = relaycommon.ApplyParamOverrideWithRelayInfo(outgoing, info)
 		if err != nil {
@@ -259,6 +278,9 @@ func prepareResponsesWebSocketPayload(c *gin.Context, info *relaycommon.RelayInf
 	outgoing, err = relaycommon.NormalizeOfficialOpenAIResponsesItemIDs(requestURL, outgoing)
 	if err != nil {
 		return nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+	if apiErr := requestplugin.Egress(c, info, outgoing); apiErr != nil {
+		return nil, nil, apiErr
 	}
 	return outgoing, adaptor, nil
 }

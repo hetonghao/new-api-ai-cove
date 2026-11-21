@@ -223,7 +223,7 @@ func writeResponsesWebSocketError(conn *websocket.Conn, codec *responsesWebSocke
 		return nil
 	}
 	status := 0
-	if apiErr.GetErrorCode() == types.ErrorCodeResponsesWebSocketUnavailable {
+	if apiErr.GetErrorCode() == types.ErrorCodeResponsesWebSocketUnavailable || apiErr.GetErrorCode() == types.ErrorCodeRequestRejected || apiErr.GetErrorCode() == types.ErrorCodeRequestPluginFailed || apiErr.IsUpstreamHTTP429() {
 		status = apiErr.StatusCode
 	}
 	apiErr = service.PublicRelayError(c, apiErr)

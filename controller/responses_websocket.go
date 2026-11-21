@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relay/requestplugin"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
@@ -40,6 +41,14 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 		capacityEvidence  string
 		cleanupReason     = responsesWebSocketCleanupSessionClosed
 	)
+	var pluginWriteErr error
+	startPluginReply := func(s *responsesWebSocketRequestState) {
+		s.pluginReply = requestplugin.ResponsesSocket(s.ctx, s.info, func(data []byte) {
+			if pluginWriteErr == nil {
+				pluginWriteErr = writeResponsesWebSocketClientMessage(clientConn, clientCodec, websocket.TextMessage, data, &clientWriteBudget)
+			}
+		})
+	}
 	defer func() {
 		if active != nil && cleanupReason == responsesWebSocketCleanupClientDisconnected {
 			observability.markFailure(responsesWebSocketFailureCode(cleanupReason))
@@ -195,7 +204,10 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 						errorCtx = state.ctx
 					}
 					_ = writeResponsesWebSocketError(clientConn, clientCodec, errorCtx, apiErr)
-					_ = writeResponsesWebSocketClose(clientConn, websocket.CloseTryAgainLater, apiErr.Error())
+					if apiErr.GetErrorCode() == types.ErrorCodeRequestRejected || apiErr.GetErrorCode() == types.ErrorCodeRequestPluginFailed {
+						continue
+					}
+					_ = writeResponsesWebSocketClose(clientConn, websocket.CloseTryAgainLater, service.PublicRelayError(errorCtx, apiErr).Error())
 					return err
 				}
 
@@ -215,7 +227,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					return err
 				}
 				observability.commitUpstreamRequest()
-				common.CleanupBodyStorage(state.ctx)
+				startPluginReply(state)
 
 				if upstreamFrames == nil {
 					upstreamFrames = startResponsesWebSocketReader(upstreamConn, sessionCtx.Done(), nil, observability, true)
@@ -370,7 +382,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 						}
 						observability.commitUpstreamRequest()
 						common.CleanupBodyStorage(oldState.ctx)
-						common.CleanupBodyStorage(retryState.ctx)
+						startPluginReply(retryState)
 						upstreamFrames = startResponsesWebSocketReader(upstreamConn, sessionCtx.Done(), nil, observability, true)
 						continue
 					}
@@ -480,9 +492,45 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					return observeErr
 				}
 			}
+			if active != nil && active.pluginReply != nil {
+				var terminalPayload []byte
+				for i, f := range framesToForward {
+					if id := gjson.GetBytes(f.payload, "response.id").String(); id != "" {
+						active.pluginResponseID = id
+					}
+					if terminal && i == len(framesToForward)-1 {
+						terminalPayload = active.pluginReply.Terminal(f.payload)
+					} else {
+						active.pluginReply.Event(f.payload)
+					}
+				}
+				if pluginWriteErr != nil {
+					cleanupReason = responsesWebSocketCleanupClientDisconnected
+					return pluginWriteErr
+				}
+				framesToForward = nil
+				if stop := active.pluginReply.Stopped(); stop != nil {
+					if terminal {
+						clientErr := stop.ToOpenAIError()
+						clientErr.Message = common.MessageWithRequestId(clientErr.Message, active.ctx.GetString(common.RequestIdKey))
+						terminalPayload, _ = common.Marshal(gin.H{"type": "error", "status": stop.StatusCode, "error": clientErr, "response_id": active.pluginResponseID})
+					} else if !active.cancelRequested {
+						active.cancelRequested = true
+						body, _ := common.Marshal(gin.H{"type": "response.cancel", "response_id": active.pluginResponseID})
+						if err := writeResponsesWebSocketMessage(upstreamConn, websocket.TextMessage, body); err != nil {
+							return err
+						}
+					}
+				}
+				if terminalPayload != nil {
+					framesToForward = []responsesWebSocketFrame{{messageType: websocket.TextMessage, payload: terminalPayload}}
+				}
+			}
 			if terminal && active != nil {
 				observability.markTerminal()
 				common.SetContextKey(active.ctx, constant.ContextKeyWebSocketCompleteMs, time.Since(active.info.StartTime).Milliseconds())
+				requestplugin.Report(active.ctx, types.RelayFormatOpenAIResponses, active.info, nil, active.pluginReply.Stopped())
+				common.CleanupBodyStorage(active.ctx)
 				service.PostTextConsumeQuota(active.ctx, active.info, usage, nil)
 				if active.tracker.Succeeded() {
 					active.rateLimit.RecordSuccess()

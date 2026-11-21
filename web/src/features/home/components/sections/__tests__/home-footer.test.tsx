@@ -61,7 +61,7 @@ const { QueryClient, QueryClientProvider } =
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false } },
 })
-const { createMemoryHistory, createRootRoute, createRouter, RouterProvider } =
+const { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } =
   await import('@tanstack/react-router')
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
@@ -110,13 +110,7 @@ describe('home footer', () => {
       configurable: true,
       value: () => null,
     })
-    const rootRoute = createRootRoute({
-      component: () => (
-        <I18nextProvider i18n={i18n}>
-          <HomeFooter />
-        </I18nextProvider>
-      ),
-    })
+    const rootRoute = createRootRoute()
     const router = createRouter({
       routeTree: rootRoute,
       history: createMemoryHistory({ initialEntries: ['/'] }),
@@ -125,7 +119,11 @@ describe('home footer', () => {
 
     const rendered = render(
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <RouterContextProvider router={router}>
+          <I18nextProvider i18n={i18n}>
+            <HomeFooter />
+          </I18nextProvider>
+        </RouterContextProvider>
       </QueryClientProvider>
     )
     const cards = rendered.container.querySelectorAll('article')

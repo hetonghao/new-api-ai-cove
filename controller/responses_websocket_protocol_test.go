@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -24,6 +25,8 @@ func TestResponsesWebSocketPayloadRepairsOfficialOpenAIItemIDs(t *testing.T) {
 	const raw = `{"type":"response.create","model":"gpt-6-luna","input":[{"type":"message","id":"item_client","role":"assistant","content":[]}],"vendor_extension":9007199254740993}`
 	for _, passthrough := range []bool{false, true} {
 		c, _ := gin.CreateTestContext(nil)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(raw))
+		t.Cleanup(func() { common.CleanupBodyStorage(c) })
 		var request dto.OpenAIResponsesRequest
 		require.NoError(t, common.Unmarshal([]byte(raw), &request))
 		info := &relaycommon.RelayInfo{
