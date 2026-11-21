@@ -85,6 +85,9 @@ func ClaudeErrorWrapperLocal(err error, code string, statusCode int) *dto.Claude
 }
 
 func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFail bool) (newApiErr *types.NewAPIError) {
+	defer func() {
+		types.ErrOptionWithUpstreamHTTPStatusCode(resp.StatusCode)(newApiErr)
+	}()
 	newApiErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
 
 	responseBody, err := io.ReadAll(resp.Body)
@@ -95,6 +98,19 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 	var errResponse dto.GeneralErrorResponse
 	responseBodyText := string(responseBody)
 	responseBodyPreview := common.LocalLogPreview(responseBodyText)
+	if resp.StatusCode == http.StatusTooManyRequests {
+		defer func() {
+			reason := errResponse.ToMessage()
+			if common.GetJsonType(errResponse.Error) != "object" && common.GetJsonType(errResponse.Error) != "string" {
+				errResponse.Error = nil
+				reason = errResponse.ToMessage()
+			}
+			if reason == "" && !strings.HasPrefix(strings.TrimSpace(responseBodyText), "{") && !strings.HasPrefix(strings.TrimSpace(responseBodyText), "[") {
+				reason = responseBodyText
+			}
+			types.ErrOptionWithUpstreamRejection(reason[:min(len(reason), common.LocalLogContentLimit)])(newApiErr)
+		}()
+	}
 	buildErrWithBody := func(message string) error {
 		if message == "" {
 			return fmt.Errorf("bad response status code %d, body: %s", resp.StatusCode, responseBodyText)

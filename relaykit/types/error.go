@@ -107,6 +107,8 @@ type NewAPIError struct {
 	StatusCode            int
 	Metadata              json.RawMessage
 	upstreamInvalidPrompt bool
+	upstreamHTTPStatus    int
+	upstreamRejection     string
 }
 
 // Unwrap enables errors.Is / errors.As to work with NewAPIError by exposing the underlying error.

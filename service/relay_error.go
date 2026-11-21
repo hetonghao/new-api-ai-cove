@@ -198,9 +198,13 @@ func RecordRelayErrorLog(c *gin.Context, err *types.NewAPIError, channelId int, 
 	if c.Request != nil && c.Request.URL != nil {
 		other.SetPublic("request_path", c.Request.URL.Path)
 	}
-	other.SetPublic("error_type", err.GetErrorType())
-	other.SetPublic("error_code", err.GetErrorCode())
+	publicErr := PublicRelayError(c, err)
+	other.SetPublic("error_type", publicErr.GetErrorType())
+	other.SetPublic("error_code", publicErr.GetErrorCode())
 	other.SetPublic("status_code", err.StatusCode)
+	if err.IsUpstreamHTTP429() {
+		other.SetAdmin("reject_reason", err.MaskSensitiveUpstreamErrorWithStatusCode(common.UpstreamAddresses(c)...))
+	}
 	if history := RelayAttemptErrors(c); len(history) > 0 {
 		attemptErrors := make([]map[string]any, 0, len(history))
 		for _, attempt := range history {
@@ -218,5 +222,5 @@ func RecordRelayErrorLog(c *gin.Context, err *types.NewAPIError, channelId int, 
 		startTime = time.Now()
 	}
 	useTimeSeconds := int(time.Since(startTime).Seconds())
-	model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(common.UpstreamAddresses(c)...), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+	model.RecordErrorLog(c, userId, channelId, modelName, tokenName, publicErr.MaskSensitiveErrorWithStatusCode(common.UpstreamAddresses(c)...), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 }

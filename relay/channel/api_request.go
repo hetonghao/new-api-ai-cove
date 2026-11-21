@@ -395,13 +395,22 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	targetConn, response, err := dialer.DialContext(c.Request.Context(), fullRequestURL, targetHeader)
 	if err != nil {
 		statusCode := http.StatusInternalServerError
+		var upstreamErr *types.NewAPIError
 		if response != nil {
 			statusCode = response.StatusCode
 			if response.Body != nil {
-				_ = response.Body.Close()
+				if statusCode == http.StatusTooManyRequests {
+					upstreamErr = service.RelayErrorHandler(c.Request.Context(), response, false)
+				} else {
+					_ = response.Body.Close()
+				}
 			}
 		}
-		return nil, types.NewErrorWithStatusCode(fmt.Errorf("dial failed to %s: %w", common.SanitizeURLForLog(fullRequestURL), err), types.ErrorCodeDoRequestFailed, statusCode)
+		apiErr := types.NewErrorWithStatusCode(fmt.Errorf("dial failed to %s: %w", common.SanitizeURLForLog(fullRequestURL), err), types.ErrorCodeDoRequestFailed, statusCode, types.ErrOptionWithUpstreamHTTPStatusCode(statusCode))
+		if upstreamErr != nil {
+			types.ErrOptionWithUpstreamError(upstreamErr)(apiErr)
+		}
+		return nil, apiErr
 	}
 	if response != nil {
 		if upstreamTrace := response.Header.Get(common2.ResponsesWebSocketTraceHeader); len(upstreamTrace) == 32 {

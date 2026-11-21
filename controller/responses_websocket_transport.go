@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/wsmanager"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
@@ -225,6 +226,7 @@ func writeResponsesWebSocketError(conn *websocket.Conn, codec *responsesWebSocke
 	if apiErr.GetErrorCode() == types.ErrorCodeResponsesWebSocketUnavailable {
 		status = apiErr.StatusCode
 	}
+	apiErr = service.PublicRelayError(c, apiErr)
 	return writeResponsesWebSocketErrorEvent(conn, codec, c, apiErr.ToOpenAIError(common.UpstreamAddresses(c)...), status)
 }
 
