@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/requestpatch"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/tidwall/gjson"
 	"golang.org/x/image/draw"
 	"golang.org/x/image/riff"
@@ -170,42 +171,89 @@ func escapePointer(token string) string {
 // replace the media string and its mime type, and the change for the public
 // record; none when the new bytes are not smaller or the image is an
 // animated GIF or over the limits.
-func reencodeMedia(ctx context.Context, item inlineMedia, effect requestpatch.Effect) ([]requestpatch.Operation, *relaycommon.RequestPluginMediaChange, error) {
+func reencodeMedia(ctx context.Context, userID int, item inlineMedia, effect requestpatch.Effect) ([]requestpatch.Operation, *relaycommon.RequestPluginMediaChange, error) {
 	if item.size() > maxReencodeBytes {
 		return nil, nil, nil
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	var result imageReencodeResult
+	var key imageCompressionCacheKey
+	var hit bool
+	var generation uint64
+	if userID > 0 && operation_setting.GetImageCompressionCacheSettings().Enabled {
+		key = imageCompressionKey(userID, item, effect)
+		result, hit, generation = localImageCompressionCache.lookup(key)
+	}
+	if !hit {
+		var err error
+		result, err = encodeMedia(ctx, item, effect)
+		if err != nil || len(result.data) == 0 {
+			return nil, nil, err
+		}
+		if generation != 0 && ctx.Err() == nil {
+			localImageCompressionCache.store(key, result, generation)
+		}
+	}
+
+	mime := result.compressedMIME
+	payload := base64.StdEncoding.EncodeToString(result.data)
+	if item.mimePath == "" {
+		payload = "data:" + mime + ";base64," + payload
+	}
+	value, err := common.Marshal(payload)
+	if err != nil {
+		return nil, nil, err
+	}
+	ops := []requestpatch.Operation{{Op: "replace", Path: item.path, Value: value}}
+	if item.mimePath != "" {
+		mimeValue, err := common.Marshal(mime)
+		if err != nil {
+			return nil, nil, err
+		}
+		ops = append(ops, requestpatch.Operation{Op: "replace", Path: item.mimePath, Value: mimeValue})
+	}
+	return ops, &relaycommon.RequestPluginMediaChange{
+		From:     relaycommon.RequestPluginMediaForm{Mime: item.mime, Bytes: result.originalBytes},
+		To:       relaycommon.RequestPluginMediaForm{Mime: mime, Bytes: len(result.data)},
+		Lossless: mime != "image/jpeg",
+	}, nil
+}
+
+func encodeMedia(ctx context.Context, item inlineMedia, effect requestpatch.Effect) (imageReencodeResult, error) {
 	select {
 	case reencodeSlots <- struct{}{}:
 	case <-ctx.Done():
-		return nil, nil, ctx.Err()
+		return imageReencodeResult{}, ctx.Err()
 	}
 	defer func() { <-reencodeSlots }()
 
 	raw, err := base64.StdEncoding.DecodeString(item.data)
 	if err != nil {
-		return nil, nil, fmt.Errorf("media %s is not valid base64", item.path)
+		return imageReencodeResult{}, fmt.Errorf("media %s is not valid base64", item.path)
 	}
 	config, format, err := image.DecodeConfig(bytes.NewReader(raw))
 	if err != nil {
-		return nil, nil, fmt.Errorf("media %s is not a jpeg, png, gif or webp image", item.path)
+		return imageReencodeResult{}, fmt.Errorf("media %s is not a jpeg, png, gif or webp image", item.path)
 	}
 	if int64(config.Width)*int64(config.Height) > maxReencodePixels || format == "gif" && gifAnimated(raw) {
-		return nil, nil, nil
+		return imageReencodeResult{}, nil
 	}
 	// With a VP8X chunk the size read above is the canvas the chunk declares,
 	// while the decoder decodes the frame at its own size: the two must agree
 	// for the pixel bound to hold.
 	if format == "webp" {
 		if width, height, err := webpFrameSize(raw); err != nil || width != config.Width || height != config.Height {
-			return nil, nil, fmt.Errorf("media %s cannot be decoded", item.path)
+			return imageReencodeResult{}, fmt.Errorf("media %s cannot be decoded", item.path)
 		}
 	}
 	if err = ctx.Err(); err != nil {
-		return nil, nil, err
+		return imageReencodeResult{}, err
 	}
 	img, _, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {
-		return nil, nil, fmt.Errorf("media %s cannot be decoded", item.path)
+		return imageReencodeResult{}, fmt.Errorf("media %s cannot be decoded", item.path)
 	}
 	bounds := img.Bounds()
 	if longest := max(bounds.Dx(), bounds.Dy()); effect.MaxSide > 0 && longest > effect.MaxSide {
@@ -225,7 +273,7 @@ func reencodeMedia(ctx context.Context, item inlineMedia, effect requestpatch.Ef
 		}
 	}
 	if err = ctx.Err(); err != nil {
-		return nil, nil, err
+		return imageReencodeResult{}, err
 	}
 	var encoded bytes.Buffer
 	switch target {
@@ -247,37 +295,16 @@ func reencodeMedia(ctx context.Context, item inlineMedia, effect requestpatch.Ef
 		// nativewebp writes lossless WebP only.
 		err = nativewebp.Encode(&encoded, img, nil)
 	default:
-		return nil, nil, fmt.Errorf("format %q is not supported", effect.Format)
+		return imageReencodeResult{}, fmt.Errorf("format %q is not supported", effect.Format)
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("media %s cannot be encoded as %s", item.path, target)
+		return imageReencodeResult{}, fmt.Errorf("media %s cannot be encoded as %s", item.path, target)
 	}
 	if encoded.Len() >= len(raw) {
-		return nil, nil, nil
+		return imageReencodeResult{}, nil
 	}
 
-	mime := "image/" + target
-	payload := base64.StdEncoding.EncodeToString(encoded.Bytes())
-	if item.mimePath == "" {
-		payload = "data:" + mime + ";base64," + payload
-	}
-	value, err := common.Marshal(payload)
-	if err != nil {
-		return nil, nil, err
-	}
-	ops := []requestpatch.Operation{{Op: "replace", Path: item.path, Value: value}}
-	if item.mimePath != "" {
-		mimeValue, err := common.Marshal(mime)
-		if err != nil {
-			return nil, nil, err
-		}
-		ops = append(ops, requestpatch.Operation{Op: "replace", Path: item.mimePath, Value: mimeValue})
-	}
-	return ops, &relaycommon.RequestPluginMediaChange{
-		From:     relaycommon.RequestPluginMediaForm{Mime: item.mime, Bytes: len(raw)},
-		To:       relaycommon.RequestPluginMediaForm{Mime: mime, Bytes: encoded.Len()},
-		Lossless: target != "jpeg",
-	}, nil
+	return imageReencodeResult{data: encoded.Bytes(), originalMIME: "image/" + format, compressedMIME: "image/" + target, originalBytes: len(raw)}, nil
 }
 
 // webpFrameSize reads the size of a WebP image's frame from the header of

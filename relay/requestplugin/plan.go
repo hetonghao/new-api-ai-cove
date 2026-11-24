@@ -93,6 +93,8 @@ type Plan struct {
 	submission *submission
 	// media is the attachment text the request's hooks read.
 	media requestMedia
+	// A dry-run identity is supplied by the administrator, never by auth.
+	dryRun bool
 }
 
 // NewPlan takes the plan of a new request: nil when no enabled instance has
@@ -484,7 +486,11 @@ func (p *Plan) runInstance(ctx context.Context, call Call, instance *request_plu
 			if effect.Media < 0 || effect.Media >= len(media) {
 				return change{}, errorInvalidEffect, fmt.Errorf("effects[%d].media %d does not exist", index, effect.Media)
 			}
-			ops, reencode, err := reencodeMedia(ctx, media[effect.Media], effect)
+			userID := call.User.ID
+			if p.dryRun {
+				userID = 0
+			}
+			ops, reencode, err := reencodeMedia(ctx, userID, media[effect.Media], effect)
 			if err != nil {
 				return change{}, errorMedia, fmt.Errorf("effects[%d]: %w", index, err)
 			}

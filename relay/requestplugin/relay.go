@@ -651,6 +651,7 @@ func DryRun(ctx context.Context, input DryRunInput) DryRunResult {
 	if plan == nil {
 		return result
 	}
+	plan.dryRun = true
 	call := Call{Format: input.Format, Path: input.Path, Model: input.Model, UpstreamModel: input.Model, Group: input.Group, User: input.User, Body: input.Body}
 	stages := append([]struct {
 		stage string

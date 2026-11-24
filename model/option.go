@@ -200,6 +200,8 @@ func InitOptionMap() {
 // LoadOptionsFromDatabase applies every stored option. A failed read keeps
 // the options in memory as they are.
 func LoadOptionsFromDatabase() error {
+	imageCompressionCacheOptionMutex.Lock()
+	defer imageCompressionCacheOptionMutex.Unlock()
 	requestPolicyOptionMutex.Lock()
 	defer requestPolicyOptionMutex.Unlock()
 	passkeyOptionMutex.Lock()
@@ -242,6 +244,10 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if key == operation_setting.ImageCompressionCacheOptionKey {
+		_, err := operation_setting.ParseImageCompressionCacheSettings(value)
+		return err
+	}
 	if key == MediaModelsPolicyOption {
 		return errors.New("use the media model policy endpoint")
 	}
@@ -294,6 +300,9 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
+	if key == operation_setting.ImageCompressionCacheOptionKey {
+		return UpdateOptionsBulk(map[string]string{key: value})
+	}
 	if IsRequestPolicyOption(key) {
 		return UpdateRequestPolicyOptions(map[string]string{key: value})
 	}
@@ -329,6 +338,11 @@ func UpdateOption(key string, value string) error {
 // is touched — safe for callers that must commit a set of related options
 // atomically (e.g. payment gateway binding).
 func UpdateOptionsBulk(values map[string]string) error {
+	if _, updatesCache := values[operation_setting.ImageCompressionCacheOptionKey]; updatesCache {
+		// Keep publication in write order, including concurrent database reloads.
+		imageCompressionCacheOptionMutex.Lock()
+		defer imageCompressionCacheOptionMutex.Unlock()
+	}
 	if len(values) == 0 {
 		return nil
 	}
@@ -400,6 +414,15 @@ func updateOptionMap(key string, value string) (err error) {
 	}
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
+	if key == operation_setting.ImageCompressionCacheOptionKey {
+		settings, err := operation_setting.ParseImageCompressionCacheSettings(value)
+		if err != nil {
+			return err
+		}
+		if err := operation_setting.SetImageCompressionCacheSettings(settings); err != nil {
+			return err
+		}
+	}
 	common.OptionMap[key] = value
 
 	// 检查是否是模型配置 - 使用更规范的方式处理

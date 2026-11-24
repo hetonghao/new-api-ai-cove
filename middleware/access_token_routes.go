@@ -42,6 +42,11 @@ func accessTokenScopeRule(scope string) accessTokenRouteRule {
 // DeclareAccessTokenPermissionRoute when they are registered.
 var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	// AI Cove management panels require a dashboard login, including for legacy PATs.
+	"GET /api/image-compression-cache/config":                      accessTokenSessionRule,
+	"PUT /api/image-compression-cache/config":                      accessTokenSessionRule,
+	"GET /api/image-compression-cache/nodes":                       accessTokenSessionRule,
+	"GET /api/image-compression-cache/stats":                       accessTokenSessionRule,
+	"POST /api/image-compression-cache/clear":                      accessTokenSessionRule,
 	"GET /api/upstream-subscriptions":                              accessTokenSessionRule,
 	"GET /api/upstream-subscriptions/channels":                     accessTokenSessionRule,
 	"POST /api/upstream-subscriptions":                             accessTokenSessionRule,

@@ -451,7 +451,7 @@ var (
 // namespaces, such as /api, follow the outer router's static routes and are
 // decided at admission.
 var reservedRouteNamespaces = []string{
-	"/ai-cove-design", "/desktop-auth", "/model-quality", "/risk-center", "/sales", "/upstream-subscriptions",
+	"/ai-cove-design", "/desktop-auth", "/image-compression-cache", "/model-quality", "/risk-center", "/sales", "/upstream-subscriptions",
 	"/assets",
 	"/setup",
 	"/v1/tasks",

@@ -23,6 +23,7 @@ import {
   CalendarClock,
   ClipboardList,
   CreditCard,
+  Database,
   FileText,
   FlaskConical,
   Gauge,
@@ -226,6 +227,12 @@ export function useSidebarData(badges: SidebarBadges = {}): SidebarData {
             title: t('System Info'),
             url: '/system-info',
             icon: ServerCog,
+            requiredRole: ROLE.SUPER_ADMIN,
+          },
+          {
+            title: t('Image compression cache'),
+            url: '/image-compression-cache',
+            icon: Database,
             requiredRole: ROLE.SUPER_ADMIN,
           },
           {

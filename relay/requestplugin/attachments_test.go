@@ -358,9 +358,9 @@ func TestReencodeWebPCanvasMatchesFrame(t *testing.T) {
 		return inlineMedia{path: "/image", mime: "image/webp", data: base64.StdEncoding.EncodeToString(file)}
 	}
 	effect := requestpatch.Effect{Type: requestpatch.EffectMediaReencode, Format: "png"}
-	_, _, err := reencodeMedia(context.Background(), withCanvas(64, 64), effect)
+	_, _, err := reencodeMedia(context.Background(), 0, withCanvas(64, 64), effect)
 	require.NoError(t, err)
-	_, _, err = reencodeMedia(context.Background(), withCanvas(1, 1), effect)
+	_, _, err = reencodeMedia(context.Background(), 0, withCanvas(1, 1), effect)
 	assert.EqualError(t, err, "media /image cannot be decoded")
 }
 
