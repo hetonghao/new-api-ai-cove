@@ -230,7 +230,7 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
               type='button'
               className={cn(
                 'text-success hover:bg-success/15 focus-visible:ring-success/50 inline-flex h-4 shrink-0 cursor-default items-center justify-center rounded-full transition-transform duration-200 hover:scale-110 focus-visible:ring-2 focus-visible:outline-none',
-                hasImages ? 'gap-px ps-[2.5px] pe-[3px]' : 'w-4'
+                hasImages ? 'gap-px ps-0.5 pe-0.75' : 'w-4'
               )}
               aria-label={turboAriaLabel}
             >
