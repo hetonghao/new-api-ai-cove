@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { CircleAlert, Zap } from 'lucide-react'
+import { CircleAlert, Image as ImageIcon, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -228,15 +228,14 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
           render={
             <button
               type='button'
-              className='text-success hover:bg-success/15 focus-visible:ring-success/50 inline-flex size-4 cursor-default items-center justify-center rounded-full transition-transform duration-200 hover:scale-110 focus-visible:ring-2 focus-visible:outline-none'
+              className={cn(
+                'text-success hover:bg-success/15 focus-visible:ring-success/50 inline-flex h-4 shrink-0 cursor-default items-center justify-center rounded-full transition-transform duration-200 hover:scale-110 focus-visible:ring-2 focus-visible:outline-none',
+                hasImages ? 'gap-px px-px' : 'w-4'
+              )}
               aria-label={turboAriaLabel}
             >
-              <Zap
-                className={
-                  hasImages ? 'size-3 fill-current' : 'fill-success/20 size-3'
-                }
-                aria-hidden='true'
-              />
+              <Zap className='fill-success/20 size-3' aria-hidden='true' />
+              {hasImages && <ImageIcon className='size-3' aria-hidden='true' />}
             </button>
           }
         />

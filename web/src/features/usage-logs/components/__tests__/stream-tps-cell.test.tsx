@@ -164,7 +164,9 @@ test('Turbo 的压缩行按本轮结果显示，不把开关或旧日志当成�
       button?.getAttribute('aria-label'),
       ['来自 Turbo', '版本 mac/1.1.3', line].filter(Boolean).join(' / ')
     )
-    assert.equal(!!button?.querySelector('.fill-current'), count > 0)
+    assert.ok(button)
+    assert.ok(button.querySelector('.lucide-zap'))
+    assert.equal(!!button.querySelector('.lucide-image'), count > 0)
     await act(async () => cell.root.unmount())
     cell.container.remove()
   }
