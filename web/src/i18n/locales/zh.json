@@ -56,6 +56,8 @@
     "Manual quota refresh remains available.": "关闭后仍可手动刷新额度。",
     "Automatically update quota for {{name}}": "自动更新 {{name}} 的额度",
     "Search name or account...": "搜索名称或订阅账号…",
+    "Reset time": "重置时间",
+    "Renewal time": "续期时间",
     "Sort subscriptions by": "订阅排序",
     "All platforms": "全部平台",
     "Subscription account (optional)": "订阅账号（可选）",
@@ -8739,6 +8741,15 @@
     "Between 15 minutes and 7 days. Default is 180 minutes.": "取值范围 15 分钟到 7 天，默认 180 分钟。",
     "The monitor probes every Codex account one at a time with a random gap, so one cycle takes a couple of minutes.": "监控会逐个探测 Codex 账号并随机间隔，一轮采集大约需要几分钟。",
     "The monitor reads cpa-pro (Codex) and cpa-pro-1 (Devin) through the CPA management API.": "监控通过 CPA 管理 API 读取 cpa-pro（Codex）与 cpa-pro-1（Devin）。",
-    "Set CPA_MANAGEMENT_KEY on the gateway before collecting.": "请先在网关配置 CPA_MANAGEMENT_KEY 再采集。"
+    "Set CPA_MANAGEMENT_KEY on the gateway before collecting.": "请先在网关配置 CPA_MANAGEMENT_KEY 再采集。",
+    "{{minutes}} minutes after this collection finishes": "本轮采集结束 {{minutes}} 分钟后",
+    "Awaiting first collection": "等待首次采集",
+    "Last collection failed": "上次采集失败",
+    "Showing the last complete collection.": "当前显示上次完整结果。",
+    "{{seconds}} sec": "{{seconds}} 秒",
+    "{{minutes}} min {{seconds}} sec": "{{minutes}} 分 {{seconds}} 秒",
+    "Devin monitor": "Devin 监控",
+    "Set CPA_MANAGEMENT_KEY before collecting": "请先在网关配置 CPA_MANAGEMENT_KEY 再采集。",
+    "Could not collect the Devin monitor data": "无法采集 Devin 监控数据。"
   }
 }

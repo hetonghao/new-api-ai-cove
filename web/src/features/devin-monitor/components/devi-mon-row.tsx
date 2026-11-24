@@ -19,187 +19,119 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useTranslation } from 'react-i18next'
 
-import { Progress } from '@/components/ui/progress'
+import { QuotaWindow } from '@/features/upstream-subscriptions/components/quota-window'
 import { toIntlLocale } from '@/i18n/languages'
 import dayjs from '@/lib/dayjs'
 import { formatNumber } from '@/lib/format'
-import { cn } from '@/lib/utils'
 
 import type { DeviMonAccount } from '../types'
+import { DevinAccountStatus } from './devi-mon-status'
 
-// Mirrors the Coding Plan quota window so both tabs read the same: the bar is
-// the REMAINING allowance and severity follows the used share.
-type Severity = 'success' | 'info' | 'warning' | 'destructive' | 'neutral'
-
-function severityOf(used: number | null): Severity {
-  if (used === null) return 'neutral'
-  if (used >= 98) return 'destructive'
-  if (used >= 90) return 'warning'
-  if (used >= 50) return 'info'
-  return 'success'
+function AccountDate({ value }: { readonly value: string }) {
+  const { t } = useTranslation()
+  const date = dayjs(value)
+  if (!date.isValid()) return <>{t('Not provided')}</>
+  return (
+    <time dateTime={value} title={date.format('YYYY-MM-DD HH:mm:ss')}>
+      {date.format('YYYY-MM-DD HH:mm')}
+    </time>
+  )
 }
 
-const BAR_TONES: Record<Severity, string> = {
-  success: '[&_[data-slot=progress-indicator]]:bg-success',
-  info: '[&_[data-slot=progress-indicator]]:bg-info',
-  warning: '[&_[data-slot=progress-indicator]]:bg-warning',
-  destructive: '[&_[data-slot=progress-indicator]]:bg-destructive',
-  neutral: '[&_[data-slot=progress-indicator]]:bg-muted-foreground',
-}
-
-const SEVERITY_TOKENS: Record<Severity, string> = {
-  success: 'var(--success)',
-  info: 'var(--info)',
-  warning: 'var(--warning)',
-  destructive: 'var(--destructive)',
-  neutral: 'var(--muted-foreground)',
-}
-
-type Relative = (target: Date, now: number) => string
-
-type DeviMonRowProps = {
+export function DeviMonRow({
+  account,
+  now,
+}: {
   readonly account: DeviMonAccount
   readonly now: number
-}
-
-export function DeviMonRow(props: DeviMonRowProps) {
+}) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
-  const account = props.account
-  const now = props.now
-  const used = account.used_percent
-  const remaining = used === null ? null : Math.max(0, 100 - used)
-  const severity = severityOf(used)
-  const unavailable = account.error !== ''
-
-  const relative: Relative = (target, current) => {
-    const milliseconds = target.getTime() - current
-    if (Number.isNaN(milliseconds)) return ''
-    if (milliseconds <= 0) return t('Overdue')
-    const minutes = Math.floor(milliseconds / 60_000)
-    const days = Math.floor(minutes / 1440)
-    const hours = Math.floor((minutes % 1440) / 60)
-    if (days > 0) return t('{{days}}d{{hours}}h left', { days, hours })
-    if (hours > 0) return t('{{hours}}h left', { hours })
-    return t('{{minutes}}m left', { minutes: Math.max(1, minutes) })
+  const balance = account.credit_balance.trim()
+  let balanceText = balance || t('Not provided')
+  if (account.unlimited) {
+    balanceText = t('Unlimited')
+  } else if (balance && Number.isFinite(Number(balance))) {
+    balanceText = formatNumber(Number(balance), locale)
   }
-
-  let devinLabel = t('No Devin account')
-  let devinTone = 'text-muted-foreground'
-  if (account.devin_disabled !== null) {
-    if (account.devin_disabled) {
-      devinLabel = t('Devin disabled')
-      devinTone = 'text-destructive'
-    } else {
-      devinLabel = t('Devin enabled')
-      devinTone = 'text-success'
-    }
+  const emptyCards = account.error ? t('Not provided') : t('None')
+  const cardsByExpiry = new Map<string, number>()
+  for (const { expires_at } of account.cards) {
+    cardsByExpiry.set(expires_at, (cardsByExpiry.get(expires_at) ?? 0) + 1)
   }
-
-  let percentText =
-    remaining === null
-      ? t('Unknown')
-      : `${formatNumber(remaining, locale)}%`
-  if (remaining !== null && remaining > 0 && remaining < 0.01) {
-    percentText = `<${formatNumber(0.01, locale)}%`
-  }
-  let valueText = t('{{percent}} remaining', { percent: percentText })
-  if (used !== null && used >= 100) valueText = t('Window quota exhausted')
-  else if (remaining === null) valueText = t('Quota unknown')
-
-  const resetText =
-    account.reset_at === null
-      ? '-'
-      : `${dayjs(account.reset_at * 1000).format('MM/DD HH:mm')} · ${relative(
-          new Date(account.reset_at * 1000),
-          now
-        )}`
-
-  let renewText = '-'
-  if (account.renew_at !== '') {
-    const renewAt = new Date(account.renew_at)
-    renewText = `${dayjs(renewAt).format('MM/DD HH:mm')} · ${relative(renewAt, now)}`
-    if (account.renew_source !== 'live') {
-      renewText = `${renewText} ${t('(sign-in snapshot)')}`
-    }
-  }
-
-  const cardsText =
-    account.cards.length === 0
-      ? t('None')
-      : `x${account.cards.length} · ${account.cards
-          .map((card) => {
-            const expires = new Date(card.expires_at)
-            if (Number.isNaN(expires.getTime())) return card.expires_at
-            return `${dayjs(expires).format('MM/DD HH:mm')} · ${relative(expires, now)}`
-          })
-          .join(' / ')}`
-
+  const reset =
+    account.reset_at !== null && account.reset_at > 0
+      ? dayjs.unix(account.reset_at)
+      : null
   return (
-    <li className='space-y-2.5 px-3 py-3 sm:px-4'>
-      <div className='flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5'>
-        <div className='min-w-0 flex-1'>
-          <div className='flex flex-wrap items-center gap-2'>
-            <h3 className='min-w-0 text-sm font-semibold [overflow-wrap:anywhere]'>
-              {account.email}
-            </h3>
-            <span className={cn('text-xs font-medium', devinTone)}>{devinLabel}</span>
-            {account.unlimited && (
-              <span className='text-muted-foreground text-xs'>
-                {t('Unlimited credits')}
-              </span>
-            )}
-            {unavailable && (
-              <span className='text-destructive text-xs'>{account.error}</span>
-            )}
-          </div>
+    <li className='grid min-w-0 gap-x-10 gap-y-3 px-3 py-3 sm:px-4 @3xl/accounts:grid-cols-2 @3xl/accounts:items-center'>
+      <div className='min-w-0 space-y-2'>
+        <div className='flex flex-wrap items-center gap-x-2 gap-y-1'>
+          <h3 className='min-w-0 text-sm font-semibold [overflow-wrap:anywhere]'>
+            {account.email}
+          </h3>
+          <DevinAccountStatus
+            disabled={account.devin_disabled}
+            routing={account.devin_routing}
+          />
         </div>
+        <div className='w-full max-w-80'>
+          <QuotaWindow
+            label={t('Weekly allowance')}
+            subscriptionName={account.email}
+            now={now}
+            window={{
+              key: 'weekly',
+              duration_seconds: 7 * 24 * 60 * 60,
+              status: 'ok',
+              used_percent: account.used_percent,
+              resets_at: reset?.isValid() ? reset.toISOString() : null,
+            }}
+          />
+        </div>
+        {account.error && (
+          <p className='text-destructive text-xs [overflow-wrap:anywhere]'>
+            {account.error}
+          </p>
+        )}
       </div>
-      <div className='flex flex-wrap items-baseline justify-between gap-1 text-sm'>
-        <span className='font-medium'>{t('Weekly allowance')}</span>
-        <span
-          className='tabular-nums'
-          style={
-            used === null
-              ? undefined
-              : {
-                  color: `color-mix(in oklab, ${SEVERITY_TOKENS[severity]} 70%, var(--foreground))`,
-                }
-          }
+      <dl className='grid min-w-0 grid-cols-[max-content_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 text-xs leading-relaxed tabular-nums'>
+        <dt className='text-muted-foreground'>{t('Credits')}</dt>
+        <dd
+          className='min-w-0 [overflow-wrap:anywhere]'
+          title={balance || undefined}
         >
-          {valueText}
-        </span>
-      </div>
-      {remaining === null ? (
-        <div className='bg-muted h-1 rounded-full' aria-hidden='true' />
-      ) : (
-        <Progress
-          value={remaining}
-          max={100}
-          aria-label={account.email}
-          aria-valuetext={valueText}
-          className={cn('gap-0', BAR_TONES[severity])}
-        />
-      )}
-      <dl className='text-muted-foreground grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2'>
-        <div className='flex min-w-0 items-baseline gap-1.5'>
-          <dt className='shrink-0 whitespace-nowrap'>{t('Weekly resets')}</dt>
-          <dd className='tabular-nums [overflow-wrap:anywhere]'>{resetText}</dd>
-        </div>
-        <div className='flex min-w-0 items-baseline gap-1.5'>
-          <dt className='shrink-0 whitespace-nowrap'>{t('Credits')}</dt>
-          <dd className='tabular-nums [overflow-wrap:anywhere]'>
-            {account.unlimited ? t('Unlimited') : account.credit_balance || '-'}
-          </dd>
-        </div>
-        <div className='flex min-w-0 items-baseline gap-1.5'>
-          <dt className='shrink-0 whitespace-nowrap'>{t('Reset cards')}</dt>
-          <dd className='tabular-nums [overflow-wrap:anywhere]'>{cardsText}</dd>
-        </div>
-        <div className='flex min-w-0 items-baseline gap-1.5'>
-          <dt className='shrink-0 whitespace-nowrap'>{t('Subscription renews')}</dt>
-          <dd className='tabular-nums [overflow-wrap:anywhere]'>{renewText}</dd>
-        </div>
+          {balanceText}
+        </dd>
+        <dt className='text-muted-foreground'>{t('Subscription renews')}</dt>
+        <dd>
+          <AccountDate value={account.renew_at} />{' '}
+          {account.renew_at && account.renew_source === 'id_token' && (
+            <span className='text-muted-foreground'>
+              {t('(sign-in snapshot)')}
+            </span>
+          )}
+        </dd>
+        <dt className='text-muted-foreground'>{t('Reset cards')}</dt>
+        <dd className='min-w-0'>
+          {account.cards.length ? (
+            <div className='flex items-baseline gap-x-2'>
+              <span className='shrink-0'>×{account.cards.length}</span>
+              <ul className='flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-0.5'>
+                {Array.from(cardsByExpiry, ([expires, count]) => (
+                  <li key={expires} className='whitespace-nowrap'>
+                    <AccountDate value={expires} />
+                    {count > 1 && (
+                      <span className='text-muted-foreground'> ×{count}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            emptyCards
+          )}
+        </dd>
       </dl>
     </li>
   )

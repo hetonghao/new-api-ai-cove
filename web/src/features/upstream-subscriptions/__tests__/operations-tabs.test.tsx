@@ -101,12 +101,17 @@ describe('subscription operations tabs', () => {
     serveBothPages()
     renderPage()
 
-    await userEvent.click(await screen.findByRole('tab', { name: 'Devin' }))
-
-    expect(await screen.findByText('No Codex accounts collected yet')).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Coding Plan' })).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('tab', { name: 'Coding Plan' }))
+    const codingTab = await screen.findByRole('tab', { name: 'Coding Plan' })
+    const devinTab = screen.getByRole('tab', { name: 'Devin' })
+    codingTab.focus()
+    await userEvent.keyboard('{ArrowRight}{Enter}')
+    expect(
+      await screen.findByText('No Codex accounts collected yet')
+    ).toBeVisible()
+    expect(screen.getByRole('tab', { name: 'Devin' })).toBe(devinTab)
+    expect(screen.getByRole('tabpanel', { name: 'Devin' })).toBeVisible()
+    expect(devinTab).toHaveFocus()
+    await userEvent.click(codingTab)
     expect(
       (await screen.findAllByRole('button', { name: 'Create subscription' }))
         .length

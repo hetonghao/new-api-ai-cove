@@ -56,6 +56,8 @@
     "Manual quota refresh remains available.": "Manual quota refresh remains available.",
     "Automatically update quota for {{name}}": "Automatically update quota for {{name}}",
     "Search name or account...": "Search name or account...",
+    "Reset time": "Reset time",
+    "Renewal time": "Renewal time",
     "Sort subscriptions by": "Sort subscriptions by",
     "All platforms": "All platforms",
     "Subscription account (optional)": "Subscription account (optional)",
@@ -8739,6 +8741,15 @@
     "Between 15 minutes and 7 days. Default is 180 minutes.": "Between 15 minutes and 7 days. Default is 180 minutes.",
     "The monitor probes every Codex account one at a time with a random gap, so one cycle takes a couple of minutes.": "The monitor probes every Codex account one at a time with a random gap, so one cycle takes a couple of minutes.",
     "The monitor reads cpa-pro (Codex) and cpa-pro-1 (Devin) through the CPA management API.": "The monitor reads cpa-pro (Codex) and cpa-pro-1 (Devin) through the CPA management API.",
-    "Set CPA_MANAGEMENT_KEY on the gateway before collecting.": "Set CPA_MANAGEMENT_KEY on the gateway before collecting."
+    "Set CPA_MANAGEMENT_KEY on the gateway before collecting.": "Set CPA_MANAGEMENT_KEY on the gateway before collecting.",
+    "{{minutes}} minutes after this collection finishes": "{{minutes}} minutes after this collection finishes",
+    "Awaiting first collection": "Awaiting first collection",
+    "Last collection failed": "Last collection failed",
+    "Showing the last complete collection.": "Showing the last complete collection.",
+    "{{seconds}} sec": "{{seconds}} sec",
+    "{{minutes}} min {{seconds}} sec": "{{minutes}} min {{seconds}} sec",
+    "Devin monitor": "Devin monitor",
+    "Set CPA_MANAGEMENT_KEY before collecting": "Set CPA_MANAGEMENT_KEY before collecting",
+    "Could not collect the Devin monitor data": "Could not collect the Devin monitor data"
   }
 }

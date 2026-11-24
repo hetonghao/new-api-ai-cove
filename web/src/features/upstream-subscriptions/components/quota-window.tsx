@@ -29,6 +29,7 @@ import type { SubscriptionQuotaWindow } from '../types'
 
 type QuotaWindowProps = {
   readonly window: SubscriptionQuotaWindow
+  readonly label?: string
   readonly subscriptionName: string
   readonly now?: number
 }
@@ -43,7 +44,7 @@ export function QuotaWindow(props: QuotaWindowProps) {
     weekly: t('7-day window'),
     monthly: t('30-day window'),
   }
-  const label = labels[window.key]
+  const label = props.label ?? labels[window.key]
   const remaining = percentage === null ? null : Math.max(0, 100 - percentage)
   let percentText =
     remaining === null ? t('Unknown') : `${formatNumber(remaining, locale)}%`

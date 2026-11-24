@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, ColumnFiltersState } from '@tanstack/react-table'
-import { ArrowDown, ArrowUp, CreditCard, Plus, RefreshCw } from 'lucide-react'
+import { CreditCard, Plus, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -30,23 +30,16 @@ import { EmptyState } from '@/components/empty-state'
 import { ErrorState } from '@/components/error-state'
 import { SectionPageLayout } from '@/components/layout'
 import { Button } from '@/components/ui/button'
-import { ButtonGroup } from '@/components/ui/button-group'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DeviMonPage } from '@/features/devin-monitor'
+import { DEFAULT_DEVIN_SORT } from '@/features/devin-monitor/sort'
 
 import { deleteUpstreamSubscription, listUpstreamSubscriptions } from './api'
 import { SubscriptionFormDialog } from './components/subscription-form-dialog'
 import { SubscriptionPlatform } from './components/subscription-platform'
 import { SubscriptionRow } from './components/subscription-row'
+import { SubscriptionSortControl } from './components/subscription-sort-control'
 import type { UpstreamSubscription } from './types'
 
 const QUERY_KEY = ['upstream-subscriptions'] as const
@@ -85,42 +78,9 @@ const PLATFORM_FILTERS = [
 
 type SubscriptionOperationsTab = 'coding-plan' | 'devin'
 
-// One switcher for both tabs; each panel renders its own copy in the page
-// header because each owns a full SectionPageLayout.
-export function SubscriptionOperationsTabs(props: {
-  readonly value: SubscriptionOperationsTab
-  readonly onChange: (value: SubscriptionOperationsTab) => void
-}) {
-  const { t } = useTranslation()
-  return (
-    <Tabs
-      value={props.value}
-      onValueChange={(value) =>
-        props.onChange(value as SubscriptionOperationsTab)
-      }
-    >
-      <TabsList variant='line' aria-label={t('Subscription operations')}>
-        <TabsTrigger value='coding-plan'>{t('Coding Plan')}</TabsTrigger>
-        <TabsTrigger value='devin'>{t('Devin')}</TabsTrigger>
-      </TabsList>
-    </Tabs>
-  )
-}
-
 export function UpstreamSubscriptions() {
-  const [tab, setTab] = useState<SubscriptionOperationsTab>('coding-plan')
-  if (tab === 'devin') {
-    return <DeviMonPage tabs={<SubscriptionOperationsTabs value={tab} onChange={setTab} />} />
-  }
-  return (
-    <CodingPlanPanel
-      tabs={<SubscriptionOperationsTabs value={tab} onChange={setTab} />}
-    />
-  )
-}
-
-function CodingPlanPanel(props: { readonly tabs: React.ReactNode }) {
   const { t } = useTranslation()
+  const [tab, setTab] = useState<SubscriptionOperationsTab>('coding-plan')
   const queryClient = useQueryClient()
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<UpstreamSubscription | null>(null)
@@ -128,16 +88,19 @@ function CodingPlanPanel(props: { readonly tabs: React.ReactNode }) {
   const [now, setNow] = useState(Date.now)
   const [sortBy, setSortBy] = useState('platform')
   const [sortDesc, setSortDesc] = useState(false)
+  const [devinSort, setDevinSort] = useState(DEFAULT_DEVIN_SORT)
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [search, setSearch] = useState('')
   useEffect(() => {
+    if (tab !== 'coding-plan') return
     const timer = window.setInterval(() => setNow(Date.now()), 30_000)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [tab])
   const subscriptions = useQuery({
     queryKey: QUERY_KEY,
     queryFn: ({ signal }) => listUpstreamSubscriptions(signal),
-    refetchInterval: 15_000,
+    enabled: tab === 'coding-plan',
+    refetchInterval: tab === 'coding-plan' ? 15_000 : false,
     retry: false,
   })
   const { table } = useDataTable({
@@ -208,140 +171,129 @@ function CodingPlanPanel(props: { readonly tabs: React.ReactNode }) {
         <SectionPageLayout.Title>
           {t('Subscription operations')}
         </SectionPageLayout.Title>
-        <SectionPageLayout.Actions>
-          {props.tabs}
-          <Button
-            variant='outline'
-            size='sm'
-            disabled={subscriptions.isFetching}
-            onClick={() => void subscriptions.refetch()}
-          >
-            <RefreshCw className='size-4' aria-hidden='true' />
-            {t('Refresh list')}
-          </Button>
-          <Button size='sm' onClick={create}>
-            <Plus className='size-4' aria-hidden='true' />
-            {t('Create subscription')}
-          </Button>
-        </SectionPageLayout.Actions>
-        <SectionPageLayout.Content>
-          <DataTableToolbar
-            table={table}
-            hideViewOptions
-            className='mb-3'
-            searchPlaceholder={t('Search name or account...')}
-            filters={PLATFORM_FILTERS.map((filter) => ({
-              ...filter,
-              title: t('Platform'),
-            }))}
-            preActions={
-              <ButtonGroup
-                aria-label={t('Sort subscriptions by')}
-                className='shrink-0'
-              >
-                <Select
-                  value={sortBy}
-                  onValueChange={(value) => {
-                    if (value) setSortBy(value)
-                  }}
-                  items={sortOptions}
-                >
-                  <SelectTrigger
-                    aria-label={t('Sort subscriptions by')}
-                    className='bg-background min-w-24'
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sortOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant='outline'
-                  size='icon'
-                  aria-label={sortDesc ? t('Descending') : t('Ascending')}
-                  title={sortDesc ? t('Descending') : t('Ascending')}
-                  onClick={() => setSortDesc(!sortDesc)}
-                >
-                  {sortDesc ? (
-                    <ArrowDown aria-hidden='true' />
-                  ) : (
-                    <ArrowUp aria-hidden='true' />
-                  )}
-                </Button>
-              </ButtonGroup>
-            }
-          />
-          {subscriptions.isLoading && (
-            <div
-              role='status'
-              aria-label={t('Loading subscriptions')}
-              className='space-y-4'
+        {tab === 'coding-plan' && (
+          <SectionPageLayout.Actions>
+            <Button
+              variant='outline'
+              size='sm'
+              disabled={subscriptions.isFetching}
+              onClick={() => void subscriptions.refetch()}
             >
-              <Skeleton className='h-44 w-full' />
-              <Skeleton className='h-44 w-full' />
-            </div>
-          )}
-          {subscriptions.error && (
-            <ErrorState
-              description={t('Failed to load subscriptions')}
-              onRetry={() => void subscriptions.refetch()}
-            />
-          )}
-          {subscriptions.data?.length === 0 && (
-            <EmptyState
-              icon={CreditCard}
-              title={t('Connect your first subscription')}
-              description={t(
-                'Add OpenCode Go or sign in to OpenDesign to see all available allowance windows here.'
-              )}
-              action={
-                <Button onClick={create}>
-                  <Plus className='size-4' aria-hidden='true' />
-                  {t('Create subscription')}
-                </Button>
+              <RefreshCw className='size-4' aria-hidden='true' />
+              {t('Refresh list')}
+            </Button>
+            <Button size='sm' onClick={create}>
+              <Plus className='size-4' aria-hidden='true' />
+              {t('Create subscription')}
+            </Button>
+          </SectionPageLayout.Actions>
+        )}
+        <SectionPageLayout.Content>
+          <Tabs
+            value={tab}
+            onValueChange={(value) => {
+              if (value === 'devin' || value === 'coding-plan') {
+                setTab(value)
+                setNow(Date.now())
               }
-            />
-          )}
-          {subscriptions.data &&
-            subscriptions.data.length > 0 &&
-            visibleSubscriptions.length === 0 && (
-              <EmptyState
-                title={t('No matching subscriptions')}
-                description={t('Try another name or platform.')}
-                action={
-                  <Button
-                    variant='outline'
-                    onClick={() => {
-                      table.resetColumnFilters()
-                      table.setGlobalFilter('')
-                    }}
-                  >
-                    {t('Clear filters')}
-                  </Button>
+            }}
+            className='min-w-0 gap-4'
+          >
+            <TabsList variant='line' aria-label={t('Subscription operations')}>
+              <TabsTrigger value='coding-plan'>{t('Coding Plan')}</TabsTrigger>
+              <TabsTrigger value='devin'>{t('Devin')}</TabsTrigger>
+            </TabsList>
+            <TabsContent value='coding-plan'>
+              <DataTableToolbar
+                table={table}
+                hideViewOptions
+                className='mb-3'
+                searchPlaceholder={t('Search name or account...')}
+                filters={PLATFORM_FILTERS.map((filter) => ({
+                  ...filter,
+                  title: t('Platform'),
+                }))}
+                preActions={
+                  <SubscriptionSortControl
+                    options={sortOptions}
+                    value={sortBy}
+                    descending={sortDesc}
+                    onChange={setSortBy}
+                    onToggle={() => setSortDesc(!sortDesc)}
+                  />
                 }
               />
-            )}
-          {visibleSubscriptions.length > 0 && (
-            <ul
-              className='bg-card divide-y overflow-hidden rounded-lg border'
-              aria-label={t('Subscriptions')}
-            >
-              {visibleSubscriptions.map((subscription) => (
-                <SubscriptionRow
-                  key={subscription.id}
-                  subscription={subscription}
-                  now={now}
-                  onEdit={edit}
-                  onRemove={setRemoving}
+              {subscriptions.isLoading && (
+                <div
+                  role='status'
+                  aria-label={t('Loading subscriptions')}
+                  className='space-y-4'
+                >
+                  <Skeleton className='h-44 w-full' />
+                  <Skeleton className='h-44 w-full' />
+                </div>
+              )}
+              {subscriptions.error && (
+                <ErrorState
+                  description={t('Failed to load subscriptions')}
+                  onRetry={() => void subscriptions.refetch()}
                 />
-              ))}
-            </ul>
-          )}
+              )}
+              {subscriptions.data?.length === 0 && (
+                <EmptyState
+                  icon={CreditCard}
+                  title={t('Connect your first subscription')}
+                  description={t(
+                    'Add OpenCode Go or sign in to OpenDesign to see all available allowance windows here.'
+                  )}
+                  action={
+                    <Button onClick={create}>
+                      <Plus className='size-4' aria-hidden='true' />
+                      {t('Create subscription')}
+                    </Button>
+                  }
+                />
+              )}
+              {subscriptions.data &&
+                subscriptions.data.length > 0 &&
+                visibleSubscriptions.length === 0 && (
+                  <EmptyState
+                    title={t('No matching subscriptions')}
+                    description={t('Try another name or platform.')}
+                    action={
+                      <Button
+                        variant='outline'
+                        onClick={() => {
+                          table.resetColumnFilters()
+                          table.setGlobalFilter('')
+                        }}
+                      >
+                        {t('Clear filters')}
+                      </Button>
+                    }
+                  />
+                )}
+              {visibleSubscriptions.length > 0 && (
+                <ul
+                  className='bg-card divide-y overflow-hidden rounded-lg border'
+                  aria-label={t('Subscriptions')}
+                >
+                  {visibleSubscriptions.map((subscription) => (
+                    <SubscriptionRow
+                      key={subscription.id}
+                      subscription={subscription}
+                      now={now}
+                      onEdit={edit}
+                      onRemove={setRemoving}
+                    />
+                  ))}
+                </ul>
+              )}
+            </TabsContent>
+            <TabsContent value='devin'>
+              <DeviMonPage sort={devinSort} onSortChange={setDevinSort} />
+            </TabsContent>
+          </Tabs>
         </SectionPageLayout.Content>
       </SectionPageLayout>
       <SubscriptionFormDialog

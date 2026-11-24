@@ -19,27 +19,34 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, RefreshCw } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { EmptyState } from '@/components/empty-state'
 import { ErrorState } from '@/components/error-state'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import dayjs from '@/lib/dayjs'
+import { SubscriptionSortControl } from '@/features/upstream-subscriptions/components/subscription-sort-control'
+import { formatTimestampToDate } from '@/lib/format'
 
 import { collectDeviMon, deviMonQueryKey, getDeviMonState } from '../api'
+import { sortDevinAccounts, type DevinSort } from '../sort'
 import type { DeviMonState } from '../types'
 import { DeviMonRow } from './devi-mon-row'
+import { DevinAccountStatus } from './devi-mon-status'
 
-export function DeviMonMonitor(props: { readonly onOpenSettings?: () => void }) {
+export function DeviMonMonitor(props: {
+  readonly sort: DevinSort
+  readonly onSortChange: (sort: DevinSort) => void
+  readonly onOpenSettings?: () => void
+}) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [now, setNow] = useState(() => Date.now())
   const state = useQuery({
     queryKey: deviMonQueryKey,
     queryFn: ({ signal }) => getDeviMonState(signal),
-    refetchInterval: 30_000,
+    refetchInterval: (query) => (query.state.data?.collecting ? 3_000 : 30_000),
     retry: false,
   })
   useEffect(() => {
@@ -48,15 +55,35 @@ export function DeviMonMonitor(props: { readonly onOpenSettings?: () => void }) 
   }, [])
   const collect = useMutation({
     mutationFn: collectDeviMon,
-    onSuccess: (data: DeviMonState) => {
+    onMutate: () =>
+      queryClient.cancelQueries({ queryKey: deviMonQueryKey, exact: true }),
+    onSuccess: async (data: DeviMonState) => {
+      await queryClient.cancelQueries({
+        queryKey: deviMonQueryKey,
+        exact: true,
+      })
       queryClient.setQueryData(deviMonQueryKey, data)
       setNow(Date.now())
     },
   })
 
+  const snapshot = state.data?.snapshot
+  const accounts = useMemo(
+    () => sortDevinAccounts(snapshot?.accounts ?? [], props.sort),
+    [snapshot?.accounts, props.sort]
+  )
+  const unpaired = useMemo(
+    () => sortDevinAccounts(snapshot?.unpaired_devin ?? [], props.sort),
+    [snapshot?.unpaired_devin, props.sort]
+  )
+
   if (state.isLoading) {
     return (
-      <div role='status' aria-label={t('Loading monitor data')} className='space-y-4'>
+      <div
+        role='status'
+        aria-label={t('Loading monitor data')}
+        className='space-y-4'
+      >
         <Skeleton className='h-40 w-full' />
         <Skeleton className='h-40 w-full' />
       </div>
@@ -72,18 +99,23 @@ export function DeviMonMonitor(props: { readonly onOpenSettings?: () => void }) 
   }
 
   const data = state.data
-  const snapshot = data.snapshot
   const busy = data.collecting || collect.isPending
-  const accounts = snapshot?.accounts ?? []
-  const unpaired = snapshot?.unpaired_devin ?? []
 
   let nextRun = t('Not scheduled')
-  if (data.next_run_at > 0) {
-    nextRun = dayjs(data.next_run_at * 1000).format('MM/DD HH:mm')
-  }
+  if (data.next_run_at > 0) nextRun = formatTimestampToDate(data.next_run_at)
+  else if (data.collecting) {
+    const interval = data.interval_minutes ?? snapshot?.interval_minutes
+    nextRun = interval
+      ? t('{{minutes}} minutes after this collection finishes', {
+          minutes: interval,
+        })
+      : t('Collecting')
+  } else if (data.configured) nextRun = t('Awaiting first collection')
+
   const collectedAt = snapshot
-    ? dayjs(snapshot.collected_at * 1000).format('YYYY-MM-DD HH:mm')
+    ? formatTimestampToDate(snapshot.collected_at)
     : t('Never')
+  const seconds = Math.round((snapshot?.duration_ms ?? 0) / 1000)
 
   return (
     <div className='space-y-3'>
@@ -101,12 +133,38 @@ export function DeviMonMonitor(props: { readonly onOpenSettings?: () => void }) 
             <span>
               {t('Took')}:{' '}
               <span className='text-foreground tabular-nums'>
-                {Math.round(snapshot.duration_ms / 1000)}s
+                {seconds < 60
+                  ? t('{{seconds}} sec', { seconds })
+                  : t('{{minutes}} min {{seconds}} sec', {
+                      minutes: Math.floor(seconds / 60),
+                      seconds: seconds % 60,
+                    })}
               </span>
             </span>
           )}
         </div>
-        <div className='flex items-center gap-2'>
+        <div className='flex flex-wrap items-center gap-2'>
+          {(accounts.length > 0 || unpaired.length > 0) && (
+            <SubscriptionSortControl<DevinSort['field']>
+              options={[
+                { value: 'priority', label: t('Priority') },
+                { value: 'reset', label: t('Reset time') },
+                { value: 'renewal', label: t('Renewal time') },
+              ]}
+              value={props.sort.field}
+              descending={props.sort.descending}
+              onChange={(field) => {
+                if (field === props.sort.field) return
+                props.onSortChange({ field, descending: field === 'priority' })
+              }}
+              onToggle={() =>
+                props.onSortChange({
+                  ...props.sort,
+                  descending: !props.sort.descending,
+                })
+              }
+            />
+          )}
           {props.onOpenSettings && (
             <Button variant='ghost' size='sm' onClick={props.onOpenSettings}>
               {t('Interval settings')}
@@ -118,10 +176,10 @@ export function DeviMonMonitor(props: { readonly onOpenSettings?: () => void }) 
             disabled={busy || !data.configured}
             onClick={() => collect.mutate()}
           >
-          <RefreshCw
-            className={busy ? 'animate-spin' : undefined}
-            aria-hidden='true'
-          />
+            <RefreshCw
+              className={busy ? 'animate-spin' : undefined}
+              aria-hidden='true'
+            />
             {busy ? t('Collecting...') : t('Collect now')}
           </Button>
         </div>
@@ -130,6 +188,13 @@ export function DeviMonMonitor(props: { readonly onOpenSettings?: () => void }) 
       {!data.configured && (
         <p className='text-destructive text-xs'>
           {t('Set CPA_MANAGEMENT_KEY on the gateway before collecting.')}
+        </p>
+      )}
+
+      {data.last_error && (
+        <p role='status' className='text-destructive text-xs'>
+          {t('Last collection failed')}: {data.last_error}{' '}
+          {snapshot && t('Showing the last complete collection.')}
         </p>
       )}
 
@@ -149,7 +214,10 @@ export function DeviMonMonitor(props: { readonly onOpenSettings?: () => void }) 
             'The monitor reads cpa-pro (Codex) and cpa-pro-1 (Devin) through the CPA management API.'
           )}
           action={
-            <Button onClick={() => collect.mutate()} disabled={busy || !data.configured}>
+            <Button
+              onClick={() => collect.mutate()}
+              disabled={busy || !data.configured}
+            >
               <RefreshCw aria-hidden='true' />
               {t('Collect now')}
             </Button>
@@ -159,7 +227,7 @@ export function DeviMonMonitor(props: { readonly onOpenSettings?: () => void }) 
 
       {accounts.length > 0 && (
         <ul
-          className='bg-card divide-y overflow-hidden rounded-lg border'
+          className='bg-card @container/accounts divide-y overflow-hidden rounded-lg border'
           aria-label={t('Codex accounts')}
         >
           {accounts.map((account) => (
@@ -173,11 +241,17 @@ export function DeviMonMonitor(props: { readonly onOpenSettings?: () => void }) 
           <p>{t('Devin accounts without a Codex twin')}</p>
           <ul className='mt-1 space-y-0.5'>
             {unpaired.map((devin) => (
-              <li key={devin.email}>
-                {devin.email}{' '}
-                <span className={devin.disabled ? 'text-destructive' : 'text-success'}>
-                  {devin.disabled ? t('Devin disabled') : t('Devin enabled')}
+              <li
+                key={devin.email}
+                className='flex flex-wrap items-center gap-x-2 gap-y-1'
+              >
+                <span className='min-w-0 [overflow-wrap:anywhere]'>
+                  {devin.email}
                 </span>
+                <DevinAccountStatus
+                  disabled={devin.disabled}
+                  routing={devin.devin_routing}
+                />
               </li>
             ))}
           </ul>

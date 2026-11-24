@@ -23,6 +23,11 @@ const deviMonCardSchema = z.object({
   expires_at: z.string(),
 })
 
+const deviMonRoutingSchema = z.object({
+  priority: z.number().int().nullable(),
+  weight: z.number().int().nonnegative().nullable(),
+})
+
 const deviMonAccountSchema = z.object({
   email: z.string(),
   used_percent: z.number().nullable(),
@@ -34,12 +39,14 @@ const deviMonAccountSchema = z.object({
   renew_at: z.string(),
   renew_source: z.string(),
   devin_disabled: z.boolean().nullable(),
+  devin_routing: deviMonRoutingSchema.nullish(),
   error: z.string(),
 })
 
 const deviMonDevinSchema = z.object({
   email: z.string(),
   disabled: z.boolean(),
+  devin_routing: deviMonRoutingSchema.nullish(),
 })
 
 export const deviMonSnapshotSchema = z.object({
@@ -56,12 +63,15 @@ export const deviMonStateSchema = z.object({
   collecting: z.boolean(),
   next_run_at: z.number().int(),
   configured: z.boolean(),
+  last_error: z.string().optional(),
+  interval_minutes: z.number().int().positive().optional(),
 })
 
 export const deviMonSettingsSchema = z.object({
   interval_minutes: z.number().int().min(15).max(10080),
 })
 
+export type DeviMonRouting = z.infer<typeof deviMonRoutingSchema>
 export type DeviMonSnapshot = z.infer<typeof deviMonSnapshotSchema>
 export type DeviMonAccount = z.infer<typeof deviMonAccountSchema>
 export type DeviMonState = z.infer<typeof deviMonStateSchema>

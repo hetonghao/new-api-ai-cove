@@ -56,6 +56,8 @@
     "Manual quota refresh remains available.": "Bạn vẫn có thể cập nhật hạn mức thủ công.",
     "Automatically update quota for {{name}}": "Tự động cập nhật hạn mức cho {{name}}",
     "Search name or account...": "Search name or account...",
+    "Reset time": "Thời gian đặt lại",
+    "Renewal time": "Thời gian gia hạn",
     "Sort subscriptions by": "Sort subscriptions by",
     "All platforms": "All platforms",
     "Subscription account (optional)": "Subscription account (optional)",
@@ -8739,6 +8741,15 @@
     "Between 15 minutes and 7 days. Default is 180 minutes.": "Between 15 minutes and 7 days. Default is 180 minutes.",
     "The monitor probes every Codex account one at a time with a random gap, so one cycle takes a couple of minutes.": "The monitor probes every Codex account one at a time with a random gap, so one cycle takes a couple of minutes.",
     "The monitor reads cpa-pro (Codex) and cpa-pro-1 (Devin) through the CPA management API.": "The monitor reads cpa-pro (Codex) and cpa-pro-1 (Devin) through the CPA management API.",
-    "Set CPA_MANAGEMENT_KEY on the gateway before collecting.": "Set CPA_MANAGEMENT_KEY on the gateway before collecting."
+    "Set CPA_MANAGEMENT_KEY on the gateway before collecting.": "Set CPA_MANAGEMENT_KEY on the gateway before collecting.",
+    "{{minutes}} minutes after this collection finishes": "{{minutes}} phút sau khi lượt thu thập này kết thúc",
+    "Awaiting first collection": "Đang chờ lượt thu thập đầu tiên",
+    "Last collection failed": "Lượt thu thập gần nhất thất bại",
+    "Showing the last complete collection.": "Đang hiển thị kết quả đầy đủ gần nhất.",
+    "{{seconds}} sec": "{{seconds}} giây",
+    "{{minutes}} min {{seconds}} sec": "{{minutes}} phút {{seconds}} giây",
+    "Devin monitor": "Giám sát Devin",
+    "Set CPA_MANAGEMENT_KEY before collecting": "Hãy cấu hình CPA_MANAGEMENT_KEY trước khi thu thập.",
+    "Could not collect the Devin monitor data": "Không thể thu thập dữ liệu giám sát Devin."
   }
 }

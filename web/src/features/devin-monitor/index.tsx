@@ -17,30 +17,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { type ReactNode, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-
-import { SectionPageLayout } from '@/components/layout'
+import { useState } from 'react'
 
 import { DeviMonMonitor } from './components/devi-mon-monitor'
 import { DeviMonSettingsPanel } from './components/devi-mon-settings'
+import type { DevinSort } from './sort'
 
-export function DeviMonPage(props: { readonly tabs: ReactNode }) {
-  const { t } = useTranslation()
+export function DeviMonPage(props: {
+  readonly sort: DevinSort
+  readonly onSortChange: (sort: DevinSort) => void
+}) {
   const [settingsOpen, setSettingsOpen] = useState(false)
-  return (
-    <SectionPageLayout>
-      <SectionPageLayout.Title>
-        {t('Subscription operations')}
-      </SectionPageLayout.Title>
-      <SectionPageLayout.Actions>{props.tabs}</SectionPageLayout.Actions>
-      <SectionPageLayout.Content>
-        {settingsOpen ? (
-          <DeviMonSettingsPanel onClose={() => setSettingsOpen(false)} />
-        ) : (
-          <DeviMonMonitor onOpenSettings={() => setSettingsOpen(true)} />
-        )}
-      </SectionPageLayout.Content>
-    </SectionPageLayout>
+  return settingsOpen ? (
+    <DeviMonSettingsPanel onClose={() => setSettingsOpen(false)} />
+  ) : (
+    <DeviMonMonitor {...props} onOpenSettings={() => setSettingsOpen(true)} />
   )
 }

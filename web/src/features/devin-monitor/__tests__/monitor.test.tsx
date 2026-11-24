@@ -18,14 +18,16 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { AxiosAdapter } from 'axios'
+import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { api } from '@/lib/api'
 
 import { DeviMonMonitor } from '../components/devi-mon-monitor'
+import { DEFAULT_DEVIN_SORT } from '../sort'
 
 const originalAdapter = api.defaults.adapter
 
@@ -72,13 +74,18 @@ const SNAPSHOT = {
   errors: [] as string[],
 }
 
+function SortableMonitor() {
+  const [sort, setSort] = useState(DEFAULT_DEVIN_SORT)
+  return <DeviMonMonitor sort={sort} onSortChange={setSort} />
+}
+
 function renderMonitor() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return render(
     <QueryClientProvider client={client}>
-      <DeviMonMonitor />
+      <SortableMonitor />
     </QueryClientProvider>
   )
 }
@@ -102,6 +109,96 @@ function serveState(snapshot: unknown) {
 }
 
 describe('devin monitor', () => {
+  it('sorts by Devin priority then weight and switches to known reset and renewal times first', async () => {
+    const sample = SNAPSHOT.accounts[0]
+    const account = (
+      email: string,
+      priority: number | null,
+      weight: number | null,
+      reset_at: number | null,
+      renew_at: string
+    ) => ({
+      ...sample,
+      email,
+      reset_at,
+      renew_at,
+      devin_routing: { priority, weight },
+    })
+    serveState({
+      ...SNAPSHOT,
+      accounts: [
+        account('light', 8, 0, 3, '2026-12-02T09:00:00+08:00'),
+        account('negative', -1, 99, null, 'invalid'),
+        account('default', null, null, 0, ''),
+        account('heavy', 8, 5, 7, '2026-12-02T03:00:00Z'),
+        {
+          ...sample,
+          email: 'unknown',
+          reset_at: 5,
+          renew_at: '2026-12-01T20:00:00-08:00',
+        },
+      ],
+    })
+    const user = userEvent.setup()
+    renderMonitor()
+    const picker = await screen.findByRole('combobox', {
+      name: 'Sort subscriptions by',
+    })
+    const order = () =>
+      screen.getAllByRole('heading', { level: 3 }).map((el) => el.textContent)
+    expect(order()).toEqual([
+      'heavy',
+      'light',
+      'default',
+      'negative',
+      'unknown',
+    ])
+    await user.click(screen.getByRole('button', { name: 'Descending' }))
+    expect(order()).toEqual([
+      'negative',
+      'default',
+      'light',
+      'heavy',
+      'unknown',
+    ])
+    await user.click(picker)
+    await user.click(await screen.findByRole('option', { name: 'Reset time' }))
+    expect(order()).toEqual([
+      'light',
+      'unknown',
+      'heavy',
+      'default',
+      'negative',
+    ])
+    await user.click(screen.getByRole('button', { name: 'Ascending' }))
+    expect(order()).toEqual([
+      'heavy',
+      'unknown',
+      'light',
+      'default',
+      'negative',
+    ])
+    await user.click(picker)
+    await user.click(
+      await screen.findByRole('option', { name: 'Renewal time' })
+    )
+    expect(order()).toEqual([
+      'light',
+      'heavy',
+      'unknown',
+      'default',
+      'negative',
+    ])
+    await user.click(screen.getByRole('button', { name: 'Ascending' }))
+    expect(order()).toEqual([
+      'unknown',
+      'heavy',
+      'light',
+      'default',
+      'negative',
+    ])
+  })
+
   it('shows weekly allowance, reset cards and the Devin enable state per account', async () => {
     serveState(SNAPSHOT)
     renderMonitor()
@@ -113,11 +210,60 @@ describe('devin monitor', () => {
     expect(screen.getByText('1% remaining')).toBeInTheDocument()
     expect(screen.getByText('96% remaining')).toBeInTheDocument()
 
-    expect(screen.getByText(/x2 ·/)).toBeInTheDocument()
-    expect(screen.getByText('x1 ·', { exact: false })).toBeInTheDocument()
+    const fresh = screen.getByText('fresh@example.com').closest('li')
+    if (!fresh) throw new Error('Missing Codex account row')
+    expect(within(fresh).getByText('×2')).toBeVisible()
+    expect(within(fresh).getAllByRole('listitem')).toHaveLength(2)
+    expect(
+      fresh.querySelector('time[datetime="2026-12-01T04:14:00Z"]')
+    ).toHaveTextContent(/^2026-12-0[12] \d\d:\d\d$/)
 
     expect(screen.getByText('Devin disabled')).toBeInTheDocument()
     expect(screen.getByText('No Devin account')).toBeInTheDocument()
+  })
+
+  it('shows only Devin routing, distinguishes zero from defaults and reads older snapshots', async () => {
+    serveState({
+      ...SNAPSHOT,
+      accounts: [
+        { ...SNAPSHOT.accounts[0], devin_routing: { priority: -4, weight: 0 } },
+        SNAPSHOT.accounts[1],
+        { ...SNAPSHOT.accounts[0], email: 'legacy@example.com' },
+      ],
+      unpaired_devin: [
+        {
+          email: 'orphan@example.com',
+          disabled: false,
+          devin_routing: { priority: null, weight: 25 },
+        },
+        {
+          email: 'defaults@example.com',
+          disabled: true,
+          devin_routing: { priority: 0, weight: null },
+        },
+      ],
+    })
+    renderMonitor()
+    const rowFor = async (email: string) => {
+      const row = (await screen.findByText(email)).closest('li')
+      if (!row) throw new Error('Missing account row')
+      return row
+    }
+    expect(await rowFor('busy@example.com')).toHaveTextContent(
+      /Priority -4\s*Weight 0/
+    )
+    expect(await rowFor('orphan@example.com')).toHaveTextContent(
+      /Priority Default 0\s*Weight 25/
+    )
+    expect(await rowFor('defaults@example.com')).toHaveTextContent(
+      /Priority 0\s*Weight Default 1/
+    )
+    expect(await rowFor('legacy@example.com')).toHaveTextContent(
+      'Priority / Weight: Not fetched yet'
+    )
+    expect(await rowFor('fresh@example.com')).not.toHaveTextContent(
+      /Priority|Weight/
+    )
   })
 
   it('marks a renewal read from the sign-in snapshot instead of the live endpoint', async () => {
@@ -169,36 +315,24 @@ describe('devin monitor', () => {
     ).toBeInTheDocument()
   })
 
-  it('collects on demand and renders the returned snapshot', async () => {
+  it('keeps the previous inventory visible when a new collection is queued', async () => {
     let posted = 0
+    let complete = false
     api.defaults.adapter = (async (config) => {
-      if (config.method === 'post') {
-        posted += 1
-        return {
-          config,
-          data: {
-            success: true,
-            data: {
-              snapshot: SNAPSHOT,
-              collecting: false,
-              next_run_at: 1_795_010_000,
-              configured: true,
-            },
-          },
-          headers: {},
-          status: 200,
-          statusText: 'OK',
-        }
-      }
+      if (config.method === 'post') posted++
+      const busy = posted > 0 && !complete
       return {
         config,
         data: {
           success: true,
           data: {
-            snapshot: null,
-            collecting: false,
-            next_run_at: 0,
+            snapshot: complete
+              ? { ...SNAPSHOT, accounts: [SNAPSHOT.accounts[1]] }
+              : SNAPSHOT,
+            collecting: busy,
             configured: true,
+            next_run_at: busy ? 0 : 1_795_010_000,
+            interval_minutes: 180,
           },
         },
         headers: {},
@@ -207,13 +341,49 @@ describe('devin monitor', () => {
       }
     }) as AxiosAdapter
     renderMonitor()
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Collect now' })
+    )
+    expect(
+      await screen.findByRole('button', { name: 'Collecting...' })
+    ).toBeDisabled()
+    expect(screen.getByText('busy@example.com')).toBeVisible()
+    expect(
+      screen.getByText('180 minutes after this collection finishes')
+    ).toBeVisible()
+    expect(screen.queryByText('Not scheduled')).toBeNull()
+    complete = true
+    await waitFor(
+      () => expect(screen.queryByText('busy@example.com')).toBeNull(),
+      { timeout: 4500 }
+    )
+    expect(screen.getByText('fresh@example.com')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Collect now' })).toBeEnabled()
+    expect(posted).toBe(1)
+  })
 
-    // Both the header and the empty state offer "Collect now"; either works.
-    const triggers = await screen.findAllByRole('button', {
-      name: 'Collect now',
-    })
-    await userEvent.click(triggers[0])
-    await waitFor(() => expect(posted).toBe(1))
-    expect(await screen.findByText('busy@example.com')).toBeInTheDocument()
+  it('shows the last good accounts when a subsequent attempt fails', async () => {
+    api.defaults.adapter = (async (config) => ({
+      config,
+      data: {
+        success: true,
+        data: {
+          snapshot: SNAPSHOT,
+          collecting: false,
+          configured: true,
+          next_run_at: 1_795_010_000,
+          last_error: 'cpa-pro-2: HTTP 502',
+        },
+      },
+      headers: {},
+      status: 200,
+      statusText: 'OK',
+    })) as AxiosAdapter
+    renderMonitor()
+    expect(
+      await screen.findByText(/Showing the last complete collection/)
+    ).toBeVisible()
+    expect(screen.getByText('busy@example.com')).toBeVisible()
+    expect(screen.queryByText('Not scheduled')).toBeNull()
   })
 })

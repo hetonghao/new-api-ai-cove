@@ -56,6 +56,8 @@
     "Manual quota refresh remains available.": "L’actualisation manuelle du quota reste disponible.",
     "Automatically update quota for {{name}}": "Actualiser automatiquement le quota de {{name}}",
     "Search name or account...": "Search name or account...",
+    "Reset time": "Date de réinitialisation",
+    "Renewal time": "Date de renouvellement",
     "Sort subscriptions by": "Sort subscriptions by",
     "All platforms": "All platforms",
     "Subscription account (optional)": "Subscription account (optional)",
@@ -8739,6 +8741,15 @@
     "Between 15 minutes and 7 days. Default is 180 minutes.": "Between 15 minutes and 7 days. Default is 180 minutes.",
     "The monitor probes every Codex account one at a time with a random gap, so one cycle takes a couple of minutes.": "The monitor probes every Codex account one at a time with a random gap, so one cycle takes a couple of minutes.",
     "The monitor reads cpa-pro (Codex) and cpa-pro-1 (Devin) through the CPA management API.": "The monitor reads cpa-pro (Codex) and cpa-pro-1 (Devin) through the CPA management API.",
-    "Set CPA_MANAGEMENT_KEY on the gateway before collecting.": "Set CPA_MANAGEMENT_KEY on the gateway before collecting."
+    "Set CPA_MANAGEMENT_KEY on the gateway before collecting.": "Set CPA_MANAGEMENT_KEY on the gateway before collecting.",
+    "{{minutes}} minutes after this collection finishes": "{{minutes}} min après la fin de cette collecte",
+    "Awaiting first collection": "En attente de la première collecte",
+    "Last collection failed": "Échec de la dernière collecte",
+    "Showing the last complete collection.": "Le dernier résultat complet est affiché.",
+    "{{seconds}} sec": "{{seconds}} s",
+    "{{minutes}} min {{seconds}} sec": "{{minutes}} min {{seconds}} s",
+    "Devin monitor": "Suivi Devin",
+    "Set CPA_MANAGEMENT_KEY before collecting": "Configurez CPA_MANAGEMENT_KEY avant la collecte.",
+    "Could not collect the Devin monitor data": "Impossible de collecter les données du suivi Devin."
   }
 }

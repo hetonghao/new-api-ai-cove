@@ -56,6 +56,8 @@
     "Manual quota refresh remains available.": "手動での割り当て更新は引き続き利用できます。",
     "Automatically update quota for {{name}}": "{{name}} の割り当てを自動更新",
     "Search name or account...": "Search name or account...",
+    "Reset time": "リセット日時",
+    "Renewal time": "更新日時",
     "Sort subscriptions by": "Sort subscriptions by",
     "All platforms": "All platforms",
     "Subscription account (optional)": "Subscription account (optional)",
@@ -8739,6 +8741,15 @@
     "Between 15 minutes and 7 days. Default is 180 minutes.": "Between 15 minutes and 7 days. Default is 180 minutes.",
     "The monitor probes every Codex account one at a time with a random gap, so one cycle takes a couple of minutes.": "The monitor probes every Codex account one at a time with a random gap, so one cycle takes a couple of minutes.",
     "The monitor reads cpa-pro (Codex) and cpa-pro-1 (Devin) through the CPA management API.": "The monitor reads cpa-pro (Codex) and cpa-pro-1 (Devin) through the CPA management API.",
-    "Set CPA_MANAGEMENT_KEY on the gateway before collecting.": "Set CPA_MANAGEMENT_KEY on the gateway before collecting."
+    "Set CPA_MANAGEMENT_KEY on the gateway before collecting.": "Set CPA_MANAGEMENT_KEY on the gateway before collecting.",
+    "{{minutes}} minutes after this collection finishes": "今回の収集完了から {{minutes}} 分後",
+    "Awaiting first collection": "初回の収集を待機中",
+    "Last collection failed": "前回の収集に失敗しました",
+    "Showing the last complete collection.": "直近の完全な収集結果を表示しています。",
+    "{{seconds}} sec": "{{seconds}} 秒",
+    "{{minutes}} min {{seconds}} sec": "{{minutes}} 分 {{seconds}} 秒",
+    "Devin monitor": "Devin モニター",
+    "Set CPA_MANAGEMENT_KEY before collecting": "収集前にゲートウェイの CPA_MANAGEMENT_KEY を設定してください。",
+    "Could not collect the Devin monitor data": "Devin の監視データを収集できませんでした。"
   }
 }
