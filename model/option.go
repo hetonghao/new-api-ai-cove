@@ -248,6 +248,10 @@ func validateOptionValue(key string, value string) error {
 		_, err := operation_setting.ParseImageCompressionCacheSettings(value)
 		return err
 	}
+	if key == operation_setting.DeviMonOptionKey {
+		_, err := operation_setting.ParseDeviMonSettings(value)
+		return err
+	}
 	if key == MediaModelsPolicyOption {
 		return errors.New("use the media model policy endpoint")
 	}
@@ -420,6 +424,15 @@ func updateOptionMap(key string, value string) (err error) {
 			return err
 		}
 		if err := operation_setting.SetImageCompressionCacheSettings(settings); err != nil {
+			return err
+		}
+	}
+	if key == operation_setting.DeviMonOptionKey {
+		settings, err := operation_setting.ParseDeviMonSettings(value)
+		if err != nil {
+			return err
+		}
+		if err := operation_setting.SetDeviMonSettings(settings); err != nil {
 			return err
 		}
 	}

@@ -40,6 +40,9 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { DeviMonPage } from '@/features/devin-monitor'
+
 import { deleteUpstreamSubscription, listUpstreamSubscriptions } from './api'
 import { SubscriptionFormDialog } from './components/subscription-form-dialog'
 import { SubscriptionPlatform } from './components/subscription-platform'
@@ -80,7 +83,43 @@ const PLATFORM_FILTERS = [
   },
 ]
 
+type SubscriptionOperationsTab = 'coding-plan' | 'devin'
+
+// One switcher for both tabs; each panel renders its own copy in the page
+// header because each owns a full SectionPageLayout.
+export function SubscriptionOperationsTabs(props: {
+  readonly value: SubscriptionOperationsTab
+  readonly onChange: (value: SubscriptionOperationsTab) => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <Tabs
+      value={props.value}
+      onValueChange={(value) =>
+        props.onChange(value as SubscriptionOperationsTab)
+      }
+    >
+      <TabsList variant='line' aria-label={t('Subscription operations')}>
+        <TabsTrigger value='coding-plan'>{t('Coding Plan')}</TabsTrigger>
+        <TabsTrigger value='devin'>{t('Devin')}</TabsTrigger>
+      </TabsList>
+    </Tabs>
+  )
+}
+
 export function UpstreamSubscriptions() {
+  const [tab, setTab] = useState<SubscriptionOperationsTab>('coding-plan')
+  if (tab === 'devin') {
+    return <DeviMonPage tabs={<SubscriptionOperationsTabs value={tab} onChange={setTab} />} />
+  }
+  return (
+    <CodingPlanPanel
+      tabs={<SubscriptionOperationsTabs value={tab} onChange={setTab} />}
+    />
+  )
+}
+
+function CodingPlanPanel(props: { readonly tabs: React.ReactNode }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [formOpen, setFormOpen] = useState(false)
@@ -170,6 +209,7 @@ export function UpstreamSubscriptions() {
           {t('Subscription operations')}
         </SectionPageLayout.Title>
         <SectionPageLayout.Actions>
+          {props.tabs}
           <Button
             variant='outline'
             size='sm'

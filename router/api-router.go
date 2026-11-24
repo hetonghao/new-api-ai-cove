@@ -23,6 +23,7 @@ func SetApiRouter(router *gin.Engine) {
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
 	setModelQualityRouter(apiRouter)
 	registerImageCompressionCacheRoutes(apiRouter)
+	registerDeviMonRoutes(apiRouter)
 	anonymousRequestBodyLimit := middleware.AnonymousRequestBodyLimit()
 	{
 		apiRouter.GET("/setup", controller.GetSetup)
