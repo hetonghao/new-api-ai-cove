@@ -71,7 +71,7 @@ func TestImageCompressionCacheAPI(t *testing.T) {
 
 	for _, endpoint := range []struct{ method, path string }{
 		{http.MethodGet, "/config"}, {http.MethodPut, "/config"},
-		{http.MethodGet, "/stats"}, {http.MethodPost, "/clear"}, {http.MethodGet, "/nodes"},
+		{http.MethodGet, "/stats"}, {http.MethodPost, "/clear"},
 	} {
 		t.Run("RootOnly"+endpoint.method+endpoint.path, func(t *testing.T) {
 			require.Equal(t, http.StatusUnauthorized, imageCacheAPIRequest(engine, endpoint.method, endpoint.path, "", nil).Code)
@@ -115,50 +115,32 @@ func TestImageCompressionCacheAPI(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, recorder.Code, recorder.Body.String())
 	})
 
-	t.Run("NodeAndProcessScope", func(t *testing.T) {
-		require.NoError(t, model.UpsertSystemInstance("cache-peer", nil, 1, common.GetTimestamp()))
-		response := imageCacheAPIRequest(engine, http.MethodGet, "/nodes", rootSession.AccessToken, nil)
-		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-		require.JSONEq(t, `{"success":true,"message":"","data":{"local_node_name":"cache-test-node","nodes":[{"node_name":"cache-test-node","status":"online"},{"node_name":"cache-peer","status":"unavailable"}]}}`, response.Body.String())
-
-		response = imageCacheAPIRequest(engine, http.MethodGet, "/stats?page=2&page_size=7&node_name=cache-test-node", rootSession.AccessToken, nil)
+	t.Run("NoSharedRedisShowsWarningAndRefusesClear", func(t *testing.T) {
+		response := imageCacheAPIRequest(engine, http.MethodGet, "/stats?page=2&page_size=7", rootSession.AccessToken, nil)
 		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 		require.Contains(t, response.Header().Get("Cache-Control"), "no-store")
 		var stats struct {
 			Data struct {
-				InstanceID string   `json:"instance_id"`
-				NodeName   string   `json:"node_name"`
-				Page       int      `json:"page"`
-				PageSize   int      `json:"page_size"`
-				Entries    []string `json:"entries"`
+				Status   string `json:"status"`
+				CacheID  string `json:"cache_id"`
+				Page     int    `json:"page"`
+				PageSize int    `json:"page_size"`
 			} `json:"data"`
 		}
 		require.NoError(t, common.DecodeJson(response.Body, &stats))
-		require.Equal(t, "cache-test-node", stats.Data.NodeName)
-		require.NotEmpty(t, stats.Data.InstanceID)
+		require.Equal(t, "not_configured", stats.Data.Status)
+		require.Empty(t, stats.Data.CacheID)
 		require.Equal(t, 2, stats.Data.Page)
 		require.Equal(t, 7, stats.Data.PageSize)
-		require.NotNil(t, stats.Data.Entries)
 		require.Equal(t, http.StatusBadRequest, imageCacheAPIRequest(engine, http.MethodGet, "/stats?page_size=101", rootSession.AccessToken, nil).Code)
-		require.Equal(t, http.StatusNotFound, imageCacheAPIRequest(engine, http.MethodGet, "/stats?node_name=unknown-node", rootSession.AccessToken, nil).Code)
-		require.Equal(t, http.StatusServiceUnavailable, imageCacheAPIRequest(engine, http.MethodGet, "/stats?node_name=cache-peer", rootSession.AccessToken, nil).Code)
-
-		for _, removal := range []struct {
-			body   string
-			status int
-		}{
-			{`{"node_name":"cache-test-node","instance_id":"stale-process","all":true}`, http.StatusConflict},
-			{`{"node_name":"cache-test-node","instance_id":"` + stats.Data.InstanceID + `","ids":["a"],"all":true}`, http.StatusBadRequest},
-			{`{"node_name":"cache-test-node","instance_id":"` + stats.Data.InstanceID + `","ids":["a","a"]}`, http.StatusBadRequest},
-			{`{"node_name":"cache-test-node","instance_id":"` + stats.Data.InstanceID + `","ids":["already-gone"]}`, http.StatusOK},
-			{`{"node_name":"cache-test-node","instance_id":"` + stats.Data.InstanceID + `","all":true}`, http.StatusOK},
+		for _, body := range []string{
+			`{"cache_id":"token","ids":["a"],"all":true}`,
+			`{"cache_id":"token","ids":["a","a"]}`,
+			`{"instance_id":"old-process","all":true}`,
 		} {
-			response := imageCacheAPIRequest(engine, http.MethodPost, "/clear", rootSession.AccessToken, strings.NewReader(removal.body))
-			require.Equal(t, removal.status, response.Code, response.Body.String())
-			if removal.status == http.StatusOK {
-				require.JSONEq(t, `{"success":true,"message":"","data":{"deleted":0}}`, response.Body.String())
-			}
+			require.Equal(t, http.StatusBadRequest, imageCacheAPIRequest(engine, http.MethodPost, "/clear", rootSession.AccessToken, strings.NewReader(body)).Code)
 		}
+		require.Equal(t, http.StatusServiceUnavailable, imageCacheAPIRequest(engine, http.MethodPost, "/clear", rootSession.AccessToken, strings.NewReader(`{"cache_id":"token","ids":["a"]}`)).Code)
 	})
 }
 

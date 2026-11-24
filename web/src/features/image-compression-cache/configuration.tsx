@@ -42,6 +42,7 @@ import {
   MIB,
   saveCacheConfig,
   statsKey,
+  useSharedImageCacheStats,
   type CacheConfig,
 } from './api'
 import {
@@ -49,6 +50,7 @@ import {
   getCacheConfigErrorField,
   type CacheForm,
 } from './lib/configuration'
+import { CacheConnectionWarning } from './statistics'
 
 function formValues(config: CacheConfig): CacheForm {
   return {
@@ -59,6 +61,7 @@ function formValues(config: CacheConfig): CacheForm {
 }
 
 export function CacheConfiguration() {
+  const health = useSharedImageCacheStats(1, 1)
   const settings = useQuery({
     queryKey: configKey,
     queryFn: getCacheConfig,
@@ -73,7 +76,14 @@ export function CacheConfiguration() {
       />
     )
   }
-  return <CacheConfigForm config={settings.data} />
+  return (
+    <div className='space-y-3'>
+      {health.data && !health.isError && (
+        <CacheConnectionWarning status={health.data.status} />
+      )}
+      <CacheConfigForm config={settings.data} />
+    </div>
+  )
 }
 
 function CacheConfigForm(props: { readonly config: CacheConfig }) {
@@ -104,7 +114,7 @@ function CacheConfigForm(props: { readonly config: CacheConfig }) {
     <TitledCard
       title={t('Cache configuration')}
       description={t(
-        'Compressed images are reused from memory on the same node until they expire.'
+        'New API nodes share compressed images through a dedicated Redis cache.'
       )}
       disableHoverEffect
     >
@@ -160,7 +170,7 @@ function CacheConfigForm(props: { readonly config: CacheConfig }) {
               {...form.register('capacity', { valueAsNumber: true })}
             />
             <FieldDescription id='compression-cache-capacity-hint'>
-              {t('1 to 256 MiB per node.')}
+              {t('1 to 256 MiB across all nodes.')}
             </FieldDescription>
             {errors.capacity && (
               <FieldError id='compression-cache-capacity-error'>
@@ -189,7 +199,9 @@ function CacheConfigForm(props: { readonly config: CacheConfig }) {
               {...form.register('ttl', { valueAsNumber: true })}
             />
             <FieldDescription id='compression-cache-ttl-hint'>
-              {t('60 to 3,600 seconds from insertion.')}
+              {t(
+                '60 to 3,600 seconds from insertion. Changing this clears existing entries.'
+              )}
             </FieldDescription>
             {errors.ttl && (
               <FieldError id='compression-cache-ttl-error'>

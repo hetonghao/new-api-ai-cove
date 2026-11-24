@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 
 import { api } from '@/lib/api'
@@ -24,7 +25,6 @@ import { requireServerSuccess } from '@/lib/server-error-message'
 const base = '/api/image-compression-cache'
 export const MIB = 1024 * 1024
 export const configKey = ['image-compression-cache', 'config'] as const
-export const nodesKey = ['image-compression-cache', 'nodes'] as const
 export const statsKey = ['image-compression-cache', 'stats'] as const
 
 const count = z.number().int().nonnegative()
@@ -46,8 +46,11 @@ const entrySchema = z.object({
   expires_at: count,
 })
 const statsSchema = configSchema.extend({
-  node_name: z.string().min(1),
-  instance_id: z.string().min(1),
+  status: z.enum(['ready', 'not_configured', 'unavailable', 'synchronizing']),
+  cache_id: z.string().min(1).optional(),
+  nodes: z.array(
+    z.object({ node_name: z.string(), hits: count, misses: count })
+  ),
   used_bytes: count,
   entry_count: count,
   hits: count,
@@ -57,22 +60,11 @@ const statsSchema = configSchema.extend({
   removals: count,
   entries: z.array(entrySchema),
 })
-const nodesSchema = z.object({
-  local_node_name: z.string().min(1),
-  nodes: z.array(
-    z.object({
-      node_name: z.string().min(1),
-      status: z.string(),
-    })
-  ),
-})
-
 export type CacheConfig = z.infer<typeof configSchema>
 export type CacheEntry = z.infer<typeof entrySchema>
 export type CacheStats = z.infer<typeof statsSchema>
 export type ClearTarget = {
-  readonly node_name: string
-  readonly instance_id: string
+  readonly cache_id: string
   readonly ids: readonly string[]
 }
 
@@ -94,14 +86,8 @@ export async function saveCacheConfig(
   return readData(response.data, configSchema)
 }
 
-export async function listCacheNodes(): Promise<z.infer<typeof nodesSchema>> {
-  const response = await api.get<unknown>(`${base}/nodes`)
-  return readData(response.data, nodesSchema)
-}
-
 export async function getCacheStats(
   params: {
-    readonly node_name: string
     readonly page: number
     readonly page_size: number
   },
@@ -118,4 +104,17 @@ export async function getCacheStats(
 export async function clearCacheEntries(target: ClearTarget): Promise<number> {
   const response = await api.post<unknown>(`${base}/clear`, target)
   return readData(response.data, z.object({ deleted: count })).deleted
+}
+
+const refreshInterval = 5000
+
+export function useSharedImageCacheStats(page: number, pageSize: number) {
+  return useQuery({
+    queryKey: [...statsKey, page, pageSize],
+    queryFn: ({ signal }) =>
+      getCacheStats({ page, page_size: pageSize }, signal),
+    refetchInterval: refreshInterval,
+    retry: false,
+    meta: { errorToast: false },
+  })
 }

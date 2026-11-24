@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"context"
+	"errors"
 	"io"
 	"math"
 	"net/http"
@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/requestplugin"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 )
@@ -40,55 +41,8 @@ func SetImageCompressionCacheConfig(c *gin.Context) {
 		common.ApiErrorStatus(c, http.StatusInternalServerError, common.NewMessage("Could not save image compression cache configuration"))
 		return
 	}
+	requestplugin.ApplyImageCompressionCacheSettings(c.Request.Context())
 	common.ApiSuccess(c, settings)
-}
-
-type imageCacheNode struct {
-	Name   string `json:"node_name"`
-	Status string `json:"status"`
-}
-
-func ListImageCompressionCacheNodes(c *gin.Context) {
-	ctx, cancel := context.WithTimeout(c.Request.Context(), imageCacheNodeTimeout)
-	defer cancel()
-	instances, err := model.ListSystemInstancesContext(ctx)
-	if err != nil {
-		logger.LogError(c.Request.Context(), common.LogText("failed to list image compression cache nodes: %v", err))
-		common.ApiErrorStatus(c, http.StatusServiceUnavailable, common.NewMessage("Could not list image compression cache nodes"))
-		return
-	}
-	nodes := []imageCacheNode{{Name: common.NodeName, Status: model.SystemInstanceStatusOnline}}
-	now := common.GetTimestamp()
-	var remoteChannels []string
-	for _, instance := range instances {
-		if instance.NodeName == common.NodeName {
-			continue
-		}
-		status := model.SystemInstanceStatusOnline
-		if now-instance.LastSeenAt > model.SystemInstanceStaleAfterSeconds {
-			status = model.SystemInstanceStatusStale
-		} else {
-			status = "unavailable"
-			if common.RedisEnabled && common.RDB != nil {
-				remoteChannels = append(remoteChannels, imageCacheNodeChannel(common.RDB, instance.NodeName))
-			}
-		}
-		nodes = append(nodes, imageCacheNode{Name: instance.NodeName, Status: status})
-	}
-	if len(remoteChannels) > 0 {
-		counts, err := common.RDB.PubSubNumSub(ctx, remoteChannels...).Result()
-		if err != nil {
-			logger.LogWarn(ctx, common.LogText("failed to check image compression cache node availability: %v", err))
-		} else {
-			for i := 1; i < len(nodes); i++ {
-				node := &nodes[i]
-				if node.Status == "unavailable" && counts[imageCacheNodeChannel(common.RDB, node.Name)] == 1 {
-					node.Status = model.SystemInstanceStatusOnline
-				}
-			}
-		}
-	}
-	common.ApiSuccess(c, gin.H{"local_node_name": common.NodeName, "nodes": nodes})
 }
 
 func GetImageCompressionCacheStats(c *gin.Context) {
@@ -98,9 +52,7 @@ func GetImageCompressionCacheStats(c *gin.Context) {
 		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid image compression cache page"))
 		return
 	}
-	request := imageCacheNodeRequest{Page: page, PageSize: pageSize}
-	response := callImageCacheNode(c.Request.Context(), c.Query("node_name"), request)
-	writeImageCacheResponse(c, response, response.Stats)
+	common.ApiSuccess(c, requestplugin.GetImageCompressionCacheSnapshot(c.Request.Context(), page, pageSize))
 }
 
 func ClearImageCompressionCache(c *gin.Context) {
@@ -110,8 +62,15 @@ func ClearImageCompressionCache(c *gin.Context) {
 		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid image compression cache removal"))
 		return
 	}
-	response := callImageCacheNode(c.Request.Context(), request.NodeName, imageCacheNodeRequest{Clear: &request})
-	writeImageCacheResponse(c, response, gin.H{"deleted": response.Deleted})
+	deleted, err := requestplugin.RemoveImageCompressionCacheEntries(c.Request.Context(), request.CacheID, request.IDs, request.All)
+	switch {
+	case errors.Is(err, requestplugin.ErrImageCacheChanged):
+		common.ApiErrorStatus(c, http.StatusConflict, common.NewMessage("Image compression cache changed. Refresh the statistics and try again"))
+	case err != nil:
+		common.ApiErrorStatus(c, http.StatusServiceUnavailable, common.NewMessage("Shared image cache Redis is unavailable"))
+	default:
+		common.ApiSuccess(c, gin.H{"deleted": deleted})
+	}
 }
 
 func validImageCachePage(page, pageSize int) bool {
@@ -119,14 +78,13 @@ func validImageCachePage(page, pageSize int) bool {
 }
 
 type imageCacheClearRequest struct {
-	NodeName   string   `json:"node_name"`
-	InstanceID string   `json:"instance_id"`
-	IDs        []string `json:"ids"`
-	All        bool     `json:"all"`
+	CacheID string   `json:"cache_id"`
+	IDs     []string `json:"ids"`
+	All     bool     `json:"all"`
 }
 
 func (request imageCacheClearRequest) valid() bool {
-	if request.InstanceID == "" || len(request.InstanceID) > 128 || request.All == (len(request.IDs) > 0) || len(request.IDs) > imageCacheMaxSelection {
+	if request.CacheID == "" || len(request.CacheID) > 128 || request.All == (len(request.IDs) > 0) || len(request.IDs) > imageCacheMaxSelection {
 		return false
 	}
 	seen := make(map[string]struct{}, len(request.IDs))
@@ -140,19 +98,4 @@ func (request imageCacheClearRequest) valid() bool {
 		seen[id] = struct{}{}
 	}
 	return true
-}
-
-func writeImageCacheResponse(c *gin.Context, response imageCacheNodeResponse, data any) {
-	switch response.Status {
-	case http.StatusBadRequest:
-		common.ApiErrorStatus(c, response.Status, common.NewMessage("Invalid image compression cache removal"))
-	case http.StatusOK:
-		common.ApiSuccess(c, data)
-	case http.StatusConflict:
-		common.ApiErrorStatus(c, response.Status, common.NewMessage("Image compression cache instance changed. Refresh the statistics and try again"))
-	case http.StatusNotFound:
-		common.ApiErrorStatus(c, response.Status, common.NewMessage("Image compression cache node was not found"))
-	default:
-		common.ApiErrorStatus(c, http.StatusServiceUnavailable, common.NewMessage("Image compression cache node is unavailable"))
-	}
 }

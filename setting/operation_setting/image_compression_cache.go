@@ -12,11 +12,11 @@ type ImageCompressionCacheSettings struct {
 	Enabled    bool  `json:"enabled"`
 	MaxBytes   int64 `json:"max_bytes"`
 	TTLSeconds int   `json:"ttl_seconds"`
+	Revision   int64 `json:"-"`
 }
 
 var imageCompressionCacheDefaults = ImageCompressionCacheSettings{MaxBytes: 64 << 20, TTLSeconds: 900}
 var imageCompressionCacheSettings atomic.Pointer[ImageCompressionCacheSettings]
-var imageCompressionCacheSettingsChange atomic.Pointer[func()]
 
 func GetImageCompressionCacheSettings() ImageCompressionCacheSettings {
 	if settings := imageCompressionCacheSettings.Load(); settings != nil {
@@ -40,11 +40,12 @@ func ParseImageCompressionCacheSettings(value string) (ImageCompressionCacheSett
 		Enabled    *bool `json:"enabled"`
 		MaxBytes   int64 `json:"max_bytes"`
 		TTLSeconds int   `json:"ttl_seconds"`
+		Revision   int64 `json:"revision"`
 	}
 	if err := common.UnmarshalJsonStr(value, &fields); err != nil || fields.Enabled == nil {
 		return ImageCompressionCacheSettings{}, common.NewMessage("Invalid image compression cache configuration")
 	}
-	settings := ImageCompressionCacheSettings{Enabled: *fields.Enabled, MaxBytes: fields.MaxBytes, TTLSeconds: fields.TTLSeconds}
+	settings := ImageCompressionCacheSettings{Enabled: *fields.Enabled, MaxBytes: fields.MaxBytes, TTLSeconds: fields.TTLSeconds, Revision: fields.Revision}
 	return settings, settings.Validate()
 }
 
@@ -52,14 +53,6 @@ func SetImageCompressionCacheSettings(settings ImageCompressionCacheSettings) er
 	if err := settings.Validate(); err != nil {
 		return err
 	}
-	previous := imageCompressionCacheSettings.Swap(&settings)
-	if callback := imageCompressionCacheSettingsChange.Load(); callback != nil && (previous == nil || *previous != settings) {
-		(*callback)()
-	}
+	imageCompressionCacheSettings.Store(&settings)
 	return nil
-}
-
-// RegisterImageCompressionCacheSettingsChange installs the process cache's change callback.
-func RegisterImageCompressionCacheSettingsChange(callback func()) {
-	imageCompressionCacheSettingsChange.Store(&callback)
 }

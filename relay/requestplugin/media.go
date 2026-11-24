@@ -15,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/requestpatch"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/tidwall/gjson"
 	"golang.org/x/image/draw"
 	"golang.org/x/image/riff"
@@ -171,30 +170,21 @@ func escapePointer(token string) string {
 // replace the media string and its mime type, and the change for the public
 // record; none when the new bytes are not smaller or the image is an
 // animated GIF or over the limits.
-func reencodeMedia(ctx context.Context, userID int, item inlineMedia, effect requestpatch.Effect) ([]requestpatch.Operation, *relaycommon.RequestPluginMediaChange, error) {
+func reencodeMedia(ctx context.Context, batch *imageCacheBatch, index int, item inlineMedia, effect requestpatch.Effect) ([]requestpatch.Operation, *relaycommon.RequestPluginMediaChange, error) {
 	if item.size() > maxReencodeBytes {
 		return nil, nil, nil
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	var result imageReencodeResult
-	var key imageCompressionCacheKey
-	var hit bool
-	var generation uint64
-	if userID > 0 && operation_setting.GetImageCompressionCacheSettings().Enabled {
-		key = imageCompressionKey(userID, item, effect)
-		result, hit, generation = localImageCompressionCache.lookup(key)
-	}
-	if !hit {
+	key, result := batch.result(index)
+	if len(result.data) == 0 {
 		var err error
 		result, err = encodeMedia(ctx, item, effect)
 		if err != nil || len(result.data) == 0 {
 			return nil, nil, err
 		}
-		if generation != 0 && ctx.Err() == nil {
-			localImageCompressionCache.store(key, result, generation)
-		}
+		batch.add(key, result)
 	}
 
 	mime := result.compressedMIME

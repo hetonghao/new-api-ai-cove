@@ -1,32 +1,85 @@
 package requestplugin
 
 import (
-	"bytes"
-	"container/list"
+	"context"
 	"crypto/sha256"
+	_ "embed"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
+	"fmt"
 	"image/jpeg"
-	"sync"
+	"slices"
+	"strconv"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/requestpatch"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/go-redis/redis/v8"
 )
 
 const (
-	imageCompressionCacheEntryLimit = 4096
-	imageEncoderVersion             = 1
+	imageEncoderVersion  = 1
+	imageCachePrefix     = "ai-cove:img-cache:v1"
+	imageCacheBudget     = 150 * time.Millisecond
+	imageCacheRetryDelay = 2 * time.Second
 )
 
-type imageCompressionCacheKey struct {
-	userID           int
-	source, mime     [sha256.Size]byte
-	version          int
-	format           string
-	quality, maxSide int
+//go:embed image_compression_cache.lua
+var imageCacheLua string
+var (
+	imageCacheScript  = redis.NewScript(imageCacheLua)
+	imageBase64Unwrap = strings.NewReplacer("\r", "", "\n", "")
+)
+
+var ErrImageCacheUnavailable = errors.New("shared image compression cache is unavailable")
+var ErrImageCacheChanged = errors.New("shared image compression cache changed")
+
+type ImageCacheStatus string
+
+const (
+	ImageCacheReady         ImageCacheStatus = "ready"
+	ImageCacheNotConfigured ImageCacheStatus = "not_configured"
+	ImageCacheUnavailable   ImageCacheStatus = "unavailable"
+	ImageCacheSynchronizing ImageCacheStatus = "synchronizing"
+)
+
+type imageCompressionCache struct {
+	client     *redis.Client
+	retryAfter atomic.Int64
 }
 
-func imageCompressionKey(userID int, item inlineMedia, effect requestpatch.Effect) imageCompressionCacheKey {
+var sharedImageCompressionCache atomic.Pointer[imageCompressionCache]
+
+// ConfigureImageCompressionCacheRedis only configures a separate endpoint. It
+// does not require Redis to be reachable for New API to start.
+func ConfigureImageCompressionCacheRedis(url string) error {
+	var cache *imageCompressionCache
+	var configErr error
+	if url != "" {
+		options, err := redis.ParseURL(url)
+		if err != nil || (common.RDB != nil && options.Addr == common.RDB.Options().Addr) {
+			configErr = errors.New("IMAGE_COMPRESSION_CACHE_REDIS_URL must point to a dedicated Redis instance")
+		} else {
+			options.DialTimeout = imageCacheBudget
+			options.ReadTimeout = imageCacheBudget
+			options.WriteTimeout = imageCacheBudget
+			options.PoolTimeout = imageCacheBudget
+			options.MaxRetries = -1
+			options.PoolSize = 8
+			cache = &imageCompressionCache{client: redis.NewClient(options)}
+		}
+	}
+	if previous := sharedImageCompressionCache.Swap(cache); previous != nil {
+		return errors.Join(configErr, previous.client.Close())
+	}
+	return configErr
+}
+
+func imageCompressionKey(userID int, item inlineMedia, effect requestpatch.Effect) string {
 	quality := 0
 	if effect.Format == "jpeg" || effect.Format == "auto" {
 		quality = effect.Quality
@@ -34,10 +87,27 @@ func imageCompressionKey(userID int, item inlineMedia, effect requestpatch.Effec
 			quality = jpeg.DefaultQuality
 		}
 	}
-	return imageCompressionCacheKey{
-		userID: userID, source: sha256.Sum256([]byte(item.data)), mime: sha256.Sum256([]byte(item.mime)),
-		version: imageEncoderVersion, format: effect.Format, quality: quality, maxSide: effect.MaxSide,
+	// Use the canonical representation of standard Base64, ignoring line wraps
+	// and unused padding bits accepted by the same decoder as encodeMedia.
+	data := item.data
+	if strings.ContainsAny(data, "\r\n") {
+		data = imageBase64Unwrap.Replace(data)
 	}
+	source := sha256.Sum256([]byte(data))
+	if len(data) >= 4 && data[len(data)-1] == '=' {
+		start := len(data) - 4
+		var terminal [3]byte
+		if size, err := base64.StdEncoding.Decode(terminal[:], []byte(data[start:])); err == nil {
+			var normalized [4]byte
+			base64.StdEncoding.Encode(normalized[:], terminal[:size])
+			if string(normalized[:]) != data[start:] {
+				source = sha256.Sum256([]byte(data[:start] + string(normalized[:])))
+			}
+		}
+	}
+	mime := sha256.Sum256([]byte(item.mime))
+	key := sha256.Sum256(fmt.Appendf(nil, "%d:%d:%x:%x:%s:%d:%d", imageEncoderVersion, userID, source, mime, effect.Format, quality, effect.MaxSide))
+	return hex.EncodeToString(key[:])
 }
 
 type imageReencodeResult struct {
@@ -59,8 +129,16 @@ type ImageCompressionCacheEntry struct {
 	ExpiresAt       int64  `json:"expires_at"`
 }
 
+type ImageCacheNodeStats struct {
+	NodeName string `json:"node_name"`
+	Hits     uint64 `json:"hits"`
+	Misses   uint64 `json:"misses"`
+}
+
 type ImageCompressionCacheStats struct {
 	operation_setting.ImageCompressionCacheSettings
+	Status      ImageCacheStatus             `json:"status"`
+	CacheID     string                       `json:"cache_id,omitempty"`
 	UsedBytes   int64                        `json:"used_bytes"`
 	EntryCount  int                          `json:"entry_count"`
 	Hits        uint64                       `json:"hits"`
@@ -71,242 +149,168 @@ type ImageCompressionCacheStats struct {
 	Page        int                          `json:"page"`
 	PageSize    int                          `json:"page_size"`
 	Entries     []ImageCompressionCacheEntry `json:"entries"`
+	Nodes       []ImageCacheNodeStats        `json:"nodes"`
 }
 
-type cachedImageCompression struct {
-	key                  imageCompressionCacheKey
-	result               imageReencodeResult
-	row                  ImageCompressionCacheEntry
-	createdAt, expiresAt time.Time
-}
-
-type imageCompressionCache struct {
-	mu          sync.Mutex
-	now         func() time.Time
-	settings    operation_setting.ImageCompressionCacheSettings
-	entries     map[imageCompressionCacheKey]*list.Element
-	lru         list.List
-	expiryTimer *time.Timer
-	generation  uint64
-	stats       ImageCompressionCacheStats
-}
-
-var localImageCompressionCache = imageCompressionCache{now: time.Now}
-
-func init() {
-	operation_setting.RegisterImageCompressionCacheSettingsChange(localImageCompressionCache.settingsChanged)
-}
-
-func (c *imageCompressionCache) settingsChanged() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.syncSettings(c.now())
-}
-
-// syncSettings reconciles the latest settings while holding the cache lock.
-func (c *imageCompressionCache) syncSettings(now time.Time) {
-	settings := operation_setting.GetImageCompressionCacheSettings()
-	if settings == c.settings {
-		return
+func (c *imageCompressionCache) run(parent context.Context, settings operation_setting.ImageCompressionCacheSettings, op string, args ...any) ([]any, bool) {
+	ctx, cancel := context.WithTimeout(parent, imageCacheBudget)
+	defer cancel()
+	enabled := "0"
+	if settings.Enabled {
+		enabled = "1"
 	}
-	c.settings = settings
-	c.generation++
-	if !settings.Enabled {
-		c.removeAll()
-		return
-	}
-	c.pruneExpired(now)
-	for node := c.lru.Front(); node != nil; node = node.Next() {
-		entry := node.Value.(*cachedImageCompression)
-		entry.expiresAt = entry.createdAt.Add(time.Duration(settings.TTLSeconds) * time.Second)
-		entry.row.ExpiresAt = entry.expiresAt.Unix()
-	}
-	c.pruneExpired(now)
-	c.enforceLimits(0)
-	c.scheduleExpiry(now)
-}
-
-func (c *imageCompressionCache) lookup(key imageCompressionCacheKey) (imageReencodeResult, bool, uint64) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	now := c.now()
-	c.syncSettings(now)
-	if !c.settings.Enabled {
-		return imageReencodeResult{}, false, 0
-	}
-	if node := c.entries[key]; node != nil {
-		entry := node.Value.(*cachedImageCompression)
-		if now.Before(entry.expiresAt) {
-			c.lru.MoveToFront(node)
-			c.stats.Hits++
-			entry.row.Hits++
-			entry.row.LastHitAt = now.Unix()
-			return entry.result, true, c.generation
+	values, err := imageCacheScript.Run(ctx, c.client, []string{imageCachePrefix}, append([]any{op, settings.Revision, enabled, settings.MaxBytes, settings.TTLSeconds, common.GetUUID()}, args...)...).Slice()
+	if err != nil || len(values) == 0 {
+		// A disconnected client does not mean the cache is unavailable for others.
+		if parent.Err() == nil {
+			c.retryAfter.Store(time.Now().Add(imageCacheRetryDelay).UnixNano())
 		}
-		c.remove(node)
-		c.stats.Expirations++
+		return nil, false
 	}
-	c.stats.Misses++
-	return imageReencodeResult{}, false, c.generation
+	c.retryAfter.Store(0)
+	return values, true
 }
 
-func (c *imageCompressionCache) store(key imageCompressionCacheKey, result imageReencodeResult, generation uint64) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	now := c.now()
-	c.syncSettings(now)
-	if !c.settings.Enabled || generation != c.generation || c.entries[key] != nil || int64(len(result.data)) > c.settings.MaxBytes {
-		return
-	}
-	c.enforceLimits(int64(len(result.data)))
-	result.data = bytes.Clone(result.data)
-	expiresAt := now.Add(time.Duration(c.settings.TTLSeconds) * time.Second)
-	entry := &cachedImageCompression{key: key, result: result, createdAt: now, expiresAt: expiresAt, row: ImageCompressionCacheEntry{
-		ID: common.GetUUID(), UserID: key.userID, OriginalMIME: result.originalMIME, CompressedMIME: result.compressedMIME,
-		OriginalBytes: result.originalBytes, CompressedBytes: len(result.data), CreatedAt: now.Unix(), ExpiresAt: expiresAt.Unix(),
-	}}
-	if c.entries == nil {
-		c.entries = make(map[imageCompressionCacheKey]*list.Element)
-	}
-	c.entries[key] = c.lru.PushFront(entry)
-	c.stats.UsedBytes += int64(len(result.data))
-	// All new entries have the current TTL; none expires before the pending timer.
-	if c.expiryTimer == nil {
-		c.scheduleExpiry(now)
-	}
+func (c *imageCompressionCache) bypassed() bool {
+	return c.retryAfter.Load() > time.Now().UnixNano()
 }
 
-func (c *imageCompressionCache) enforceLimits(incoming int64) {
-	for c.stats.UsedBytes+incoming > c.settings.MaxBytes || len(c.entries) == imageCompressionCacheEntryLimit && incoming > 0 {
-		c.remove(c.lru.Back())
-		c.stats.Evictions++
+func ApplyImageCompressionCacheSettings(ctx context.Context) ImageCacheStatus {
+	cache := sharedImageCompressionCache.Load()
+	if cache == nil {
+		return ImageCacheNotConfigured
 	}
+	result, ok := cache.run(ctx, operation_setting.GetImageCompressionCacheSettings(), "configure")
+	return imageCacheResponseStatus(result, ok)
 }
 
-func (c *imageCompressionCache) remove(node *list.Element) {
-	entry := node.Value.(*cachedImageCompression)
-	delete(c.entries, entry.key)
-	c.lru.Remove(node)
-	c.stats.UsedBytes -= int64(len(entry.result.data))
-	if len(c.entries) == 0 {
-		c.entries = nil
-		c.stopTimer()
+func imageCacheResponseStatus(result []any, ok bool) ImageCacheStatus {
+	if !ok {
+		return ImageCacheUnavailable
+	}
+	if redisString(result[0]) == "" {
+		return ImageCacheSynchronizing
+	}
+	return ImageCacheReady
+}
+
+func redisString(value any) string {
+	text, _ := value.(string)
+	return text
+}
+
+func redisCount(value any) uint64 {
+	switch number := value.(type) {
+	case string:
+		parsed, _ := strconv.ParseUint(number, 10, 64)
+		return parsed
+	case int64:
+		return uint64(max(0, number))
+	default:
+		return 0
 	}
 }
 
-func (c *imageCompressionCache) removeAll() int {
-	count := len(c.entries)
-	c.lru.Init()
-	c.entries = nil
-	c.stats.UsedBytes = 0
-	c.stats.Removals += uint64(count)
-	c.stopTimer()
-	return count
-}
-
-func (c *imageCompressionCache) pruneExpired(now time.Time) {
-	for node := c.lru.Back(); node != nil; {
-		prev := node.Prev()
-		if !now.Before(node.Value.(*cachedImageCompression).expiresAt) {
-			c.remove(node)
-			c.stats.Expirations++
-		}
-		node = prev
-	}
-}
-
-func (c *imageCompressionCache) stopTimer() {
-	if c.expiryTimer != nil {
-		c.expiryTimer.Stop()
-		c.expiryTimer = nil
-	}
-}
-
-func (c *imageCompressionCache) scheduleExpiry(now time.Time) {
-	c.stopTimer()
-	var next time.Time
-	for node := c.lru.Front(); node != nil; node = node.Next() {
-		expiresAt := node.Value.(*cachedImageCompression).expiresAt
-		if next.IsZero() || expiresAt.Before(next) {
-			next = expiresAt
-		}
-	}
-	if next.IsZero() {
-		return
-	}
-	var timer *time.Timer
-	timer = time.AfterFunc(next.Sub(now), func() {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		if c.expiryTimer == timer {
-			now := c.now()
-			c.pruneExpired(now)
-			c.scheduleExpiry(now)
-		}
-	})
-	c.expiryTimer = timer
-}
-
-func GetImageCompressionCacheSnapshot(page, pageSize int) ImageCompressionCacheStats {
-	return localImageCompressionCache.snapshot(page, pageSize)
-}
-
-func (c *imageCompressionCache) snapshot(page, pageSize int) ImageCompressionCacheStats {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	now := c.now()
-	c.syncSettings(now)
-	c.pruneExpired(now)
-	result := c.stats
-	result.ImageCompressionCacheSettings = c.settings
-	result.EntryCount = len(c.entries)
-	result.Page, result.PageSize = max(page, 1), min(max(pageSize, 1), 100)
-	result.Entries = make([]ImageCompressionCacheEntry, 0)
-	if result.Page-1 > result.EntryCount/result.PageSize {
-		return result
-	}
-	skip := (result.Page - 1) * result.PageSize
-	for node := c.lru.Front(); node != nil && len(result.Entries) < result.PageSize; node = node.Next() {
-		if skip > 0 {
-			skip--
+func decodeCacheNodeCounters(fields []any) []ImageCacheNodeStats {
+	nodes := make([]ImageCacheNodeStats, 0)
+	indexes := make(map[string]int)
+	for i := 0; i+1 < len(fields); i += 2 {
+		field := redisString(fields[i])
+		split := strings.LastIndexByte(field, ':')
+		if split < 1 {
 			continue
 		}
-		result.Entries = append(result.Entries, node.Value.(*cachedImageCompression).row)
-	}
-	return result
-}
-
-func RemoveImageCompressionCacheEntries(ids []string, all bool) int {
-	return localImageCompressionCache.removeEntries(ids, all)
-}
-
-func (c *imageCompressionCache) removeEntries(ids []string, all bool) int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	now := c.now()
-	c.syncSettings(now)
-	c.pruneExpired(now)
-	if all {
-		// An encode already running must not put the cleared content back.
-		c.generation++
-		return c.removeAll()
-	}
-	selected := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		selected[id] = struct{}{}
-	}
-	removed := 0
-	for node := c.lru.Back(); node != nil; {
-		prev := node.Prev()
-		if _, ok := selected[node.Value.(*cachedImageCompression).row.ID]; ok {
-			c.remove(node)
-			removed++
+		name, kind := field[:split], field[split+1:]
+		index, exists := indexes[name]
+		if !exists {
+			index = len(nodes)
+			indexes[name] = index
+			nodes = append(nodes, ImageCacheNodeStats{NodeName: name})
 		}
-		node = prev
+		if kind == "hits" {
+			nodes[index].Hits = redisCount(fields[i+1])
+		}
+		if kind == "misses" {
+			nodes[index].Misses = redisCount(fields[i+1])
+		}
 	}
-	if removed > 0 {
-		c.generation++
-		c.stats.Removals += uint64(removed)
+	slices.SortFunc(nodes, func(a, b ImageCacheNodeStats) int { return strings.Compare(a.NodeName, b.NodeName) })
+	return nodes
+}
+
+func GetImageCompressionCacheSnapshot(ctx context.Context, page, pageSize int) ImageCompressionCacheStats {
+	stats := ImageCompressionCacheStats{
+		ImageCompressionCacheSettings: operation_setting.GetImageCompressionCacheSettings(),
+		Status:                        ImageCacheNotConfigured, Page: page, PageSize: pageSize,
+		Entries: []ImageCompressionCacheEntry{}, Nodes: []ImageCacheNodeStats{},
 	}
-	return removed
+	cache := sharedImageCompressionCache.Load()
+	if cache == nil {
+		return stats
+	}
+	reply, ok := cache.run(ctx, stats.ImageCompressionCacheSettings, "snapshot", (page-1)*pageSize, pageSize)
+	stats.Status = imageCacheResponseStatus(reply, ok)
+	if stats.Status != ImageCacheReady {
+		return stats
+	}
+	if !stats.readSnapshot(reply) {
+		stats.Status = ImageCacheUnavailable
+	}
+	return stats
+}
+
+func (stats *ImageCompressionCacheStats) readSnapshot(reply []any) bool {
+	if len(reply) != 5 {
+		return false
+	}
+	counts, countsOK := reply[1].([]any)
+	rows, rowsOK := reply[3].([]any)
+	nodes, nodesOK := reply[4].([]any)
+	if !countsOK || len(counts) != 6 || !rowsOK || !nodesOK {
+		return false
+	}
+	for _, raw := range rows {
+		var row ImageCompressionCacheEntry
+		if err := common.UnmarshalJsonStr(redisString(raw), &row); err != nil || row.ID == "" {
+			return false
+		}
+		stats.Entries = append(stats.Entries, row)
+	}
+	stats.CacheID = redisString(reply[0])
+	stats.UsedBytes = int64(redisCount(counts[0]))
+	stats.Hits, stats.Misses = redisCount(counts[1]), redisCount(counts[2])
+	stats.Evictions, stats.Expirations, stats.Removals = redisCount(counts[3]), redisCount(counts[4]), redisCount(counts[5])
+	stats.EntryCount = int(redisCount(reply[2]))
+	stats.Nodes = decodeCacheNodeCounters(nodes)
+	return true
+}
+
+func RemoveImageCompressionCacheEntries(ctx context.Context, cacheID string, ids []string, all bool) (int, error) {
+	cache := sharedImageCompressionCache.Load()
+	if cache == nil {
+		return 0, ErrImageCacheUnavailable
+	}
+	clearAll := "0"
+	if all {
+		clearAll = "1"
+	}
+	args := []any{cacheID, clearAll}
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	reply, ok := cache.run(ctx, operation_setting.GetImageCompressionCacheSettings(), "remove", args...)
+	switch imageCacheResponseStatus(reply, ok) {
+	case ImageCacheSynchronizing:
+		return 0, ErrImageCacheChanged
+	case ImageCacheReady:
+		if len(reply) == 2 {
+			if removed, ok := reply[1].(int64); ok {
+				if removed >= 0 {
+					return int(removed), nil
+				}
+				return 0, ErrImageCacheChanged
+			}
+		}
+	}
+	return 0, ErrImageCacheUnavailable
 }

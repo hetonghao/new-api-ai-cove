@@ -87,14 +87,13 @@ export function CacheEntries(props: {
     (ids: readonly string[]) => {
       resetClear()
       setTarget({
-        node_name: stats.node_name,
-        instance_id: stats.instance_id,
+        cache_id: stats.cache_id ?? '',
         ids,
       })
     },
-    [resetClear, stats.instance_id, stats.node_name]
+    [resetClear, stats.cache_id]
   )
-  const disabled = props.stale || clear.isPending
+  const disabled = props.stale || clear.isPending || !stats.cache_id
   const columns = useEntryColumns(beginClear, disabled)
   const table = useDataTable({
     columns,
@@ -155,7 +154,7 @@ export function CacheEntries(props: {
         columns={columns}
         emptyTitle={t('No cached images')}
         emptyDescription={t(
-          'Compressed images will appear here when this node caches them.'
+          'Compressed images cached by any node will appear here.'
         )}
         toolbarProps={null}
         mobileProps={{ enableRowSelection: true }}
@@ -175,8 +174,8 @@ export function CacheEntries(props: {
             : t('Clear selected cache entries?')
         }
         desc={t(
-          'Remove {{count}} cache entries from {{node}}. Future requests may compress these images again.',
-          { count: target?.ids.length ?? 0, node: target?.node_name }
+          'Remove {{count}} shared cache entries. Any node may compress these images again.',
+          { count: target?.ids.length ?? 0 }
         )}
         confirmText={t('Clear')}
         destructive

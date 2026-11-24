@@ -86,7 +86,7 @@ async function prepareConfiguration(rejection?: string) {
   }
 }
 
-test('saves the edited per-instance capacity and reads it back after reopening', async () => {
+test('saves the edited shared capacity and reads it back after reopening', async () => {
   const { editor, user, savedCapacity } = await prepareConfiguration()
   const view = render(editor())
   const capacity = await screen.findByRole('spinbutton', {

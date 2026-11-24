@@ -245,8 +245,7 @@ func SyncOptions(frequency int) {
 
 func validateOptionValue(key string, value string) error {
 	if key == operation_setting.ImageCompressionCacheOptionKey {
-		_, err := operation_setting.ParseImageCompressionCacheSettings(value)
-		return err
+		return errors.New("use the image compression cache configuration endpoint")
 	}
 	if key == operation_setting.DeviMonOptionKey {
 		_, err := operation_setting.ParseDeviMonSettings(value)
@@ -304,9 +303,6 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
-	if key == operation_setting.ImageCompressionCacheOptionKey {
-		return UpdateOptionsBulk(map[string]string{key: value})
-	}
 	if IsRequestPolicyOption(key) {
 		return UpdateRequestPolicyOptions(map[string]string{key: value})
 	}
@@ -342,11 +338,6 @@ func UpdateOption(key string, value string) error {
 // is touched — safe for callers that must commit a set of related options
 // atomically (e.g. payment gateway binding).
 func UpdateOptionsBulk(values map[string]string) error {
-	if _, updatesCache := values[operation_setting.ImageCompressionCacheOptionKey]; updatesCache {
-		// Keep publication in write order, including concurrent database reloads.
-		imageCompressionCacheOptionMutex.Lock()
-		defer imageCompressionCacheOptionMutex.Unlock()
-	}
 	if len(values) == 0 {
 		return nil
 	}

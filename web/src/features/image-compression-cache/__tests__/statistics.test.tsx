@@ -37,8 +37,12 @@ import { ImageCompressionCache } from '..'
 const node1 = 'gateway-1'
 const node2 = 'gateway-2'
 const sample = {
-  node_name: node2,
-  instance_id: 'process-2',
+  status: 'ready',
+  cache_id: 'shared-cache-2',
+  nodes: [
+    { node_name: node1, hits: 3, misses: 3 },
+    { node_name: node2, hits: 4, misses: 0 },
+  ],
   enabled: true,
   max_bytes: 67108864,
   ttl_seconds: 900,
@@ -63,8 +67,7 @@ const sample = {
   })),
 }
 const clearSchema = z.object({
-  node_name: z.string(),
-  instance_id: z.string(),
+  cache_id: z.string(),
   ids: z.array(z.string()),
 })
 
@@ -73,12 +76,16 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-async function openSecondNode(options?: { restartOnClear?: boolean }) {
+async function openSharedStatistics(options?: {
+  restartOnClear?: boolean
+  unavailable?: boolean
+}) {
   let entries = sample.entries
-  let instance = sample.instance_id
+  let instance = sample.cache_id
   let clearCount = 0
-  let nodeAvailable = true
-  vi.spyOn(api, 'get').mockImplementation(async (url, request) => {
+  const available = !options?.unavailable
+  let requestFails = false
+  vi.spyOn(api, 'get').mockImplementation(async (url) => {
     if (url === '/api/image-compression-cache/config') {
       return {
         data: {
@@ -87,67 +94,33 @@ async function openSecondNode(options?: { restartOnClear?: boolean }) {
         },
       }
     }
-    if (url === '/api/image-compression-cache/nodes') {
-      return {
+    if (url !== '/api/image-compression-cache/stats') throw new Error(url)
+    if (requestFails) {
+      throw Object.assign(new Error('Request failed'), {
+        response: { status: 503 },
+      })
+    }
+    return {
+      data: {
+        success: true,
         data: {
-          success: true,
-          data: {
-            local_node_name: node1,
-            nodes: [node1, node2].map((node_name) => ({
-              node_name,
-              status: 'online',
-            })),
-          },
+          ...sample,
+          status: available ? 'ready' : 'unavailable',
+          cache_id: available ? instance : undefined,
+          entry_count: available ? entries.length : 0,
+          entries: available ? entries : [],
         },
-      }
+      },
     }
-    if (url === '/api/image-compression-cache/stats') {
-      const nodeQuery = z
-        .object({ node_name: z.string() })
-        .parse(request?.params)
-      if (nodeQuery.node_name === node1) {
-        return {
-          data: {
-            success: true,
-            data: {
-              ...sample,
-              node_name: node1,
-              instance_id: 'process-1',
-              entry_count: 0,
-              entries: [],
-            },
-          },
-        }
-      }
-      if (nodeQuery.node_name === node2) {
-        if (!nodeAvailable) {
-          throw Object.assign(new Error('Node unavailable'), {
-            response: { status: 503 },
-          })
-        }
-        return {
-          data: {
-            success: true,
-            data: {
-              ...sample,
-              instance_id: instance,
-              entry_count: entries.length,
-              entries,
-            },
-          },
-        }
-      }
-    }
-    throw new Error(url)
   })
   const clear = vi.spyOn(api, 'post').mockImplementation(async (url, body) => {
     if (url !== '/api/image-compression-cache/clear') throw new Error(url)
     const target = clearSchema.parse(body)
     if (options?.restartOnClear && clearCount++ === 0) {
-      instance = 'replacement-process'
+      instance = 'replacement-cache'
       entries = [{ ...sample.entries[0], id: 'replacement-entry' }]
     }
-    if (target.node_name !== node2 || target.instance_id !== instance) {
+    if (target.cache_id !== instance) {
       throw Object.assign(new Error('Cache instance changed'), {
         response: { status: 409 },
       })
@@ -172,36 +145,35 @@ async function openSecondNode(options?: { restartOnClear?: boolean }) {
   )
   const user = userEvent.setup()
   await user.click(screen.getByRole('tab', { name: 'Statistics' }))
-  await screen.findByText('No cached images')
-  await user.selectOptions(
-    screen.getByRole('combobox', { name: 'Node' }),
-    node2
-  )
-  await screen.findByRole('button', { name: 'Clear cache entry entry-a' })
+  if (!options?.unavailable) {
+    await screen.findByRole('button', { name: 'Clear cache entry entry-a' })
+  }
   return {
     user,
     clear,
-    setNodeAvailable: (available: boolean) => {
-      nodeAvailable = available
+    setFailed: (fail: boolean) => {
+      requestFails = fail
     },
   }
 }
 
-test('loads the chosen node and shows memory usage with its live entries', async () => {
-  await openSecondNode()
+test('shows one shared list and reports cache hits per node', async () => {
+  await openSharedStatistics()
   expect(
-    screen.getByRole('progressbar', { name: 'Memory usage' })
+    screen.getByRole('progressbar', { name: 'Shared cache usage' })
   ).toHaveAttribute('aria-valuetext', '4.1 KB / 64 MiB')
   expect(screen.getByText('entry-b')).toBeVisible()
+  const nodeRow = screen.getByRole('row', { name: /gateway-2/ })
+  expect(within(nodeRow).getByText('100%')).toBeVisible()
 })
 
-test('clears one entry on the chosen instance after confirmation', async () => {
-  const { user } = await openSecondNode()
+test('clears one shared entry after confirmation', async () => {
+  const { user } = await openSharedStatistics()
   await user.click(
     screen.getByRole('button', { name: 'Clear cache entry entry-a' })
   )
   const dialog = screen.getByRole('alertdialog')
-  expect(dialog).toHaveTextContent(node2)
+  expect(dialog).toHaveTextContent('shared cache entries')
   await user.click(within(dialog).getByRole('button', { name: 'Clear' }))
 
   await waitFor(() =>
@@ -211,7 +183,7 @@ test('clears one entry on the chosen instance after confirmation', async () => {
 })
 
 test('clears only the selected entries when a bulk clear is confirmed', async () => {
-  const { user } = await openSecondNode()
+  const { user } = await openSharedStatistics()
   for (const id of ['entry-a', 'entry-b']) {
     const row = screen.getByText(id).closest('tr')
     if (!row) throw new Error('Missing cache entry row')
@@ -236,8 +208,8 @@ test('clears only the selected entries when a bulk clear is confirmed', async ()
   expect(screen.getByText('entry-c')).toBeVisible()
 })
 
-test('refreshes after instance replacement without replaying the old clear', async () => {
-  const { user, clear } = await openSecondNode({ restartOnClear: true })
+test('refreshes after shared cache replacement without replaying the old clear', async () => {
+  const { user, clear } = await openSharedStatistics({ restartOnClear: true })
   await user.click(
     screen.getByRole('button', { name: 'Clear cache entry entry-a' })
   )
@@ -253,8 +225,8 @@ test('refreshes after instance replacement without replaying the old clear', asy
 })
 
 test('keeps the most recent snapshot but disables clearing when refresh fails', async () => {
-  const { user, setNodeAvailable } = await openSecondNode()
-  setNodeAvailable(false)
+  const { user, setFailed } = await openSharedStatistics()
+  setFailed(true)
   await user.click(screen.getByRole('button', { name: 'Refresh' }))
 
   expect(
@@ -267,7 +239,7 @@ test('keeps the most recent snapshot but disables clearing when refresh fails', 
     screen.getByRole('button', { name: 'Clear cache entry entry-a' })
   ).toBeDisabled()
 
-  setNodeAvailable(true)
+  setFailed(false)
   await user.click(screen.getByRole('button', { name: 'Refresh' }))
   await waitFor(() =>
     expect(
@@ -277,7 +249,7 @@ test('keeps the most recent snapshot but disables clearing when refresh fails', 
 })
 
 test('announces the selection and clears it with Escape from the inline toolbar', async () => {
-  const { user } = await openSecondNode()
+  const { user } = await openSharedStatistics()
   const row = screen.getByText('entry-a').closest('tr')
   if (!row) throw new Error('Missing cache entry row')
   const checkbox = within(row).getByRole('checkbox')
@@ -297,4 +269,16 @@ test('announces the selection and clears it with Escape from the inline toolbar'
 
   expect(checkbox).not.toBeChecked()
   expect(toolbar).not.toBeInTheDocument()
+})
+
+test('warns when Redis is unavailable instead of presenting an empty cache', async () => {
+  await openSharedStatistics({ unavailable: true })
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    'Shared image cache Redis is unavailable. Requests are compressed without caching.'
+  )
+  expect(screen.queryByText('No cached images')).not.toBeInTheDocument()
+  expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Clear selected' })
+  ).not.toBeInTheDocument()
 })

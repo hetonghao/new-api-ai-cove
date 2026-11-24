@@ -1,8 +1,6 @@
 package model
 
 import (
-	"context"
-
 	"github.com/QuantumNous/new-api/common"
 
 	"gorm.io/gorm"
@@ -72,19 +70,9 @@ func UpsertSystemInstance(nodeName string, info any, startedAt int64, lastSeenAt
 }
 
 func ListSystemInstances() ([]*SystemInstance, error) {
-	return ListSystemInstancesContext(context.Background())
-}
-
-func ListSystemInstancesContext(ctx context.Context) ([]*SystemInstance, error) {
 	var instances []*SystemInstance
-	err := DB.WithContext(ctx).Order("last_seen_at desc").Find(&instances).Error
+	err := DB.Order("last_seen_at desc").Find(&instances).Error
 	return instances, err
-}
-
-func GetSystemInstance(ctx context.Context, name string) (SystemInstance, error) {
-	var instance SystemInstance
-	err := DB.WithContext(ctx).Where("node_name = ?", name).Take(&instance).Error
-	return instance, err
 }
 
 func DeleteStaleSystemInstances(now int64) (int64, error) {

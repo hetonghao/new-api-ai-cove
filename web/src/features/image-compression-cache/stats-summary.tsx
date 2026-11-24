@@ -22,6 +22,14 @@ import { useTranslation } from 'react-i18next'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { TitledCard } from '@/components/ui/titled-card'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatBytes, formatNumber, formatTimestampToDate } from '@/lib/format'
@@ -61,7 +69,7 @@ export function CacheStatsSummary(props: {
         }).format(stats.hits / lookups)
   return (
     <TitledCard
-      title={t('Cache statistics')}
+      title={t('Shared image cache')}
       description={t('Last updated: {{time}}', {
         time: formatTimestampToDate(props.updatedAt, 'milliseconds'),
       })}
@@ -80,29 +88,22 @@ export function CacheStatsSummary(props: {
     >
       <div className='space-y-4'>
         <div className='flex flex-wrap items-center gap-x-3 gap-y-2'>
-          <span className='font-medium [overflow-wrap:anywhere]'>
-            {stats.node_name}
-          </span>
           <StatusBadge
             variant={stats.enabled ? 'success' : 'neutral'}
             copyable={false}
           >
             {stats.enabled ? t('Enabled') : t('Disabled')}
           </StatusBadge>
-          <span className='text-muted-foreground inline-flex min-w-0 items-baseline gap-1 text-xs'>
-            {t('Instance')}
-            <code className='min-w-0 truncate' title={stats.instance_id}>
-              {stats.instance_id}
-            </code>
-          </span>
         </div>
         <div className='space-y-2'>
           <div className='flex flex-wrap justify-between gap-2'>
-            <span className='text-muted-foreground'>{t('Memory usage')}</span>
+            <span className='text-muted-foreground'>
+              {t('Shared cache usage')}
+            </span>
             <span className='tabular-nums'>{capacity}</span>
           </div>
           <Progress
-            aria-label={t('Memory usage')}
+            aria-label={t('Shared cache usage')}
             aria-valuetext={capacity}
             value={
               stats.max_bytes > 0
@@ -135,5 +136,59 @@ export function CacheStatsSummary(props: {
         </dl>
       </div>
     </TitledCard>
+  )
+}
+
+export function CacheNodeStats(props: { readonly nodes: CacheStats['nodes'] }) {
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  const percent = new Intl.NumberFormat(locale, {
+    style: 'percent',
+    maximumFractionDigits: 1,
+  })
+  if (props.nodes.length === 0) return null
+  return (
+    <section className='space-y-3'>
+      <h3 className='text-sm font-semibold'>{t('Cache hits by node')}</h3>
+      <div className='rounded-lg border'>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead scope='col'>{t('Node')}</TableHead>
+              <TableHead scope='col' className='text-end'>
+                {t('Hits')}
+              </TableHead>
+              <TableHead scope='col' className='text-end'>
+                {t('Misses')}
+              </TableHead>
+              <TableHead scope='col' className='text-end'>
+                {t('Cache hit rate')}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {props.nodes.map((node) => {
+              const total = node.hits + node.misses
+              return (
+                <TableRow key={node.node_name}>
+                  <TableCell className='[overflow-wrap:anywhere] whitespace-normal'>
+                    {node.node_name}
+                  </TableCell>
+                  <TableCell className='text-end tabular-nums'>
+                    {formatNumber(node.hits, locale)}
+                  </TableCell>
+                  <TableCell className='text-end tabular-nums'>
+                    {formatNumber(node.misses, locale)}
+                  </TableCell>
+                  <TableCell className='text-end tabular-nums'>
+                    {total ? percent.format(node.hits / total) : '–'}
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </div>
+    </section>
   )
 }

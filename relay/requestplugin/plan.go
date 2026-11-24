@@ -466,6 +466,10 @@ func (p *Plan) runInstance(ctx context.Context, call Call, instance *request_plu
 		return change{}, errorInvalidEffect, err
 	}
 	next.effects = len(effects)
+	var batch *imageCacheBatch
+	if !p.dryRun {
+		batch = beginImageCacheBatch(ctx, call.User.ID, media, effects)
+	}
 	// mediaOps are the json.patch operations of media.reencode and
 	// media.text effects.
 	var mediaOps []requestpatch.Operation
@@ -486,11 +490,7 @@ func (p *Plan) runInstance(ctx context.Context, call Call, instance *request_plu
 			if effect.Media < 0 || effect.Media >= len(media) {
 				return change{}, errorInvalidEffect, fmt.Errorf("effects[%d].media %d does not exist", index, effect.Media)
 			}
-			userID := call.User.ID
-			if p.dryRun {
-				userID = 0
-			}
-			ops, reencode, err := reencodeMedia(ctx, userID, media[effect.Media], effect)
+			ops, reencode, err := reencodeMedia(ctx, batch, index, media[effect.Media], effect)
 			if err != nil {
 				return change{}, errorMedia, fmt.Errorf("effects[%d]: %w", index, err)
 			}
@@ -575,6 +575,7 @@ func (p *Plan) runInstance(ctx context.Context, call Call, instance *request_plu
 		}
 		next.record.Attachments, next.record.MoreAttachments = attachments.record()
 	}
+	batch.store(ctx, call.User.ID)
 	return next, "", nil
 }
 
