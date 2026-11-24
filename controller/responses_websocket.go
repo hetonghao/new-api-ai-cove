@@ -183,10 +183,11 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 
 				var outgoing []byte
 				var state *responsesWebSocketRequestState
-				turn := baseCtx.Copy()
+				turnBase := baseCtx
 				if upstreamConn != nil {
-					turn = pinnedCtx.Copy()
+					turnBase = pinnedCtx
 				}
+				turn := turnBase.Copy()
 				turn.Set(common.TurboWireZstdKey, frame.zstd)
 				if upstreamConn == nil {
 					var connectMs int64
