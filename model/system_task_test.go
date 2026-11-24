@@ -539,3 +539,40 @@ func runUpdateSystemTaskStateIdenticalPayloadKeepsLock(t *testing.T, taskType st
 	require.NotNil(t, finished)
 	assert.Equal(t, SystemTaskStatusSucceeded, finished.Status)
 }
+
+func TestDeviMonLastCompleteInventoryDatabaseMatrix(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			db := useSystemTaskMatrixDB(t, dialect)
+			rows := []SystemTask{
+				{TaskID: "first", Type: SystemTaskTypeDevinMonitor, Status: SystemTaskStatusFailed},
+				{TaskID: "complete", Type: SystemTaskTypeDevinMonitor, Status: SystemTaskStatusSucceeded},
+				{TaskID: "other", Type: SystemTaskTypeChannelTest, Status: SystemTaskStatusSucceeded},
+				{TaskID: "interrupted", Type: SystemTaskTypeDevinMonitor, Status: SystemTaskStatusFailed},
+				{TaskID: "newer", Type: SystemTaskTypeDevinMonitor, Status: SystemTaskStatusSucceeded},
+				{TaskID: "failed-again", Type: SystemTaskTypeDevinMonitor, Status: SystemTaskStatusFailed},
+			}
+			require.NoError(t, db.Create(&rows).Error)
+			last, err := GetLatestSuccessfulDeviMonTask(rows[3].ID)
+			require.NoError(t, err)
+			require.NotNil(t, last)
+			require.Equal(t, "complete", last.TaskID)
+			last, err = GetLatestSuccessfulDeviMonTask(rows[0].ID)
+			require.NoError(t, err)
+			require.Nil(t, last)
+			// Both maintenance paths must keep the displayed snapshot, even
+			// when the latest attempt is failed, but may remove older snapshots.
+			_, err = DeleteFinishedSystemTasks(context.Background(), common.GetTimestamp()+1)
+			require.NoError(t, err)
+			_, err = DeleteSystemTaskHistory(SystemTaskFilter{Type: SystemTaskTypeDevinMonitor})
+			require.NoError(t, err)
+			last, err = GetLatestSuccessfulDeviMonTask(rows[5].ID)
+			require.NoError(t, err)
+			require.NotNil(t, last)
+			require.Equal(t, "newer", last.TaskID)
+			last, err = GetLatestSuccessfulDeviMonTask(rows[3].ID)
+			require.NoError(t, err)
+			require.Nil(t, last)
+		})
+	}
+}

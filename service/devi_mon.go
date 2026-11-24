@@ -3,21 +3,19 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"math/rand/v2"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-
-	"github.com/bytedance/gopkg/util/gopool"
 )
 
 // The Devin monitor reads two CPA instances through their management API.
@@ -29,7 +27,6 @@ const (
 	deviMonSubscribeURL = "https://chatgpt.com/backend-api/subscriptions"
 
 	deviMonRequestTimeout  = 45 * time.Second
-	deviMonTickInterval    = time.Minute
 	deviMonMaxResponseSize = 1 << 20
 )
 
@@ -48,25 +45,34 @@ type DeviMonCard struct {
 }
 
 // DeviMonAccount is one Codex account with its weekly allowance, credits and
-// reset cards, paired with the enable state of the same-email Devin account.
+// reset cards, paired with the configuration of the same-email Devin account.
 type DeviMonAccount struct {
-	Email         string        `json:"email"`
-	UsedPercent   *float64      `json:"used_percent"`
-	ResetAt       *int64        `json:"reset_at"`
-	PlanType      string        `json:"plan_type"`
-	CreditBalance string        `json:"credit_balance"`
-	Unlimited     bool          `json:"unlimited"`
-	Cards         []DeviMonCard `json:"cards"`
-	RenewAt       string        `json:"renew_at"`
-	RenewSource   string        `json:"renew_source"`
-	DevinDisabled *bool         `json:"devin_disabled"`
-	Error         string        `json:"error"`
+	Email         string          `json:"email"`
+	UsedPercent   *float64        `json:"used_percent"`
+	ResetAt       *int64          `json:"reset_at"`
+	PlanType      string          `json:"plan_type"`
+	CreditBalance string          `json:"credit_balance"`
+	Unlimited     bool            `json:"unlimited"`
+	Cards         []DeviMonCard   `json:"cards"`
+	RenewAt       string          `json:"renew_at"`
+	RenewSource   string          `json:"renew_source"`
+	DevinDisabled *bool           `json:"devin_disabled"`
+	DevinRouting  *DeviMonRouting `json:"devin_routing,omitempty"`
+	Error         string          `json:"error"`
 }
 
-// DeviMonDevin is a Devin account with no same-email Codex account.
+// DeviMonRouting holds CPA account overrides. A nil field means no override;
+// a nil routing object means these settings were not collected.
+type DeviMonRouting struct {
+	Priority *int64 `json:"priority"`
+	Weight   *int64 `json:"weight"`
+}
+
+// DeviMonDevin contains the configuration read from the Devin inventory.
 type DeviMonDevin struct {
-	Email    string `json:"email"`
-	Disabled bool   `json:"disabled"`
+	Email    string          `json:"email"`
+	Disabled bool            `json:"disabled"`
+	Routing  *DeviMonRouting `json:"devin_routing,omitempty"`
 }
 
 // DeviMonSnapshot is the last completed collection.
@@ -79,92 +85,73 @@ type DeviMonSnapshot struct {
 	Errors          []string         `json:"errors"`
 }
 
-var (
-	deviMonOnce     sync.Once
-	deviMonRunning  atomic.Bool
-	deviMonSnapshot atomic.Pointer[DeviMonSnapshot]
-	// deviMonLastRun holds the unix second the last scheduled run started.
-	deviMonLastRun atomic.Int64
-)
-
 // DeviMonKey returns the management key shared by both CPA instances.
 func DeviMonKey() string {
 	return strings.TrimSpace(common.GetEnvOrDefaultString("CPA_MANAGEMENT_KEY", ""))
 }
 
-// GetDeviMonSnapshot returns the last completed collection, or nil before the
-// first run finishes.
-func GetDeviMonSnapshot() *DeviMonSnapshot {
-	return deviMonSnapshot.Load()
-}
+type deviMonTask struct{}
 
-// DeviMonNextRunAt returns the scheduled start of the next collection, derived
-// from the last run and the current interval. Zero means nothing is scheduled,
-// which happens when no management key is configured.
-func DeviMonNextRunAt() int64 {
-	if DeviMonKey() == "" {
-		return 0
-	}
-	last := deviMonLastRun.Load()
-	if last == 0 {
-		return 0
-	}
-	return last + int64(operation_setting.GetDeviMonSettings().IntervalMinutes)*60
+func (deviMonTask) Type() string  { return model.SystemTaskTypeDevinMonitor }
+func (deviMonTask) Enabled() bool { return DeviMonKey() != "" }
+func (deviMonTask) Interval() time.Duration {
+	return time.Duration(operation_setting.GetDeviMonSettings().IntervalMinutes) * time.Minute
 }
+func (deviMonTask) NewPayload() any { return nil }
 
-// IsDeviMonCollecting reports whether a collection is in flight.
-func IsDeviMonCollecting() bool {
-	return deviMonRunning.Load()
-}
+func init() { RegisterSystemTaskHandler(deviMonTask{}) }
 
-// StartDeviMonTask starts the background collector. Only the master node runs
-// it, so the two new-api instances never collect at the same time.
-func StartDeviMonTask() {
-	deviMonOnce.Do(func() {
-		if !common.IsMasterNode {
-			return
-		}
-		gopool.Go(func() {
-			logger.LogInfo(context.Background(), common.LogText("devin monitor task started"))
-			ticker := time.NewTicker(deviMonTickInterval)
-			defer ticker.Stop()
-			for {
-				now := time.Now()
-				// The due time is derived from the last run, so changing the
-				// interval in the UI takes effect without a restart.
-				if DeviMonNextRunAt() <= now.Unix() {
-					scheduleDeviMon(now)
-				}
-				<-ticker.C
-			}
-		})
-	})
-}
-
-// scheduleDeviMon runs one collection and records when it started. The
-// timestamp is written before the run so a slow cycle cannot overlap itself.
-func scheduleDeviMon(now time.Time) {
-	if DeviMonKey() == "" {
+func (deviMonTask) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	snapshot, err := collectDeviMon(ctx)
+	if err != nil {
+		failSystemTask(task, runnerID, err)
 		return
 	}
-	deviMonLastRun.Store(now.Unix())
-	if _, err := RunDeviMon(context.Background()); err != nil {
-		logger.LogError(context.Background(), common.LogText("devin monitor collection failed: %v", err))
+	if err := model.FinishSystemTask(task.TaskID, runnerID, model.SystemTaskStatusSucceeded, snapshot, ""); err != nil {
+		logSystemTaskLockError(ctx, task, err)
 	}
 }
 
-// RunDeviMon collects every Codex account once. Accounts are queried one at a
+type DeviMonState struct {
+	IntervalMinutes int              `json:"interval_minutes"`
+	Snapshot        *DeviMonSnapshot `json:"snapshot"`
+	Collecting      bool             `json:"collecting"`
+	NextRunAt       int64            `json:"next_run_at"`
+	Configured      bool             `json:"configured"`
+	LastError       string           `json:"last_error,omitempty"`
+}
+
+// The primary writes task results; every gateway reads them. The scheduler
+// counts the interval from completion, including failed attempts.
+func GetDeviMonState() (DeviMonState, error) {
+	handler := deviMonTask{}
+	state := DeviMonState{Configured: handler.Enabled(), IntervalMinutes: operation_setting.GetDeviMonSettings().IntervalMinutes}
+	latest, err := model.GetLatestSystemTask(handler.Type())
+	if err != nil || latest == nil {
+		return state, err
+	}
+	state.Collecting = latest.Status == model.SystemTaskStatusPending || latest.Status == model.SystemTaskStatusRunning
+	if state.Configured && !state.Collecting {
+		state.NextRunAt = latest.UpdatedAt + int64(state.IntervalMinutes)*60
+	}
+	state.LastError = latest.Error
+	if latest.Status != model.SystemTaskStatusSucceeded {
+		latest, err = model.GetLatestSuccessfulDeviMonTask(latest.ID)
+		if err != nil || latest == nil {
+			return state, err
+		}
+	}
+	err = common.UnmarshalJsonStr(latest.Result, &state.Snapshot)
+	return state, err
+}
+
+// collectDeviMon collects every Codex account once. Accounts are queried one at a
 // time with a random gap so the upstream never sees concurrent probes.
-func RunDeviMon(ctx context.Context) (*DeviMonSnapshot, error) {
+func collectDeviMon(ctx context.Context) (*DeviMonSnapshot, error) {
 	key := DeviMonKey()
 	if key == "" {
 		return nil, errors.New("CPA_MANAGEMENT_KEY is not configured")
 	}
-	if !deviMonRunning.CompareAndSwap(false, true) {
-		return GetDeviMonSnapshot(), nil
-	}
-	defer deviMonRunning.Store(false)
-
 	started := time.Now()
 	snapshot := &DeviMonSnapshot{
 		IntervalMinutes: operation_setting.GetDeviMonSettings().IntervalMinutes,
@@ -173,51 +160,57 @@ func RunDeviMon(ctx context.Context) (*DeviMonSnapshot, error) {
 		Errors:          []string{},
 	}
 
-	codexFiles, errCodex := deviMonAuthFiles(ctx, key, deviMonCodexBase)
-	if errCodex != nil {
-		snapshot.Errors = append(snapshot.Errors, "cpa-pro-2: "+errCodex.Error())
+	codexFiles, err := deviMonAuthFiles(ctx, key, deviMonCodexBase)
+	if err != nil {
+		return nil, fmt.Errorf("cpa-pro-2: %w", err)
 	}
-	devinFiles, errDevin := deviMonAuthFiles(ctx, key, deviMonDevinBase)
-	if errDevin != nil {
-		snapshot.Errors = append(snapshot.Errors, "cpa-pro-1: "+errDevin.Error())
+	devinFiles, err := deviMonAuthFiles(ctx, key, deviMonDevinBase)
+	if err != nil {
+		return nil, fmt.Errorf("cpa-pro-1: %w", err)
 	}
-	failure := errors.Join(errCodex, errDevin)
 
 	codexAccounts := filterDeviMonProvider(codexFiles, "codex")
-	devinByName := map[string]map[string]any{}
+	devinByEmail := map[string]DeviMonDevin{}
 	for _, file := range filterDeviMonProvider(devinFiles, "devin") {
 		if email := deviMonString(file["email"]); email != "" {
-			devinByName[email] = file
-		}
-	}
-
-	for i, file := range codexAccounts {
-		if ctx.Err() != nil {
-			snapshot.Errors = append(snapshot.Errors, "collection cancelled")
-			break
-		}
-		snapshot.Accounts = append(snapshot.Accounts, collectDeviMonAccount(ctx, key, file, devinByName))
-		if i < len(codexAccounts)-1 {
-			if gap := deviMonNextGap(); gap > 0 {
-				select {
-				case <-ctx.Done():
-				case <-time.After(gap):
-				}
+			devinByEmail[strings.ToLower(email)] = DeviMonDevin{
+				Email:    email,
+				Disabled: deviMonBool(file["disabled"]),
+				Routing: &DeviMonRouting{
+					Priority: deviMonOptionalInt(file["priority"]),
+					Weight:   deviMonOptionalInt(file["weight"]),
+				},
 			}
 		}
 	}
 
-	paired := map[string]bool{}
-	for _, account := range snapshot.Accounts {
-		paired[account.Email] = true
+	// Pair from both complete credential lists, independently of quota probes.
+	paired := make(map[string]bool, len(codexAccounts))
+	for _, file := range codexAccounts {
+		paired[strings.ToLower(deviMonString(file["email"]))] = true
 	}
-	for email, file := range devinByName {
+	for email, devin := range devinByEmail {
 		if !paired[email] {
-			snapshot.UnpairedDevin = append(snapshot.UnpairedDevin, DeviMonDevin{
-				Email:    email,
-				Disabled: deviMonBool(file["disabled"]),
-			})
+			snapshot.UnpairedDevin = append(snapshot.UnpairedDevin, devin)
 		}
+	}
+	for i, file := range codexAccounts {
+		if i > 0 {
+			if gap := deviMonNextGap(); gap > 0 {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(gap):
+				}
+			}
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		snapshot.Accounts = append(snapshot.Accounts, collectDeviMonAccount(ctx, key, file, devinByEmail))
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	sort.Slice(snapshot.UnpairedDevin, func(i, j int) bool {
 		return snapshot.UnpairedDevin[i].Email < snapshot.UnpairedDevin[j].Email
@@ -226,8 +219,7 @@ func RunDeviMon(ctx context.Context) (*DeviMonSnapshot, error) {
 
 	snapshot.DurationMS = time.Since(started).Milliseconds()
 	snapshot.CollectedAt = time.Now().Unix()
-	deviMonSnapshot.Store(snapshot)
-	return snapshot, failure
+	return snapshot, nil
 }
 
 // deviMonNextGap returns the pause before the next account, in [min, max).
@@ -241,23 +233,26 @@ func deviMonNextGap() time.Duration {
 }
 
 // sortDeviMonAccounts orders by weekly reset time, earliest first; accounts
-// without a reset time keep their original order at the end.
+// without a reset time come last. Email breaks ties across inventory refreshes.
 func sortDeviMonAccounts(accounts []DeviMonAccount) {
 	sort.SliceStable(accounts, func(i, j int) bool {
 		left, right := accounts[i].ResetAt, accounts[j].ResetAt
-		if left == nil || right == nil {
+		if left != nil && right != nil && *left != *right {
+			return *left < *right
+		}
+		if (left == nil) != (right == nil) {
 			return left != nil
 		}
-		return *left < *right
+		return accounts[i].Email < accounts[j].Email
 	})
 }
 
-func collectDeviMonAccount(ctx context.Context, key string, file map[string]any, devinByName map[string]map[string]any) DeviMonAccount {
+func collectDeviMonAccount(ctx context.Context, key string, file map[string]any, devinByEmail map[string]DeviMonDevin) DeviMonAccount {
 	email := deviMonString(file["email"])
 	account := DeviMonAccount{Email: email, Cards: []DeviMonCard{}}
-	if devin, ok := devinByName[email]; ok {
-		disabled := deviMonBool(devin["disabled"])
-		account.DevinDisabled = &disabled
+	if devin, ok := devinByEmail[strings.ToLower(email)]; ok {
+		account.DevinDisabled = &devin.Disabled
+		account.DevinRouting = devin.Routing
 	}
 
 	usage, errUsage := deviMonAPICall(ctx, key, deviMonCodexBase, deviMonString(file["auth_index"]), deviMonUsageURL, nil)
@@ -435,6 +430,14 @@ func deviMonFloat(value any) (float64, bool) {
 func deviMonInt(value any) (int64, bool) {
 	number, ok := value.(float64)
 	return int64(number), ok
+}
+
+func deviMonOptionalInt(value any) *int64 {
+	n, ok := deviMonInt(value)
+	if !ok {
+		return nil
+	}
+	return &n
 }
 
 func deviMonIntOr(value any) int64 {

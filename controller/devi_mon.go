@@ -17,28 +17,27 @@ const deviMonMaxRequestSize = 4 << 10
 // GetDeviMonSnapshot returns the last Devin monitor collection. It never
 // triggers an upstream probe, so opening the page cannot consume quota.
 func GetDeviMonSnapshot(c *gin.Context) {
-	common.ApiSuccess(c, gin.H{
-		"snapshot":    service.GetDeviMonSnapshot(),
-		"collecting":  service.IsDeviMonCollecting(),
-		"next_run_at": service.DeviMonNextRunAt(),
-		"configured":  service.DeviMonKey() != "",
-	})
+	state, err := service.GetDeviMonState()
+	if err != nil {
+		logger.LogError(c.Request.Context(), common.LogText("failed to load devin monitor state: %v", err))
+		common.ApiErrorStatus(c, http.StatusInternalServerError, common.NewMessage("Failed to load the Devin monitor"))
+		return
+	}
+	common.ApiSuccess(c, state)
 }
 
-// RunDeviMonCollection starts one collection synchronously. The page only
-// uses it for the manual refresh button.
+// A manual request only queues work. Closing the page cannot cancel the job.
 func RunDeviMonCollection(c *gin.Context) {
 	if service.DeviMonKey() == "" {
 		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Set CPA_MANAGEMENT_KEY before collecting"))
 		return
 	}
-	snapshot, err := service.RunDeviMon(c.Request.Context())
-	if err != nil && snapshot == nil {
+	if _, _, err := service.EnqueueSystemTask(model.SystemTaskTypeDevinMonitor, nil); err != nil {
 		logger.LogError(c.Request.Context(), common.LogText("devin monitor collection failed: %v", err))
-		common.ApiErrorStatus(c, http.StatusBadGateway, common.NewMessage("Could not collect the Devin monitor data"))
+		common.ApiErrorStatus(c, http.StatusInternalServerError, common.NewMessage("Could not collect the Devin monitor data"))
 		return
 	}
-	common.ApiSuccess(c, gin.H{"snapshot": snapshot, "collecting": false, "next_run_at": service.DeviMonNextRunAt(), "configured": true})
+	GetDeviMonSnapshot(c)
 }
 
 func GetDeviMonSettingsHandler(c *gin.Context) {

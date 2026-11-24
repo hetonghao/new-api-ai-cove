@@ -6,7 +6,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -99,7 +105,7 @@ func TestDeviMonCollectsAllowanceCardsAndDevinState(t *testing.T) {
 	defer upstream.Close()
 
 	t.Cleanup(deviMonReplaceBase(t, upstream.URL))
-	snapshot, err := RunDeviMon(context.Background())
+	snapshot, err := collectDeviMon(context.Background())
 	require.NoError(t, err)
 	require.Len(t, snapshot.Accounts, 2)
 
@@ -114,6 +120,8 @@ func TestDeviMonCollectsAllowanceCardsAndDevinState(t *testing.T) {
 	assert.Equal(t, "2026-12-13T06:39:00Z", snapshot.Accounts[0].Cards[0].ExpiresAt)
 	require.NotNil(t, snapshot.Accounts[0].DevinDisabled)
 	assert.True(t, *snapshot.Accounts[0].DevinDisabled)
+	assert.Equal(t, &DeviMonRouting{}, snapshot.Accounts[0].DevinRouting)
+	assert.Nil(t, snapshot.Accounts[1].DevinRouting)
 
 	// The live subscription endpoint wins over the stale id_token snapshot:
 	// late@example.com carries 2026-11-18 in id_token but renews on 2026-12-20.
@@ -122,29 +130,119 @@ func TestDeviMonCollectsAllowanceCardsAndDevinState(t *testing.T) {
 }
 
 func TestDeviMonListsDevinAccountsWithoutCodexTwin(t *testing.T) {
+	codex := deviMonTestAccount("paired@example.com", "idx-1", "acct-1", "")
+	codex["priority"], codex["weight"] = 99, 88
 	upstream := deviMonFakeUpstream(t, map[string]any{
 		"files": []any{
-			deviMonTestAccount("paired@example.com", "idx-1", "acct-1", ""),
-			map[string]any{"email": "paired@example.com", "auth_index": "d-1", "provider": "devin", "disabled": true},
-			map[string]any{"email": "orphan@example.com", "auth_index": "d-2", "provider": "devin", "disabled": false},
+			codex,
+			map[string]any{"email": " Paired@Example.com ", "auth_index": "d-1", "provider": "devin", "disabled": true, "priority": -4, "weight": 0},
+			map[string]any{"email": "orphan@example.com", "auth_index": "d-2", "provider": "devin", "disabled": false, "weight": 25},
 		},
 		"idx-1": map[string]string{"usage": `{}`, "cards": `{}`, "subscription": `{}`},
 	})
 	defer upstream.Close()
 
 	t.Cleanup(deviMonReplaceBase(t, upstream.URL))
-	snapshot, err := RunDeviMon(context.Background())
+	snapshot, err := collectDeviMon(context.Background())
 	require.NoError(t, err)
 	require.Len(t, snapshot.Accounts, 1)
 	require.NotNil(t, snapshot.Accounts[0].DevinDisabled)
 	assert.True(t, *snapshot.Accounts[0].DevinDisabled)
+	paired := snapshot.Accounts[0].DevinRouting
+	require.NotNil(t, paired)
+	require.NotNil(t, paired.Priority)
+	require.NotNil(t, paired.Weight)
+	assert.EqualValues(t, -4, *paired.Priority)
+	assert.Zero(t, *paired.Weight)
 	require.Len(t, snapshot.UnpairedDevin, 1)
 	assert.Equal(t, "orphan@example.com", snapshot.UnpairedDevin[0].Email)
 	assert.False(t, snapshot.UnpairedDevin[0].Disabled)
+	orphan := snapshot.UnpairedDevin[0].Routing
+	require.NotNil(t, orphan)
+	assert.Nil(t, orphan.Priority)
+	require.NotNil(t, orphan.Weight)
+	assert.EqualValues(t, 25, *orphan.Weight)
 }
 
 func TestDeviMonRequiresManagementKey(t *testing.T) {
 	t.Setenv("CPA_MANAGEMENT_KEY", "")
-	_, err := RunDeviMon(context.Background())
+	_, err := collectDeviMon(context.Background())
 	require.Error(t, err)
+}
+
+func TestDeviMonInterruptedCollectionKeepsLastCompleteInventoryAndSharedSchedule(t *testing.T) {
+	truncate(t)
+	handler := deviMonTask{}
+	withSystemTaskRegistry(t, handler)
+	var interrupt atomic.Pointer[context.CancelFunc]
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v0/management/auth-files" {
+			_, _ = w.Write([]byte(`{"files":[{"provider":"codex","email":"first@example.com","auth_index":"1"},{"provider":"codex","email":"user888@example.com","auth_index":"2"},{"provider":"devin","email":"user888@example.com","disabled":true}]}`))
+			return
+		}
+		if cancel := interrupt.Load(); cancel != nil {
+			(*cancel)()
+		}
+		_, _ = w.Write([]byte(`{"status_code":200,"body":"{}"}`))
+	}))
+	defer upstream.Close()
+	t.Cleanup(deviMonReplaceBase(t, upstream.URL))
+
+	runSystemTaskScheduler()
+	queued, created, err := EnqueueSystemTask(handler.Type(), nil)
+	require.NoError(t, err)
+	require.False(t, created, "manual and scheduled collection share one job")
+	claim := func(task *model.SystemTask) *model.SystemTask {
+		t.Helper()
+		claimed, ok, err := model.ClaimSystemTask(task.ID, task.Type, "primary", common.GetTimestamp()+60)
+		require.NoError(t, err)
+		require.True(t, ok)
+		return claimed
+	}
+	handler.Run(context.Background(), claim(queued), "primary")
+	state, err := GetDeviMonState()
+	require.NoError(t, err)
+	require.NotNil(t, state.Snapshot)
+	require.Len(t, state.Snapshot.Accounts, 2)
+	require.Equal(t, "user888@example.com", state.Snapshot.Accounts[1].Email)
+	require.Empty(t, state.Snapshot.UnpairedDevin)
+	complete := state.Snapshot
+
+	queued, created, err = EnqueueSystemTask(handler.Type(), nil)
+	require.NoError(t, err)
+	require.True(t, created)
+	state, err = GetDeviMonState()
+	require.NoError(t, err)
+	require.True(t, state.Collecting)
+	require.Equal(t, complete, state.Snapshot)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	interrupt.Store(&cancel)
+	deviMonAccountGapMin, deviMonAccountGapMax = time.Hour, time.Hour
+	handler.Run(ctx, claim(queued), "primary")
+
+	terminal, err := model.GetSystemTaskByTaskID(queued.TaskID)
+	require.NoError(t, err)
+	require.Equal(t, model.SystemTaskStatusFailed, terminal.Status)
+	oldSettings := operation_setting.GetDeviMonSettings()
+	t.Cleanup(func() { require.NoError(t, operation_setting.SetDeviMonSettings(oldSettings)) })
+	require.NoError(t, operation_setting.SetDeviMonSettings(operation_setting.DeviMonSettings{IntervalMinutes: 23}))
+	state, err = GetDeviMonState()
+	require.NoError(t, err)
+	require.False(t, state.Collecting)
+	require.NotEmpty(t, state.LastError)
+	require.Equal(t, terminal.UpdatedAt+23*60, state.NextRunAt)
+	require.Equal(t, complete, state.Snapshot)
+}
+
+func TestDeviMonCannotPublishUnpairedAccountsFromFailedInventory(t *testing.T) {
+	upstream := deviMonFakeUpstream(t, map[string]any{"files": []any{map[string]any{"email": "paired@example.com", "provider": "devin"}}})
+	defer upstream.Close()
+	t.Cleanup(deviMonReplaceBase(t, upstream.URL))
+	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusBadGateway) }))
+	defer broken.Close()
+	deviMonCodexBase = broken.URL
+	snapshot, err := collectDeviMon(context.Background())
+	require.ErrorContains(t, err, "cpa-pro-2: HTTP 502")
+	require.Nil(t, snapshot)
 }

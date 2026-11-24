@@ -25,6 +25,7 @@ const (
 	SystemTaskTypeMidjourneyPoll = "midjourney_poll"
 	SystemTaskTypeAsyncTaskPoll  = "async_task_poll"
 	SystemTaskTypeChannelBalance = "channel_balance"
+	SystemTaskTypeDevinMonitor   = "devin_monitor"
 	SystemTaskTypeCleanup        = "system_task_cleanup"
 
 	systemTaskCleanupBatchSize = 500
@@ -230,12 +231,28 @@ func ListSystemTasks(filter SystemTaskFilter, offset, limit int) ([]*SystemTask,
 	return tasks, total, err
 }
 
+// The latest row of each type drives scheduling. The Devin monitor also needs
+// its last successful result while a newer attempt is running or failed.
+func retainedSystemTaskIDs(ctx context.Context) ([]int64, error) {
+	db := DB.WithContext(ctx)
+	var ids []int64
+	if err := db.Model(&SystemTask{}).Group("type").Pluck("MAX(id)", &ids).Error; err != nil {
+		return nil, err
+	}
+	var complete []int64
+	if err := db.Model(&SystemTask{}).Where("type = ? AND status = ?", SystemTaskTypeDevinMonitor, SystemTaskStatusSucceeded).
+		Order("id desc").Limit(1).Pluck("id", &complete).Error; err != nil {
+		return nil, err
+	}
+	return append(ids, complete...), nil
+}
+
 // DeleteSystemTaskHistory preserves the latest row of every type because the
 // scheduler uses it to determine when the next run is due. Active rows and rows
 // created after this cleanup's snapshot are never removed.
 func DeleteSystemTaskHistory(filter SystemTaskFilter) (int64, error) {
-	var latestIDs []int64
-	if err := DB.Model(&SystemTask{}).Select("MAX(id)").Group("type").Pluck("MAX(id)", &latestIDs).Error; err != nil {
+	latestIDs, err := retainedSystemTaskIDs(context.Background())
+	if err != nil {
 		return 0, err
 	}
 	if len(latestIDs) == 0 {
@@ -260,6 +277,18 @@ func GetLatestSystemTask(taskType string) (*SystemTask, error) {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
+		return nil, err
+	}
+	return &task, nil
+}
+
+// GetLatestSuccessfulDeviMonTask looks behind a busy or failed attempt for
+// the complete inventory displayed on the monitor.
+func GetLatestSuccessfulDeviMonTask(beforeID int64) (*SystemTask, error) {
+	var task SystemTask
+	err := DB.Where("type = ? AND status = ? AND id < ?", SystemTaskTypeDevinMonitor, SystemTaskStatusSucceeded, beforeID).
+		Order("id desc").Limit(1).Find(&task).Error
+	if err != nil || task.ID == 0 {
 		return nil, err
 	}
 	return &task, nil
@@ -330,8 +359,8 @@ func GetLatestSystemTasks(taskTypes []string) (map[string]*SystemTask, error) {
 // scheduler and the node sync read it. A row that becomes the newest later is
 // newer than cutoff.
 func DeleteFinishedSystemTasks(ctx context.Context, cutoff int64) (int64, error) {
-	var newestIDs []int64
-	if err := DB.Model(&SystemTask{}).Group("type").Pluck("MAX(id)", &newestIDs).Error; err != nil {
+	newestIDs, err := retainedSystemTaskIDs(ctx)
+	if err != nil {
 		return 0, err
 	}
 	var deleted int64
