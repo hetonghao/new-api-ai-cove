@@ -41,7 +41,6 @@ import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authentic
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
-import { Route as AuthenticatedImageCompressionCacheIndexRouteImport } from './routes/_authenticated/image-compression-cache/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
 import { Route as AuthenticatedModelQualityIndexRouteImport } from './routes/_authenticated/model-quality/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
@@ -245,12 +244,6 @@ const AuthenticatedErrorsErrorRoute =
   AuthenticatedErrorsErrorRouteImport.update({
     id: '/errors/$error',
     path: '/errors/$error',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedImageCompressionCacheIndexRoute =
-  AuthenticatedImageCompressionCacheIndexRouteImport.update({
-    id: '/image-compression-cache/',
-    path: '/image-compression-cache/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedKeysIndexRoute = AuthenticatedKeysIndexRouteImport.update({
@@ -518,7 +511,6 @@ export interface FileRoutesByFullPath {
   '/ai-cove-design/': typeof AuthenticatedAiCoveDesignIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
-  '/image-compression-cache/': typeof AuthenticatedImageCompressionCacheIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/model-quality/': typeof AuthenticatedModelQualityIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
@@ -589,7 +581,6 @@ export interface FileRoutesByTo {
   '/ai-cove-design': typeof AuthenticatedAiCoveDesignIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
-  '/image-compression-cache': typeof AuthenticatedImageCompressionCacheIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/model-quality': typeof AuthenticatedModelQualityIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
@@ -664,7 +655,6 @@ export interface FileRoutesById {
   '/_authenticated/ai-cove-design/': typeof AuthenticatedAiCoveDesignIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
-  '/_authenticated/image-compression-cache/': typeof AuthenticatedImageCompressionCacheIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/model-quality/': typeof AuthenticatedModelQualityIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
@@ -738,7 +728,6 @@ export interface FileRouteTypes {
     | '/ai-cove-design/'
     | '/channels/'
     | '/dashboard/'
-    | '/image-compression-cache/'
     | '/keys/'
     | '/model-quality/'
     | '/models/'
@@ -809,7 +798,6 @@ export interface FileRouteTypes {
     | '/ai-cove-design'
     | '/channels'
     | '/dashboard'
-    | '/image-compression-cache'
     | '/keys'
     | '/model-quality'
     | '/models'
@@ -883,7 +871,6 @@ export interface FileRouteTypes {
     | '/_authenticated/ai-cove-design/'
     | '/_authenticated/channels/'
     | '/_authenticated/dashboard/'
-    | '/_authenticated/image-compression-cache/'
     | '/_authenticated/keys/'
     | '/_authenticated/model-quality/'
     | '/_authenticated/models/'
@@ -1165,13 +1152,6 @@ declare module '@tanstack/react-router' {
       path: '/errors/$error'
       fullPath: '/errors/$error'
       preLoaderRoute: typeof AuthenticatedErrorsErrorRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/image-compression-cache/': {
-      id: '/_authenticated/image-compression-cache/'
-      path: '/image-compression-cache'
-      fullPath: '/image-compression-cache/'
-      preLoaderRoute: typeof AuthenticatedImageCompressionCacheIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/keys/': {
@@ -1552,7 +1532,6 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAiCoveDesignIndexRoute: typeof AuthenticatedAiCoveDesignIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
-  AuthenticatedImageCompressionCacheIndexRoute: typeof AuthenticatedImageCompressionCacheIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedModelQualityIndexRoute: typeof AuthenticatedModelQualityIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
@@ -1587,8 +1566,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAiCoveDesignIndexRoute: AuthenticatedAiCoveDesignIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
-  AuthenticatedImageCompressionCacheIndexRoute:
-    AuthenticatedImageCompressionCacheIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedModelQualityIndexRoute: AuthenticatedModelQualityIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,

@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
-import { SectionPageLayout } from '@/components/layout'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import { CacheConfiguration } from './configuration'
@@ -27,30 +26,21 @@ import { CacheStatistics } from './statistics'
 export function ImageCompressionCache() {
   const { t } = useTranslation()
   return (
-    <SectionPageLayout>
-      <SectionPageLayout.Title>
-        {t('Image compression cache')}
-      </SectionPageLayout.Title>
-      <SectionPageLayout.Content>
-        <Tabs defaultValue='configuration' className='min-w-0 gap-4'>
-          <TabsList variant='line' aria-label={t('Image compression cache')}>
-            <TabsTrigger value='configuration'>
-              {t('Configuration')}
-            </TabsTrigger>
-            <TabsTrigger value='statistics'>
-              {t('imageCompressionCache.statistics', {
-                defaultValue: 'Statistics',
-              })}
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value='configuration'>
-            <CacheConfiguration />
-          </TabsContent>
-          <TabsContent value='statistics'>
-            <CacheStatistics />
-          </TabsContent>
-        </Tabs>
-      </SectionPageLayout.Content>
-    </SectionPageLayout>
+    <Tabs defaultValue='configuration' className='min-w-0 gap-4'>
+      <TabsList variant='line' aria-label={t('Image compression cache')}>
+        <TabsTrigger value='configuration'>{t('Configuration')}</TabsTrigger>
+        <TabsTrigger value='statistics'>
+          {t('imageCompressionCache.statistics', {
+            defaultValue: 'Statistics',
+          })}
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value='configuration'>
+        <CacheConfiguration />
+      </TabsContent>
+      <TabsContent value='statistics'>
+        <CacheStatistics />
+      </TabsContent>
+    </Tabs>
   )
 }
