@@ -222,7 +222,8 @@ func (p *Plan) scope(stage, group, model string, bound []string) []*request_plug
 
 // Call is one stage run.
 type Call struct {
-	Stage string
+	TurboProcessedImages bool
+	Stage                string
 	// Late runs the ingress hooks of an attempt's instances that were not in
 	// scope at the request's ingress, a channel's or a group settled at
 	// channel selection, on the attempt's upstream body.
@@ -304,6 +305,9 @@ type Outcome struct {
 func (p *Plan) Run(ctx context.Context, call Call) Outcome {
 	outcome := Outcome{Body: call.Body, Headers: call.Headers}
 	for _, instance := range p.scope(call.Stage, call.Group, call.Model, call.Bound) {
+		if call.TurboProcessedImages && instance.Plugin == "image-compress" {
+			continue
+		}
 		if call.Stage == StageIngress {
 			if call.Late && p.ingressRan[instance.ID] {
 				continue

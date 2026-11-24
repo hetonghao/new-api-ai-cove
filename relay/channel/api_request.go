@@ -85,7 +85,8 @@ var passthroughSkipHeaderNamesLower = map[string]struct{}{
 	"transfer-encoding":   {},
 	"upgrade":             {},
 
-	"cookie": {},
+	"cookie":                     {},
+	"x-ai-cove-image-processing": {},
 
 	// Additional headers that should not be forwarded by name-matching passthrough rules.
 	"host":            {},

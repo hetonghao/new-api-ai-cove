@@ -178,6 +178,11 @@ func newSensitiveWordsDetectedError() *types.NewAPIError {
 }
 
 func Relay(c *gin.Context, relayFormat types.RelayFormat) {
+	values := c.Request.Header.Values(common.TurboImageHeader)
+	c.Request.Header.Del(common.TurboImageHeader)
+	if relayFormat == types.RelayFormatOpenAIResponses || relayFormat == types.RelayFormatOpenAIResponsesCompaction {
+		common.SetTurboImageDecision(c, values)
+	}
 	requestId := c.GetString(common.RequestIdKey)
 	// group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 	// originalModel := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)

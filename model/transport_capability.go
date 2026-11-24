@@ -1,6 +1,8 @@
 package model
 
 import (
+	"github.com/QuantumNous/new-api/setting/request_plugin_setting"
+	"slices"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -12,6 +14,31 @@ type TransportCapability struct {
 	Allowed            bool
 	HTTP               bool
 	ResponsesWebSocket bool
+	ImageWebP          bool
+}
+
+// Advertise conversion to WebP only when the operator already selected lossless WebP for this route.
+func (capability *TransportCapability) addImageRoute(channel *Channel, modelName, group string, instances request_plugin_setting.Instances) {
+	compatible := false
+	for _, instance := range instances {
+		if !instance.Enabled || instance.Plugin != "image-compress" || (len(instance.Models) > 0 && !slices.Contains(instance.Models, modelName)) {
+			continue
+		}
+		if !instance.Global && !slices.Contains(instance.Groups, group) && !slices.Contains(channel.GetSetting().RequestPlugins, instance.ID) {
+			continue
+		}
+		var config struct {
+			Mode string `json:"mode"`
+		}
+		if len(instance.Config) > 0 && common.Unmarshal(instance.Config, &config) != nil {
+			continue
+		}
+		if config.Mode == "" || config.Mode == "lossless" {
+			compatible = true
+			break
+		}
+	}
+	capability.ImageWebP = compatible && (!capability.HTTP || capability.ImageWebP)
 }
 
 const transportCapabilityResponsesPath = "/v1/responses"
@@ -47,6 +74,7 @@ func GetTransportCapability(groups []string, modelName string) (TransportCapabil
 		modelNames = append(modelNames, matchingModel)
 	}
 
+	instances := request_plugin_setting.GetInstances()
 	if common.MemoryCacheEnabled {
 		channelSyncLock.RLock()
 		defer channelSyncLock.RUnlock()
@@ -75,6 +103,7 @@ func GetTransportCapability(groups []string, modelName string) (TransportCapabil
 				if !ok || channel.Status != common.ChannelStatusEnabled || !channelSupportsResponsesHTTP(channel, modelName) {
 					continue
 				}
+				capability.addImageRoute(channel, modelName, group, instances)
 				capability.HTTP = true
 				if ChannelSupportsResponsesWebSocket(channel) {
 					capability.ResponsesWebSocket = true
@@ -111,6 +140,7 @@ func GetTransportCapability(groups []string, modelName string) (TransportCapabil
 		if !channelSupportsResponsesHTTP(channel, ability.Model) {
 			continue
 		}
+		capability.addImageRoute(channel, modelName, ability.Group, instances)
 		capability.HTTP = true
 		if ChannelSupportsResponsesWebSocket(channel) {
 			capability.ResponsesWebSocket = true

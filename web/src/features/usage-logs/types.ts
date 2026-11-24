@@ -281,6 +281,8 @@ export interface LogOtherData {
   user_agent?: string
   request_path?: string
   request_conversion?: string[]
+  turbo_images_compressed?: number
+  turbo_zstd?: boolean
   client_source?: string
   client_version?: string
   transport?: string

@@ -164,6 +164,8 @@ interface StreamTpsCellProps {
   isTurbo?: boolean
   isTurboWarmup?: boolean
   turboVersion?: string
+  turboImagesCompressed?: number
+  turboZstd?: boolean
   isImagine?: boolean
   compact?: boolean
   /** Task logs are asynchronous jobs; stream vs non-stream does not apply. */
@@ -190,7 +192,15 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
   const turboVersionLabel = props.turboVersion
     ? `${t('Version')} ${props.turboVersion}`
     : null
-  const turboAriaLabel = [t('From Turbo'), turboVersionLabel]
+  const count = props.turboImagesCompressed ?? 0
+  const hasImages = Number.isSafeInteger(count) && count > 0
+  const compressionLabel = [
+    props.turboZstd ? t('zstd compression') : null,
+    hasImages ? t('Attached images compressed: {{count}}', { count }) : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  const turboAriaLabel = [t('From Turbo'), turboVersionLabel, compressionLabel]
     .filter(Boolean)
     .join(' / ')
   const webSocketMarker = props.isWebSocket ? (
@@ -221,7 +231,12 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
               className='text-success hover:bg-success/15 focus-visible:ring-success/50 inline-flex size-4 cursor-default items-center justify-center rounded-full transition-transform duration-200 hover:scale-110 focus-visible:ring-2 focus-visible:outline-none'
               aria-label={turboAriaLabel}
             >
-              <Zap className='fill-success/20 size-3' aria-hidden='true' />
+              <Zap
+                className={
+                  hasImages ? 'size-3 fill-current' : 'fill-success/20 size-3'
+                }
+                aria-hidden='true'
+              />
             </button>
           }
         />
@@ -231,6 +246,7 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
             {turboVersionLabel && (
               <p className='font-mono'>{turboVersionLabel}</p>
             )}
+            {compressionLabel && <p>{compressionLabel}</p>}
           </div>
         </TooltipContent>
       </Tooltip>

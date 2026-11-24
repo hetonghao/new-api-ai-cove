@@ -1385,16 +1385,28 @@ export function DetailsDialog(props: DetailsDialogProps) {
           </DetailSection>
         )}
 
-        {other?.request_plugins?.length ? (
+        {(other?.client_source === 'turbo' &&
+          (other.turbo_images_compressed ?? 0) > 0) ||
+        other?.request_plugins?.length ? (
           <DetailSection
             icon={<Workflow className='size-3.5' aria-hidden='true' />}
             iconTone='chart-3'
             label={t('Request processing')}
           >
-            <RequestPluginRecord
-              items={other.request_plugins}
-              loadIcons={props.isRoot}
-            />
+            {other?.client_source === 'turbo' &&
+              (other.turbo_images_compressed ?? 0) > 0 && (
+                <p className='text-sm'>
+                  {t(
+                    'Images were compressed by Turbo. See the Turbo client log for details.'
+                  )}
+                </p>
+              )}
+            {other?.request_plugins?.length ? (
+              <RequestPluginRecord
+                items={other.request_plugins}
+                loadIcons={props.isRoot}
+              />
+            ) : null}
           </DetailSection>
         ) : null}
 

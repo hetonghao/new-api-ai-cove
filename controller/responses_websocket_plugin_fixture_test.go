@@ -128,6 +128,11 @@ func (fixture *responsesWSBillingTest) closeAndWait(t *testing.T) {
 // waitPerfCounters waits for the asynchronous health samples of the fixture
 func newResponsesWSBillingTest(t *testing.T, expression string, handle func(*websocket.Conn, *http.Request), httpEvents ...string) *responsesWSBillingTest {
 	t.Helper()
+	return newResponsesWSBillingFixture(t, false, expression, handle, httpEvents...)
+}
+
+func newResponsesWSBillingFixture(t *testing.T, turbo bool, expression string, handle func(*websocket.Conn, *http.Request), httpEvents ...string) *responsesWSBillingTest {
+	t.Helper()
 	user, token := setupResponsesWSRequestTest(t)
 	previousTimeout := constant.StreamingTimeout
 	constant.StreamingTimeout = 30
@@ -216,7 +221,13 @@ func newResponsesWSBillingTest(t *testing.T, expression string, handle func(*web
 	gateway := httptest.NewServer(engine)
 	fixture.gatewayURL = gateway.URL
 	t.Cleanup(gateway.Close)
-	client, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(gateway.URL, "http")+"/v1/responses", http.Header{"Authorization": []string{"Bearer sk-" + token.Key}})
+	dialer := *websocket.DefaultDialer
+	headers := http.Header{"Authorization": []string{"Bearer sk-" + token.Key}}
+	if turbo {
+		dialer.Subprotocols = []string{responsesWebSocketPrivateSubprotocol}
+		headers.Set("X-AI-Cove-Client", "turbo")
+	}
+	client, _, err := dialer.Dial("ws"+strings.TrimPrefix(gateway.URL, "http")+"/v1/responses", headers)
 	require.NoError(t, err)
 	fixture.client = client
 	t.Cleanup(func() { fixture.closeAndWait(t) })

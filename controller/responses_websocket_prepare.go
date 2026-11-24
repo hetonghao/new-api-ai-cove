@@ -51,6 +51,20 @@ func prepareResponsesWebSocketRequest(baseCtx *gin.Context, payload []byte, inhe
 }
 
 func prepareResponsesWebSocketRequestWithInheritedState(baseCtx *gin.Context, payload []byte, inheritedModel string, inheritedRateLimit *middleware.ModelRequestRateLimitTicket, inheritedBillingInfo *relaycommon.RelayInfo) (*responsesWebSocketRequestState, *dto.OpenAIResponsesRequest, error) {
+	var marker string
+	const markerPath = "client_metadata." + common.TurboImageMetadata
+	value := gjson.GetBytes(payload, markerPath)
+	hadImageMetadata := value.Exists()
+	if hadImageMetadata {
+		if value.Type == gjson.String {
+			marker = value.Str
+		}
+		var err error
+		payload, err = sjson.DeleteBytes(payload, markerPath)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 	validationPayload, modelName, validationErr := responsesWebSocketValidationPayload(payload, inheritedModel)
 	requestPayload := validationPayload
 	if validationErr != nil {
@@ -64,6 +78,8 @@ func prepareResponsesWebSocketRequestWithInheritedState(baseCtx *gin.Context, pa
 		}
 	}
 	requestCtx := newResponsesWebSocketRequestContext(baseCtx, requestPayload, modelName)
+	requestCtx.Request.Header.Del(common.TurboImageHeader)
+	common.SetTurboImageDecision(requestCtx, []string{marker})
 	if inheritedBillingInfo != nil && strings.TrimSpace(inheritedBillingInfo.RequestId) != "" {
 		requestCtx.Set(common.RequestIdKey, inheritedBillingInfo.RequestId)
 	}
@@ -78,6 +94,9 @@ func prepareResponsesWebSocketRequestWithInheritedState(baseCtx *gin.Context, pa
 			StartTime:       common.GetContextKeyTime(requestCtx, constant.ContextKeyRequestStartTime),
 			IsStream:        true,
 		},
+	}
+	if hadImageMetadata {
+		state.pluginBody = payload
 	}
 	rateLimit := inheritedRateLimit
 	var rateLimitErr *types.NewAPIError

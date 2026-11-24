@@ -747,6 +747,8 @@ export function useCommonLogsColumns(
               isTurbo={other?.client_source === 'turbo'}
               isTurboWarmup={isTurboWarmupLog(log, other)}
               turboVersion={other?.client_version}
+              turboImagesCompressed={other?.turbo_images_compressed}
+              turboZstd={other?.turbo_zstd === true}
               isImagine={isImagine}
               isTask={other?.is_task === true}
               isSyncTask={other?.task_sync === true}

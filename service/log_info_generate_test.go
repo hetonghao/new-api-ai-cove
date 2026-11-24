@@ -36,6 +36,33 @@ func TestAppendRelayTransportLogInfo_appends_websocket_lifecycle_fields(t *testi
 	}, other.Snapshot())
 }
 
+func TestTurboCompressionLogIsPerRequest(t *testing.T) {
+	ctx, _ := gin.CreateTestContext(nil)
+	ctx.Request = &http.Request{Header: http.Header{}}
+	ctx.Request.Header.Set("X-AI-Cove-Client", "turbo")
+	for _, row := range []struct {
+		value string
+		count int
+		zstd  bool
+	}{{"v1/changed/20", 20, true}, {"", 0, false}, {"v1/kept", 0, true}, {"v1/changed/0", 0, true}, {"v1/changed/257", 0, false}} {
+		common.SetTurboImageDecision(ctx, []string{row.value})
+		ctx.Set(common.TurboWireZstdKey, row.zstd)
+		other := model.NewLogOther()
+		AppendRelayTransportLogInfo(ctx, other)
+		data := other.Snapshot()
+		if row.count > 0 {
+			require.Equal(t, row.count, data["turbo_images_compressed"])
+		} else {
+			require.NotContains(t, data, "turbo_images_compressed")
+		}
+		if row.zstd {
+			require.Equal(t, true, data["turbo_zstd"])
+		} else {
+			require.NotContains(t, data, "turbo_zstd")
+		}
+	}
+}
+
 func TestAppendRelayTransportLogInfoImagineSource(t *testing.T) {
 	for _, source := range []string{"imagine", "unknown", ""} {
 		t.Run(source, func(t *testing.T) {

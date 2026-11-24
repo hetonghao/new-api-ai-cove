@@ -64,6 +64,8 @@ await i18n.use(initReactI18next).init({
         'From Turbo': '来自 Turbo',
         'Turbo warm-up request': 'Turbo-预热请求',
         Version: '版本',
+        'zstd compression': 'zstd压缩',
+        'Attached images compressed: {{count}}': '附图已压缩 {{count}} 张',
       },
     },
   },
@@ -141,6 +143,31 @@ function createUsageLog(
 
 after(() => {
   domWindow.close()
+})
+
+test('Turbo 的压缩行按本轮结果显示，不把开关或旧日志当成压缩证据', async () => {
+  for (const [zstd, count, line] of [
+    [true, 20, 'zstd压缩 · 附图已压缩 20 张'],
+    [false, 0, ''],
+    [true, 0, 'zstd压缩'],
+    [false, 2, '附图已压缩 2 张'],
+  ] as const) {
+    const cell = await renderCell({
+      isStream: true,
+      isTurbo: true,
+      turboZstd: zstd,
+      turboImagesCompressed: count,
+      turboVersion: 'mac/1.1.3',
+    })
+    const button = cell.container.querySelector('button')
+    assert.equal(
+      button?.getAttribute('aria-label'),
+      ['来自 Turbo', '版本 mac/1.1.3', line].filter(Boolean).join(' / ')
+    )
+    assert.equal(!!button?.querySelector('.fill-current'), count > 0)
+    await act(async () => cell.root.unmount())
+    cell.container.remove()
+  }
 })
 
 test('流式日志按流、WS、Turbo 的顺序展示可访问标识', async () => {

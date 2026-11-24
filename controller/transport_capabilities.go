@@ -23,6 +23,7 @@ type transportCapabilityItem struct {
 	HTTP               bool   `json:"http"`
 	ResponsesWebSocket bool   `json:"responses_websocket"`
 	ReasonCode         string `json:"reason_code"`
+	ImageProcessing    string `json:"image_processing,omitempty"`
 }
 
 func TransportCapabilities(c *gin.Context) {
@@ -75,6 +76,12 @@ func TransportCapabilities(c *gin.Context) {
 		}
 		item.Allowed = capability.Allowed
 		item.HTTP = capability.HTTP
+		if item.Allowed && item.HTTP {
+			item.ImageProcessing = "v1"
+			if capability.ImageWebP {
+				item.ImageProcessing = "v1/webp"
+			}
+		}
 		item.ResponsesWebSocket = capability.ResponsesWebSocket
 		if !item.Allowed {
 			item.ReasonCode = "model_not_allowed"

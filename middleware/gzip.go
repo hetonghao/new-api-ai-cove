@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/andybalholm/brotli"
 	"github.com/gin-gonic/gin"
@@ -68,6 +69,7 @@ func DecompressRequestMiddleware() gin.HandlerFunc {
 			})
 			decompressed = true
 		case "zstd":
+			c.Set(common.TurboWireZstdKey, true)
 			// The frame header sets the decoder's window, and the decoder allocates
 			// it before any output exists, so the output limit below does not bound
 			// it. 8MiB is the window RFC 8878 asks encoders to stay within.

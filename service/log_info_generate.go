@@ -157,6 +157,14 @@ func AppendRelayTransportLogInfo(ctx *gin.Context, other *model.LogOther) {
 	}
 	if source := requestClientSource(ctx); source != "" {
 		other.SetPublic("client_source", source)
+		if source == "turbo" {
+			if count := ctx.GetInt(common.TurboImageCountKey); count > 0 {
+				other.SetPublic("turbo_images_compressed", count)
+			}
+			if ctx.GetBool(common.TurboWireZstdKey) {
+				other.SetPublic("turbo_zstd", true)
+			}
+		}
 		if version := strings.TrimSpace(ctx.GetHeader("X-AI-Cove-Client-Version")); version != "" {
 			other.SetPublic("client_version", version)
 		}

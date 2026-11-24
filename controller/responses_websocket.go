@@ -183,9 +183,14 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 
 				var outgoing []byte
 				var state *responsesWebSocketRequestState
+				turn := baseCtx.Copy()
+				if upstreamConn != nil {
+					turn = pinnedCtx.Copy()
+				}
+				turn.Set(common.TurboWireZstdKey, frame.zstd)
 				if upstreamConn == nil {
 					var connectMs int64
-					state, outgoing, upstreamConn, pinnedChannel, connectMs, err = prepareFirstResponsesWebSocketRequest(baseCtx, frame.payload, connectionStarted)
+					state, outgoing, upstreamConn, pinnedChannel, connectMs, err = prepareFirstResponsesWebSocketRequest(turn, frame.payload, connectionStarted)
 					if err == nil {
 						observability.upstreamDial(common.GetContextKeyString(state.ctx, common.ResponsesWebSocketUpstreamTraceKey))
 						pinnedCtx = state.ctx
@@ -194,7 +199,7 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 						common.SetContextKey(state.ctx, constant.ContextKeyWebSocketUpstreamConnectMs, connectMs)
 					}
 				} else {
-					state, outgoing, err = preparePinnedResponsesWebSocketRequest(pinnedCtx, frame.payload, sessionModel, pinnedChannel)
+					state, outgoing, err = preparePinnedResponsesWebSocketRequest(turn, frame.payload, sessionModel, pinnedChannel)
 				}
 				if err != nil {
 					observability.markFailure("response_create_prepare_failed")
@@ -211,6 +216,13 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					return err
 				}
 
+				if clientCodec != nil && common.TurboImageDecision(state.ctx) != "" {
+					receipt, _ := common.Marshal(map[string]string{"type": "ai_cove.image_receipt", "request_id": state.ctx.GetString(common.RequestIdKey)})
+					if err := writeResponsesWebSocketClientMessage(clientConn, clientCodec, websocket.TextMessage, receipt, &clientWriteBudget); err != nil {
+						failPreparedResponsesWebSocketRequest(state, pinnedChannel, types.NewError(err, types.ErrorCodeDoRequestFailed))
+						return err
+					}
+				}
 				active = state
 				logicalAttempts = state.logicalAttempts
 				for _, rawChannelID := range state.ctx.GetStringSlice("use_channel") {
@@ -351,7 +363,9 @@ func runResponsesWebSocketSession(baseCtx *gin.Context, clientConn *websocket.Co
 					_ = upstreamConn.Close()
 					upstreamConn = nil
 					upstreamFrames = nil
-					retryState, retryOutgoing, retryConn, retryChannel, connectMs, retryErr := prepareFirstResponsesWebSocketRequestWithBilling(baseCtx, oldPayload, connectionStarted, oldBilling, oldRateLimit, oldState.info, retryParam, excludedRetryChannels, oldAttempts, oldState.ctx.GetStringSlice("use_channel"), false)
+					retryCtx := baseCtx.Copy()
+					retryCtx.Set(common.TurboWireZstdKey, oldState.ctx.GetBool(common.TurboWireZstdKey))
+					retryState, retryOutgoing, retryConn, retryChannel, connectMs, retryErr := prepareFirstResponsesWebSocketRequestWithBilling(retryCtx, oldPayload, connectionStarted, oldBilling, oldRateLimit, oldState.info, retryParam, excludedRetryChannels, oldAttempts, oldState.ctx.GetStringSlice("use_channel"), false)
 					if retryErr == nil {
 						active = retryState
 						logicalAttempts = retryState.logicalAttempts

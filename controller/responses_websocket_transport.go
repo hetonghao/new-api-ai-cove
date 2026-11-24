@@ -85,6 +85,7 @@ func (d *responsesWebSocketChannelDrain) bind(channel *model.Channel) {
 }
 
 type responsesWebSocketFrame struct {
+	zstd        bool
 	messageType int
 	payload     []byte
 	err         error
@@ -111,13 +112,14 @@ func readResponsesWebSocketFrames(conn *websocket.Conn, frames chan<- responsesW
 	defer close(frames)
 	for {
 		messageType, payload, err := conn.ReadMessage()
+		zstd := codec != nil && len(payload) > responsesWebSocketPrivateFlagsOffset && payload[responsesWebSocketPrivateFlagsOffset]&responsesWebSocketPrivateFlagCompressed != 0
 		if err == nil && codec != nil {
 			messageType, payload, err = codec.Decode(messageType, payload)
 		}
 		if err == nil && upstream && observability != nil {
 			observability.markApplicationRx()
 		}
-		frame := responsesWebSocketFrame{messageType: messageType, payload: payload, err: err}
+		frame := responsesWebSocketFrame{messageType: messageType, payload: payload, err: err, zstd: zstd && err == nil}
 		if enqueueResponsesWebSocketFrame(frames, frame, done, queue) != nil || err != nil {
 			return
 		}

@@ -422,11 +422,12 @@ func PassThrough(c *gin.Context, info *relaycommon.RelayInfo, storage common.Bod
 
 func attemptCall(c *gin.Context, info *relaycommon.RelayInfo) Call {
 	call := Call{
-		Format:  string(info.GetFinalRequestRelayFormat()),
-		Path:    c.Request.URL.Path,
-		Model:   info.OriginModelName,
-		Group:   requestGroup(c),
-		Attempt: info.RetryIndex,
+		TurboProcessedImages: common.TurboImageDecision(c) != "",
+		Format:               string(info.GetFinalRequestRelayFormat()),
+		Path:                 c.Request.URL.Path,
+		Model:                info.OriginModelName,
+		Group:                requestGroup(c),
+		Attempt:              info.RetryIndex,
 	}
 	if plan := planOf(c); plan != nil && plan.submission != nil {
 		call.Format = plan.submission.format
