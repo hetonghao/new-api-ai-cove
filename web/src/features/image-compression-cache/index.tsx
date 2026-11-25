@@ -28,12 +28,12 @@ export function ImageCompressionCache() {
   return (
     <Tabs defaultValue='statistics' className='min-w-0 gap-4'>
       <TabsList variant='line' aria-label={t('Image compression cache')}>
-        <TabsTrigger value='configuration'>{t('Configuration')}</TabsTrigger>
         <TabsTrigger value='statistics'>
           {t('imageCompressionCache.statistics', {
             defaultValue: 'Statistics',
           })}
         </TabsTrigger>
+        <TabsTrigger value='configuration'>{t('Configuration')}</TabsTrigger>
       </TabsList>
       <TabsContent value='configuration'>
         <CacheConfiguration />
