@@ -8745,6 +8745,7 @@
     "Set CPA_MANAGEMENT_KEY on the gateway before collecting.": "Set CPA_MANAGEMENT_KEY on the gateway before collecting.",
     "{{minutes}} minutes after this collection finishes": "Через {{minutes}} мин после текущего сбора",
     "Awaiting first collection": "Ожидание первого сбора",
+    "Collection interrupted": "Сбор данных прерван",
     "Last collection failed": "Не удалось выполнить последний сбор",
     "Showing the last complete collection.": "Показан последний полный результат.",
     "{{seconds}} sec": "{{seconds}} с",

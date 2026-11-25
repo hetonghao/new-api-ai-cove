@@ -8745,6 +8745,7 @@
     "Set CPA_MANAGEMENT_KEY on the gateway before collecting.": "Set CPA_MANAGEMENT_KEY on the gateway before collecting.",
     "{{minutes}} minutes after this collection finishes": "今回の収集完了から {{minutes}} 分後",
     "Awaiting first collection": "初回の収集を待機中",
+    "Collection interrupted": "収集が中断されました",
     "Last collection failed": "前回の収集に失敗しました",
     "Showing the last complete collection.": "直近の完全な収集結果を表示しています。",
     "{{seconds}} sec": "{{seconds}} 秒",

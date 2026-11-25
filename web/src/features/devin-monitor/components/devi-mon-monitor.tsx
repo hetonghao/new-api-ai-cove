@@ -193,7 +193,10 @@ export function DeviMonMonitor(props: {
 
       {data.last_error && (
         <p role='status' className='text-destructive text-xs'>
-          {t('Last collection failed')}: {data.last_error}{' '}
+          {t('Last collection failed')}:{' '}
+          {data.last_error === 'task lease expired'
+            ? t('Collection interrupted')
+            : data.last_error}{' '}
           {snapshot && t('Showing the last complete collection.')}
         </p>
       )}

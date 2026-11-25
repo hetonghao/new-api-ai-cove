@@ -8745,6 +8745,7 @@
     "Set CPA_MANAGEMENT_KEY on the gateway before collecting.": "请先在网关配置 CPA_MANAGEMENT_KEY 再采集。",
     "{{minutes}} minutes after this collection finishes": "本轮采集结束 {{minutes}} 分钟后",
     "Awaiting first collection": "等待首次采集",
+    "Collection interrupted": "采集任务中断",
     "Last collection failed": "上次采集失败",
     "Showing the last complete collection.": "当前显示上次完整结果。",
     "{{seconds}} sec": "{{seconds}} 秒",

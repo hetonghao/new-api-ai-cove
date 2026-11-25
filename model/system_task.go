@@ -28,6 +28,8 @@ const (
 	SystemTaskTypeDevinMonitor   = "devin_monitor"
 	SystemTaskTypeCleanup        = "system_task_cleanup"
 
+	SystemTaskLeaseExpiredMessage = "task lease expired"
+
 	systemTaskCleanupBatchSize = 500
 )
 
@@ -536,7 +538,7 @@ func MarkSystemTaskLeaseExpired(taskID string) error {
 		Updates(map[string]any{
 			"status":     SystemTaskStatusFailed,
 			"active_key": nil,
-			"error":      "task lease expired",
+			"error":      SystemTaskLeaseExpiredMessage,
 			"updated_at": common.GetTimestamp(),
 		})
 	return result.Error

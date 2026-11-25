@@ -362,7 +362,10 @@ describe('devin monitor', () => {
     expect(posted).toBe(1)
   })
 
-  it('shows the last good accounts when a subsequent attempt fails', async () => {
+  it.each([
+    ['cpa-pro-2: HTTP 502', 'cpa-pro-2: HTTP 502'],
+    ['task lease expired', 'Collection interrupted'],
+  ])('keeps the last good accounts and explains %s', async (error, message) => {
     api.defaults.adapter = (async (config) => ({
       config,
       data: {
@@ -372,7 +375,7 @@ describe('devin monitor', () => {
           collecting: false,
           configured: true,
           next_run_at: 1_795_010_000,
-          last_error: 'cpa-pro-2: HTTP 502',
+          last_error: error,
         },
       },
       headers: {},
@@ -382,7 +385,7 @@ describe('devin monitor', () => {
     renderMonitor()
     expect(
       await screen.findByText(/Showing the last complete collection/)
-    ).toBeVisible()
+    ).toHaveTextContent(message)
     expect(screen.getByText('busy@example.com')).toBeVisible()
     expect(screen.queryByText('Not scheduled')).toBeNull()
   })

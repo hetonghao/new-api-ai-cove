@@ -26,8 +26,9 @@ const (
 	deviMonCardsURL     = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
 	deviMonSubscribeURL = "https://chatgpt.com/backend-api/subscriptions"
 
-	deviMonRequestTimeout  = 45 * time.Second
-	deviMonMaxResponseSize = 1 << 20
+	deviMonInterruptedRetryDelay = time.Minute
+	deviMonRequestTimeout        = 45 * time.Second
+	deviMonMaxResponseSize       = 1 << 20
 )
 
 // Collection targets stay variable so tests can point them at a local server.
@@ -99,6 +100,15 @@ func (deviMonTask) Interval() time.Duration {
 }
 func (deviMonTask) NewPayload() any { return nil }
 
+// Normal Devin collections have no payload. The automatic retry carries the
+// interrupted task ID, so another restart cannot start a chain of retries.
+func (deviMonTask) interruptedRetryAt(latest *model.SystemTask) (int64, bool) {
+	if latest.Status != model.SystemTaskStatusFailed || latest.Error != model.SystemTaskLeaseExpiredMessage || latest.Payload != "" {
+		return 0, false
+	}
+	return latest.UpdatedAt + int64(deviMonInterruptedRetryDelay/time.Second), true
+}
+
 func init() { RegisterSystemTaskHandler(deviMonTask{}) }
 
 func (deviMonTask) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
@@ -122,7 +132,7 @@ type DeviMonState struct {
 }
 
 // The primary writes task results; every gateway reads them. The scheduler
-// counts the interval from completion, including failed attempts.
+// and this view use the same recovery time for an interrupted collection.
 func GetDeviMonState() (DeviMonState, error) {
 	handler := deviMonTask{}
 	state := DeviMonState{Configured: handler.Enabled(), IntervalMinutes: operation_setting.GetDeviMonSettings().IntervalMinutes}
@@ -133,6 +143,9 @@ func GetDeviMonState() (DeviMonState, error) {
 	state.Collecting = latest.Status == model.SystemTaskStatusPending || latest.Status == model.SystemTaskStatusRunning
 	if state.Configured && !state.Collecting {
 		state.NextRunAt = latest.UpdatedAt + int64(state.IntervalMinutes)*60
+		if retryAt, ok := handler.interruptedRetryAt(latest); ok {
+			state.NextRunAt = retryAt
+		}
 	}
 	state.LastError = latest.Error
 	if latest.Status != model.SystemTaskStatusSucceeded {
