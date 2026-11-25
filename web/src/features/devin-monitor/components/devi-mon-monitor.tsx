@@ -32,6 +32,7 @@ import { formatTimestampToDate } from '@/lib/format'
 import { collectDeviMon, deviMonQueryKey, getDeviMonState } from '../api'
 import { sortDevinAccounts, type DevinSort } from '../sort'
 import type { DeviMonState } from '../types'
+import { AccountRefreshButton } from './devi-mon-refresh-button'
 import { DeviMonRow } from './devi-mon-row'
 import { DevinAccountStatus } from './devi-mon-status'
 
@@ -89,7 +90,7 @@ export function DeviMonMonitor(props: {
       </div>
     )
   }
-  if (state.error || !state.data) {
+  if (!state.data) {
     return (
       <ErrorState
         description={t('Failed to load the Devin monitor')}
@@ -234,7 +235,12 @@ export function DeviMonMonitor(props: {
           aria-label={t('Codex accounts')}
         >
           {accounts.map((account) => (
-            <DeviMonRow key={account.email} account={account} now={now} />
+            <DeviMonRow
+              key={account.email}
+              account={account}
+              now={now}
+              configured={data.configured}
+            />
           ))}
         </ul>
       )}
@@ -246,14 +252,20 @@ export function DeviMonMonitor(props: {
             {unpaired.map((devin) => (
               <li
                 key={devin.email}
-                className='flex flex-wrap items-center gap-x-2 gap-y-1'
+                className='flex w-fit max-w-full items-center gap-x-2'
               >
-                <span className='min-w-0 [overflow-wrap:anywhere]'>
-                  {devin.email}
-                </span>
-                <DevinAccountStatus
-                  disabled={devin.disabled}
-                  routing={devin.devin_routing}
+                <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
+                  <span className='min-w-0 [overflow-wrap:anywhere]'>
+                    {devin.email}
+                  </span>
+                  <DevinAccountStatus
+                    disabled={devin.disabled}
+                    routing={devin.devin_routing}
+                  />
+                </div>
+                <AccountRefreshButton
+                  email={devin.email}
+                  configured={data.configured}
                 />
               </li>
             ))}

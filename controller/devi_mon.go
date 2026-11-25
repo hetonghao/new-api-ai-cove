@@ -1,8 +1,10 @@
 package controller
 
 import (
+	"errors"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -38,6 +40,30 @@ func RunDeviMonCollection(c *gin.Context) {
 		return
 	}
 	GetDeviMonSnapshot(c)
+}
+
+func RefreshDeviMonAccount(c *gin.Context) {
+	var body struct {
+		Email string `json:"email"`
+	}
+	if err := common.DecodeJsonBody(http.MaxBytesReader(c.Writer, c.Request.Body, deviMonMaxRequestSize), &body); err != nil || strings.TrimSpace(body.Email) == "" || len(body.Email) > 254 {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid email address"))
+		return
+	}
+	if service.DeviMonKey() == "" {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Set CPA_MANAGEMENT_KEY before collecting"))
+		return
+	}
+	if err := service.RefreshDeviMonAccount(c.Request.Context(), body.Email); err != nil {
+		if errors.Is(err, service.ErrDeviMonAccountMissing) {
+			common.ApiErrorStatus(c, http.StatusNotFound, common.NewMessage("Account no longer in the monitor inventory"))
+			return
+		}
+		logger.LogError(c.Request.Context(), common.LogText("devin monitor: account refresh failed: %v", err))
+		common.ApiErrorStatus(c, http.StatusBadGateway, common.NewMessage("Refresh failed. Showing the last successful snapshot."))
+		return
+	}
+	common.ApiSuccess(c, nil)
 }
 
 func GetDeviMonSettingsHandler(c *gin.Context) {

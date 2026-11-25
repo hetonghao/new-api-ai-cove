@@ -8745,6 +8745,8 @@
     "Set CPA_MANAGEMENT_KEY on the gateway before collecting.": "Set CPA_MANAGEMENT_KEY on the gateway before collecting.",
     "{{minutes}} minutes after this collection finishes": "本輪採集結束 {{minutes}} 分鐘後",
     "Awaiting first collection": "等待首次採集",
+    "Refresh {{email}}": "重新整理 {{email}}",
+    "Account no longer in the monitor inventory": "目前監控清單中已無此帳號",
     "Collection interrupted": "採集工作中斷",
     "Last collection failed": "上次採集失敗",
     "Showing the last complete collection.": "目前顯示上次完整結果。",

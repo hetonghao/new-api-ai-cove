@@ -8745,6 +8745,8 @@
     "Set CPA_MANAGEMENT_KEY on the gateway before collecting.": "Set CPA_MANAGEMENT_KEY on the gateway before collecting.",
     "{{minutes}} minutes after this collection finishes": "{{minutes}} phút sau khi lượt thu thập này kết thúc",
     "Awaiting first collection": "Đang chờ lượt thu thập đầu tiên",
+    "Refresh {{email}}": "Làm mới {{email}}",
+    "Account no longer in the monitor inventory": "Tài khoản không còn trong danh sách theo dõi",
     "Collection interrupted": "Quá trình thu thập bị gián đoạn",
     "Last collection failed": "Lượt thu thập gần nhất thất bại",
     "Showing the last complete collection.": "Đang hiển thị kết quả đầy đủ gần nhất.",

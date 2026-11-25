@@ -8745,6 +8745,8 @@
     "Set CPA_MANAGEMENT_KEY on the gateway before collecting.": "Set CPA_MANAGEMENT_KEY on the gateway before collecting.",
     "{{minutes}} minutes after this collection finishes": "{{minutes}} minutes after this collection finishes",
     "Awaiting first collection": "Awaiting first collection",
+    "Refresh {{email}}": "Refresh {{email}}",
+    "Account no longer in the monitor inventory": "Account no longer in the monitor inventory",
     "Collection interrupted": "Collection interrupted",
     "Last collection failed": "Last collection failed",
     "Showing the last complete collection.": "Showing the last complete collection.",

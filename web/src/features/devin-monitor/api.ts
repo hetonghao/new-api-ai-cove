@@ -53,6 +53,15 @@ export async function collectDeviMon() {
   return deviMonData(response.data, deviMonStateSchema)
 }
 
+export async function refreshDeviMonAccount(email: string) {
+  const response = await api.post<unknown>(
+    `${BASE_PATH}/accounts/refresh`,
+    { email },
+    { skipErrorHandler: true, skipBusinessError: true }
+  )
+  deviMonData(response.data, z.null())
+}
+
 export async function getDeviMonSettings(signal?: AbortSignal) {
   const response = await api.get<unknown>(`${BASE_PATH}/config`, {
     signal,
