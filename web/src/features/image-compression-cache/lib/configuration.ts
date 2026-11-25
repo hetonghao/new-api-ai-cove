@@ -20,9 +20,11 @@ import { z } from 'zod'
 
 import { getServerErrorSources } from '@/lib/server-error-message'
 
+export const MAX_CACHE_CAPACITY_MIB = 2048
+
 export const cacheFormSchema = z.object({
   enabled: z.boolean(),
-  capacity: z.number().min(1).max(256),
+  capacity: z.number().min(1).max(MAX_CACHE_CAPACITY_MIB),
   ttl: z.number().int().min(60).max(3600),
 })
 
@@ -33,7 +35,7 @@ export function getCacheConfigErrorField(
 ): 'capacity' | 'ttl' | 'root' {
   for (const source of getServerErrorSources(error)) {
     switch (source.message_key) {
-      case 'Image compression cache capacity must be between 1 and 256 MiB':
+      case 'Image compression cache capacity must be between 1 and 2048 MiB':
         return 'capacity'
       case 'Image compression cache lifetime must be between 60 and 3600 seconds':
         return 'ttl'

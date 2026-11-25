@@ -70,7 +70,7 @@ async function prepareConfiguration(rejection?: string) {
       return { data: { success: true, data: saved } }
     })
   const i18n = createInstance()
-  await i18n.init({ lng: 'en', fallbackLng: 'en', resources: { en: {} } })
+  await i18n.init({ lng: 'en', fallbackLng: 'en', resources })
   const editor = () => (
     <I18nextProvider i18n={i18n}>
       <QueryClientProvider client={new QueryClient()}>
@@ -89,28 +89,31 @@ async function prepareConfiguration(rejection?: string) {
 test('saves the edited shared capacity and reads it back after reopening', async () => {
   const { editor, user, savedCapacity } = await prepareConfiguration()
   const view = render(editor())
+  await user.click(screen.getByRole('tab', { name: 'Configuration' }))
   const capacity = await screen.findByRole('spinbutton', {
     name: 'Cache capacity (MiB)',
   })
   expect(capacity).toHaveValue(64)
 
   await user.clear(capacity)
-  await user.type(capacity, '32')
+  await user.type(capacity, '2048')
   const save = screen.getByRole('button', { name: 'Save Changes' })
   await user.click(save)
 
   await waitFor(() => expect(save).toBeDisabled())
   view.unmount()
   render(editor())
+  await user.click(screen.getByRole('tab', { name: 'Configuration' }))
   expect(
     await screen.findByRole('spinbutton', { name: 'Cache capacity (MiB)' })
-  ).toHaveValue(32)
-  expect(savedCapacity()).toBe(33554432)
+  ).toHaveValue(2048)
+  expect(savedCapacity()).toBe(2147483648)
 })
 
 test('keeps the edited value and offers retry when saving is rejected', async () => {
   const { editor, user } = await prepareConfiguration('Save unavailable')
   render(editor())
+  await user.click(screen.getByRole('tab', { name: 'Configuration' }))
   const capacity = await screen.findByRole('spinbutton', {
     name: 'Cache capacity (MiB)',
   })
@@ -123,27 +126,27 @@ test('keeps the edited value and offers retry when saving is rejected', async ()
   expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled()
 })
 
-test('does not submit a lifetime shorter than the supported minimum', async () => {
+test.each([
+  ['Cache capacity (MiB)', '2049', 'Enter a number from 1 to 2,048.'],
+  ['Cache lifetime (seconds)', '59', 'Enter a whole number from 60 to 3,600.'],
+])('does not submit an out-of-range %s', async (name, value, message) => {
   const { editor, user, saveRequest } = await prepareConfiguration()
   render(editor())
-  const lifetime = await screen.findByRole('spinbutton', {
-    name: 'Cache lifetime (seconds)',
-  })
-  await user.clear(lifetime)
-  await user.type(lifetime, '59')
+  await user.click(screen.getByRole('tab', { name: 'Configuration' }))
+  const field = await screen.findByRole('spinbutton', { name })
+  await user.clear(field)
+  await user.type(field, value)
   await user.click(screen.getByRole('button', { name: 'Save Changes' }))
 
-  expect(
-    await screen.findByText('Enter a whole number from 60 to 3,600.')
-  ).toBeVisible()
-  expect(lifetime).toHaveAttribute('aria-invalid', 'true')
+  expect(await screen.findByText(message)).toBeVisible()
+  expect(field).toHaveAttribute('aria-invalid', 'true')
   expect(saveRequest).not.toHaveBeenCalled()
 })
 
 test.each([
   [
     'Cache capacity (MiB)',
-    'Image compression cache capacity must be between 1 and 256 MiB',
+    'Image compression cache capacity must be between 1 and 2048 MiB',
     '32',
   ],
   [
@@ -156,6 +159,7 @@ test.each([
   async (name, rejection, value) => {
     const { editor, user } = await prepareConfiguration(rejection)
     render(editor())
+    await user.click(screen.getByRole('tab', { name: 'Configuration' }))
     const field = await screen.findByRole('spinbutton', { name })
     await user.clear(field)
     await user.type(field, value)
@@ -195,12 +199,15 @@ test.each([
     )
     expect(screen.getByRole('tab', { name: configuration })).toHaveAttribute(
       'aria-selected',
-      'true'
+      'false'
     )
     expect(screen.getByRole('tab', { name: statistics })).toHaveAttribute(
       'aria-selected',
-      'false'
+      'true'
     )
+    await userEvent
+      .setup()
+      .click(screen.getByRole('tab', { name: configuration }))
     await screen.findByRole('spinbutton', { name: /MiB/ })
   }
 )

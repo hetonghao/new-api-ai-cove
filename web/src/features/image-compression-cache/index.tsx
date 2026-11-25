@@ -26,7 +26,7 @@ import { CacheStatistics } from './statistics'
 export function ImageCompressionCache() {
   const { t } = useTranslation()
   return (
-    <Tabs defaultValue='configuration' className='min-w-0 gap-4'>
+    <Tabs defaultValue='statistics' className='min-w-0 gap-4'>
       <TabsList variant='line' aria-label={t('Image compression cache')}>
         <TabsTrigger value='configuration'>{t('Configuration')}</TabsTrigger>
         <TabsTrigger value='statistics'>

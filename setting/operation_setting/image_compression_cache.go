@@ -26,8 +26,8 @@ func GetImageCompressionCacheSettings() ImageCompressionCacheSettings {
 }
 
 func (settings ImageCompressionCacheSettings) Validate() error {
-	if settings.MaxBytes < 1<<20 || settings.MaxBytes > 256<<20 {
-		return common.NewMessage("Image compression cache capacity must be between 1 and 256 MiB")
+	if settings.MaxBytes < 1<<20 || settings.MaxBytes > 2<<30 {
+		return common.NewMessage("Image compression cache capacity must be between 1 and 2048 MiB")
 	}
 	if settings.TTLSeconds < 60 || settings.TTLSeconds > 3600 {
 		return common.NewMessage("Image compression cache lifetime must be between 60 and 3600 seconds")

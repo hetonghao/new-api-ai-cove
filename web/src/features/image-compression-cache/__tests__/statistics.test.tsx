@@ -144,7 +144,6 @@ async function openSharedStatistics(options?: {
     </I18nextProvider>
   )
   const user = userEvent.setup()
-  await user.click(screen.getByRole('tab', { name: 'Statistics' }))
   if (!options?.unavailable) {
     await screen.findByRole('button', { name: 'Clear cache entry entry-a' })
   }

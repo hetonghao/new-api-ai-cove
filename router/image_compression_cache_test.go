@@ -78,7 +78,7 @@ func TestImageCompressionCacheAPI(t *testing.T) {
 			require.Equal(t, http.StatusForbidden, imageCacheAPIRequest(engine, endpoint.method, endpoint.path, adminSession.AccessToken, nil).Code)
 		})
 	}
-	const changed = `{"enabled":true,"max_bytes":2097152,"ttl_seconds":120}`
+	const changed = `{"enabled":true,"max_bytes":2147483648,"ttl_seconds":120}`
 	t.Run("Configuration", func(t *testing.T) {
 		response := imageCacheAPIRequest(engine, http.MethodGet, "/config", rootSession.AccessToken, nil)
 		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
@@ -91,7 +91,7 @@ func TestImageCompressionCacheAPI(t *testing.T) {
 		for _, invalid := range []string{
 			`{"max_bytes":2097152,"ttl_seconds":120}`,
 			`{"enabled":true,"max_bytes":1048575,"ttl_seconds":120}`,
-			`{"enabled":true,"max_bytes":268435457,"ttl_seconds":120}`,
+			`{"enabled":true,"max_bytes":2147483649,"ttl_seconds":120}`,
 			`{"enabled":true,"max_bytes":2097152,"ttl_seconds":59}`,
 			`{"enabled":true,"max_bytes":2097152,"ttl_seconds":3601}`,
 		} {

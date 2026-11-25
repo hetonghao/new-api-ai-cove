@@ -20,6 +20,8 @@ import (
 func TestImageCompressionCacheHitBypassesEncoderSlotsAndIsolatesUsers(t *testing.T) {
 	enableImageCompressionCacheForTest(t)
 	server := miniredis.RunT(t)
+	start := time.Unix(1764000000, 0)
+	server.SetTime(start)
 	url := "redis://" + server.Addr()
 	require.NoError(t, ConfigureImageCompressionCacheRedis(url))
 	t.Cleanup(func() { require.NoError(t, ConfigureImageCompressionCacheRedis("")) })
@@ -56,11 +58,16 @@ func TestImageCompressionCacheHitBypassesEncoderSlotsAndIsolatesUsers(t *testing
 	variant := data[:last] + string(alphabet[strings.IndexByte(alphabet, data[last])+1]) + data[last+1:]
 	wrapped := strings.Join([]string{variant[:64], variant[64:]}, `\r\n`)
 	call.Body = []byte(`{"model":"gpt-up","messages":[{"content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"` + wrapped + `"}}]}]}`)
-	hit := NewPlan().Run(hitCtx, call)
-	require.Nil(t, hit.Failed)
-	out := gjson.GetBytes(hit.Body, "messages.0.content.0.source")
-	require.Equal(t, "image/webp", out.Get("media_type").String())
-	require.Equal(t, expected, "data:image/webp;base64,"+out.Get("data").String())
+	// The second hit comes after the original expiry, but within 15 minutes of the first hit.
+	for _, elapsed := range []time.Duration{10 * time.Minute, 20 * time.Minute} {
+		server.FastForward(10 * time.Minute)
+		server.SetTime(start.Add(elapsed))
+		hit := NewPlan().Run(hitCtx, call)
+		require.Nil(t, hit.Failed, "cache must still hit after %s", elapsed)
+		out := gjson.GetBytes(hit.Body, "messages.0.content.0.source")
+		require.Equal(t, "image/webp", out.Get("media_type").String())
+		require.Equal(t, expected, "data:image/webp;base64,"+out.Get("data").String())
+	}
 
 	call.User.ID++
 	missCtx, cancelMiss := context.WithTimeout(t.Context(), time.Second)
@@ -71,8 +78,9 @@ func TestImageCompressionCacheHitBypassesEncoderSlotsAndIsolatesUsers(t *testing
 	require.Equal(t, call.Body, miss.Body)
 	stats := GetImageCompressionCacheSnapshot(t.Context(), 1, 25)
 	require.Len(t, stats.Entries, 1)
-	require.EqualValues(t, 1, stats.Entries[0].Hits)
+	require.EqualValues(t, 2, stats.Entries[0].Hits)
 	require.Equal(t, 7401, stats.Entries[0].UserID)
+	require.Equal(t, start.Add(35*time.Minute).Unix(), stats.Entries[0].ExpiresAt)
 
 	// The dry run can simulate user 7401, but cannot reuse their real cache entry.
 	dryCtx, cancelDry := context.WithTimeout(t.Context(), time.Second)
@@ -81,6 +89,12 @@ func TestImageCompressionCacheHitBypassesEncoderSlotsAndIsolatesUsers(t *testing
 	require.NotNil(t, result.Failed)
 	require.Equal(t, errorMedia, result.Failed.Class)
 	require.Equal(t, stats, GetImageCompressionCacheSnapshot(t.Context(), 1, 25))
+
+	server.FastForward(15 * time.Minute)
+	server.SetTime(start.Add(35 * time.Minute))
+	expired := GetImageCompressionCacheSnapshot(t.Context(), 1, 25)
+	require.Zero(t, expired.EntryCount)
+	require.EqualValues(t, 1, expired.Expirations)
 }
 
 func enableImageCompressionCacheForTest(t *testing.T) operation_setting.ImageCompressionCacheSettings {

@@ -34,6 +34,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { TitledCard } from '@/components/ui/titled-card'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatNumber } from '@/lib/format'
 import { getServerErrorMessage } from '@/lib/server-error-message'
 
 import {
@@ -48,6 +50,7 @@ import {
 import {
   cacheFormSchema,
   getCacheConfigErrorField,
+  MAX_CACHE_CAPACITY_MIB,
   type CacheForm,
 } from './lib/configuration'
 import { CacheConnectionWarning } from './statistics'
@@ -87,7 +90,9 @@ export function CacheConfiguration() {
 }
 
 function CacheConfigForm(props: { readonly config: CacheConfig }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  const maxCapacity = formatNumber(MAX_CACHE_CAPACITY_MIB, locale)
   const queryClient = useQueryClient()
   const form = useForm<CacheForm>({
     resolver: zodResolver(cacheFormSchema),
@@ -158,7 +163,7 @@ function CacheConfigForm(props: { readonly config: CacheConfig }) {
               id='compression-cache-capacity'
               type='number'
               min={1}
-              max={256}
+              max={MAX_CACHE_CAPACITY_MIB}
               step='any'
               aria-invalid={Boolean(errors.capacity)}
               aria-describedby={
@@ -170,13 +175,15 @@ function CacheConfigForm(props: { readonly config: CacheConfig }) {
               {...form.register('capacity', { valueAsNumber: true })}
             />
             <FieldDescription id='compression-cache-capacity-hint'>
-              {t('1 to 256 MiB across all nodes.')}
+              {t('1 to {{max}} MiB across all nodes.', { max: maxCapacity })}
             </FieldDescription>
             {errors.capacity && (
               <FieldError id='compression-cache-capacity-error'>
                 {errors.capacity.type === 'server'
                   ? errors.capacity.message
-                  : t('Enter a number from 1 to 256.')}
+                  : t('Enter a number from 1 to {{max}}.', {
+                      max: maxCapacity,
+                    })}
               </FieldError>
             )}
           </Field>
@@ -200,7 +207,7 @@ function CacheConfigForm(props: { readonly config: CacheConfig }) {
             />
             <FieldDescription id='compression-cache-ttl-hint'>
               {t(
-                '60 to 3,600 seconds from insertion. Changing this clears existing entries.'
+                '60 to 3,600 seconds. Each cache hit resets the timer. Changing this clears existing entries.'
               )}
             </FieldDescription>
             {errors.ttl && (

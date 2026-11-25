@@ -62,6 +62,7 @@ if not current[1] or revision > tonumber(current[1]) then
     current[4] = token
 end
 local generation = current[4]
+local ttlMillis = ttl * 1000
 
 if operation == 'lookup' then
     if enabled == '0' then return {''} end
@@ -70,12 +71,16 @@ if operation == 'lookup' then
     for i = 8, #ARGV, 2 do
         local key = ARGV[i]
         local occurrences = tonumber(ARGV[i + 1])
-        local value = redis.call('GET', prefix .. ':image:' .. key)
+        local imageKey = prefix .. ':image:' .. key
+        local value = redis.call('GET', imageKey)
         local raw = redis.call('HGET', metadata, key)
         if value and raw then
             local row = cjson.decode(raw)
             row.hits = row.hits + occurrences
             row.last_hit_at = tonumber(clock[1])
+            row.expires_at = tonumber(clock[1]) + ttl
+            redis.call('PEXPIRE', imageKey, ttlMillis)
+            redis.call('ZADD', expires, now + ttlMillis, key)
             raw = cjson.encode(row)
             redis.call('HSET', metadata, key, raw)
             redis.call('ZADD', lru, redis.call('HINCRBY', state, 'sequence', 1), key)
@@ -106,11 +111,11 @@ elseif operation == 'store' then
             row.created_at = tonumber(clock[1])
             row.expires_at = tonumber(clock[1]) + ttl
             fit(size, 1)
-            redis.call('SET', prefix .. ':image:' .. key, payload, 'PX', ttl * 1000)
+            redis.call('SET', prefix .. ':image:' .. key, payload, 'PX', ttlMillis)
             redis.call('HSET', metadata, key, cjson.encode(row))
             redis.call('HSET', ids, row.id, key)
             redis.call('ZADD', lru, redis.call('HINCRBY', state, 'sequence', 1), key)
-            redis.call('ZADD', expires, now + ttl * 1000, key)
+            redis.call('ZADD', expires, now + ttlMillis, key)
             redis.call('HINCRBY', state, 'used', size)
         end
     end
