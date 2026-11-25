@@ -8241,6 +8241,7 @@
     "No assistant message in the response": "No assistant message in the response",
     "Show password": "Show password",
     "Cache hit": "Cache hit",
+    "Served from cache": "Served from cache",
     "Protocol": "Protocol",
     "Self-harm intent": "Self-harm intent",
     "Finished": "Finished",

@@ -8241,6 +8241,7 @@
     "No assistant message in the response": "В ответе нет сообщения ассистента",
     "Show password": "Показать пароль",
     "Cache hit": "Попадание в кэш",
+    "Served from cache": "Получено из кэша",
     "Protocol": "Протокол",
     "Self-harm intent": "Намерение самоповреждения",
     "Finished": "Завершён",

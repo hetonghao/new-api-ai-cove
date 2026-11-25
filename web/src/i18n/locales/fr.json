@@ -8241,6 +8241,7 @@
     "No assistant message in the response": "Aucun message de l'assistant dans la réponse",
     "Show password": "Afficher le mot de passe",
     "Cache hit": "Cache utilisé",
+    "Served from cache": "Servi depuis le cache",
     "Protocol": "Protocole",
     "Self-harm intent": "Intention d’automutilation",
     "Finished": "Terminé",

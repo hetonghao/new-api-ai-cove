@@ -64,7 +64,13 @@ func beginImageCacheBatch(ctx context.Context, userID int, media []inlineMedia, 
 		if err := common.UnmarshalJsonStr(metadata, &row); err != nil || row.UserID != userID || !validCachedImage(row, payload) {
 			continue
 		}
-		batch.results[key] = imageReencodeResult{data: []byte(payload), originalMIME: row.OriginalMIME, compressedMIME: row.CompressedMIME, originalBytes: row.OriginalBytes}
+		batch.results[key] = imageReencodeResult{
+			data:           []byte(payload),
+			originalMIME:   row.OriginalMIME,
+			compressedMIME: row.CompressedMIME,
+			originalBytes:  row.OriginalBytes,
+			cacheHit:       true,
+		}
 	}
 	return batch
 }

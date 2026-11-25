@@ -22,7 +22,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from '@tanstack/react-table'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest'
 
@@ -74,6 +74,13 @@ const other: LogOtherData = {
           index: 0,
           from: { mime: 'image/png', bytes: 1_200_000 },
           to: { mime: 'image/webp', bytes: 800_000 },
+          lossless: true,
+          cache_hit: true,
+        },
+        {
+          index: 1,
+          from: { mime: 'image/png', bytes: 400_000 },
+          to: { mime: 'image/webp', bytes: 200_000 },
           lossless: true,
         },
       ],
@@ -184,6 +191,19 @@ function ModelCell(props: { other?: LogOtherData }) {
 }
 
 describe('request processing in the log details', () => {
+  test('shows the cache tooltip only for the image served from cache', async () => {
+    renderDetails(false)
+    const user = userEvent.setup()
+    const cached = screen.getByText(/^Image 1:/)
+    const compressed = screen.getByText(/^Image 2:/)
+    const label = 'Served from cache'
+    const marker = within(cached).getByRole('img', { name: label })
+    expect(within(compressed).queryByRole('img', { name: label })).toBeNull()
+
+    await user.hover(marker)
+    expect(await screen.findByText(label)).toBeVisible()
+  })
+
   test('each plugin shows its stage, notice, changes, headers, effort, media and findings', () => {
     renderDetails(false)
 

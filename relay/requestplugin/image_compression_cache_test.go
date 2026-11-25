@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/alicebob/miniredis/v2"
@@ -33,6 +34,9 @@ func TestImageCompressionCacheHitBypassesEncoderSlotsAndIsolatesUsers(t *testing
 	call := Call{Stage: StageOutbound, Body: body, User: jsplugin.TransformUser{ID: 7401}}
 	first := NewPlan().Run(t.Context(), call)
 	require.Nil(t, first.Failed)
+	firstRecord, err := common.Marshal(first.Record)
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(firstRecord, "0.media.0.cache_hit").Exists())
 	expected := gjson.GetBytes(first.Body, "messages.0.content.0.image_url.url").String()
 	require.Contains(t, expected, "data:image/webp;base64,")
 	// A second client has no process-local copy of the encoded result.
@@ -64,6 +68,9 @@ func TestImageCompressionCacheHitBypassesEncoderSlotsAndIsolatesUsers(t *testing
 		server.SetTime(start.Add(elapsed))
 		hit := NewPlan().Run(hitCtx, call)
 		require.Nil(t, hit.Failed, "cache must still hit after %s", elapsed)
+		hitRecord, err := common.Marshal(hit.Record)
+		require.NoError(t, err)
+		require.Equal(t, gjson.True, gjson.GetBytes(hitRecord, "0.media.0.cache_hit").Type)
 		out := gjson.GetBytes(hit.Body, "messages.0.content.0.source")
 		require.Equal(t, "image/webp", out.Get("media_type").String())
 		require.Equal(t, expected, "data:image/webp;base64,"+out.Get("data").String())

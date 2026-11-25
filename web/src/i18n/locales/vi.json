@@ -8241,6 +8241,7 @@
     "No assistant message in the response": "Phản hồi không có tin nhắn của assistant",
     "Show password": "Hiển thị mật khẩu",
     "Cache hit": "Trúng bộ nhớ đệm",
+    "Served from cache": "Lấy từ bộ nhớ đệm",
     "Protocol": "Giao thức",
     "Self-harm intent": "Ý định tự làm hại",
     "Finished": "Đã xong",

@@ -8241,6 +8241,7 @@
     "No assistant message in the response": "回應中沒有助手訊息",
     "Show password": "顯示密碼",
     "Cache hit": "快取命中",
+    "Served from cache": "命中快取",
     "Protocol": "協議",
     "Self-harm intent": "自殘意圖",
     "Finished": "完成時間",

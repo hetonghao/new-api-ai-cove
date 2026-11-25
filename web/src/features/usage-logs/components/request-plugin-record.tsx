@@ -1,3 +1,4 @@
+import { DatabaseZap } from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -111,6 +112,30 @@ const ATTACHMENT_UNCHECKED_REASONS: Record<string, string> = {
 
 function imageFormatName(mime: string) {
   return IMAGE_FORMAT_NAMES[mime] ?? mime.replace(/^image\//, '').toUpperCase()
+}
+
+function ImageCacheHitMarker() {
+  const { t } = useTranslation()
+  const label = t('Served from cache')
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        delay={150}
+        render={
+          <span
+            role='img'
+            aria-label={label}
+            tabIndex={0}
+            className='text-success focus-visible:ring-ring ms-1 inline-flex size-4 cursor-help items-center justify-center rounded-sm align-middle focus-visible:ring-2 focus-visible:outline-none'
+          >
+            <DatabaseZap className='size-3' aria-hidden='true' />
+          </span>
+        }
+      />
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
 }
 
 type RequestPluginRecordProps = {
@@ -265,6 +290,7 @@ function RecordEntry(props: {
             {media.lossless
               ? t('Image {{index}}: {{from}} → {{to}} (lossless)', values)
               : t('Image {{index}}: {{from}} → {{to}}', values)}
+            {media.cache_hit === true && <ImageCacheHitMarker />}
           </p>
         )
       })}

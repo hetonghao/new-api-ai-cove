@@ -97,6 +97,7 @@ type RequestPluginMediaChange struct {
 	From     RequestPluginMediaForm `json:"from"`
 	To       RequestPluginMediaForm `json:"to"`
 	Lossless bool                   `json:"lossless"`
+	CacheHit bool                   `json:"cache_hit,omitempty"`
 }
 
 type RequestPluginMediaForm struct {

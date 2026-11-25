@@ -114,6 +114,7 @@ type imageReencodeResult struct {
 	data                         []byte
 	originalMIME, compressedMIME string
 	originalBytes                int
+	cacheHit                     bool
 }
 
 type ImageCompressionCacheEntry struct {

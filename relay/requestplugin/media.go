@@ -208,6 +208,7 @@ func reencodeMedia(ctx context.Context, batch *imageCacheBatch, index int, item 
 		From:     relaycommon.RequestPluginMediaForm{Mime: item.mime, Bytes: result.originalBytes},
 		To:       relaycommon.RequestPluginMediaForm{Mime: mime, Bytes: len(result.data)},
 		Lossless: mime != "image/jpeg",
+		CacheHit: result.cacheHit,
 	}, nil
 }
 

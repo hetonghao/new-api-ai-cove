@@ -179,6 +179,7 @@ export type RequestPluginRecordEntry = {
     from: { mime: string; bytes: number }
     to: { mime: string; bytes: number }
     lossless?: boolean
+    cache_hit?: boolean
   }[]
   findings?: { category: string; count: number }[]
   notice?: LocalizedTextValue

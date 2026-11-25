@@ -8241,6 +8241,7 @@
     "No assistant message in the response": "レスポンスにアシスタントメッセージがありません",
     "Show password": "パスワードを表示",
     "Cache hit": "キャッシュヒット",
+    "Served from cache": "キャッシュから取得",
     "Protocol": "プロトコル",
     "Self-harm intent": "自傷の意図",
     "Finished": "終了",

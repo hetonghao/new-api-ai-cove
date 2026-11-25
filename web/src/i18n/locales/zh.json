@@ -8241,6 +8241,7 @@
     "No assistant message in the response": "响应中没有助手消息",
     "Show password": "显示密码",
     "Cache hit": "缓存命中",
+    "Served from cache": "命中缓存",
     "Protocol": "协议",
     "Self-harm intent": "自残意图",
     "Finished": "完成时间",
