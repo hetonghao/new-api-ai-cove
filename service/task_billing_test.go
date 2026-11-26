@@ -63,6 +63,7 @@ func TestMain(m *testing.M) {
 		&model.UserSubscription{},
 		&model.SystemTask{},
 		&model.SystemTaskLock{},
+		&model.DeviMonAccountRefresh{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -85,6 +86,7 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM midjourneys")
 		model.DB.Exec("DELETE FROM top_ups")
 		model.DB.Exec("DELETE FROM user_subscriptions")
+		model.DB.Exec("DELETE FROM devi_mon_account_refreshes")
 		model.DB.Exec("DELETE FROM system_task_locks")
 		model.DB.Exec("DELETE FROM system_tasks")
 	})

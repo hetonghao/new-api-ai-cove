@@ -25,6 +25,7 @@ import dayjs from '@/lib/dayjs'
 import { formatNumber } from '@/lib/format'
 
 import type { DeviMonAccount } from '../types'
+import { AccountRefreshButton } from './devi-mon-refresh-button'
 import { DevinAccountStatus } from './devi-mon-status'
 
 function AccountDate({ value }: { readonly value: string }) {
@@ -38,12 +39,47 @@ function AccountDate({ value }: { readonly value: string }) {
   )
 }
 
+function RenewalDate({
+  value,
+  now,
+}: {
+  readonly value: string
+  readonly now: number
+}) {
+  const { t, i18n } = useTranslation()
+  const date = dayjs(value)
+  if (!date.isValid()) return <>{t('Not provided')}</>
+  const days = date.startOf('day').diff(dayjs(now).startOf('day'), 'day')
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  const relative =
+    days === 0
+      ? t('Today')
+      : new Intl.RelativeTimeFormat(locale, { numeric: 'always' }).format(
+          days,
+          'day'
+        )
+  return (
+    <time
+      className='inline-flex flex-wrap gap-x-2 tabular-nums'
+      dateTime={value}
+      title={date.format('YYYY-MM-DD HH:mm:ss')}
+    >
+      <span className='whitespace-nowrap'>{date.format('MM-DD HH:mm')}</span>
+      <span className='text-muted-foreground whitespace-nowrap'>
+        {relative}
+      </span>
+    </time>
+  )
+}
+
 export function DeviMonRow({
   account,
   now,
+  configured,
 }: {
   readonly account: DeviMonAccount
   readonly now: number
+  readonly configured: boolean
 }) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
@@ -66,29 +102,30 @@ export function DeviMonRow({
   return (
     <li className='grid min-w-0 gap-x-10 gap-y-3 px-3 py-3 sm:px-4 @3xl/accounts:grid-cols-2 @3xl/accounts:items-center'>
       <div className='min-w-0 space-y-2'>
-        <div className='flex flex-wrap items-center gap-x-2 gap-y-1'>
-          <h3 className='min-w-0 text-sm font-semibold [overflow-wrap:anywhere]'>
-            {account.email}
-          </h3>
-          <DevinAccountStatus
-            disabled={account.devin_disabled}
-            routing={account.devin_routing}
-          />
+        <div className='flex items-start gap-2'>
+          <div className='flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 self-center'>
+            <h3 className='min-w-0 text-sm font-semibold [overflow-wrap:anywhere]'>
+              {account.email}
+            </h3>
+            <DevinAccountStatus
+              disabled={account.devin_disabled}
+              routing={account.devin_routing}
+            />
+          </div>
+          <AccountRefreshButton email={account.email} configured={configured} />
         </div>
-        <div className='w-full max-w-80'>
-          <QuotaWindow
-            label={t('Weekly allowance')}
-            subscriptionName={account.email}
-            now={now}
-            window={{
-              key: 'weekly',
-              duration_seconds: 7 * 24 * 60 * 60,
-              status: 'ok',
-              used_percent: account.used_percent,
-              resets_at: reset?.isValid() ? reset.toISOString() : null,
-            }}
-          />
-        </div>
+        <QuotaWindow
+          label={t('Weekly allowance')}
+          subscriptionName={account.email}
+          now={now}
+          window={{
+            key: 'weekly',
+            duration_seconds: 7 * 24 * 60 * 60,
+            status: 'ok',
+            used_percent: account.used_percent,
+            resets_at: reset?.isValid() ? reset.toISOString() : null,
+          }}
+        />
         {account.error && (
           <p className='text-destructive text-xs [overflow-wrap:anywhere]'>
             {account.error}
@@ -105,7 +142,7 @@ export function DeviMonRow({
         </dd>
         <dt className='text-muted-foreground'>{t('Subscription renews')}</dt>
         <dd>
-          <AccountDate value={account.renew_at} />{' '}
+          <RenewalDate value={account.renew_at} now={now} />{' '}
           {account.renew_at && account.renew_source === 'id_token' && (
             <span className='text-muted-foreground'>
               {t('(sign-in snapshot)')}

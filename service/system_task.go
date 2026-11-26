@@ -46,6 +46,11 @@ type ScheduledSystemTaskHandler interface {
 	NewPayload() any
 }
 
+// Only handlers whose work is safe to repeat may opt into an earlier recovery run.
+type interruptedSystemTaskRetrier interface {
+	interruptedRetryAt(latest *model.SystemTask) (int64, bool)
+}
+
 var (
 	systemTaskHandlersMu sync.RWMutex
 	systemTaskHandlers   = map[string]SystemTaskHandler{}
@@ -281,15 +286,26 @@ func runSystemTaskScheduler() {
 	}
 	for _, scheduled := range scheduledHandlers {
 		latest := latestTasks[scheduled.Type()]
+		var retry bool
 		if latest != nil {
 			if latest.Status == model.SystemTaskStatusPending || latest.Status == model.SystemTaskStatusRunning {
 				continue // an active row already exists
 			}
-			if now-latest.UpdatedAt < int64(scheduled.Interval().Seconds()) {
-				continue // not due yet
+			due := latest.UpdatedAt + int64(scheduled.Interval().Seconds())
+			if handler, ok := scheduled.(interruptedSystemTaskRetrier); ok {
+				if retryAt, eligible := handler.interruptedRetryAt(latest); eligible {
+					due, retry = retryAt, true
+				}
+			}
+			if now < due {
+				continue
 			}
 		}
-		if _, err := model.CreateSystemTask(scheduled.Type(), scheduled.NewPayload(), nil); err != nil {
+		payload := scheduled.NewPayload()
+		if retry {
+			payload = map[string]string{"retry_of": latest.TaskID}
+		}
+		if _, err := model.CreateSystemTask(scheduled.Type(), payload, nil); err != nil {
 			activeTask, activeErr := model.GetActiveSystemTask(scheduled.Type())
 			if activeErr == nil && activeTask != nil {
 				continue

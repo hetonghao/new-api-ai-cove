@@ -26,8 +26,9 @@ const (
 	deviMonCardsURL     = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
 	deviMonSubscribeURL = "https://chatgpt.com/backend-api/subscriptions"
 
-	deviMonRequestTimeout  = 45 * time.Second
-	deviMonMaxResponseSize = 1 << 20
+	deviMonInterruptedRetryDelay = time.Minute
+	deviMonRequestTimeout        = 45 * time.Second
+	deviMonMaxResponseSize       = 1 << 20
 )
 
 // Collection targets stay variable so tests can point them at a local server.
@@ -47,6 +48,7 @@ type DeviMonCard struct {
 // DeviMonAccount is one Codex account with its weekly allowance, credits and
 // reset cards, paired with the configuration of the same-email Devin account.
 type DeviMonAccount struct {
+	ObservedAtUS  int64           `json:"observed_at_us,omitempty"`
 	Email         string          `json:"email"`
 	UsedPercent   *float64        `json:"used_percent"`
 	ResetAt       *int64          `json:"reset_at"`
@@ -77,6 +79,7 @@ type DeviMonDevin struct {
 
 // DeviMonSnapshot is the last completed collection.
 type DeviMonSnapshot struct {
+	StartedAtUS     int64            `json:"started_at_us,omitempty"`
 	CollectedAt     int64            `json:"collected_at"`
 	DurationMS      int64            `json:"duration_ms"`
 	IntervalMinutes int              `json:"interval_minutes"`
@@ -99,6 +102,15 @@ func (deviMonTask) Interval() time.Duration {
 }
 func (deviMonTask) NewPayload() any { return nil }
 
+// Normal Devin collections have no payload. The automatic retry carries the
+// interrupted task ID, so another restart cannot start a chain of retries.
+func (deviMonTask) interruptedRetryAt(latest *model.SystemTask) (int64, bool) {
+	if latest.Status != model.SystemTaskStatusFailed || latest.Error != model.SystemTaskLeaseExpiredMessage || latest.Payload != "" {
+		return 0, false
+	}
+	return latest.UpdatedAt + int64(deviMonInterruptedRetryDelay/time.Second), true
+}
+
 func init() { RegisterSystemTaskHandler(deviMonTask{}) }
 
 func (deviMonTask) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
@@ -109,6 +121,10 @@ func (deviMonTask) Run(ctx context.Context, task *model.SystemTask, runnerID str
 	}
 	if err := model.FinishSystemTask(task.TaskID, runnerID, model.SystemTaskStatusSucceeded, snapshot, ""); err != nil {
 		logSystemTaskLockError(ctx, task, err)
+		return
+	}
+	if err := model.DeleteDeviMonRefreshesBefore(snapshot.StartedAtUS); err != nil {
+		logger.LogWarn(ctx, common.LogText("devin monitor: could not prune old account refreshes: %v", err))
 	}
 }
 
@@ -122,7 +138,7 @@ type DeviMonState struct {
 }
 
 // The primary writes task results; every gateway reads them. The scheduler
-// counts the interval from completion, including failed attempts.
+// and this view use the same recovery time for an interrupted collection.
 func GetDeviMonState() (DeviMonState, error) {
 	handler := deviMonTask{}
 	state := DeviMonState{Configured: handler.Enabled(), IntervalMinutes: operation_setting.GetDeviMonSettings().IntervalMinutes}
@@ -133,6 +149,9 @@ func GetDeviMonState() (DeviMonState, error) {
 	state.Collecting = latest.Status == model.SystemTaskStatusPending || latest.Status == model.SystemTaskStatusRunning
 	if state.Configured && !state.Collecting {
 		state.NextRunAt = latest.UpdatedAt + int64(state.IntervalMinutes)*60
+		if retryAt, ok := handler.interruptedRetryAt(latest); ok {
+			state.NextRunAt = retryAt
+		}
 	}
 	state.LastError = latest.Error
 	if latest.Status != model.SystemTaskStatusSucceeded {
@@ -141,7 +160,10 @@ func GetDeviMonState() (DeviMonState, error) {
 			return state, err
 		}
 	}
-	err = common.UnmarshalJsonStr(latest.Result, &state.Snapshot)
+	if err := common.UnmarshalJsonStr(latest.Result, &state.Snapshot); err != nil || state.Snapshot == nil {
+		return state, err
+	}
+	err = applyDeviMonRefreshes(state.Snapshot)
 	return state, err
 }
 
@@ -154,34 +176,16 @@ func collectDeviMon(ctx context.Context) (*DeviMonSnapshot, error) {
 	}
 	started := time.Now()
 	snapshot := &DeviMonSnapshot{
+		StartedAtUS:     started.UnixMicro(),
 		IntervalMinutes: operation_setting.GetDeviMonSettings().IntervalMinutes,
 		Accounts:        []DeviMonAccount{},
 		UnpairedDevin:   []DeviMonDevin{},
 		Errors:          []string{},
 	}
 
-	codexFiles, err := deviMonAuthFiles(ctx, key, deviMonCodexBase)
+	codexAccounts, devinByEmail, err := deviMonInventory(ctx, key)
 	if err != nil {
-		return nil, fmt.Errorf("cpa-pro-2: %w", err)
-	}
-	devinFiles, err := deviMonAuthFiles(ctx, key, deviMonDevinBase)
-	if err != nil {
-		return nil, fmt.Errorf("cpa-pro-1: %w", err)
-	}
-
-	codexAccounts := filterDeviMonProvider(codexFiles, "codex")
-	devinByEmail := map[string]DeviMonDevin{}
-	for _, file := range filterDeviMonProvider(devinFiles, "devin") {
-		if email := deviMonString(file["email"]); email != "" {
-			devinByEmail[strings.ToLower(email)] = DeviMonDevin{
-				Email:    email,
-				Disabled: deviMonBool(file["disabled"]),
-				Routing: &DeviMonRouting{
-					Priority: deviMonOptionalInt(file["priority"]),
-					Weight:   deviMonOptionalInt(file["weight"]),
-				},
-			}
-		}
+		return nil, err
 	}
 
 	// Pair from both complete credential lists, independently of quota probes.
@@ -222,6 +226,34 @@ func collectDeviMon(ctx context.Context) (*DeviMonSnapshot, error) {
 	return snapshot, nil
 }
 
+func deviMonInventory(ctx context.Context, key string) ([]map[string]any, map[string]DeviMonDevin, error) {
+	codexFiles, err := deviMonAuthFiles(ctx, key, deviMonCodexBase)
+	if err != nil {
+		return nil, nil, fmt.Errorf("cpa-pro-2: %w", err)
+	}
+	devinFiles, err := deviMonAuthFiles(ctx, key, deviMonDevinBase)
+	if err != nil {
+		return nil, nil, fmt.Errorf("cpa-pro-1: %w", err)
+	}
+
+	codexAccounts := filterDeviMonProvider(codexFiles, "codex")
+	devinByEmail := map[string]DeviMonDevin{}
+	for _, file := range filterDeviMonProvider(devinFiles, "devin") {
+		if email := deviMonString(file["email"]); email != "" {
+			devinByEmail[strings.ToLower(email)] = DeviMonDevin{
+				Email:    email,
+				Disabled: deviMonBool(file["disabled"]),
+				Routing: &DeviMonRouting{
+					Priority: deviMonOptionalInt(file["priority"]),
+					Weight:   deviMonOptionalInt(file["weight"]),
+				},
+			}
+		}
+	}
+
+	return codexAccounts, devinByEmail, nil
+}
+
 // deviMonNextGap returns the pause before the next account, in [min, max).
 // A non-positive span makes the pause constant instead of panicking.
 func deviMonNextGap() time.Duration {
@@ -249,7 +281,7 @@ func sortDeviMonAccounts(accounts []DeviMonAccount) {
 
 func collectDeviMonAccount(ctx context.Context, key string, file map[string]any, devinByEmail map[string]DeviMonDevin) DeviMonAccount {
 	email := deviMonString(file["email"])
-	account := DeviMonAccount{Email: email, Cards: []DeviMonCard{}}
+	account := DeviMonAccount{Email: email, Cards: []DeviMonCard{}, ObservedAtUS: time.Now().UnixMicro()}
 	if devin, ok := devinByEmail[strings.ToLower(email)]; ok {
 		account.DevinDisabled = &devin.Disabled
 		account.DevinRouting = devin.Routing
@@ -288,13 +320,18 @@ func collectDeviMonAccount(ctx context.Context, key string, file map[string]any,
 		}
 	}
 
-	account.RenewAt, account.RenewSource = deviMonRenewal(ctx, key, file)
+	var renewalErr error
+	account.RenewAt, account.RenewSource, renewalErr = deviMonRenewal(ctx, key, file)
+	if renewalErr != nil && account.Error == "" {
+		account.Error = "subscription: " + renewalErr.Error()
+	}
 	return account
 }
 
 // deviMonRenewal prefers the live subscription endpoint because the id_token
 // claim is only a snapshot taken at sign-in and never reflects a renewal.
-func deviMonRenewal(ctx context.Context, key string, file map[string]any) (string, string) {
+func deviMonRenewal(ctx context.Context, key string, file map[string]any) (string, string, error) {
+	var requestErr error
 	idToken, _ := file["id_token"].(map[string]any)
 	accountID := deviMonString(idToken["chatgpt_account_id"])
 	if accountID != "" {
@@ -302,14 +339,15 @@ func deviMonRenewal(ctx context.Context, key string, file map[string]any) (strin
 			deviMonSubscribeURL+"?account_id="+accountID, map[string]string{"Chatgpt-Account-Id": accountID})
 		if err == nil {
 			if until := deviMonString(body["active_until"]); until != "" {
-				return until, "live"
+				return until, "live", nil
 			}
 		}
+		requestErr = err
 	}
 	if snapshot := deviMonString(idToken["chatgpt_subscription_active_until"]); snapshot != "" {
-		return snapshot, "id_token"
+		return snapshot, "id_token", nil
 	}
-	return "", ""
+	return "", "", requestErr
 }
 
 func deviMonAuthFiles(ctx context.Context, key string, base string) ([]map[string]any, error) {

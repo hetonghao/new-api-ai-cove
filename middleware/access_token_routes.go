@@ -48,6 +48,7 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"POST /api/image-compression-cache/clear":                      accessTokenSessionRule,
 	"GET /api/devin-monitor":                                       accessTokenSessionRule,
 	"POST /api/devin-monitor/collect":                              accessTokenSessionRule,
+	"POST /api/devin-monitor/accounts/refresh":                     accessTokenSessionRule,
 	"GET /api/devin-monitor/config":                                accessTokenSessionRule,
 	"PUT /api/devin-monitor/config":                                accessTokenSessionRule,
 	"GET /api/upstream-subscriptions":                              accessTokenSessionRule,

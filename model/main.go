@@ -384,6 +384,7 @@ func migrateDB() error {
 		&SystemInstance{},
 		&SystemTask{},
 		&SystemTaskLock{},
+		&DeviMonAccountRefresh{},
 		&CasbinRule{},
 		&AuthzRole{},
 		&ModelQualitySettings{},

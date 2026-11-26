@@ -109,6 +109,66 @@ function serveState(snapshot: unknown) {
 }
 
 describe('devin monitor', () => {
+  it('refreshes only via the selected account button and reads the updated row without a full collection', async () => {
+    const posts: unknown[] = []
+    let release = () => {}
+    const hold = new Promise<void>((done) => {
+      release = done
+    })
+    let updated = false
+    api.defaults.adapter = (async (config) => {
+      let data: unknown = null
+      if (config.method === 'post') {
+        posts.push([config.url, JSON.parse(config.data)])
+        await hold
+        updated = true
+      } else {
+        const snapshot = {
+          ...SNAPSHOT,
+          accounts: SNAPSHOT.accounts.map((row, i) =>
+            i === 0 && updated ? { ...row, used_percent: 40 } : row
+          ),
+        }
+        data = {
+          snapshot,
+          collecting: false,
+          next_run_at: 1_795_010_000,
+          configured: true,
+        }
+      }
+      return {
+        config,
+        data: { success: true, data },
+        headers: {},
+        status: 200,
+        statusText: 'OK',
+      }
+    }) as AxiosAdapter
+    renderMonitor()
+    const user = userEvent.setup()
+    const heading = await screen.findByRole('heading', {
+      name: 'busy@example.com',
+    })
+    const refresh = screen.getByRole('button', {
+      name: 'Refresh busy@example.com',
+    })
+    await user.click(heading)
+    expect(posts).toEqual([])
+    await user.click(refresh)
+    expect(refresh).toBeDisabled()
+    expect(await screen.findByText('1% remaining')).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: 'Refresh fresh@example.com' })
+    ).toBeEnabled()
+    expect(posts).toEqual([
+      ['/api/devin-monitor/accounts/refresh', { email: 'busy@example.com' }],
+    ])
+    release()
+    expect(await screen.findByText('60% remaining')).toBeVisible()
+    expect(screen.getByText('96% remaining')).toBeVisible()
+    await waitFor(() => expect(refresh).toBeEnabled())
+  })
+
   it('sorts by Devin priority then weight and switches to known reset and renewal times first', async () => {
     const sample = SNAPSHOT.accounts[0]
     const account = (
@@ -362,7 +422,10 @@ describe('devin monitor', () => {
     expect(posted).toBe(1)
   })
 
-  it('shows the last good accounts when a subsequent attempt fails', async () => {
+  it.each([
+    ['cpa-pro-2: HTTP 502', 'cpa-pro-2: HTTP 502'],
+    ['task lease expired', 'Collection interrupted'],
+  ])('keeps the last good accounts and explains %s', async (error, message) => {
     api.defaults.adapter = (async (config) => ({
       config,
       data: {
@@ -372,7 +435,7 @@ describe('devin monitor', () => {
           collecting: false,
           configured: true,
           next_run_at: 1_795_010_000,
-          last_error: 'cpa-pro-2: HTTP 502',
+          last_error: error,
         },
       },
       headers: {},
@@ -382,7 +445,7 @@ describe('devin monitor', () => {
     renderMonitor()
     expect(
       await screen.findByText(/Showing the last complete collection/)
-    ).toBeVisible()
+    ).toHaveTextContent(message)
     expect(screen.getByText('busy@example.com')).toBeVisible()
     expect(screen.queryByText('Not scheduled')).toBeNull()
   })
