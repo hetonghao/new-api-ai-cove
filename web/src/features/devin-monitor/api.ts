@@ -25,7 +25,6 @@ import { requireServerSuccess } from '@/lib/server-error-message'
 import {
   deviMonAccountSchema,
   deviMonChannelAccountSchema,
-  deviMonDeviceCodeSchema,
   deviMonSettingsSchema,
   deviMonStateSchema,
   type DeviMonSettings,
@@ -111,25 +110,21 @@ export async function setDeviMonAccountChannel(
   deviMonData(response.data, z.null())
 }
 
-export async function startDeviMonChatGPTLogin() {
+// The pasted blob is the raw response of /api/auth/session, so it is sent as a
+// string and validated on the server; the client only checks it parses.
+export async function saveDeviMonChatGPTSession(sessionJson: string) {
   const response = await api.post<unknown>(
-    `${BASE_PATH}/accounts/chatgpt/login`
-  )
-  return deviMonData(response.data, deviMonDeviceCodeSchema)
-}
-
-export async function pollDeviMonChatGPTLogin(
-  deviceAuthId: string,
-  userCode: string
-) {
-  const response = await api.post<unknown>(
-    `${BASE_PATH}/accounts/chatgpt/login/poll`,
-    { device_auth_id: deviceAuthId, user_code: userCode },
-    { skipErrorHandler: true, skipBusinessError: true }
+    `${BASE_PATH}/accounts/chatgpt/session`,
+    sessionJson,
+    {
+      headers: { 'Content-Type': 'application/json' },
+      skipErrorHandler: true,
+      skipBusinessError: true,
+    }
   )
   return deviMonData(
     response.data,
-    z.object({ done: z.boolean(), email: z.string() })
+    z.object({ email: z.string(), account_id: z.string() })
   )
 }
 

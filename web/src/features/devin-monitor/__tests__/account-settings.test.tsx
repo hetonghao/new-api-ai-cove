@@ -61,14 +61,8 @@ function serveChannels(
         url: config.url,
         body: config.data ? JSON.parse(config.data) : undefined,
       })
-      if (config.url === '/api/devin-monitor/accounts/chatgpt/login') {
-        data = {
-          device_auth_id: 'deviceauth_test',
-          user_code: 'TEST-CODE',
-          verification_url: 'https://auth.openai.com/codex/device',
-          interval: 3600,
-          expires_at: '2026-12-01T00:00:00Z',
-        }
+      if (config.url === '/api/devin-monitor/accounts/chatgpt/session') {
+        data = { email: 'owned@example.com', account_id: 'acct-owned' }
       }
     }
     return {
@@ -80,6 +74,13 @@ function serveChannels(
     }
   }) satisfies AxiosAdapter
 }
+
+const SESSION_JSON = JSON.stringify({
+  accessToken: 'browser-access-token',
+  sessionToken: 'browser-session-token',
+  user: { email: 'owned@example.com' },
+  account: { id: 'acct-owned' },
+})
 
 function Harness() {
   const [open, setOpen] = useState(true)
@@ -104,18 +105,17 @@ function renderDialog() {
 }
 
 describe('devin account subscription channel', () => {
-  it('switches to the chatgpt channel without asking for a new sign-in when one is stored', async () => {
+  it('switches to the chatgpt channel without asking for a new session when one is stored', async () => {
     const calls: Call[] = []
     serveChannels(true, calls)
     renderDialog()
     const user = userEvent.setup()
 
     // Base UI names each radio from its wrapping label text, so the list is
-    // addressed by order: CPA first, ChatGPT sign-in second.
+    // addressed by order: CPA first, ChatGPT session second.
     const radios = await screen.findAllByRole('radio')
     expect(radios).toHaveLength(2)
     expect(radios[0]).toHaveAttribute('aria-checked', 'true')
-    expect(radios[1]).toHaveAttribute('aria-checked', 'false')
     await user.click(radios[1])
 
     await waitFor(() =>
@@ -134,40 +134,79 @@ describe('devin account subscription channel', () => {
     )
   })
 
-  it('starts a device sign-in instead of switching when no sign-in is stored', async () => {
+  it('offers the session page link and keeps the switch disabled until a session is saved', async () => {
+    const calls: Call[] = []
+    serveChannels(false, calls)
+    renderDialog()
+
+    const link = await screen.findByRole('link', {
+      name: 'Open the session page',
+    })
+    expect(link).toHaveAttribute('href', 'https://chatgpt.com/api/auth/session')
+    expect(link).toHaveAttribute('target', '_blank')
+
+    // Base UI renders the radio as a div, so disabled state is aria-disabled.
+    const radios = await screen.findAllByRole('radio')
+    expect(radios[1]).toHaveAttribute('aria-disabled', 'true')
+    expect(calls).toEqual([])
+  })
+
+  it('posts the pasted session JSON as-is', async () => {
     const calls: Call[] = []
     serveChannels(false, calls)
     renderDialog()
     const user = userEvent.setup()
 
-    const radios = await screen.findAllByRole('radio')
-    await user.click(radios[1])
-
-    expect(await screen.findByText('TEST-CODE', { exact: false })).toBeVisible()
-    expect(screen.getByRole('link')).toHaveAttribute(
-      'href',
-      'https://auth.openai.com/codex/device'
+    const field = await screen.findByLabelText('ChatGPT session JSON')
+    await user.click(field)
+    // paste, not type: userEvent reads "{...}" in type() as key descriptors.
+    await user.paste(SESSION_JSON)
+    await user.click(
+      screen.getByRole('button', { name: 'Save ChatGPT session' })
     )
-    expect(calls).toEqual([
-      { method: 'post', url: '/api/devin-monitor/accounts/chatgpt/login' },
-    ])
+
+    await waitFor(() =>
+      expect(calls).toEqual([
+        {
+          method: 'post',
+          url: '/api/devin-monitor/accounts/chatgpt/session',
+          body: JSON.parse(SESSION_JSON),
+        },
+      ])
+    )
   })
 
-  it('removes the stored sign-in only after confirmation', async () => {
+  it('rejects a paste that is not JSON without calling the server', async () => {
+    const calls: Call[] = []
+    serveChannels(false, calls)
+    renderDialog()
+    const user = userEvent.setup()
+
+    const field = await screen.findByLabelText('ChatGPT session JSON')
+    await user.click(field)
+    await user.paste('not json')
+    await user.click(
+      screen.getByRole('button', { name: 'Save ChatGPT session' })
+    )
+
+    await waitFor(() => expect(calls).toEqual([]))
+  })
+
+  it('removes the stored session only after confirmation', async () => {
     const calls: Call[] = []
     serveChannels(true, calls, 'chatgpt')
     renderDialog()
     const user = userEvent.setup()
 
     await user.click(
-      await screen.findByRole('button', { name: 'Remove sign-in' })
+      await screen.findByRole('button', { name: 'Remove session' })
     )
     const confirm = await screen.findByRole('alertdialog', {
-      name: 'Remove the ChatGPT sign-in?',
+      name: 'Remove the ChatGPT session?',
     })
     expect(calls).toEqual([])
     await user.click(
-      screen.getByRole('button', { name: 'Remove sign-in', hidden: false })
+      screen.getByRole('button', { name: 'Remove session', hidden: false })
     )
     await waitFor(() =>
       expect(calls).toEqual([

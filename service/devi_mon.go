@@ -560,11 +560,11 @@ func deviMonCredentialRequest(ctx context.Context, key string, file map[string]a
 	if err != nil {
 		return nil, err
 	}
-	client, err := deviMonChatGPTClient(deviMonChatGPTProxy())
+	client, err := deviMonChatGPTClient(DeviMonProxyURL())
 	if err != nil {
 		return nil, err
 	}
-	accessToken, err := deviMonChatGPTAccess(ctx, row)
+	accessToken, err := deviMonSessionAccess(ctx, row)
 	if err != nil {
 		return nil, err
 	}

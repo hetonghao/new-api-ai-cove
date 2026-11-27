@@ -92,15 +92,6 @@ export const deviMonChannelAccountSchema = z.object({
   expires_at: z.number().int(),
 })
 
-export const deviMonDeviceCodeSchema = z.object({
-  device_auth_id: z.string(),
-  user_code: z.string(),
-  verification_url: z.string(),
-  interval: z.number().int().positive(),
-  expires_at: z.string(),
-})
-
-export type DeviMonDeviceCode = z.infer<typeof deviMonDeviceCodeSchema>
 export type DeviMonChannelAccount = z.infer<typeof deviMonChannelAccountSchema>
 
 export type DeviMonRouting = z.infer<typeof deviMonRoutingSchema>

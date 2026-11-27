@@ -146,39 +146,31 @@ func SetDeviMonSettingsHandler(c *gin.Context) {
 	common.ApiSuccess(c, settings)
 }
 
-// --- ChatGPT sign-in channel ---------------------------------------------
+// --- ChatGPT session channel ---------------------------------------------
 
-// StartDeviMonChatGPTLogin hands the operator a one-time code; the account is
-// stored only after the code is approved in a browser.
-func StartDeviMonChatGPTLogin(c *gin.Context) {
-	info, err := service.StartDeviMonChatGPTLogin(c.Request.Context(), service.DeviMonProxyURL())
-	if err != nil {
-		logger.LogError(c.Request.Context(), common.LogText("devin monitor: device code request failed: %v", err))
-		common.ApiErrorStatus(c, http.StatusBadGateway, common.NewMessage("Could not start the ChatGPT sign-in"))
-		return
-	}
-	common.ApiSuccess(c, info)
-}
+// The pasted /api/auth/session payload is a credential, so it is capped and
+// never echoed back in an error message.
+const deviMonSessionMaxSize = 256 << 10
 
-// PollDeviMonChatGPTLogin is polled by the dialog until the code is approved.
-func PollDeviMonChatGPTLogin(c *gin.Context) {
-	var body struct {
-		DeviceAuthID string `json:"device_auth_id"`
-		UserCode     string `json:"user_code"`
-	}
-	if err := common.DecodeJsonBody(http.MaxBytesReader(c.Writer, c.Request.Body, deviMonMaxRequestSize), &body); err != nil ||
-		strings.TrimSpace(body.DeviceAuthID) == "" || len(body.DeviceAuthID) > 128 ||
-		strings.TrimSpace(body.UserCode) == "" || len(body.UserCode) > 32 {
-		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid sign-in confirmation"))
-		return
-	}
-	done, email, err := service.PollDeviMonChatGPTLogin(c.Request.Context(), service.DeviMonProxyURL(), body.DeviceAuthID, body.UserCode)
+// SaveDeviMonChatGPTSession stores a session pasted from an already signed-in
+// browser. The token is verified against ChatGPT before it is written.
+func SaveDeviMonChatGPTSession(c *gin.Context) {
+	raw, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, deviMonSessionMaxSize))
 	if err != nil {
-		logger.LogError(c.Request.Context(), common.LogText("devin monitor: device sign-in failed: %v", err))
-		common.ApiErrorStatus(c, http.StatusBadGateway, common.NewMessage("The ChatGPT sign-in did not complete"))
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Could not read the session JSON"))
 		return
 	}
-	common.ApiSuccess(c, gin.H{"done": done, "email": email})
+	account, err := service.DeviMonSaveSession(c.Request.Context(), raw)
+	if err != nil {
+		if errors.Is(err, service.ErrDeviMonInvalidSession) {
+			common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage(err.Error()))
+			return
+		}
+		logger.LogError(c.Request.Context(), common.LogText("devin monitor: could not store the ChatGPT session: %v", err))
+		common.ApiErrorStatus(c, http.StatusBadGateway, common.NewMessage("Could not verify the ChatGPT session"))
+		return
+	}
+	common.ApiSuccess(c, gin.H{"email": account.Email, "account_id": account.AccountID})
 }
 
 func GetDeviMonAccounts(c *gin.Context) {

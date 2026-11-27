@@ -12,24 +12,25 @@ import (
 )
 
 // A Devin monitor account reads its subscription data from one of two channels:
-// the Codex credential inventory inside CPA, or a ChatGPT sign-in stored here.
-// The row is also the switch: deleting it returns the account to the CPA channel.
+// the Codex credential inventory inside CPA, or a ChatGPT web session stored
+// here. The row is also the switch: deleting it returns the account to CPA.
 const (
 	DeviMonChannelCPA     = "cpa"
 	DeviMonChannelChatGPT = "chatgpt"
 )
 
-var ErrDeviMonChatGPTAccountMissing = errors.New("the ChatGPT sign-in is not stored")
+var ErrDeviMonChatGPTAccountMissing = errors.New("the ChatGPT session is not stored")
 
-// DeviMonChatGPTAccount holds one ChatGPT OAuth sign-in. Tokens are stored
-// encrypted and never leave the gateway.
+// DeviMonChatGPTAccount holds one ChatGPT web session. The session cookie is the
+// credential: it is exchanged for an access token on demand, so an expired
+// access token costs a call, not a new sign-in. Every secret column is stored
+// encrypted and never leaves the gateway.
 type DeviMonChatGPTAccount struct {
 	Email        string `gorm:"type:varchar(254);primaryKey"`
 	AccountID    string `gorm:"type:varchar(64);not null;default:''"`
 	Channel      string `gorm:"type:varchar(16);not null;default:'chatgpt'"`
+	SessionToken string `gorm:"type:text"`
 	AccessToken  string `gorm:"type:text"`
-	RefreshToken string `gorm:"type:text"`
-	IDToken      string `gorm:"type:text"`
 	ExpiresAt    int64  `gorm:"not null;default:0"`
 	CreatedAt    int64  `gorm:"not null;default:0"`
 	UpdatedAt    int64  `gorm:"not null;default:0"`
@@ -63,25 +64,28 @@ func GetDeviMonChatGPTAccount(ctx context.Context, email string) (DeviMonChatGPT
 func SaveDeviMonChatGPTAccount(ctx context.Context, row *DeviMonChatGPTAccount) error {
 	row.Email = DeviMonChatGPTEmail(row.Email)
 	return DB.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "email"}},
-		DoUpdates: clause.AssignmentColumns([]string{
-			"account_id", "channel", "access_token", "refresh_token", "id_token",
-			"expires_at", "updated_at",
-		}),
+		Columns:   []clause.Column{{Name: "email"}},
+		DoUpdates: clause.AssignmentColumns([]string{"account_id", "channel", "session_token", "access_token", "expires_at", "updated_at"}),
 	}).Create(row).Error
 }
 
-func UpdateDeviMonChatGPTTokens(ctx context.Context, email, accessToken, refreshToken, idToken string, expiresAt int64) error {
+// UpdateDeviMonChatGPTSession writes back a renewed session cookie and the
+// access token it produced.
+func UpdateDeviMonChatGPTSession(ctx context.Context, email, sessionToken, accessToken, accountID string, expiresAt int64) error {
+	updates := map[string]any{
+		"session_token": sessionToken, "access_token": accessToken,
+		"expires_at": expiresAt, "updated_at": common.GetTimestamp(),
+	}
+	if accountID != "" {
+		updates["account_id"] = accountID
+	}
 	return DB.WithContext(ctx).Model(&DeviMonChatGPTAccount{}).
 		Where("email = ?", DeviMonChatGPTEmail(email)).
-		Updates(map[string]any{
-			"access_token": accessToken, "refresh_token": refreshToken, "id_token": idToken,
-			"expires_at": expiresAt, "updated_at": common.GetTimestamp(),
-		}).Error
+		Updates(updates).Error
 }
 
-// SetDeviMonChatGPTChannel only moves the switch. Tokens stay, so switching
-// back does not require signing in again.
+// SetDeviMonChatGPTChannel only moves the switch. The session stays, so
+// switching back does not require pasting it again.
 func SetDeviMonChatGPTChannel(ctx context.Context, email, channel string) (bool, error) {
 	result := DB.WithContext(ctx).Model(&DeviMonChatGPTAccount{}).
 		Where("email = ?", DeviMonChatGPTEmail(email)).

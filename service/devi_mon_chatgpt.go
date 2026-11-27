@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -17,48 +15,77 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
 
-// Second subscription reading channel: the gateway signs in to ChatGPT itself
-// and calls the same wham endpoints CPA proxies, so every account shape the
-// monitor already understands keeps working without a CPA credential.
+// Second subscription reading channel: the operator pastes the JSON that
+// https://chatgpt.com/api/auth/session returns in an already signed-in browser,
+// and the gateway exchanges that session cookie for an access token itself.
+//
+// Why a cookie and not an OAuth sign-in: the device-code flow still demands the
+// account's email verification code, which is exactly what an account that
+// cannot sign in to Codex is missing. The session cookie is already issued, so
+// it sidesteps the login step entirely.
 const (
-	deviMonChatGPTClientID  = "app_EMoamEEZ73f0CkXaXp7hrann"
-	deviMonChatGPTDeviceURL = "https://auth.openai.com/codex/device"
-	deviMonChatGPTCallback  = "https://auth.openai.com/deviceauth/callback"
-	deviMonAccessTokenSlack = 60 * time.Second
+	deviMonChatGPTSessionURL = "https://chatgpt.com/api/auth/session"
+	deviMonAccessTokenSlack  = 60 * time.Second
+	// NextAuth splits cookies above 4096 bytes into .0 / .1 chunks. The pasted
+	// JSON carries the whole value, so it has to be re-chunked per request.
+	deviMonSessionChunkSize = 3933
 )
 
 var (
-	// Variable so tests can point every auth host at one local server.
-	deviMonChatGPTAuthAPI  = "https://auth.openai.com/api/accounts"
-	deviMonChatGPTTokenURL = "https://auth.openai.com/oauth/token"
+	// Variable so tests can serve the session endpoint locally.
+	deviMonChatGPTSessionAPI = deviMonChatGPTSessionURL
 
-	errDeviMonNoRefreshToken = errors.New("the ChatGPT sign-in has no refresh token")
+	errDeviMonNoSession = errors.New("the stored ChatGPT session is unreadable")
 )
 
-// DeviMonDeviceCode is one pending sign-in. Nothing secret is shared: the code
-// is useless without the operator approving it in a browser.
-type DeviMonDeviceCode struct {
-	DeviceAuthID    string `json:"device_auth_id"`
-	UserCode        string `json:"user_code"`
-	VerificationURL string `json:"verification_url"`
-	Interval        int    `json:"interval"`
-	ExpiresAt       string `json:"expires_at"`
-}
+// ErrDeviMonInvalidSession wraps the failures the operator can fix by pasting
+// again: malformed JSON, a missing field, or a token ChatGPT no longer accepts.
+var ErrDeviMonInvalidSession = errors.New("the pasted session is not usable")
 
-type deviMonChatGPTTokens struct {
+// DeviMonSession is the subset of the pasted JSON the gateway keeps.
+type DeviMonSession struct {
+	Email        string
+	AccountID    string
+	SessionToken string
 	AccessToken  string
-	RefreshToken string
-	IDToken      string
-	ExpiresIn    int
+	ExpiresAt    int64
 }
 
-// DeviMonProxyURL is the egress proxy for the ChatGPT channel, as configured.
+// ParseDeviMonSession accepts the JSON an operator copies from
+// /api/auth/session. Only the fields the monitor needs are read, and the
+// response's own access token is kept so the first read needs no extra call.
+func ParseDeviMonSession(raw []byte) (DeviMonSession, error) {
+	var payload struct {
+		AccessToken  string `json:"accessToken"`
+		SessionToken string `json:"sessionToken"`
+		Expires      string `json:"expires"`
+		User         struct {
+			Email string `json:"email"`
+		} `json:"user"`
+		Account struct {
+			ID string `json:"id"`
+		} `json:"account"`
+	}
+	if err := common.Unmarshal(raw, &payload); err != nil {
+		return DeviMonSession{}, fmt.Errorf("%w: that is not the session JSON", ErrDeviMonInvalidSession)
+	}
+	session := DeviMonSession{
+		Email:        model.DeviMonChatGPTEmail(payload.User.Email),
+		AccountID:    strings.TrimSpace(payload.Account.ID),
+		SessionToken: strings.TrimSpace(payload.SessionToken),
+		AccessToken:  strings.TrimSpace(payload.AccessToken),
+	}
+	if session.Email == "" || session.SessionToken == "" {
+		return DeviMonSession{}, fmt.Errorf("%w: it is missing the email or the session token", ErrDeviMonInvalidSession)
+	}
+	if when, err := time.Parse(time.RFC3339, payload.Expires); err == nil {
+		session.ExpiresAt = when.Unix()
+	}
+	return session, nil
+}
+
 func DeviMonProxyURL() string {
 	return strings.TrimSpace(operation_setting.GetDeviMonSettings().ChatGPTProxyURL)
-}
-
-func deviMonChatGPTProxy() string {
-	return DeviMonProxyURL()
 }
 
 // deviMonChatGPTClient builds the direct client. An unset proxy keeps the
@@ -99,7 +126,9 @@ func deviMonChatGPTCall(ctx context.Context, client *http.Client, method, target
 	request.Header.Set("Accept", "application/json")
 	response, err := client.Do(request)
 	if err != nil {
-		return nil, 0, errors.New("request failed")
+		// Keep the transport reason: "no egress" and "bad token" are different
+		// problems and a bare "request failed" cannot tell them apart.
+		return nil, 0, fmt.Errorf("request failed: %w", err)
 	}
 	defer func() {
 		_ = response.Body.Close()
@@ -123,247 +152,224 @@ func deviMonChatGPTCall(ctx context.Context, client *http.Client, method, target
 	return payload, response.StatusCode, nil
 }
 
-// --- device code sign-in -------------------------------------------------
-
-// StartDeviMonChatGPTLogin asks OpenAI for a one-time code the operator enters
-// on the Codex device page. Nothing is stored until the code is approved.
-func StartDeviMonChatGPTLogin(ctx context.Context, proxyURL string) (DeviMonDeviceCode, error) {
-	client, err := deviMonChatGPTClient(proxyURL)
-	if err != nil {
-		return DeviMonDeviceCode{}, err
+// deviMonSessionCookie re-chunks the stored token the way a browser sends it.
+func deviMonSessionCookie(sessionToken string) string {
+	if len(sessionToken) <= deviMonSessionChunkSize {
+		return "__Secure-next-auth.session-token=" + sessionToken
 	}
-	body, err := common.Marshal(map[string]string{"client_id": deviMonChatGPTClientID})
-	if err != nil {
-		return DeviMonDeviceCode{}, err
+	parts := make([]string, 0, 2)
+	for index, offset := 0, 0; offset < len(sessionToken); index, offset = index+1, offset+deviMonSessionChunkSize {
+		end := min(offset+deviMonSessionChunkSize, len(sessionToken))
+		parts = append(parts, fmt.Sprintf("__Secure-next-auth.session-token.%d=%s", index, sessionToken[offset:end]))
 	}
-	payload, _, err := deviMonChatGPTCall(ctx, client, http.MethodPost,
-		deviMonChatGPTAuthAPI+"/deviceauth/usercode", body, nil)
-	if err != nil {
-		return DeviMonDeviceCode{}, err
-	}
-	code := DeviMonDeviceCode{
-		DeviceAuthID:    deviMonString(payload["device_auth_id"]),
-		UserCode:        deviMonString(payload["user_code"]),
-		VerificationURL: deviMonChatGPTDeviceURL,
-		ExpiresAt:       deviMonString(payload["expires_at"]),
-	}
-	if code.DeviceAuthID == "" || code.UserCode == "" {
-		return DeviMonDeviceCode{}, errors.New("device code request rejected")
-	}
-	code.Interval, _ = strconv.Atoi(deviMonString(payload["interval"]))
-	if code.Interval < 1 {
-		code.Interval = 5
-	}
-	return code, nil
+	return strings.Join(parts, "; ")
 }
 
-// PollDeviMonChatGPTLogin reports done=false while the operator has not
-// approved the code yet. An approved sign-in is stored immediately.
-func PollDeviMonChatGPTLogin(ctx context.Context, proxyURL, deviceAuthID, userCode string) (bool, string, error) {
-	client, err := deviMonChatGPTClient(proxyURL)
+// deviMonExchangeSession turns a stored session cookie into an access token.
+// ChatGPT renews the cookie on every call, so the caller writes back both.
+func deviMonExchangeSession(ctx context.Context, sessionToken string) (accessToken, accountID, renewed string, expiresAt int64, err error) {
+	client, err := deviMonChatGPTClient(DeviMonProxyURL())
 	if err != nil {
-		return false, "", err
+		return "", "", "", 0, err
 	}
-	body, err := common.Marshal(map[string]string{"device_auth_id": deviceAuthID, "user_code": userCode})
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, deviMonChatGPTSessionAPI, nil)
 	if err != nil {
-		return false, "", err
+		return "", "", "", 0, errors.New("request failed")
 	}
-	payload, status, err := deviMonChatGPTCall(ctx, client, http.MethodPost,
-		deviMonChatGPTAuthAPI+"/deviceauth/token", body, nil)
-	// Both statuses mean "not approved yet" and are expected while polling.
-	if status == http.StatusForbidden || status == http.StatusNotFound {
-		return false, "", nil
-	}
+	request.Header.Set("Cookie", deviMonSessionCookie(sessionToken))
+	request.Header.Set("User-Agent", "Mozilla/5.0")
+	response, err := client.Do(request)
 	if err != nil {
-		return false, "", err
+		return "", "", "", 0, errors.New("request failed")
 	}
-	grant, verifier := deviMonString(payload["authorization_code"]), deviMonString(payload["code_verifier"])
-	if grant == "" || verifier == "" {
-		return false, "", errors.New("device code was not approved")
+	defer func() {
+		_ = response.Body.Close()
+	}()
+	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
+		return "", "", "", 0, fmt.Errorf("%w: ChatGPT rejected it, sign in again and copy a fresh one", ErrDeviMonInvalidSession)
 	}
-	tokens, err := deviMonChatGPTGrant(ctx, client, grant, verifier)
+	if response.StatusCode != http.StatusOK {
+		return "", "", "", 0, fmt.Errorf("session exchange returned HTTP %d", response.StatusCode)
+	}
+	raw, err := io.ReadAll(io.LimitReader(response.Body, deviMonMaxResponseSize))
 	if err != nil {
-		return false, "", err
+		return "", "", "", 0, errors.New("read response failed")
 	}
-	email, accountID, err := deviMonChatGPTIdentity(tokens)
+	session, err := ParseDeviMonSession(raw)
 	if err != nil {
-		return false, "", err
+		return "", "", "", 0, fmt.Errorf("%w: ChatGPT returned no session, sign in again", ErrDeviMonInvalidSession)
 	}
-	row := model.DeviMonChatGPTAccount{
-		Email:     email,
-		AccountID: accountID,
-		Channel:   model.DeviMonChannelChatGPT,
-		ExpiresAt: deviMonTokenExpiry(tokens),
-		CreatedAt: common.GetTimestamp(),
-		UpdatedAt: common.GetTimestamp(),
+	if session.AccessToken == "" {
+		return "", "", "", 0, errors.New("the ChatGPT session returned no access token")
 	}
-	if err := deviMonStoreChatGPTTokens(ctx, &row, tokens); err != nil {
-		return false, "", err
-	}
-	return true, email, nil
+	// A renewal may hand back a new cookie. A chunked token arrives as .0 / .1,
+	// so the pieces are reassembled instead of dropping one and storing half a
+	// credential.
+	renewed = deviMonSessionFromResponse(response, sessionToken)
+	return session.AccessToken, session.AccountID, renewed, session.ExpiresAt, nil
 }
 
-func deviMonChatGPTGrant(ctx context.Context, client *http.Client, grant, verifier string) (deviMonChatGPTTokens, error) {
-	form := url.Values{
-		"grant_type":    {"authorization_code"},
-		"client_id":     {deviMonChatGPTClientID},
-		"code":          {grant},
-		"redirect_uri":  {deviMonChatGPTCallback},
-		"code_verifier": {verifier},
-	}
-	return deviMonChatGPTTokenRequest(ctx, client, form)
-}
-
-func deviMonChatGPTRefresh(ctx context.Context, client *http.Client, refreshToken string) (deviMonChatGPTTokens, error) {
-	form := url.Values{
-		"grant_type":    {"refresh_token"},
-		"client_id":     {deviMonChatGPTClientID},
-		"refresh_token": {refreshToken},
-		"scope":         {"openid profile email"},
-	}
-	return deviMonChatGPTTokenRequest(ctx, client, form)
-}
-
-func deviMonChatGPTTokenRequest(ctx context.Context, client *http.Client, form url.Values) (deviMonChatGPTTokens, error) {
-	payload, _, err := deviMonChatGPTCall(ctx, client, http.MethodPost, deviMonChatGPTTokenURL,
-		[]byte(form.Encode()), map[string]string{"Content-Type": "application/x-www-form-urlencoded"})
-	if err != nil {
-		return deviMonChatGPTTokens{}, err
-	}
-	tokens := deviMonChatGPTTokens{
-		AccessToken:  deviMonString(payload["access_token"]),
-		RefreshToken: deviMonString(payload["refresh_token"]),
-		IDToken:      deviMonString(payload["id_token"]),
-		ExpiresIn:    int(deviMonIntOr(payload["expires_in"])),
-	}
-	if tokens.AccessToken == "" {
-		return deviMonChatGPTTokens{}, errors.New("the sign-in returned no access token")
-	}
-	return tokens, nil
-}
-
-// --- stored sign-in ------------------------------------------------------
-
-func deviMonStoreChatGPTTokens(ctx context.Context, row *model.DeviMonChatGPTAccount, tokens deviMonChatGPTTokens) error {
-	accessToken, err := common.EncryptCredential(tokens.AccessToken)
+func deviMonStoreSession(ctx context.Context, session DeviMonSession) error {
+	encryptedSession, err := common.EncryptCredential(session.SessionToken)
 	if err != nil {
 		return err
 	}
-	refreshToken := ""
-	if tokens.RefreshToken != "" {
-		if refreshToken, err = common.EncryptCredential(tokens.RefreshToken); err != nil {
-			return err
-		}
+	encryptedAccess, err := common.EncryptCredential(session.AccessToken)
+	if err != nil {
+		return err
 	}
-	idToken := ""
-	if tokens.IDToken != "" {
-		if idToken, err = common.EncryptCredential(tokens.IDToken); err != nil {
-			return err
-		}
-	}
-	row.AccessToken, row.RefreshToken, row.IDToken = accessToken, refreshToken, idToken
-	return model.SaveDeviMonChatGPTAccount(ctx, row)
+	now := common.GetTimestamp()
+	return model.SaveDeviMonChatGPTAccount(ctx, &model.DeviMonChatGPTAccount{
+		Email:        session.Email,
+		AccountID:    session.AccountID,
+		Channel:      model.DeviMonChannelChatGPT,
+		SessionToken: encryptedSession,
+		AccessToken:  encryptedAccess,
+		ExpiresAt:    session.ExpiresAt,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	})
 }
 
-// deviMonChatGPTAccess returns a usable access token, refreshing it first when
-// it is about to expire. A rotated refresh token is written back.
-func deviMonChatGPTAccess(ctx context.Context, row model.DeviMonChatGPTAccount) (string, error) {
-	accessToken, err := common.DecryptCredential(row.AccessToken)
+// DeviMonSaveSession stores a pasted session. The token is verified against
+// ChatGPT before anything is written, so an expired paste is rejected instead
+// of silently breaking the next collection.
+func DeviMonSaveSession(ctx context.Context, raw []byte) (model.DeviMonChatGPTAccount, error) {
+	pasted, err := ParseDeviMonSession(raw)
 	if err != nil {
-		return "", errors.New("the stored ChatGPT sign-in is unreadable")
+		return model.DeviMonChatGPTAccount{}, err
 	}
-	if row.ExpiresAt > time.Now().Add(deviMonAccessTokenSlack).Unix() {
-		return accessToken, nil
-	}
-	refreshToken, err := common.DecryptCredential(row.RefreshToken)
-	if err != nil || refreshToken == "" {
-		return "", errDeviMonNoRefreshToken
-	}
-	client, err := deviMonChatGPTClient(deviMonChatGPTProxy())
-	if err != nil {
-		return "", err
-	}
-	tokens, err := deviMonChatGPTRefresh(ctx, client, refreshToken)
-	if err != nil {
-		return "", err
-	}
-	if tokens.RefreshToken == "" {
-		return "", errors.New("token refresh returned no refresh token")
-	}
-	idToken := row.IDToken
-	if tokens.IDToken != "" {
-		if idToken, err = common.EncryptCredential(tokens.IDToken); err != nil {
-			return "", err
-		}
-	}
-	encryptedAccess, err := common.EncryptCredential(tokens.AccessToken)
-	if err != nil {
-		return "", err
-	}
-	encryptedRefresh, err := common.EncryptCredential(tokens.RefreshToken)
-	if err != nil {
-		return "", err
-	}
-	if err := model.UpdateDeviMonChatGPTTokens(ctx, row.Email, encryptedAccess, encryptedRefresh, idToken, deviMonTokenExpiry(tokens)); err != nil {
-		return "", err
-	}
-	return tokens.AccessToken, nil
+	return deviMonStoreVerifiedSession(ctx, pasted)
 }
 
-// deviMonChatGPTIdentity reads the email and account id from the id_token.
-func deviMonChatGPTIdentity(tokens deviMonChatGPTTokens) (string, string, error) {
-	claims, err := deviMonJWTClaims(tokens.IDToken)
+// deviMonStoreVerifiedSession re-checks the session against ChatGPT before it is
+// written, so a stale paste fails now instead of breaking the next collection.
+func deviMonStoreVerifiedSession(ctx context.Context, pasted DeviMonSession) (model.DeviMonChatGPTAccount, error) {
+	accessToken, accountID, renewed, expiresAt, err := deviMonExchangeSession(ctx, pasted.SessionToken)
 	if err != nil {
-		if claims, err = deviMonJWTClaims(tokens.AccessToken); err != nil {
-			return "", "", errors.New("the sign-in returned no identity")
-		}
+		return model.DeviMonChatGPTAccount{}, err
 	}
-	email := ""
-	if profile, ok := claims["https://api.openai.com/profile"].(map[string]any); ok {
-		email = deviMonString(profile["email"])
+	pasted.AccessToken = accessToken
+	pasted.SessionToken = renewed
+	if accountID != "" {
+		pasted.AccountID = accountID
 	}
-	if email == "" {
-		email = deviMonString(claims["email"])
+	if expiresAt > 0 {
+		pasted.ExpiresAt = expiresAt
 	}
-	if email == "" {
-		return "", "", errors.New("the sign-in returned no email address")
+	if err := deviMonStoreSession(ctx, pasted); err != nil {
+		return model.DeviMonChatGPTAccount{}, err
 	}
-	accountID := ""
-	if auth, ok := claims["https://api.openai.com/auth"].(map[string]any); ok {
-		accountID = deviMonString(auth["chatgpt_account_id"])
-	}
-	return model.DeviMonChatGPTEmail(email), accountID, nil
+	return model.GetDeviMonChatGPTAccount(ctx, pasted.Email)
 }
 
-func deviMonJWTClaims(token string) (map[string]any, error) {
+// deviMonSessionAccess returns a usable access token, renewing from the stored
+// cookie when the cached one is about to expire.
+//
+// The freshness check reads the cached token's own exp claim, not the row's
+// ExpiresAt: /api/auth/session returns the session's expiry, which outlives the
+// access token by weeks. Trusting it would keep serving a dead token until long
+// after ChatGPT started answering 401.
+func deviMonSessionAccess(ctx context.Context, row model.DeviMonChatGPTAccount) (string, error) {
+	cached, decryptErr := common.DecryptCredential(row.AccessToken)
+	if decryptErr == nil && cached != "" && deviMonTokenFresh(cached) {
+		return cached, nil
+	}
+	sessionToken, err := common.DecryptCredential(row.SessionToken)
+	if err != nil || sessionToken == "" {
+		return "", errDeviMonNoSession
+	}
+	accessToken, accountID, renewed, expiresAt, err := deviMonExchangeSession(ctx, sessionToken)
+	if err != nil {
+		return "", err
+	}
+	encryptedSession, err := common.EncryptCredential(renewed)
+	if err != nil {
+		return "", err
+	}
+	encryptedAccess, err := common.EncryptCredential(accessToken)
+	if err != nil {
+		return "", err
+	}
+	if err := model.UpdateDeviMonChatGPTSession(ctx, row.Email, encryptedSession, encryptedAccess, accountID, expiresAt); err != nil {
+		return "", err
+	}
+	return accessToken, nil
+}
+
+// deviMonJWTExp reads the exp claim an access token carries.
+func deviMonJWTExp(token string) (int64, bool) {
 	parts := strings.Split(token, ".")
 	if len(parts) < 2 {
-		return nil, errors.New("not a JWT")
+		return 0, false
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
 	if err != nil {
-		return nil, errors.New("not a JWT")
+		return 0, false
 	}
-	var claims map[string]any
-	if err := common.Unmarshal(raw, &claims); err != nil {
-		return nil, errors.New("not a JWT")
+	var claims struct {
+		Exp int64 `json:"exp"`
 	}
-	return claims, nil
+	if err := common.Unmarshal(raw, &claims); err != nil || claims.Exp <= 0 {
+		return 0, false
+	}
+	return claims.Exp, true
 }
 
-func deviMonTokenExpiry(tokens deviMonChatGPTTokens) int64 {
-	if claims, err := deviMonJWTClaims(tokens.AccessToken); err == nil {
-		if exp, ok := deviMonInt(claims["exp"]); ok && exp > 0 {
-			return exp
+// deviMonTokenFresh reports whether a cached access token still has usable
+// life. A token whose exp cannot be read is treated as stale, so a malformed
+// cache costs one renewal instead of silently serving garbage.
+func deviMonTokenFresh(token string) bool {
+	exp, ok := deviMonJWTExp(token)
+	return ok && exp > time.Now().Add(deviMonAccessTokenSlack).Unix()
+}
+
+// deviMonSessionFromResponse picks the renewed session cookie out of a
+// response, reassembling NextAuth's .0 / .1 chunks when it was split.
+func deviMonSessionFromResponse(response *http.Response, current string) string {
+	whole := ""
+	chunks := map[int]string{}
+	for _, cookie := range response.Cookies() {
+		if cookie.Value == "" {
+			continue
+		}
+		switch name := cookie.Name; {
+		case name == "__Secure-next-auth.session-token":
+			whole = cookie.Value
+		case strings.HasPrefix(name, "__Secure-next-auth.session-token."):
+			var index int
+			if _, err := fmt.Sscanf(strings.TrimPrefix(name, "__Secure-next-auth.session-token."), "%d", &index); err == nil {
+				chunks[index] = cookie.Value
+			}
 		}
 	}
-	if tokens.ExpiresIn > 0 {
-		return time.Now().Add(time.Duration(tokens.ExpiresIn) * time.Second).Unix()
+	if len(chunks) > 0 {
+		var builder strings.Builder
+		for index := 0; index < len(chunks); index++ {
+			piece, ok := chunks[index]
+			if !ok {
+				return current
+			}
+			builder.WriteString(piece)
+		}
+		return builder.String()
 	}
-	return 0
+	if whole != "" {
+		return whole
+	}
+	return current
 }
 
-// --- reading the account through the ChatGPT channel --------------------
+// deviMonChatGPTHeaders are the headers a Codex client sends to the wham
+// endpoints; the account id selects the workspace.
+func deviMonChatGPTHeaders(accessToken, accountID string) map[string]string {
+	return map[string]string{
+		"Authorization":      "Bearer " + accessToken,
+		"ChatGPT-Account-Id": accountID,
+		"Originator":         "codex_cli_rs",
+		"User-Agent":         "codex_cli_rs",
+	}
+}
 
 // deviMonChatGPTFile builds a credential entry shaped like a CPA Codex file, so
 // the collector, the reset flow and the snapshot keep one code path.
@@ -375,14 +381,5 @@ func deviMonChatGPTFile(row model.DeviMonChatGPTAccount) map[string]any {
 		"disabled":   false,
 		"id_token":   map[string]any{"chatgpt_account_id": row.AccountID},
 		"auth_index": "",
-	}
-}
-
-func deviMonChatGPTHeaders(accessToken, accountID string) map[string]string {
-	return map[string]string{
-		"Authorization":      "Bearer " + accessToken,
-		"ChatGPT-Account-Id": accountID,
-		"Originator":         "codex_cli_rs",
-		"User-Agent":         "codex_cli_rs",
 	}
 }

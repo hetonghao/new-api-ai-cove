@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Settings } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -35,54 +35,15 @@ import {
   deviMonQueryKey,
   forgetDeviMonChatGPTAccount,
   getDeviMonChannelAccounts,
-  pollDeviMonChatGPTLogin,
   refreshDeviMonAccount,
+  saveDeviMonChatGPTSession,
   setDeviMonAccountChannel,
-  startDeviMonChatGPTLogin,
 } from '../api'
-import type { DeviMonDeviceCode } from '../types'
 
 type Channel = 'cpa' | 'chatgpt'
 
-// The code is polled at the interval OpenAI asks for; the dialog stops when it
-// is closed so a forgotten dialog cannot keep hitting the auth endpoint.
-function useDeviMonDeviceCodeLogin(open: boolean, onSignedIn: () => void) {
-  const { t } = useTranslation()
-  const [deviceCode, setDeviceCode] = useState<DeviMonDeviceCode | null>(null)
-  const start = useMutation({
-    mutationFn: startDeviMonChatGPTLogin,
-    onSuccess: setDeviceCode,
-  })
-  useEffect(() => {
-    if (!open) setDeviceCode(null)
-  }, [open])
-  useEffect(() => {
-    if (!open || !deviceCode) return
-    const timer = window.setInterval(
-      () => {
-        void pollDeviMonChatGPTLogin(
-          deviceCode.device_auth_id,
-          deviceCode.user_code
-        )
-          .then((result) => {
-            if (!result.done) return
-            setDeviceCode(null)
-            onSignedIn()
-            toast.success(t('Signed in to ChatGPT'), {
-              description: result.email,
-            })
-          })
-          .catch(() => {
-            // A failed poll is not fatal: the next tick tries again until the
-            // code expires, which the operator can see in the dialog.
-          })
-      },
-      Math.max(deviceCode.interval, 3) * 1000
-    )
-    return () => window.clearInterval(timer)
-  }, [deviceCode, open, onSignedIn, t])
-  return { deviceCode, start, reset: () => setDeviceCode(null) }
-}
+// The operator copies this in a browser that is already signed in to ChatGPT.
+const SESSION_URL = 'https://chatgpt.com/api/auth/session'
 
 // One gear per account: the dialog behind it is where the reading channel is
 // chosen, so the switch lives next to the data it changes.
@@ -114,6 +75,8 @@ export function DeviMonAccountSettings(props: {
 }) {
   const { t } = useTranslation()
   const client = useQueryClient()
+  const [sessionJson, setSessionJson] = useState('')
+  const [confirmForget, setConfirmForget] = useState(false)
   const accounts = useQuery({
     queryKey: deviMonAccountsKey,
     queryFn: ({ signal }) => getDeviMonChannelAccounts(signal),
@@ -124,13 +87,34 @@ export function DeviMonAccountSettings(props: {
     (row) => row.email.toLowerCase() === props.email.toLowerCase()
   )
   const channel: Channel = stored?.channel === 'chatgpt' ? 'chatgpt' : 'cpa'
-  const [confirmForget, setConfirmForget] = useState(false)
 
   const refresh = () => {
     void client.invalidateQueries({ queryKey: deviMonAccountsKey })
     void client.invalidateQueries({ queryKey: deviMonQueryKey })
   }
-  const device = useDeviMonDeviceCodeLogin(props.open, refresh)
+
+  const saveSession = useMutation({
+    mutationFn: async (raw: string) => {
+      // Fail before the request when the paste is obviously not JSON, so a
+      // mis-copied clipboard does not look like a server error.
+      try {
+        JSON.parse(raw)
+      } catch {
+        throw new Error(t('That is not the session JSON'))
+      }
+      return saveDeviMonChatGPTSession(raw)
+    },
+    onSuccess: (saved) => {
+      setSessionJson('')
+      refresh()
+      toast.success(t('ChatGPT session saved'), { description: saved.email })
+    },
+    onError: (error) => {
+      toast.error(t('Could not verify the ChatGPT session'), {
+        description: error.message,
+      })
+    },
+  })
 
   const switchChannel = useMutation({
     mutationFn: async (next: Channel) => {
@@ -143,14 +127,14 @@ export function DeviMonAccountSettings(props: {
       refresh()
       toast.success(
         next === 'chatgpt'
-          ? t('Subscription now comes from the ChatGPT sign-in')
+          ? t('Subscription now comes from the ChatGPT session')
           : t('Subscription now comes from CPA')
       )
     },
     onError: (error) => {
       const message =
         getServerErrorStatus(error) === 400
-          ? t('Sign in to ChatGPT before selecting that channel')
+          ? t('Save a ChatGPT session before selecting that channel')
           : t('Could not change the subscription channel')
       toast.error(message, { description: props.email })
     },
@@ -163,14 +147,13 @@ export function DeviMonAccountSettings(props: {
     },
     onSuccess: () => {
       setConfirmForget(false)
-      device.reset()
       refresh()
-      toast.success(t('ChatGPT sign-in removed'), {
+      toast.success(t('ChatGPT session removed'), {
         description: props.email,
       })
     },
     onError: () =>
-      toast.error(t('Could not remove the ChatGPT sign-in'), {
+      toast.error(t('Could not remove the ChatGPT session'), {
         description: props.email,
       }),
   })
@@ -190,10 +173,7 @@ export function DeviMonAccountSettings(props: {
           onValueChange={(value) => {
             const next = value as Channel
             if (next === channel) return
-            if (next === 'chatgpt' && !stored?.signed_in) {
-              device.start.mutate()
-              return
-            }
+            if (next === 'chatgpt' && !stored?.signed_in) return
             switchChannel.mutate(next)
           }}
           aria-label={t('Subscription channel')}
@@ -214,83 +194,86 @@ export function DeviMonAccountSettings(props: {
           <label className='flex items-start gap-2 text-sm'>
             <RadioGroupItem
               value='chatgpt'
-              aria-label={t('ChatGPT sign-in')}
+              aria-label={t('ChatGPT session')}
               className='mt-0.5'
+              disabled={!stored?.signed_in}
             />
             <span>
-              <span className='font-medium'>{t('ChatGPT sign-in')}</span>
+              <span className='font-medium'>{t('ChatGPT session')}</span>
               <FieldDescription>
                 {t(
-                  'The gateway signs in to ChatGPT itself and reads the subscription without CPA.'
+                  'The gateway reads the subscription from a ChatGPT web session, without CPA.'
                 )}
               </FieldDescription>
             </span>
           </label>
         </RadioGroup>
 
-        {device.start.isPending && (
-          <p role='status' className='text-muted-foreground text-xs'>
-            {t('Requesting a sign-in code...')}
-          </p>
-        )}
-
-        {device.deviceCode && (
-          <Field className='rounded-md border p-3'>
-            <FieldLabel htmlFor='devi-mon-device-code'>
-              {t('Enter this code at the link below')}
-            </FieldLabel>
-            <p
-              id='devi-mon-device-code'
-              className='font-mono text-lg tracking-wider tabular-nums'
-            >
-              {device.deviceCode.user_code}
-            </p>
-            <FieldDescription>
-              <a
-                className='underline'
-                href={device.deviceCode.verification_url}
-                target='_blank'
-                rel='noreferrer'
-              >
-                {device.deviceCode.verification_url}
-              </a>
-            </FieldDescription>
-            <FieldDescription>
-              {t('Waiting for the code to be approved...')}
-            </FieldDescription>
+        <Field className='rounded-md border p-3'>
+          <FieldLabel htmlFor='devi-mon-session'>
+            {t('ChatGPT session JSON')}
+          </FieldLabel>
+          <FieldDescription>
+            {t(
+              'Open the link below in the browser that is signed in to this account, copy the whole page, and paste it here.'
+            )}
+          </FieldDescription>
+          <Button
+            role='link'
+            variant='outline'
+            size='sm'
+            render={
+              <a href={SESSION_URL} target='_blank' rel='noreferrer noopener' />
+            }
+          >
+            {t('Open the session page')}
+          </Button>
+          <textarea
+            id='devi-mon-session'
+            className='border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 min-h-24 w-full rounded-md border p-2 font-mono text-xs outline-none focus-visible:ring-3'
+            placeholder='{"accessToken":"…","sessionToken":"…"}'
+            value={sessionJson}
+            onChange={(event) => setSessionJson(event.target.value)}
+            spellCheck={false}
+            autoComplete='off'
+          />
+          <div className='flex flex-wrap gap-2'>
             <Button
               type='button'
-              variant='ghost'
               size='sm'
-              onClick={device.reset}
+              disabled={saveSession.isPending || sessionJson.trim() === ''}
+              onClick={() => saveSession.mutate(sessionJson.trim())}
             >
-              {t('Cancel sign-in')}
+              {saveSession.isPending
+                ? t('Verifying...')
+                : t('Save ChatGPT session')}
             </Button>
-          </Field>
-        )}
+            {sessionJson !== '' && (
+              <Button
+                type='button'
+                variant='ghost'
+                size='sm'
+                onClick={() => setSessionJson('')}
+              >
+                {t('Clear')}
+              </Button>
+            )}
+          </div>
+        </Field>
 
         {stored?.signed_in ? (
           <div className='space-y-2 text-xs'>
             <p className='text-muted-foreground'>
-              {t('A ChatGPT sign-in is stored for this account.')}
+              {t('A ChatGPT session is stored for this account.')}
             </p>
             <div className='flex flex-wrap gap-2'>
-              <Button
-                type='button'
-                variant='outline'
-                size='sm'
-                disabled={device.start.isPending}
-                onClick={() => device.start.mutate()}
-              >
-                {t('Sign in again')}
-              </Button>
               <Button
                 type='button'
                 variant='ghost'
                 size='sm'
                 onClick={() => setConfirmForget(true)}
               >
-                {t('Remove sign-in')}
+                {t('Remove session')}
               </Button>
             </div>
           </div>
@@ -306,11 +289,11 @@ export function DeviMonAccountSettings(props: {
       <ConfirmDialog
         open={confirmForget}
         onOpenChange={setConfirmForget}
-        title={t('Remove the ChatGPT sign-in?')}
+        title={t('Remove the ChatGPT session?')}
         desc={t(
-          'The account returns to the CPA channel and its tokens are deleted. You can sign in again later.'
+          'The account returns to the CPA channel and the stored session is deleted. You can paste a new one later.'
         )}
-        confirmText={t('Remove sign-in')}
+        confirmText={t('Remove session')}
         destructive
         handleConfirm={() => forget.mutate()}
         isLoading={forget.isPending}
