@@ -8735,6 +8735,8 @@
     "Last collected": "Last collected",
     "Took": "Took",
     "Collecting...": "Collecting...",
+    "Collect all accounts?": "Kiểm tra hạn mức của tất cả tài khoản?",
+    "Each monitored account’s quota will be checked in the background. Its policy may enable or disable the Devin account.": "Hạn mức của từng tài khoản được theo dõi sẽ được kiểm tra trong nền. Chính sách của tài khoản có thể bật hoặc tắt tài khoản Devin.",
     "Collect now": "Collect now",
     "Collecting": "Collecting",
     "Not scheduled": "Not scheduled",
@@ -8810,6 +8812,16 @@
     "Proxy address saved": "Proxy address saved",
     "Could not save the proxy address": "Could not save the proxy address",
     "Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly.": "Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly.",
-    "Save the ChatGPT session first, then the proxy address.": "Save the ChatGPT session first, then the proxy address."
+    "Save the ChatGPT session first, then the proxy address.": "Save the ChatGPT session first, then the proxy address.",
+    "Enable after quota resets": "Tự bật sau khi đặt lại",
+    "When quota runs out": "Khi hết hạn mức",
+    "Disable when quota runs out": "Tự tắt khi hết hạn mức",
+    "Use card": "Dùng thẻ",
+    "Request history": "Lịch sử yêu cầu",
+    "No requests": "Không có yêu cầu",
+    "Invalid Devin routing value": "Ưu tiên hoặc trọng số Devin không hợp lệ",
+    "Could not update Devin routing": "Không thể lưu định tuyến tài khoản Devin",
+    "Could not load Devin request history": "Không thể tải lịch sử yêu cầu Devin",
+    "Live Devin data unavailable. Showing the last reading.": "Không thể tải dữ liệu Devin trực tiếp. Đang hiển thị lần đọc gần nhất."
   }
 }

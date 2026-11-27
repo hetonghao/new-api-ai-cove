@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Progress } from '@/components/ui/progress'
@@ -31,6 +32,7 @@ type QuotaWindowProps = {
   readonly window: SubscriptionQuotaWindow
   readonly label?: string
   readonly subscriptionName: string
+  readonly footer?: ReactNode
   readonly now?: number
 }
 
@@ -134,16 +136,21 @@ export function QuotaWindow(props: QuotaWindowProps) {
           {t('Restricted by platform')}
         </p>
       )}
-      {window.resets_at && (
-        <p className='text-muted-foreground text-xs leading-relaxed'>
-          <time
-            className='tabular-nums'
-            dateTime={window.resets_at}
-            title={dayjs(window.resets_at).format('YYYY-MM-DD HH:mm:ss')}
-          >
-            {resetText}
-          </time>
-        </p>
+      {(window.resets_at || props.footer) && (
+        <div className='flex flex-wrap items-center justify-between gap-x-2 gap-y-1'>
+          {window.resets_at && (
+            <p className='text-muted-foreground text-xs leading-relaxed'>
+              <time
+                className='tabular-nums'
+                dateTime={window.resets_at}
+                title={dayjs(window.resets_at).format('YYYY-MM-DD HH:mm:ss')}
+              >
+                {resetText}
+              </time>
+            </p>
+          )}
+          {props.footer}
+        </div>
       )}
     </div>
   )

@@ -17,65 +17,116 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { StatusBadge } from '@/components/status-badge'
-import { toIntlLocale } from '@/i18n/languages'
-import { formatNumber } from '@/lib/format'
+import { NumericSpinnerInput } from '@/features/channels/components/numeric-spinner-input'
+import { createChannelFieldUpdateScheduler } from '@/features/channels/lib/channel-field-update'
+import { handleServerError } from '@/lib/handle-server-error'
 
-import type { DeviMonRouting } from '../types'
+import { deviMonInventoryKey, setDeviMonRouting } from '../api'
+import type { DeviMonRouting, DevinInventory } from '../types'
 
-export function DevinAccountStatus({
-  disabled,
-  routing,
+function RoutingField({
+  email,
+  field,
+  value,
+  configured,
 }: {
-  readonly disabled: boolean | null
-  readonly routing?: DeviMonRouting | null
+  email: string
+  field: keyof DeviMonRouting
+  value: number | null
+  configured: boolean
 }) {
-  const { t, i18n } = useTranslation()
-  if (disabled === null) {
-    return (
-      <StatusBadge
-        size='sm'
-        copyable={false}
-        variant='neutral'
-        label={t('No Devin account')}
+  const { t } = useTranslation()
+  const client = useQueryClient()
+  const [draft, setDraft] = useState<number | null>(null)
+  const label = field === 'priority' ? t('Priority') : t('Weight')
+  const fallback = field === 'priority' ? 0 : 1
+  const { mutate, isPending } = useMutation({
+    mutationFn: (next: number) => setDeviMonRouting(email, field, next),
+    scope: { id: `devin-routing:${email}` },
+    retry: false,
+    onSuccess: async (_, next) => {
+      await client.cancelQueries({ queryKey: deviMonInventoryKey, exact: true })
+      client.setQueryData<DevinInventory>(deviMonInventoryKey, (data) => {
+        const key = email.trim().toLowerCase()
+        const row = data?.[key]
+        if (!data || !row?.devin_routing) return data
+        return {
+          ...data,
+          [key]: {
+            ...row,
+            devin_routing: { ...row.devin_routing, [field]: next },
+          },
+        }
+      })
+    },
+    onError: (err) =>
+      handleServerError(err, t('Could not update Devin routing')),
+    onSettled: async () => {
+      await client.invalidateQueries({
+        queryKey: deviMonInventoryKey,
+        exact: true,
+      })
+      setDraft(null)
+    },
+  })
+  const scheduler = useMemo(
+    () => createChannelFieldUpdateScheduler(mutate),
+    [mutate]
+  )
+  useEffect(() => () => scheduler.flush(), [scheduler])
+  return (
+    <span className='text-muted-foreground inline-flex flex-col items-center gap-x-0.5 text-xs tabular-nums @sm/accounts:flex-row'>
+      <span>{label}</span>
+      <NumericSpinnerInput
+        value={draft ?? value ?? fallback}
+        compact
+        min={field === 'priority' ? -2147483648 : 0}
+        max={field === 'priority' ? 2147483647 : 1_000_000}
+        ariaLabel={`${label} · ${email}`}
+        disabled={!configured || isPending}
+        onCommit={scheduler.flush}
+        onChange={(next) => {
+          setDraft(next)
+          scheduler.schedule(next)
+        }}
+        className='pointer-coarse:[&_button]:text-muted-foreground pointer-coarse:[&_button]:min-h-11 pointer-coarse:[&>div]:h-11'
       />
+    </span>
+  )
+}
+
+export function DevinRoutingControls({
+  routing,
+  email,
+  configured,
+}: {
+  readonly routing?: DeviMonRouting | null
+  readonly email: string
+  readonly configured: boolean
+}) {
+  const { t } = useTranslation()
+  if (!routing) {
+    return (
+      <span className='text-muted-foreground text-xs'>
+        {t('Priority')} / {t('Weight')}: {t('Not fetched yet')}
+      </span>
     )
   }
-  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   return (
-    <>
-      <StatusBadge
-        size='sm'
-        copyable={false}
-        variant={disabled ? 'danger' : 'success'}
-        label={disabled ? t('Devin disabled') : t('Devin enabled')}
-      />
-      {routing ? (
-        <span className='text-muted-foreground inline-flex flex-wrap items-baseline gap-x-2 text-xs tabular-nums'>
-          <span className='whitespace-nowrap'>
-            {t('Priority')}{' '}
-            <span className='text-foreground'>
-              {routing.priority === null
-                ? `${t('Default')} 0`
-                : formatNumber(routing.priority, locale)}
-            </span>
-          </span>
-          <span className='whitespace-nowrap'>
-            {t('Weight')}{' '}
-            <span className='text-foreground'>
-              {routing.weight === null
-                ? `${t('Default')} 1`
-                : formatNumber(routing.weight, locale)}
-            </span>
-          </span>
-        </span>
-      ) : (
-        <span className='text-muted-foreground text-xs'>
-          {t('Priority')} / {t('Weight')}: {t('Not fetched yet')}
-        </span>
-      )}
-    </>
+    <span className='inline-flex items-center gap-x-1.5'>
+      {(['priority', 'weight'] as const).map((field) => (
+        <RoutingField
+          key={field}
+          email={email}
+          field={field}
+          value={routing[field]}
+          configured={configured}
+        />
+      ))}
+    </span>
   )
 }

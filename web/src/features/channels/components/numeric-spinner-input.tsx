@@ -32,6 +32,8 @@ interface NumericSpinnerInputProps {
   disabled?: boolean
   className?: string
   label?: string
+  compact?: boolean
+  ariaLabel?: string
 }
 
 export function NumericSpinnerInput({
@@ -44,6 +46,8 @@ export function NumericSpinnerInput({
   disabled = false,
   className,
   label,
+  compact = false,
+  ariaLabel,
 }: NumericSpinnerInputProps) {
   const [localValue, setLocalValue] = useState(String(value ?? 0))
   const [editing, setEditing] = useState(false)
@@ -136,7 +140,11 @@ export function NumericSpinnerInput({
   const atMax = max !== undefined && Number(localValue) >= max
 
   return (
-    <div className={cn('inline-flex items-center', className)}>
+    <div
+      className={cn('inline-flex items-center', className)}
+      role={ariaLabel ? 'group' : undefined}
+      aria-label={ariaLabel}
+    >
       {label && (
         <Label className='text-muted-foreground mr-1.5 text-xs'>{label}</Label>
       )}
@@ -159,6 +167,7 @@ export function NumericSpinnerInput({
             !disabled &&
               !atMin &&
               'group-hover/spinner:hover:text-foreground group-hover/spinner:hover:bg-muted',
+            compact && 'w-3.5 pointer-coarse:text-muted-foreground',
             (disabled || atMin) && 'group-hover/spinner:opacity-30'
           )}
         >
@@ -170,11 +179,16 @@ export function NumericSpinnerInput({
             data-slot='numeric-spinner-value'
             ref={inputRef}
             type='text'
+            inputMode={min < 0 ? 'text' : 'numeric'}
+            aria-label={ariaLabel}
             value={localValue}
             onChange={handleInputChange}
             onBlur={commitValue}
             onKeyDown={handleKeyDown}
-            className='h-7 w-10 bg-transparent text-center font-mono text-sm outline-none'
+            className={cn(
+              'h-7 w-10 bg-transparent text-center font-mono text-sm outline-none',
+              compact && 'w-6 text-xs'
+            )}
             autoFocus
           />
         ) : (
@@ -184,8 +198,10 @@ export function NumericSpinnerInput({
             onClick={handleStartEdit}
             disabled={disabled}
             title={localValue}
+            aria-label={ariaLabel ? `${ariaLabel}: ${localValue}` : undefined}
             className={cn(
               'h-7 min-w-8 max-w-16 cursor-text truncate px-1 text-center font-mono text-sm tabular-nums',
+              compact && 'w-6 min-w-0 px-0.5 text-xs',
               disabled && 'cursor-default opacity-50'
             )}
           >
@@ -204,6 +220,7 @@ export function NumericSpinnerInput({
             !disabled &&
               !atMax &&
               'group-hover/spinner:hover:text-foreground group-hover/spinner:hover:bg-muted',
+            compact && 'w-3.5 pointer-coarse:text-muted-foreground',
             (disabled || atMax) && 'group-hover/spinner:opacity-30'
           )}
         >

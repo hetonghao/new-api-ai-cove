@@ -42,6 +42,7 @@ import { SubscriptionRow } from './components/subscription-row'
 import { SubscriptionSortControl } from './components/subscription-sort-control'
 import type { UpstreamSubscription } from './types'
 
+const EMPTY_SUBSCRIPTIONS: UpstreamSubscription[] = []
 const QUERY_KEY = ['upstream-subscriptions'] as const
 const FILTER_COLUMNS: ColumnDef<UpstreamSubscription, unknown>[] = [
   { accessorKey: 'name' },
@@ -80,7 +81,7 @@ type SubscriptionOperationsTab = 'coding-plan' | 'devin'
 
 export function UpstreamSubscriptions() {
   const { t } = useTranslation()
-  const [tab, setTab] = useState<SubscriptionOperationsTab>('coding-plan')
+  const [tab, setTab] = useState<SubscriptionOperationsTab>('devin')
   const queryClient = useQueryClient()
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<UpstreamSubscription | null>(null)
@@ -104,7 +105,8 @@ export function UpstreamSubscriptions() {
     retry: false,
   })
   const { table } = useDataTable({
-    data: subscriptions.data ?? [],
+    data: subscriptions.data ?? EMPTY_SUBSCRIPTIONS,
+    autoResetPageIndex: false,
     columns: FILTER_COLUMNS,
     columnFilters,
     onColumnFiltersChange: setColumnFilters,
@@ -193,6 +195,12 @@ export function UpstreamSubscriptions() {
             value={tab}
             onValueChange={(value) => {
               if (value === 'devin' || value === 'coding-plan') {
+                if (value === 'devin') {
+                  void queryClient.cancelQueries({
+                    queryKey: QUERY_KEY,
+                    exact: true,
+                  })
+                }
                 setTab(value)
                 setNow(Date.now())
               }
@@ -200,8 +208,8 @@ export function UpstreamSubscriptions() {
             className='min-w-0 gap-4'
           >
             <TabsList variant='line' aria-label={t('Subscription operations')}>
-              <TabsTrigger value='coding-plan'>{t('Coding Plan')}</TabsTrigger>
               <TabsTrigger value='devin'>{t('Devin')}</TabsTrigger>
+              <TabsTrigger value='coding-plan'>{t('Coding Plan')}</TabsTrigger>
             </TabsList>
             <TabsContent value='coding-plan'>
               <DataTableToolbar

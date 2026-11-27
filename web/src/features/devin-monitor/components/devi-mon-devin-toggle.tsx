@@ -17,13 +17,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import DevinIcon from '@lobehub/icons/es/Devin/components/Mono'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { CircleAlert, CircleCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { Switch } from '@/components/ui/switch'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
-import { deviMonQueryKey, setDeviMonDevinDisabled } from '../api'
+import {
+  deviMonInventoryKey,
+  deviMonQueryKey,
+  setDeviMonDevinDisabled,
+} from '../api'
 import type { DeviMonState } from '../types'
 
 // Rows render the last collection, so the switch must both repaint immediately
@@ -76,6 +83,10 @@ export function DevinAccountToggle(props: {
       )
     },
     onSuccess: async () => {
+      await client.invalidateQueries({
+        queryKey: deviMonInventoryKey,
+        exact: true,
+      })
       await client.invalidateQueries(
         { queryKey: deviMonQueryKey, exact: true },
         { throwOnError: true }
@@ -98,17 +109,40 @@ export function DevinAccountToggle(props: {
       })
     },
   })
+  if (props.disabled === null) {
+    return (
+      <span className='text-muted-foreground text-xs'>
+        {t('No Devin account')}
+      </span>
+    )
+  }
+  const status = enabled ? t('Devin enabled') : t('Devin disabled')
+  const Mark = enabled ? CircleCheck : CircleAlert
   return (
-    <Switch
-      className='self-center'
-      checked={enabled}
+    <Button
+      type='button'
+      variant='ghost'
+      size='sm'
+      role='switch'
+      aria-checked={enabled}
       aria-label={label}
-      title={label}
+      title={`${status} · ${label}`}
       aria-busy={toggle.isPending}
-      disabled={
-        !props.configured || toggle.isPending || props.disabled === null
-      }
-      onCheckedChange={() => toggle.mutate()}
-    />
+      disabled={!props.configured || toggle.isPending}
+      onClick={() => toggle.mutate()}
+      className={cn(
+        'gap-1 rounded-md px-1.5 pointer-coarse:min-h-11',
+        enabled
+          ? 'bg-success/8 hover:bg-success/15'
+          : 'bg-destructive/8 hover:bg-destructive/15'
+      )}
+      style={{
+        color: `color-mix(in oklab, var(--${enabled ? 'success' : 'destructive'}) 70%, var(--foreground))`,
+      }}
+    >
+      <DevinIcon aria-hidden='true' className='size-4' />
+      <Mark aria-hidden='true' className='size-3.5' />
+      <span className='sr-only'>{status}</span>
+    </Button>
   )
 }

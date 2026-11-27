@@ -33,6 +33,20 @@ const deviMonResetOfferSchema = z.object({
   expires_at: z.string(),
 })
 
+const requestsSchema = z.object({
+  success: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  as_of: z.number().int(),
+  recent: z
+    .array(
+      z.object({
+        success: z.number().int().nonnegative(),
+        failed: z.number().int().nonnegative(),
+      })
+    )
+    .max(20),
+})
+
 export const deviMonAccountSchema = z.object({
   email: z.string(),
   used_percent: z.number().nullable(),
@@ -45,11 +59,13 @@ export const deviMonAccountSchema = z.object({
   renew_source: z.string(),
   devin_disabled: z.boolean().nullable(),
   devin_routing: deviMonRoutingSchema.nullish(),
+  devin_requests: requestsSchema.nullish(),
   channel: z.enum(['cpa', 'chatgpt']).default('cpa'),
   error: z.string(),
   observed_at_us: z.number().int().default(0),
   reset_key: z.string().optional(),
   auto_reset: z.boolean().default(false),
+  auto_enable_after_reset: z.boolean().optional(),
   reset_offer: deviMonResetOfferSchema.nullish(),
   reset_outcome: z.enum(['applied', 'rejected', 'unverified']).optional(),
 })
@@ -57,8 +73,13 @@ export const deviMonAccountSchema = z.object({
 const deviMonDevinSchema = z.object({
   email: z.string(),
   disabled: z.boolean(),
+  requests: requestsSchema.nullish(),
   devin_routing: deviMonRoutingSchema.nullish(),
 })
+
+export const deviMonInventorySchema = z.record(z.string(), deviMonDevinSchema)
+export type DevinInventory = z.infer<typeof deviMonInventorySchema>
+export type DevinRequests = z.infer<typeof requestsSchema>
 
 export const deviMonSnapshotSchema = z.object({
   collected_at: z.number().int(),

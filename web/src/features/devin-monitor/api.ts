@@ -24,6 +24,7 @@ import { requireServerSuccess } from '@/lib/server-error-message'
 
 import {
   deviMonAccountSchema,
+  deviMonInventorySchema,
   deviMonChannelAccountSchema,
   deviMonSettingsSchema,
   deviMonStateSchema,
@@ -42,6 +43,30 @@ function deviMonData<T>(payload: unknown, schema: z.ZodType<T>): T {
 export const deviMonQueryKey = ['devin-monitor'] as const
 export const deviMonSettingsKey = ['devin-monitor', 'config'] as const
 export const deviMonAccountsKey = ['devin-monitor', 'accounts'] as const
+export const deviMonInventoryKey = ['devin-monitor', 'devin'] as const
+
+export async function getDeviMonInventory(signal?: AbortSignal) {
+  const response = await api.get<unknown>(`${BASE_PATH}/accounts/devin`, {
+    signal,
+    disableDuplicate: true,
+    skipErrorHandler: true,
+    skipBusinessError: true,
+  })
+  return deviMonData(response.data, deviMonInventorySchema)
+}
+
+export async function setDeviMonRouting(
+  email: string,
+  field: 'priority' | 'weight',
+  value: number
+) {
+  const response = await api.put<unknown>(
+    `${BASE_PATH}/accounts/devin-routing`,
+    { email, field, value },
+    { skipErrorHandler: true, skipBusinessError: true }
+  )
+  deviMonData(response.data, z.null())
+}
 
 export async function getDeviMonState(signal?: AbortSignal) {
   const response = await api.get<unknown>(BASE_PATH, {
@@ -65,14 +90,14 @@ export async function refreshDeviMonAccount(email: string) {
   deviMonData(response.data, z.null())
 }
 
-export async function setDeviMonAccountAutoReset(
+export async function setDeviMonAccountPolicy(
   email: string,
   resetKey: string,
-  enabled: boolean
+  policy: { enabled: boolean } | { enable_after_reset: boolean }
 ): Promise<void> {
   const response = await api.put<unknown>(
     `${BASE_PATH}/accounts/auto-reset`,
-    { email, reset_key: resetKey, enabled },
+    { email, reset_key: resetKey, ...policy },
     { skipErrorHandler: true, skipBusinessError: true }
   )
   deviMonData(response.data, z.null())

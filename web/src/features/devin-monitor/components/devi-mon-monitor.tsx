@@ -19,53 +19,55 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, RefreshCw } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { EmptyState } from '@/components/empty-state'
 import { ErrorState } from '@/components/error-state'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SubscriptionSortControl } from '@/features/upstream-subscriptions/components/subscription-sort-control'
 import { formatTimestampToDate } from '@/lib/format'
+import { getServerErrorStatus } from '@/lib/server-error-message'
 
-import { collectDeviMon, deviMonQueryKey, getDeviMonState } from '../api'
-import { sortDevinAccounts, type DevinSort } from '../sort'
-import type { DeviMonRouting } from '../types'
 import {
-  AccountSettingsButton,
-  DeviMonAccountSettings,
-} from './devi-mon-account-settings'
-import { DevinAccountToggle } from './devi-mon-devin-toggle'
-import { AccountRefreshButton } from './devi-mon-refresh-button'
+  collectDeviMon,
+  deviMonQueryKey,
+  getDeviMonState,
+  getDeviMonInventory,
+  deviMonInventoryKey,
+} from '../api'
+import { sortDevinAccounts, type DevinSort } from '../sort'
+import type { DeviMonRouting, DevinRequests } from '../types'
+import { DeviMonAccountActions } from './devi-mon-account-actions'
+import { DeviMonAccountSettings } from './devi-mon-account-settings'
+import { DevinRequestHistory } from './devi-mon-request-history'
 import { DeviMonRow } from './devi-mon-row'
-import { DevinAccountStatus } from './devi-mon-status'
 
 // An account without a Codex twin is exactly the one that may need the other
 // channel, so it carries the same per-account settings button as a normal row.
 function UnpairedDevinRow(props: {
   readonly email: string
   readonly disabled: boolean
+  readonly requests?: DevinRequests | null
   readonly routing?: DeviMonRouting | null
   readonly configured: boolean
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   return (
-    <li className='flex w-fit max-w-full items-center gap-x-2'>
-      <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
-        <span className='min-w-0 [overflow-wrap:anywhere]'>{props.email}</span>
-        <DevinAccountStatus disabled={props.disabled} routing={props.routing} />
-      </div>
-      <DevinAccountToggle
+    <li className='grid min-w-0 items-center gap-x-5 gap-y-1.5 px-3 py-2.5 sm:px-4 @2xl/accounts:grid-cols-[minmax(0,1fr)_minmax(10rem,1.35fr)_auto]'>
+      <span className='min-w-0 self-center text-sm font-semibold [overflow-wrap:anywhere]'>
+        {props.email}
+      </span>
+      <DevinRequestHistory email={props.email} history={props.requests} />
+      <DeviMonAccountActions
         email={props.email}
         disabled={props.disabled}
+        routing={props.routing}
         configured={props.configured}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
-      <AccountSettingsButton
-        email={props.email}
-        onOpen={() => setSettingsOpen(true)}
-      />
-      <AccountRefreshButton email={props.email} configured={props.configured} />
       <DeviMonAccountSettings
         email={props.email}
         open={settingsOpen}
@@ -81,6 +83,12 @@ export function DeviMonMonitor(props: {
   readonly onOpenSettings?: () => void
 }) {
   const { t } = useTranslation()
+  const [confirmCollect, setConfirmCollect] = useState(false)
+  const collectTrigger = useRef<HTMLButtonElement>(null)
+  function requestCollection(event: MouseEvent<HTMLButtonElement>) {
+    collectTrigger.current = event.currentTarget
+    setConfirmCollect(true)
+  }
   const queryClient = useQueryClient()
   const [now, setNow] = useState(() => Date.now())
   const state = useQuery({
@@ -106,14 +114,50 @@ export function DeviMonMonitor(props: {
   })
 
   const snapshot = state.data?.snapshot
+  const inventory = useQuery({
+    queryKey: deviMonInventoryKey,
+    queryFn: ({ signal }) => getDeviMonInventory(signal),
+    enabled: !!state.data?.configured,
+    refetchInterval: ({ state }) => {
+      if (!state.error) return 1_000
+      const status = getServerErrorStatus(state.error)
+      if (status === 401 || status === 403) return false
+      return status === 429 ? 60_000 : 5_000
+    },
+    refetchIntervalInBackground: false,
+    staleTime: 1_000,
+    retry: false,
+  })
+  const live = inventory.data
   const accounts = useMemo(
-    () => sortDevinAccounts(snapshot?.accounts ?? [], props.sort),
-    [snapshot?.accounts, props.sort]
+    () =>
+      sortDevinAccounts(
+        (snapshot?.accounts ?? []).map((row) => {
+          if (!live) return row
+          const current = live[row.email.toLowerCase()]
+          return {
+            ...row,
+            devin_routing: current?.devin_routing,
+            devin_disabled: current?.disabled ?? null,
+            devin_requests: current?.requests,
+          }
+        }),
+        props.sort
+      ),
+    [snapshot?.accounts, live, props.sort]
   )
-  const unpaired = useMemo(
-    () => sortDevinAccounts(snapshot?.unpaired_devin ?? [], props.sort),
-    [snapshot?.unpaired_devin, props.sort]
-  )
+  const unpaired = useMemo(() => {
+    if (!live) {
+      return sortDevinAccounts(snapshot?.unpaired_devin ?? [], props.sort)
+    }
+    const paired = new Set(
+      (snapshot?.accounts ?? []).map((row) => row.email.toLowerCase())
+    )
+    return sortDevinAccounts(
+      Object.values(live).filter((row) => !paired.has(row.email.toLowerCase())),
+      props.sort
+    )
+  }, [live, snapshot, props.sort])
 
   if (state.isLoading) {
     return (
@@ -212,7 +256,7 @@ export function DeviMonMonitor(props: {
             variant='outline'
             size='sm'
             disabled={busy || !data.configured}
-            onClick={() => collect.mutate()}
+            onClick={requestCollection}
           >
             <RefreshCw
               className={busy ? 'animate-spin' : undefined}
@@ -223,12 +267,44 @@ export function DeviMonMonitor(props: {
         </div>
       </div>
 
+      <ConfirmDialog
+        open={confirmCollect}
+        onOpenChange={setConfirmCollect}
+        finalFocus={collectTrigger}
+        title={t('Collect all accounts?')}
+        desc={t(
+          'Each monitored account’s quota will be checked in the background. Its policy may enable or disable the Devin account.'
+        )}
+        confirmText={t('Collect now')}
+        disabled={busy || !data.configured}
+        handleConfirm={() => {
+          if (busy || !data.configured) return
+          setConfirmCollect(false)
+          collect.mutate()
+        }}
+      />
       {!data.configured && (
         <p className='text-destructive text-xs'>
           {t('Set CPA_MANAGEMENT_KEY on the gateway before collecting.')}
         </p>
       )}
 
+      {inventory.isError && (
+        <p
+          role='status'
+          className='text-muted-foreground flex items-center gap-2 text-xs'
+        >
+          {t('Live Devin data unavailable. Showing the last reading.')}{' '}
+          <Button
+            size='xs'
+            variant='outline'
+            disabled={inventory.isFetching}
+            onClick={() => void inventory.refetch()}
+          >
+            {t('Retry')}
+          </Button>
+        </p>
+      )}
       {data.last_error && (
         <p role='status' className='text-destructive text-xs'>
           {t('Last collection failed')}:{' '}
@@ -256,7 +332,7 @@ export function DeviMonMonitor(props: {
           )}
           action={
             <Button
-              onClick={() => collect.mutate()}
+              onClick={requestCollection}
               disabled={busy || !data.configured}
             >
               <RefreshCw aria-hidden='true' />
@@ -284,14 +360,17 @@ export function DeviMonMonitor(props: {
 
       {unpaired.length > 0 && (
         <div className='text-muted-foreground text-xs'>
-          <p>{t('Devin accounts without a Codex twin')}</p>
-          <ul className='mt-1 space-y-0.5'>
+          <p>
+            {snapshot ? t('Devin accounts without a Codex twin') : t('Devin')}
+          </p>
+          <ul className='bg-card text-foreground @container/accounts mt-2 divide-y rounded-lg border'>
             {unpaired.map((devin) => (
               <UnpairedDevinRow
                 key={devin.email}
                 email={devin.email}
                 disabled={devin.disabled}
                 routing={devin.devin_routing}
+                requests={devin.requests}
                 configured={data.configured}
               />
             ))}

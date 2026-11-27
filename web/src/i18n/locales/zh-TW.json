@@ -8735,6 +8735,8 @@
     "Last collected": "Last collected",
     "Took": "Took",
     "Collecting...": "Collecting...",
+    "Collect all accounts?": "採集所有帳號的額度？",
+    "Each monitored account’s quota will be checked in the background. Its policy may enable or disable the Devin account.": "系統會在背景逐一檢查額度，並依各帳號的策略啟用或停用 Devin。",
     "Collect now": "Collect now",
     "Collecting": "Collecting",
     "Not scheduled": "Not scheduled",
@@ -8810,6 +8812,16 @@
     "Proxy address saved": "已儲存代理位址",
     "Could not save the proxy address": "無法儲存代理位址",
     "Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly.": "透過 ChatGPT 工作階段讀取該帳號時使用的出口代理。留空則直連。",
-    "Save the ChatGPT session first, then the proxy address.": "請先儲存 ChatGPT 工作階段，再儲存代理位址。"
+    "Save the ChatGPT session first, then the proxy address.": "請先儲存 ChatGPT 工作階段，再儲存代理位址。",
+    "Enable after quota resets": "重置後自動啟用",
+    "When quota runs out": "額度耗盡時",
+    "Disable when quota runs out": "額度耗盡時自動停用",
+    "Use card": "用卡",
+    "Request history": "請求紀錄",
+    "No requests": "無請求",
+    "Invalid Devin routing value": "Devin 優先順序或權重無效",
+    "Could not update Devin routing": "無法儲存 Devin 帳號的路由設定",
+    "Could not load Devin request history": "無法讀取 Devin 請求紀錄",
+    "Live Devin data unavailable. Showing the last reading.": "Devin 即時資料暫不可用，目前顯示上次讀數。"
   }
 }

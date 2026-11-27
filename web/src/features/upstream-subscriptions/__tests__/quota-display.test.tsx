@@ -129,6 +129,7 @@ describe('subscription allowance windows', () => {
     )
     const user = userEvent.setup()
     try {
+      await user.click(screen.getByRole('tab', { name: 'Coding Plan' }))
       const toggle = await screen.findByRole('switch', {
         name: 'Automatically update quota for Quota account',
       })
@@ -153,8 +154,35 @@ describe('subscription allowance windows', () => {
     }
   })
 
-  it('loads the list after StrictMode cancels its first mount request', async () => {
+  it('reloads Coding Plan after switching tabs aborts its first request in StrictMode', async () => {
+    let firstSignal: AbortSignal | undefined
     const adapter: AxiosAdapter = async (config) => {
+      if (config.url === '/api/devin-monitor') {
+        return {
+          config,
+          headers: {},
+          status: 200,
+          statusText: 'OK',
+          data: {
+            success: true,
+            data: {
+              configured: false,
+              collecting: false,
+              next_run_at: 0,
+              snapshot: null,
+            },
+          },
+        }
+      }
+      if (!firstSignal && config.signal) {
+        const signal = config.signal as AbortSignal
+        firstSignal = signal
+        await new Promise<void>((_, reject) =>
+          signal.addEventListener('abort', () => reject(new Error('aborted')), {
+            once: true,
+          })
+        )
+      }
       expect(config.url).toBe('/api/upstream-subscriptions')
       return {
         config,
@@ -177,6 +205,12 @@ describe('subscription allowance windows', () => {
     )
 
     try {
+      const user = userEvent.setup()
+      const tab = screen.getByRole('tab', { name: 'Coding Plan' })
+      await user.click(tab)
+      await waitFor(() => expect(firstSignal).toBeDefined())
+      await user.click(screen.getByRole('tab', { name: 'Devin' }))
+      await user.click(tab)
       expect(
         await screen.findByRole('progressbar', {
           name: 'Quota account · 7-day window',
@@ -245,6 +279,7 @@ describe('subscription allowance windows', () => {
     )
     const user = userEvent.setup()
     try {
+      await user.click(screen.getByRole('tab', { name: 'Coding Plan' }))
       await screen.findByRole('heading', { name: 'Code Alpha' })
       expect(
         screen.getAllByRole('heading', { level: 3 }).map((el) => el.textContent)

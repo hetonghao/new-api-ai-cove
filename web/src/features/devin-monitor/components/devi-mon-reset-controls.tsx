@@ -31,7 +31,7 @@ import { handleServerError } from '@/lib/handle-server-error'
 import {
   confirmDeviMonAccountReset,
   deviMonQueryKey,
-  setDeviMonAccountAutoReset,
+  setDeviMonAccountPolicy,
 } from '../api'
 import type { DeviMonAccount, DeviMonResetOffer, DeviMonState } from '../types'
 
@@ -45,7 +45,7 @@ export function DeviMonResetControls(props: {
   const { t } = useTranslation()
   const client = useQueryClient()
   const id = useId()
-  const label = t('Auto reset when quota runs out')
+  const resumeLabel = t('Enable after quota resets')
   const { account, offer, onOfferChange } = props
   const query = { queryKey: deviMonQueryKey, exact: true }
   const updateAccount = (
@@ -67,16 +67,26 @@ export function DeviMonResetControls(props: {
     })
   }
   const preference = useMutation({
-    mutationFn: (input: { readonly key: string; readonly enabled: boolean }) =>
-      setDeviMonAccountAutoReset(account.email, input.key, input.enabled),
-    onSuccess: async (_, { enabled }) => {
+    mutationFn: (
+      input: { enabled: boolean } | { enable_after_reset: boolean }
+    ) => {
+      if (!account.reset_key) {
+        throw new Error(t('Refresh this account before enabling auto reset'))
+      }
+      return setDeviMonAccountPolicy(account.email, account.reset_key, input)
+    },
+    onSuccess: async (_, policy) => {
       await client.cancelQueries(query)
-      updateAccount((current) => ({
-        ...current,
-        auto_reset: enabled,
-        reset_offer: enabled ? current.reset_offer : null,
-      }))
-      if (!enabled) onOfferChange(null)
+      updateAccount((current) =>
+        'enabled' in policy
+          ? {
+              ...current,
+              auto_reset: policy.enabled,
+              reset_offer: policy.enabled ? current.reset_offer : null,
+            }
+          : { ...current, auto_enable_after_reset: policy.enable_after_reset }
+      )
+      if ('enabled' in policy && !policy.enabled) onOfferChange(null)
       await client.invalidateQueries(query)
     },
     onError: (error) => {
@@ -93,7 +103,11 @@ export function DeviMonResetControls(props: {
       updateAccount((current) =>
         updated.observed_at_us < current.observed_at_us
           ? current
-          : { ...updated, auto_reset: current.auto_reset }
+          : {
+              ...updated,
+              auto_reset: current.auto_reset,
+              auto_enable_after_reset: current.auto_enable_after_reset,
+            }
       )
       onOfferChange(null)
       await client.invalidateQueries(query)
@@ -114,37 +128,60 @@ export function DeviMonResetControls(props: {
     rejected: t('Reset card was not used.'),
     unverified: t('Reset result unconfirmed. Refresh to check usage.'),
   }
+  const busy =
+    !props.configured ||
+    !account.reset_key ||
+    preference.isPending ||
+    reset.isPending
   return (
-    <div className='flex flex-wrap items-center gap-x-3'>
-      <Label
-        htmlFor={id}
-        className='text-muted-foreground min-h-8 cursor-pointer py-1 text-xs font-normal pointer-coarse:min-h-11'
+    <div className='flex max-w-full flex-wrap items-center justify-end gap-x-2 gap-y-0.5 text-xs'>
+      <fieldset
+        disabled={busy}
         title={
           account.reset_key
             ? undefined
             : t('Refresh this account before enabling auto reset')
         }
+        className='flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1'
+        aria-label={`${t('When quota runs out')} · ${account.email}`}
+      >
+        <legend className='sr-only'>{t('When quota runs out')}</legend>
+        <span className='text-muted-foreground' aria-hidden='true'>
+          {t('When quota runs out')}
+        </span>
+        <div className='bg-muted inline-flex rounded-md p-0.5'>
+          {([false, true] as const).map((useCard) => (
+            <label
+              key={String(useCard)}
+              className='has-checked:bg-background has-checked:text-foreground text-muted-foreground has-focus-visible:ring-ring relative inline-flex min-h-6 cursor-pointer items-center rounded-sm px-2 has-checked:shadow-xs has-focus-visible:ring-2 has-disabled:cursor-default pointer-coarse:min-h-11'
+            >
+              <input
+                className='peer sr-only'
+                type='radio'
+                name={`${id}-mode`}
+                checked={account.auto_reset === useCard}
+                aria-label={`${useCard ? t('Auto reset when quota runs out') : t('Disable when quota runs out')} · ${account.email}`}
+                onChange={() => preference.mutate({ enabled: useCard })}
+              />
+              {useCard ? t('Use card') : t('Disable')}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <Label
+        htmlFor={id}
+        className='text-muted-foreground min-h-7 cursor-pointer text-xs font-normal pointer-coarse:min-h-11'
       >
         <Checkbox
           id={id}
-          aria-labelledby={`${id}-label`}
-          checked={account.auto_reset}
-          disabled={
-            !props.configured ||
-            !account.reset_key ||
-            preference.isPending ||
-            reset.isPending
+          checked={account.auto_enable_after_reset !== false}
+          disabled={busy || account.devin_disabled === null}
+          aria-label={`${resumeLabel} · ${account.email}`}
+          onCheckedChange={(enable) =>
+            preference.mutate({ enable_after_reset: enable })
           }
-          onCheckedChange={(enabled) => {
-            if (account.reset_key) {
-              preference.mutate({ key: account.reset_key, enabled })
-            }
-          }}
         />
-        <span aria-hidden='true'>{label}</span>
-        <span id={`${id}-label`} className='sr-only'>
-          {`${label} · ${account.email}`}
-        </span>
+        {resumeLabel}
       </Label>
       {account.auto_reset && account.reset_offer && (
         <Button

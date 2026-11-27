@@ -83,39 +83,29 @@ function renderPage() {
 }
 
 describe('subscription operations tabs', () => {
-  it('keeps the existing Coding Plan content as the default tab', async () => {
+  it('opens on Devin first and only loads Coding Plan when selected', async () => {
     serveBothPages()
     renderPage()
-
-    expect(
-      await screen.findByRole('tab', { name: 'Coding Plan' })
-    ).toHaveAttribute('aria-selected', 'true')
-    // The subscription list still owns its own toolbar and empty state.
-    expect(
-      (await screen.findAllByRole('button', { name: 'Create subscription' }))
-        .length
-    ).toBeGreaterThan(0)
-  })
-
-  it('switches to the Devin monitor without unmounting the switcher', async () => {
-    serveBothPages()
-    renderPage()
-
-    const codingTab = await screen.findByRole('tab', { name: 'Coding Plan' })
-    const devinTab = screen.getByRole('tab', { name: 'Devin' })
-    codingTab.focus()
-    await userEvent.keyboard('{ArrowRight}{Enter}')
+    const tabs = await screen.findAllByRole('tab')
+    expect(tabs[0]).toHaveAccessibleName('Devin')
+    expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
     expect(
       await screen.findByText('No Codex accounts collected yet')
     ).toBeVisible()
-    expect(screen.getByRole('tab', { name: 'Devin' })).toBe(devinTab)
-    expect(screen.getByRole('tabpanel', { name: 'Devin' })).toBeVisible()
-    expect(devinTab).toHaveFocus()
-    await userEvent.click(codingTab)
+    expect(
+      screen.queryByRole('button', { name: 'Create subscription' })
+    ).toBeNull()
+    tabs[0].focus()
+    await userEvent.keyboard('{ArrowRight}{Enter}')
+    expect(tabs[1]).toHaveFocus()
+    expect(
+      await screen.findByRole('tabpanel', { name: 'Coding Plan' })
+    ).toBeVisible()
     expect(
       (await screen.findAllByRole('button', { name: 'Create subscription' }))
         .length
     ).toBeGreaterThan(0)
-    expect(screen.queryByText('No Codex accounts collected yet')).toBeNull()
+    await userEvent.click(tabs[0])
+    expect(await screen.findByRole('tabpanel', { name: 'Devin' })).toBeVisible()
   })
 })

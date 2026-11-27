@@ -27,6 +27,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { api } from '@/lib/api'
 
 import { DeviMonMonitor } from '../components/devi-mon-monitor'
+import { DevinRequestHistory } from '../components/devi-mon-request-history'
 import { DEFAULT_DEVIN_SORT } from '../sort'
 
 const originalAdapter = api.defaults.adapter
@@ -109,6 +110,48 @@ function serveState(snapshot: unknown) {
 }
 
 describe('devin monitor', () => {
+  it('interpolates both halves of the CPA scale and separates cumulative counts from the recent rate', async () => {
+    const recent = [
+      { success: 0, failed: 4 },
+      { success: 1, failed: 3 },
+      { success: 2, failed: 2 },
+      { success: 3, failed: 1 },
+      { success: 4, failed: 0 },
+    ]
+    render(
+      <DevinRequestHistory
+        email='lamp@example.test'
+        history={{ success: 990, failed: 10, as_of: 1_795_000_000, recent }}
+      />
+    )
+    const history = within(
+      screen.getByRole('group', { name: 'Request history · lamp@example.test' })
+    )
+    expect(history.getByText('990')).toBeVisible()
+    expect(history.getByTitle('Success rate')).toHaveTextContent('50%')
+    const lamps = history.getAllByRole('button')
+    expect(lamps).toHaveLength(20)
+    for (const [index, color] of [
+      'rgb(239, 68, 68)',
+      'rgb(245, 136, 45)',
+      'rgb(250, 204, 21)',
+      'rgb(142, 201, 58)',
+      'rgb(34, 197, 94)',
+    ].entries()) {
+      expect(lamps[index + 15].firstElementChild).toHaveStyle({
+        backgroundColor: color,
+      })
+    }
+    expect(lamps[0]).toHaveAccessibleName(/No requests/)
+    await userEvent.click(lamps[16])
+    const tip = await screen.findByRole('dialog')
+    expect(tip).toHaveTextContent('Success 1')
+    expect(tip).toHaveTextContent('Failed 3')
+    expect(tip).toHaveTextContent('(25.0%)')
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
   it('saves auto reset per account and asks before using a card after a manual refresh', async () => {
     const mutations: [string | undefined, unknown][] = []
     let enabled = false
@@ -154,10 +197,10 @@ describe('devin monitor', () => {
     }) satisfies AxiosAdapter
     renderMonitor()
     const user = userEvent.setup()
-    const busy = await screen.findByRole('checkbox', {
+    const busy = await screen.findByRole('radio', {
       name: 'Auto reset when quota runs out · busy@example.com',
     })
-    const fresh = screen.getByRole('checkbox', {
+    const fresh = screen.getByRole('radio', {
       name: 'Auto reset when quota runs out · fresh@example.com',
     })
     expect(busy).not.toBeChecked()
@@ -415,12 +458,56 @@ describe('devin monitor', () => {
     if (!fresh) throw new Error('Missing Codex account row')
     expect(within(fresh).getByText('×2')).toBeVisible()
     expect(within(fresh).getAllByRole('listitem')).toHaveLength(2)
-    expect(
-      fresh.querySelector('time[datetime="2026-12-01T04:14:00Z"]')
-    ).toHaveTextContent(/^2026-12-0[12] \d\d:\d\d$/)
+    const cardExpiry = fresh.querySelector(
+      'time[datetime="2026-12-01T04:14:00Z"]'
+    )
+    expect(cardExpiry).toHaveTextContent(/^12-0[12] \d\d:\d\d$/)
+    expect(cardExpiry?.getAttribute('title')).toMatch(/^2026-12-0[12] /)
 
     expect(screen.getByText('Devin disabled')).toBeInTheDocument()
     expect(screen.getByText('No Devin account')).toBeInTheDocument()
+  })
+
+  it('shows at most two cards inline and reveals the rest for the chosen account', async () => {
+    const account = SNAPSHOT.accounts[0]
+    const first = '2026-12-01T04:03:00Z',
+      second = '2026-12-02T04:03:00Z',
+      third = '2026-12-03T04:03:00Z'
+    serveState({
+      ...SNAPSHOT,
+      accounts: [
+        {
+          ...account,
+          cards: [first, second, third, third].map((expires_at) => ({
+            expires_at,
+          })),
+        },
+        SNAPSHOT.accounts[1],
+      ],
+    })
+    renderMonitor()
+    const more = await screen.findByRole('button', {
+      name: 'Reset cards · More (2) · busy@example.com',
+    })
+    const row = more.closest('li')
+    if (!row) throw new Error('Missing Devin account row')
+    expect(within(row).getByText('×4')).toBeVisible()
+    expect(row.querySelector(`time[datetime="${first}"]`)).toBeVisible()
+    expect(row.querySelector(`time[datetime="${second}"]`)).toBeVisible()
+    expect(row.querySelector(`time[datetime="${third}"]`)).toBeNull()
+    expect(
+      screen.queryByRole('button', {
+        name: /Reset cards · More.*fresh@example/,
+      })
+    ).toBeNull()
+    more.focus()
+    const user = userEvent.setup()
+    await user.keyboard('{Enter}')
+    const popup = await screen.findByRole('dialog')
+    expect(popup.querySelector(`time[datetime="${third}"]`)).toBeVisible()
+    expect(within(popup).getByRole('listitem')).toHaveTextContent('×2')
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 
   // The enable/disable switch is a Devin-side toggle: it must be offered on the
@@ -494,7 +581,7 @@ describe('devin monitor', () => {
     )
   })
 
-  it('shows only Devin routing, distinguishes zero from defaults and reads older snapshots', async () => {
+  it('shows effective Devin routing numbers without a default label and preserves an explicit zero', async () => {
     serveState({
       ...SNAPSHOT,
       accounts: [
@@ -521,15 +608,30 @@ describe('devin monitor', () => {
       if (!row) throw new Error('Missing account row')
       return row
     }
-    expect(await rowFor('busy@example.com')).toHaveTextContent(
-      /Priority -4\s*Weight 0/
-    )
-    expect(await rowFor('orphan@example.com')).toHaveTextContent(
-      /Priority Default 0\s*Weight 25/
-    )
-    expect(await rowFor('defaults@example.com')).toHaveTextContent(
-      /Priority 0\s*Weight Default 1/
-    )
+    const busy = within(await rowFor('busy@example.com'))
+    expect(
+      busy.getByRole('button', { name: 'Priority · busy@example.com: -4' })
+    ).toBeVisible()
+    expect(
+      busy.getByRole('button', { name: 'Weight · busy@example.com: 0' })
+    ).toBeVisible()
+    const orphan = within(await rowFor('orphan@example.com'))
+    expect(
+      orphan.getByRole('button', { name: 'Priority · orphan@example.com: 0' })
+    ).toBeVisible()
+    expect(
+      orphan.getByRole('button', { name: 'Weight · orphan@example.com: 25' })
+    ).toBeVisible()
+    const defaults = within(await rowFor('defaults@example.com'))
+    expect(
+      defaults.getByRole('button', {
+        name: 'Priority · defaults@example.com: 0',
+      })
+    ).toBeVisible()
+    expect(
+      defaults.getByRole('button', { name: 'Weight · defaults@example.com: 1' })
+    ).toBeVisible()
+    expect(screen.queryByText('Default')).not.toBeInTheDocument()
     expect(await rowFor('legacy@example.com')).toHaveTextContent(
       'Priority / Weight: Not fetched yet'
     )
@@ -587,7 +689,7 @@ describe('devin monitor', () => {
     ).toBeInTheDocument()
   })
 
-  it('keeps the previous inventory visible when a new collection is queued', async () => {
+  it('queues one full collection only after confirmation and keeps the previous inventory visible', async () => {
     let posted = 0
     let complete = false
     api.defaults.adapter = (async (config) => {
@@ -613,8 +715,22 @@ describe('devin monitor', () => {
       }
     }) as AxiosAdapter
     renderMonitor()
-    await userEvent.click(
-      await screen.findByRole('button', { name: 'Collect now' })
+    const collect = await screen.findByRole('button', { name: 'Collect now' })
+    const user = userEvent.setup()
+    await user.click(collect)
+    const dialog = await screen.findByRole('alertdialog', {
+      name: 'Collect all accounts?',
+    })
+    expect(posted).toBe(0)
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(collect).toHaveFocus())
+    expect(posted).toBe(0)
+    await user.click(collect)
+    const confirmation = await screen.findByRole('alertdialog', {
+      name: 'Collect all accounts?',
+    })
+    await user.click(
+      within(confirmation).getByRole('button', { name: 'Collect now' })
     )
     expect(
       await screen.findByRole('button', { name: 'Collecting...' })

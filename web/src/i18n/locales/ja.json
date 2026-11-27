@@ -8735,6 +8735,8 @@
     "Last collected": "Last collected",
     "Took": "Took",
     "Collecting...": "Collecting...",
+    "Collect all accounts?": "全アカウントの利用枠を確認しますか？",
+    "Each monitored account’s quota will be checked in the background. Its policy may enable or disable the Devin account.": "各アカウントの利用枠をバックグラウンドで確認します。設定に応じて Devin アカウントが有効または無効になります。",
     "Collect now": "Collect now",
     "Collecting": "Collecting",
     "Not scheduled": "Not scheduled",
@@ -8810,6 +8812,16 @@
     "Proxy address saved": "Proxy address saved",
     "Could not save the proxy address": "Could not save the proxy address",
     "Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly.": "Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly.",
-    "Save the ChatGPT session first, then the proxy address.": "Save the ChatGPT session first, then the proxy address."
+    "Save the ChatGPT session first, then the proxy address.": "Save the ChatGPT session first, then the proxy address.",
+    "Enable after quota resets": "リセット後に自動で有効化",
+    "When quota runs out": "上限到達時",
+    "Disable when quota runs out": "上限到達時に自動で無効化",
+    "Use card": "カードを使用",
+    "Request history": "リクエスト履歴",
+    "No requests": "リクエストなし",
+    "Invalid Devin routing value": "Devin の優先度または重みが無効です",
+    "Could not update Devin routing": "Devin アカウントのルーティング設定を保存できませんでした",
+    "Could not load Devin request history": "Devin のリクエスト履歴を読み込めませんでした",
+    "Live Devin data unavailable. Showing the last reading.": "Devin の最新データを取得できないため、前回の結果を表示しています。"
   }
 }

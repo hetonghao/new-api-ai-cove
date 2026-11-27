@@ -8735,6 +8735,8 @@
     "Last collected": "Last collected",
     "Took": "Took",
     "Collecting...": "Collecting...",
+    "Collect all accounts?": "Vérifier le quota de tous les comptes ?",
+    "Each monitored account’s quota will be checked in the background. Its policy may enable or disable the Devin account.": "Le quota de chaque compte suivi sera vérifié en arrière-plan. Sa politique peut activer ou désactiver le compte Devin.",
     "Collect now": "Collect now",
     "Collecting": "Collecting",
     "Not scheduled": "Not scheduled",
@@ -8810,6 +8812,16 @@
     "Proxy address saved": "Proxy address saved",
     "Could not save the proxy address": "Could not save the proxy address",
     "Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly.": "Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly.",
-    "Save the ChatGPT session first, then the proxy address.": "Save the ChatGPT session first, then the proxy address."
+    "Save the ChatGPT session first, then the proxy address.": "Save the ChatGPT session first, then the proxy address.",
+    "Enable after quota resets": "Réactiver après la réinitialisation",
+    "When quota runs out": "Si le quota est épuisé",
+    "Disable when quota runs out": "Désactiver si le quota est épuisé",
+    "Use card": "Utiliser une carte",
+    "Request history": "Historique des requêtes",
+    "No requests": "Aucune requête",
+    "Invalid Devin routing value": "Priorité ou poids Devin non valide",
+    "Could not update Devin routing": "Impossible de modifier le routage du compte Devin",
+    "Could not load Devin request history": "Impossible de charger l’historique Devin",
+    "Live Devin data unavailable. Showing the last reading.": "Données Devin en direct indisponibles. Dernier relevé affiché."
   }
 }
