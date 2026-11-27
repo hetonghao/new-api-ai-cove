@@ -15,6 +15,9 @@ var ErrDeviMonAccountMissing = errors.New("account no longer in the monitor inve
 type deviMonReading struct {
 	Account  *DeviMonAccount `json:"account,omitempty"`
 	Unpaired *DeviMonDevin   `json:"unpaired,omitempty"`
+	// Devin is a cpa-pro-1 credential flip. It carries no quota, so applying it
+	// never replaces the collection's reading of the Codex side.
+	Devin *DeviMonDevin `json:"devin,omitempty"`
 }
 
 // Only inventory discovery is shared with the full job. Never wait for other
@@ -96,43 +99,66 @@ func applyDeviMonRefreshes(snapshot *DeviMonSnapshot) error {
 	for _, row := range rows {
 		byEmail[row.Email] = row
 	}
-	accounts := make([]DeviMonAccount, 0, len(snapshot.Accounts))
-	unpaired := make([]DeviMonDevin, 0, len(snapshot.UnpairedDevin))
-	apply := func(email string, observed int64) (bool, error) {
+	// A quota reading only wins against the account it re-read. A Devin-only
+	// flip says nothing about quota, so it only has to be newer than the
+	// inventory the collection read at its start; comparing it against the
+	// account's own read time would silently drop a flip that landed mid-run.
+	load := func(email string) (*model.DeviMonAccountRefresh, *deviMonReading, error) {
 		saved, ok := byEmail[strings.ToLower(email)]
-		if !ok || saved.StartedAtUS < observed {
-			return false, nil
+		if !ok {
+			return nil, nil, nil
 		}
 		var reading deviMonReading
 		if err := common.UnmarshalJsonStr(saved.Data, &reading); err != nil {
-			return false, err
+			return nil, nil, err
+		}
+		return &saved, &reading, nil
+	}
+	accounts := make([]DeviMonAccount, 0, len(snapshot.Accounts))
+	unpaired := make([]DeviMonDevin, 0, len(snapshot.UnpairedDevin))
+	for _, acc := range snapshot.Accounts {
+		saved, reading, err := load(acc.Email)
+		if err != nil {
+			return err
+		}
+		if saved == nil {
+			accounts = append(accounts, acc)
+			continue
+		}
+		newer := saved.StartedAtUS >= acc.ObservedAtUS
+		switch {
+		case reading.Account != nil && newer:
+			accounts = append(accounts, *reading.Account)
+		case reading.Unpaired != nil && saved.StartedAtUS >= since:
+			unpaired = append(unpaired, *reading.Unpaired)
+		case reading.Devin != nil && saved.StartedAtUS >= since:
+			acc.DevinDisabled = &reading.Devin.Disabled
+			acc.DevinRouting = reading.Devin.Routing
+			accounts = append(accounts, acc)
+		case reading.Account != nil || reading.Unpaired != nil || reading.Devin != nil:
+			accounts = append(accounts, acc)
+		default:
+			return errors.New("empty Devin monitor account reading")
+		}
+	}
+	for _, devin := range snapshot.UnpairedDevin {
+		saved, reading, err := load(devin.Email)
+		if err != nil {
+			return err
 		}
 		switch {
+		case saved == nil || saved.StartedAtUS < since:
+			unpaired = append(unpaired, devin)
 		case reading.Account != nil:
 			accounts = append(accounts, *reading.Account)
 		case reading.Unpaired != nil:
 			unpaired = append(unpaired, *reading.Unpaired)
-		default:
-			return false, errors.New("empty Devin monitor account reading")
-		}
-		return true, nil
-	}
-	for _, acc := range snapshot.Accounts {
-		updated, err := apply(acc.Email, acc.ObservedAtUS)
-		if err != nil {
-			return err
-		}
-		if !updated {
-			accounts = append(accounts, acc)
-		}
-	}
-	for _, devin := range snapshot.UnpairedDevin {
-		updated, err := apply(devin.Email, since)
-		if err != nil {
-			return err
-		}
-		if !updated {
+		case reading.Devin != nil:
+			devin.Disabled = reading.Devin.Disabled
+			devin.Routing = reading.Devin.Routing
 			unpaired = append(unpaired, devin)
+		default:
+			return errors.New("empty Devin monitor account reading")
 		}
 	}
 	snapshot.Accounts, snapshot.UnpairedDevin = accounts, unpaired

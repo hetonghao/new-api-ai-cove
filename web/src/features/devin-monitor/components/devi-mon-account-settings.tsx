@@ -317,45 +317,49 @@ export function DeviMonAccountSettings(props: {
               </div>
             </Field>
 
-            {stored?.signed_in && (
-              <Field className='rounded-md border p-3'>
-                <FieldLabel htmlFor='devi-mon-account-proxy'>
-                  {t('Proxy address')}
-                </FieldLabel>
-                <Input
-                  id='devi-mon-account-proxy'
-                  placeholder='socks5://user:pass@host:port'
-                  value={shownProxy}
-                  onChange={(event) => {
-                    setProxyTouched(true)
-                    setProxyUrl(event.target.value)
-                  }}
-                  aria-invalid={proxyInvalid}
-                />
+            <Field className='rounded-md border p-3'>
+              <FieldLabel htmlFor='devi-mon-account-proxy'>
+                {t('Proxy address')}
+              </FieldLabel>
+              <Input
+                id='devi-mon-account-proxy'
+                placeholder='socks5://user:pass@host:port'
+                value={shownProxy}
+                onChange={(event) => {
+                  setProxyTouched(true)
+                  setProxyUrl(event.target.value)
+                }}
+                aria-invalid={proxyInvalid}
+              />
+              <FieldDescription>
+                {t(
+                  'Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly.'
+                )}
+              </FieldDescription>
+              {proxyInvalid ? (
+                <FieldError>{t(PROXY_ERROR_KEY)}</FieldError>
+              ) : null}
+              <Button
+                type='button'
+                size='sm'
+                variant='outline'
+                disabled={
+                  saveProxy.isPending ||
+                  !stored?.signed_in ||
+                  !proxyTouched ||
+                  proxyInvalid ||
+                  shownProxy.trim() === (stored?.proxy_url ?? '')
+                }
+                onClick={() => saveProxy.mutate()}
+              >
+                {saveProxy.isPending ? t('Saving...') : t('Save proxy')}
+              </Button>
+              {!stored?.signed_in && (
                 <FieldDescription>
-                  {t(
-                    'Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly.'
-                  )}
+                  {t('Save the ChatGPT session first, then the proxy address.')}
                 </FieldDescription>
-                {proxyInvalid ? (
-                  <FieldError>{t(PROXY_ERROR_KEY)}</FieldError>
-                ) : null}
-                <Button
-                  type='button'
-                  size='sm'
-                  variant='outline'
-                  disabled={
-                    saveProxy.isPending ||
-                    !proxyTouched ||
-                    proxyInvalid ||
-                    shownProxy.trim() === (stored?.proxy_url ?? '')
-                  }
-                  onClick={() => saveProxy.mutate()}
-                >
-                  {saveProxy.isPending ? t('Saving...') : t('Save proxy')}
-                </Button>
-              </Field>
-            )}
+              )}
+            </Field>
           </>
         )}
 

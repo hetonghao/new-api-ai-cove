@@ -23,11 +23,7 @@ import { toast } from 'sonner'
 
 import { Switch } from '@/components/ui/switch'
 
-import {
-  deviMonQueryKey,
-  refreshDeviMonAccount,
-  setDeviMonDevinDisabled,
-} from '../api'
+import { deviMonQueryKey, setDeviMonDevinDisabled } from '../api'
 import type { DeviMonState } from '../types'
 
 // Rows render the last collection, so the switch must both repaint immediately
@@ -72,11 +68,7 @@ export function DevinAccountToggle(props: {
     ? t('Disable {{email}}', { email: props.email })
     : t('Enable {{email}}', { email: props.email })
   const toggle = useMutation({
-    mutationFn: async () => {
-      await setDeviMonDevinDisabled(props.email, enabled)
-      // A failed re-read must not turn a completed flip into an error.
-      await refreshDeviMonAccount(props.email).catch(() => undefined)
-    },
+    mutationFn: () => setDeviMonDevinDisabled(props.email, enabled),
     onMutate: async () => {
       await client.cancelQueries({ queryKey: deviMonQueryKey, exact: true })
       client.setQueryData<DeviMonState>(deviMonQueryKey, (state) =>

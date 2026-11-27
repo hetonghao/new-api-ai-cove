@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 )
@@ -31,17 +32,21 @@ func SetDeviMonDevinDisabled(ctx context.Context, email string, disabled bool) e
 	if err != nil {
 		return err
 	}
-	name := ""
+	var captured map[string]any
 	for _, file := range filterDeviMonProvider(files, "devin") {
 		if !strings.EqualFold(strings.TrimSpace(deviMonString(file["email"])), email) {
 			continue
 		}
-		if name != "" {
+		if captured != nil {
 			// Two credentials for one mailbox: refusing beats disabling the
 			// wrong one.
 			return errors.New("more than one Devin credential uses this email")
 		}
-		name = deviMonString(file["name"])
+		captured = file
+	}
+	name := ""
+	if captured != nil {
+		name = deviMonString(captured["name"])
 	}
 	if name == "" {
 		return ErrDeviMonDevinAccountMissing
@@ -60,5 +65,17 @@ func SetDeviMonDevinDisabled(ctx context.Context, email string, disabled bool) e
 	if _, err := deviMonDo(request); err != nil {
 		return errDeviMonDevinStatusFailed
 	}
-	return nil
+	// Record the flip for the monitor. The reading carries the credential state
+	// only: re-reading the Codex side here would spend a quota probe to learn
+	// something this request already knows.
+	return saveDeviMonReading(ctx, email, time.Now().UnixMicro(), deviMonReading{
+		Devin: &DeviMonDevin{
+			Email:    email,
+			Disabled: disabled,
+			Routing: &DeviMonRouting{
+				Priority: deviMonOptionalInt(captured["priority"]),
+				Weight:   deviMonOptionalInt(captured["weight"]),
+			},
+		},
+	})
 }

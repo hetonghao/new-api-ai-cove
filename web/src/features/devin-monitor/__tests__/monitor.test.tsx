@@ -481,18 +481,14 @@ describe('devin monitor', () => {
     // The switch must show the flipped state instead of snapping back to the
     // last collection, which is what made the old button look dead.
     await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'false'))
+    // Only the Devin credential is touched: flipping it must not probe the
+    // Codex side, which is what an account refresh would do.
     await waitFor(() =>
       expect(calls).toEqual([
         {
           method: 'put',
           url: '/api/devin-monitor/accounts/devin-status',
           body: { email: 'busy@example.com', disabled: true },
-        },
-        // The row renders the last collection, so the flip stores a reading.
-        {
-          method: 'post',
-          url: '/api/devin-monitor/accounts/refresh',
-          body: { email: 'busy@example.com' },
         },
       ])
     )

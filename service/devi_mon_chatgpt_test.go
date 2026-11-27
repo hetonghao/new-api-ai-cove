@@ -185,7 +185,21 @@ func TestDeviMonDevinStatusResolvesCredentialByEmail(t *testing.T) {
 
 	// An unknown mailbox must not touch anything.
 	require.ErrorIs(t, SetDeviMonDevinDisabled(context.Background(), "nobody@example.test", true), ErrDeviMonDevinAccountMissing)
+
+	// The flip is recorded as a Devin-only reading: it must not spend a Codex
+	// quota probe, and applying it must leave the collection's usage untouched.
+	snap := DeviMonSnapshot{StartedAtUS: 1, Accounts: []DeviMonAccount{{Email: "owned@example.test", UsedPercent: ptrFloat(7), CreditBalance: "99"}}}
+	require.NoError(t, applyDeviMonRefreshes(&snap))
+	require.Len(t, snap.Accounts, 1)
+	require.NotNil(t, snap.Accounts[0].DevinDisabled)
+	assert.True(t, *snap.Accounts[0].DevinDisabled)
+	assert.Equal(t, "99", snap.Accounts[0].CreditBalance)
+	require.NotNil(t, snap.Accounts[0].UsedPercent)
+	assert.InDelta(t, 7, *snap.Accounts[0].UsedPercent, 0.001)
 }
+
+// ptrFloat gives a usage reading a stable address.
+func ptrFloat(value float64) *float64 { return &value }
 
 // /api/auth/session reports the SESSION expiry, which outlives the access token
 // by weeks. Caching on it served a dead token long after ChatGPT answered 401.

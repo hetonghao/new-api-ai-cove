@@ -8809,6 +8809,7 @@
     "Save proxy": "儲存代理",
     "Proxy address saved": "已儲存代理位址",
     "Could not save the proxy address": "無法儲存代理位址",
-    "Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly.": "透過 ChatGPT 工作階段讀取該帳號時使用的出口代理。留空則直連。"
+    "Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly.": "透過 ChatGPT 工作階段讀取該帳號時使用的出口代理。留空則直連。",
+    "Save the ChatGPT session first, then the proxy address.": "請先儲存 ChatGPT 工作階段，再儲存代理位址。"
   }
 }

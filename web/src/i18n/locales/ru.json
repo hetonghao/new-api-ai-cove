@@ -8809,6 +8809,7 @@
     "Save proxy": "Save proxy",
     "Proxy address saved": "Proxy address saved",
     "Could not save the proxy address": "Could not save the proxy address",
-    "Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly.": "Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly."
+    "Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly.": "Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly.",
+    "Save the ChatGPT session first, then the proxy address.": "Save the ChatGPT session first, then the proxy address."
   }
 }
