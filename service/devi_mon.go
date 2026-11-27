@@ -560,7 +560,7 @@ func deviMonCredentialRequest(ctx context.Context, key string, file map[string]a
 	if err != nil {
 		return nil, err
 	}
-	client, err := deviMonChatGPTClient(DeviMonProxyURL())
+	client, err := deviMonChatGPTClient(DeviMonProxyURL(row))
 	if err != nil {
 		return nil, err
 	}

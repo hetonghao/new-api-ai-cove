@@ -137,6 +137,16 @@ export async function forgetDeviMonChatGPTAccount(email: string) {
   deviMonData(response.data, z.null())
 }
 
+// Per-account egress. Empty means direct.
+export async function setDeviMonAccountProxy(email: string, proxyUrl: string) {
+  const response = await api.put<unknown>(
+    `${BASE_PATH}/accounts/proxy`,
+    { email, proxy_url: proxyUrl },
+    { skipErrorHandler: true, skipBusinessError: true }
+  )
+  deviMonData(response.data, z.null())
+}
+
 // A Devin-side switch: it disables the credential in CPA, not the monitor row.
 export async function setDeviMonDevinDisabled(
   email: string,

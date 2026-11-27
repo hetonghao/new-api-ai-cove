@@ -12,7 +12,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
 
 // Second subscription reading channel: the operator pastes the JSON that
@@ -48,7 +47,9 @@ type DeviMonSession struct {
 	AccountID    string
 	SessionToken string
 	AccessToken  string
-	ExpiresAt    int64
+	// ProxyURL applies to this account only; empty means direct.
+	ProxyURL  string
+	ExpiresAt int64
 }
 
 // ParseDeviMonSession accepts the JSON an operator copies from
@@ -84,8 +85,9 @@ func ParseDeviMonSession(raw []byte) (DeviMonSession, error) {
 	return session, nil
 }
 
-func DeviMonProxyURL() string {
-	return strings.TrimSpace(operation_setting.GetDeviMonSettings().ChatGPTProxyURL)
+// DeviMonProxyURL is the account's own egress proxy. Empty means direct.
+func DeviMonProxyURL(row model.DeviMonChatGPTAccount) string {
+	return strings.TrimSpace(row.ProxyURL)
 }
 
 // deviMonChatGPTClient builds the direct client. An unset proxy keeps the
@@ -167,8 +169,8 @@ func deviMonSessionCookie(sessionToken string) string {
 
 // deviMonExchangeSession turns a stored session cookie into an access token.
 // ChatGPT renews the cookie on every call, so the caller writes back both.
-func deviMonExchangeSession(ctx context.Context, sessionToken string) (accessToken, accountID, renewed string, expiresAt int64, err error) {
-	client, err := deviMonChatGPTClient(DeviMonProxyURL())
+func deviMonExchangeSession(ctx context.Context, proxyURL, sessionToken string) (accessToken, accountID, renewed string, expiresAt int64, err error) {
+	client, err := deviMonChatGPTClient(proxyURL)
 	if err != nil {
 		return "", "", "", 0, err
 	}
@@ -225,6 +227,7 @@ func deviMonStoreSession(ctx context.Context, session DeviMonSession) error {
 		Channel:      model.DeviMonChannelChatGPT,
 		SessionToken: encryptedSession,
 		AccessToken:  encryptedAccess,
+		ProxyURL:     strings.TrimSpace(session.ProxyURL),
 		ExpiresAt:    session.ExpiresAt,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -245,7 +248,7 @@ func DeviMonSaveSession(ctx context.Context, raw []byte) (model.DeviMonChatGPTAc
 // deviMonStoreVerifiedSession re-checks the session against ChatGPT before it is
 // written, so a stale paste fails now instead of breaking the next collection.
 func deviMonStoreVerifiedSession(ctx context.Context, pasted DeviMonSession) (model.DeviMonChatGPTAccount, error) {
-	accessToken, accountID, renewed, expiresAt, err := deviMonExchangeSession(ctx, pasted.SessionToken)
+	accessToken, accountID, renewed, expiresAt, err := deviMonExchangeSession(ctx, pasted.ProxyURL, pasted.SessionToken)
 	if err != nil {
 		return model.DeviMonChatGPTAccount{}, err
 	}
@@ -279,7 +282,7 @@ func deviMonSessionAccess(ctx context.Context, row model.DeviMonChatGPTAccount) 
 	if err != nil || sessionToken == "" {
 		return "", errDeviMonNoSession
 	}
-	accessToken, accountID, renewed, expiresAt, err := deviMonExchangeSession(ctx, sessionToken)
+	accessToken, accountID, renewed, expiresAt, err := deviMonExchangeSession(ctx, DeviMonProxyURL(row), sessionToken)
 	if err != nil {
 		return "", err
 	}

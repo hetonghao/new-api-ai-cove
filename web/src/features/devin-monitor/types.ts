@@ -80,7 +80,6 @@ export const deviMonStateSchema = z.object({
 
 export const deviMonSettingsSchema = z.object({
   interval_minutes: z.number().int().min(15).max(10080),
-  chatgpt_proxy_url: z.string().default(''),
 })
 
 // One credential the monitor can read through either channel.
@@ -89,6 +88,7 @@ export const deviMonChannelAccountSchema = z.object({
   account_id: z.string(),
   channel: z.enum(['cpa', 'chatgpt']),
   signed_in: z.boolean(),
+  proxy_url: z.string().default(''),
   expires_at: z.number().int(),
 })
 

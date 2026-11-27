@@ -176,6 +176,33 @@ func SetDeviMonDevinStatus(c *gin.Context) {
 // never echoed back in an error message.
 const deviMonSessionMaxSize = 256 << 10
 
+// SetDeviMonAccountProxy stores one account's own egress proxy.
+func SetDeviMonAccountProxy(c *gin.Context) {
+	var body struct {
+		Email    string `json:"email"`
+		ProxyURL string `json:"proxy_url"`
+	}
+	if err := common.DecodeJsonBody(http.MaxBytesReader(c.Writer, c.Request.Body, deviMonMaxRequestSize), &body); err != nil ||
+		strings.TrimSpace(body.Email) == "" || len(body.Email) > 254 || len(body.ProxyURL) > 512 {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid account"))
+		return
+	}
+	if err := service.SetDeviMonAccountProxy(c.Request.Context(), body.Email, body.ProxyURL); err != nil {
+		if errors.Is(err, service.ErrDeviMonChatGPTAccountMissing) {
+			common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Save a ChatGPT session before setting a proxy"))
+			return
+		}
+		if errors.Is(err, service.ErrDeviMonInvalidProxy) {
+			common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage(err.Error()))
+			return
+		}
+		logger.LogError(c.Request.Context(), common.LogText("devin monitor: could not save the account proxy: %v", err))
+		common.ApiErrorStatus(c, http.StatusBadGateway, common.NewMessage("Could not save the proxy address"))
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
 // SaveDeviMonChatGPTSession stores a session pasted from an already signed-in
 // browser. The token is verified against ChatGPT before it is written.
 func SaveDeviMonChatGPTSession(c *gin.Context) {

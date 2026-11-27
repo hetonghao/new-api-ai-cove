@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 )
 
@@ -18,6 +20,7 @@ type DeviMonChatGPTAccountView struct {
 	AccountID string `json:"account_id"`
 	Channel   string `json:"channel"`
 	SignedIn  bool   `json:"signed_in"`
+	ProxyURL  string `json:"proxy_url"`
 	ExpiresAt int64  `json:"expires_at"`
 }
 
@@ -33,6 +36,7 @@ func GetDeviMonChatGPTAccounts(ctx context.Context) ([]DeviMonChatGPTAccountView
 			AccountID: row.AccountID,
 			Channel:   row.Channel,
 			SignedIn:  row.AccessToken != "",
+			ProxyURL:  row.ProxyURL,
 			ExpiresAt: row.ExpiresAt,
 		})
 	}
@@ -55,6 +59,25 @@ func SetDeviMonAccountChannel(ctx context.Context, email, channel string) error 
 	}
 	return nil
 }
+
+// SetDeviMonAccountProxy stores this account's egress proxy. The URL is
+// validated before it is written so a bad value cannot break the next read.
+func SetDeviMonAccountProxy(ctx context.Context, email, proxyURL string) error {
+	proxyURL = strings.TrimSpace(proxyURL)
+	if _, err := common.ParseProxyURLStrict(proxyURL); err != nil {
+		return ErrDeviMonInvalidProxy
+	}
+	if _, err := model.GetDeviMonChatGPTAccount(ctx, email); err != nil {
+		return ErrDeviMonChatGPTAccountMissing
+	}
+	if _, err := model.SetDeviMonChatGPTProxy(ctx, email, proxyURL); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ErrDeviMonInvalidProxy marks a proxy URL the operator can fix.
+var ErrDeviMonInvalidProxy = errors.New("proxy URL must use http, https, socks5, or socks5h")
 
 // ForgetDeviMonChatGPTAccount drops the stored sign-in, returning the account
 // to the CPA channel.

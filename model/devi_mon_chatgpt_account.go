@@ -31,9 +31,13 @@ type DeviMonChatGPTAccount struct {
 	Channel      string `gorm:"type:varchar(16);not null;default:'chatgpt'"`
 	SessionToken string `gorm:"type:text"`
 	AccessToken  string `gorm:"type:text"`
-	ExpiresAt    int64  `gorm:"not null;default:0"`
-	CreatedAt    int64  `gorm:"not null;default:0"`
-	UpdatedAt    int64  `gorm:"not null;default:0"`
+	// ProxyURL is this account's own egress. Empty means direct, which is what
+	// the production hosts do; a per-account value keeps one account behind a
+	// different exit without moving every account.
+	ProxyURL  string `gorm:"type:varchar(512);not null;default:''"`
+	ExpiresAt int64  `gorm:"not null;default:0"`
+	CreatedAt int64  `gorm:"not null;default:0"`
+	UpdatedAt int64  `gorm:"not null;default:0"`
 }
 
 func DeviMonChatGPTEmail(email string) string {
@@ -65,7 +69,7 @@ func SaveDeviMonChatGPTAccount(ctx context.Context, row *DeviMonChatGPTAccount) 
 	row.Email = DeviMonChatGPTEmail(row.Email)
 	return DB.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "email"}},
-		DoUpdates: clause.AssignmentColumns([]string{"account_id", "channel", "session_token", "access_token", "expires_at", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"account_id", "channel", "session_token", "access_token", "proxy_url", "expires_at", "updated_at"}),
 	}).Create(row).Error
 }
 
@@ -82,6 +86,15 @@ func UpdateDeviMonChatGPTSession(ctx context.Context, email, sessionToken, acces
 	return DB.WithContext(ctx).Model(&DeviMonChatGPTAccount{}).
 		Where("email = ?", DeviMonChatGPTEmail(email)).
 		Updates(updates).Error
+}
+
+// SetDeviMonChatGPTProxy stores this account's egress proxy. It is separate
+// from the channel switch: either channel may need a different exit.
+func SetDeviMonChatGPTProxy(ctx context.Context, email, proxyURL string) (bool, error) {
+	result := DB.WithContext(ctx).Model(&DeviMonChatGPTAccount{}).
+		Where("email = ?", DeviMonChatGPTEmail(email)).
+		Updates(map[string]any{"proxy_url": strings.TrimSpace(proxyURL), "updated_at": common.GetTimestamp()})
+	return result.RowsAffected == 1, result.Error
 }
 
 // SetDeviMonChatGPTChannel only moves the switch. The session stays, so

@@ -26,7 +26,13 @@ import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
-import { Field, FieldDescription, FieldLabel } from '@/components/ui/field'
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { getServerErrorStatus } from '@/lib/server-error-message'
 
@@ -38,9 +44,13 @@ import {
   refreshDeviMonAccount,
   saveDeviMonChatGPTSession,
   setDeviMonAccountChannel,
+  setDeviMonAccountProxy,
 } from '../api'
 
 type Channel = 'cpa' | 'chatgpt'
+
+const PROXY_PATTERN = /^(https?|socks5h?):\/\/[^/\s]+/
+const PROXY_ERROR_KEY = 'Use http, https, socks5, or socks5h'
 
 // The operator copies this in a browser that is already signed in to ChatGPT.
 const SESSION_URL = 'https://chatgpt.com/api/auth/session'
@@ -76,6 +86,8 @@ export function DeviMonAccountSettings(props: {
   const { t } = useTranslation()
   const client = useQueryClient()
   const [sessionJson, setSessionJson] = useState('')
+  const [proxyUrl, setProxyUrl] = useState('')
+  const [proxyTouched, setProxyTouched] = useState(false)
   const [confirmForget, setConfirmForget] = useState(false)
   const sessionField = useRef<HTMLTextAreaElement>(null)
   const accounts = useQuery({
@@ -94,6 +106,10 @@ export function DeviMonAccountSettings(props: {
   const [draft, setDraft] = useState<Channel | null>(null)
   const channel: Channel = draft ?? savedChannel
   const channelChanged = channel !== savedChannel
+  // The stored value is the source of truth until the operator edits it.
+  const shownProxy = proxyTouched ? proxyUrl : (stored?.proxy_url ?? '')
+  const proxyInvalid =
+    shownProxy.trim() !== '' && !PROXY_PATTERN.test(shownProxy.trim())
 
   const refresh = () => {
     void client.invalidateQueries({ queryKey: deviMonAccountsKey })
@@ -121,6 +137,20 @@ export function DeviMonAccountSettings(props: {
     },
     onError: (error) => {
       toast.error(t('Could not verify the ChatGPT session'), {
+        description: error.message,
+      })
+    },
+  })
+
+  const saveProxy = useMutation({
+    mutationFn: () => setDeviMonAccountProxy(props.email, shownProxy.trim()),
+    onSuccess: () => {
+      setProxyTouched(false)
+      refresh()
+      toast.success(t('Proxy address saved'), { description: props.email })
+    },
+    onError: (error) => {
+      toast.error(t('Could not save the proxy address'), {
         description: error.message,
       })
     },
@@ -282,6 +312,42 @@ export function DeviMonAccountSettings(props: {
             </div>
           </Field>
         )}
+
+        <Field>
+          <FieldLabel htmlFor='devi-mon-account-proxy'>
+            {t('Proxy address')}
+          </FieldLabel>
+          <Input
+            id='devi-mon-account-proxy'
+            placeholder='socks5://user:pass@host:port'
+            value={shownProxy}
+            onChange={(event) => {
+              setProxyTouched(true)
+              setProxyUrl(event.target.value)
+            }}
+            aria-invalid={proxyInvalid}
+          />
+          <FieldDescription>
+            {t(
+              'Network proxy for this account only (HTTP, HTTPS, SOCKS5 and SOCKS5H). Leave empty to connect directly.'
+            )}
+          </FieldDescription>
+          {proxyInvalid ? <FieldError>{t(PROXY_ERROR_KEY)}</FieldError> : null}
+          <Button
+            type='button'
+            size='sm'
+            variant='outline'
+            disabled={
+              saveProxy.isPending ||
+              !proxyTouched ||
+              proxyInvalid ||
+              shownProxy.trim() === (stored?.proxy_url ?? '')
+            }
+            onClick={() => saveProxy.mutate()}
+          >
+            {saveProxy.isPending ? t('Saving...') : t('Save proxy')}
+          </Button>
+        </Field>
 
         {stored?.signed_in && channel === 'chatgpt' ? (
           <div className='space-y-2 text-xs'>
