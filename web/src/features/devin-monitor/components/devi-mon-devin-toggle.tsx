@@ -18,15 +18,45 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Power } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 
-import { deviMonQueryKey, setDeviMonDevinDisabled } from '../api'
+import {
+  deviMonQueryKey,
+  refreshDeviMonAccount,
+  setDeviMonDevinDisabled,
+} from '../api'
+import type { DeviMonState } from '../types'
 
-// Mirrors cpa-pro-1's enable/disable toggle. It flips the Devin credential in
+// Rows render the last collection, so the switch must both repaint immediately
+// and store a fresh reading: without the reading the next poll restores the
+// state CPA had when the collection ran, which looks like a dead switch.
+function withDeviMonDisabled(
+  state: DeviMonState | undefined,
+  email: string,
+  disabled: boolean
+): DeviMonState | undefined {
+  const snapshot = state?.snapshot
+  if (!snapshot) return state
+  const sameRow = (row: { email: string }) =>
+    row.email.toLowerCase() === email.toLowerCase()
+  return {
+    ...state,
+    snapshot: {
+      ...snapshot,
+      accounts: snapshot.accounts.map((row) =>
+        sameRow(row) ? { ...row, devin_disabled: disabled } : row
+      ),
+      unpaired_devin: snapshot.unpaired_devin.map((row) =>
+        sameRow(row) ? { ...row, disabled } : row
+      ),
+    },
+  }
+}
+
+// Mirrors cpa-pro-1's enable/disable switch. It flips the Devin credential in
 // CPA, which is the same state the row's badge shows; the reading channel is
 // unrelated, so every row keeps this switch.
 export function DevinAccountToggle(props: {
@@ -36,48 +66,57 @@ export function DevinAccountToggle(props: {
 }) {
   const { t } = useTranslation()
   const client = useQueryClient()
-  const next = !(props.disabled ?? false)
+  // Checked means the Devin credential is enabled in CPA.
+  const enabled = props.disabled === false
+  const label = enabled
+    ? t('Disable {{email}}', { email: props.email })
+    : t('Enable {{email}}', { email: props.email })
   const toggle = useMutation({
-    mutationFn: () => setDeviMonDevinDisabled(props.email, next),
+    mutationFn: async () => {
+      await setDeviMonDevinDisabled(props.email, enabled)
+      // A failed re-read must not turn a completed flip into an error.
+      await refreshDeviMonAccount(props.email).catch(() => undefined)
+    },
+    onMutate: async () => {
+      await client.cancelQueries({ queryKey: deviMonQueryKey, exact: true })
+      client.setQueryData<DeviMonState>(deviMonQueryKey, (state) =>
+        withDeviMonDisabled(state, props.email, enabled)
+      )
+    },
     onSuccess: async () => {
       await client.invalidateQueries(
         { queryKey: deviMonQueryKey, exact: true },
         { throwOnError: true }
       )
       toast.success(
-        next ? t('Devin account disabled') : t('Devin account enabled'),
+        enabled ? t('Devin account disabled') : t('Devin account enabled'),
         {
           description: props.email,
         }
       )
     },
-    onError: () => {
+    onError: async () => {
+      // Repaint from the server so the switch never keeps a state CPA refused.
+      await client.invalidateQueries({
+        queryKey: deviMonQueryKey,
+        exact: true,
+      })
       toast.error(t('Could not change the Devin status'), {
         description: props.email,
       })
     },
   })
-  const label = next
-    ? t('Disable {{email}}', { email: props.email })
-    : t('Enable {{email}}', { email: props.email })
   return (
-    <Button
-      type='button'
-      variant='ghost'
-      size='icon-sm'
-      className='text-muted-foreground hover:text-foreground pointer-coarse:size-11'
+    <Switch
+      className='self-center'
+      checked={enabled}
       aria-label={label}
       title={label}
       aria-busy={toggle.isPending}
       disabled={
         !props.configured || toggle.isPending || props.disabled === null
       }
-      onClick={() => toggle.mutate()}
-    >
-      <Power
-        aria-hidden='true'
-        className={props.disabled ? 'text-destructive size-3.5' : 'size-3.5'}
-      />
-    </Button>
+      onCheckedChange={() => toggle.mutate()}
+    />
   )
 }

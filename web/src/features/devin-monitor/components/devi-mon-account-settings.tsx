@@ -204,8 +204,11 @@ export function DeviMonAccountSettings(props: {
       <Dialog
         open={props.open}
         onOpenChange={(open) => {
-          // An unsaved selection never survives closing the dialog.
-          if (!open) setDraft(null)
+          // No unsaved edit survives closing the dialog.
+          if (!open) {
+            setDraft(null)
+            setProxyTouched(false)
+          }
           props.onOpenChange(open)
         }}
         title={t('Subscription channel')}
@@ -252,102 +255,109 @@ export function DeviMonAccountSettings(props: {
           </label>
         </RadioGroup>
 
-        {/* The paste box belongs to the ChatGPT branch only. Showing it while
-            CPA is selected made the dialog look like both channels were active. */}
+        {/* Everything below belongs to the ChatGPT branch. CPA reads through
+            its own proxy settings, so showing a proxy here for CPA would
+            offer a field that does nothing. */}
         {channel === 'chatgpt' && (
-          <Field className='rounded-md border p-3'>
-            <FieldLabel htmlFor='devi-mon-session'>
-              {t('ChatGPT session JSON')}
-            </FieldLabel>
-            <FieldDescription>
-              {t(
-                'Open the link below in the browser that is signed in to this account, copy the whole page, and paste it here.'
-              )}
-            </FieldDescription>
-            <Button
-              role='link'
-              variant='outline'
-              size='sm'
-              render={
-                <a
-                  href={SESSION_URL}
-                  target='_blank'
-                  rel='noreferrer noopener'
-                />
-              }
-            >
-              {t('Open the session page')}
-            </Button>
-            <textarea
-              ref={sessionField}
-              id='devi-mon-session'
-              className='border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 min-h-24 w-full rounded-md border p-2 font-mono text-xs outline-none focus-visible:ring-3'
-              placeholder='{"accessToken":"…","sessionToken":"…"}'
-              value={sessionJson}
-              onChange={(event) => setSessionJson(event.target.value)}
-              spellCheck={false}
-              autoComplete='off'
-            />
-            <div className='flex flex-wrap gap-2'>
+          <>
+            <Field className='rounded-md border p-3'>
+              <FieldLabel htmlFor='devi-mon-session'>
+                {t('ChatGPT session JSON')}
+              </FieldLabel>
+              <FieldDescription>
+                {t(
+                  'Open the link below in the browser that is signed in to this account, copy the whole page, and paste it here.'
+                )}
+              </FieldDescription>
               <Button
-                type='button'
+                role='link'
+                variant='outline'
                 size='sm'
-                disabled={saveSession.isPending || sessionJson.trim() === ''}
-                onClick={() => saveSession.mutate(sessionJson.trim())}
+                render={
+                  <a
+                    href={SESSION_URL}
+                    target='_blank'
+                    rel='noreferrer noopener'
+                  />
+                }
               >
-                {saveSession.isPending
-                  ? t('Verifying...')
-                  : t('Save ChatGPT session')}
+                {t('Open the session page')}
               </Button>
-              {sessionJson !== '' && (
+              <textarea
+                ref={sessionField}
+                id='devi-mon-session'
+                className='border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 min-h-24 w-full rounded-md border p-2 font-mono text-xs outline-none focus-visible:ring-3'
+                placeholder='{"accessToken":"…","sessionToken":"…"}'
+                value={sessionJson}
+                onChange={(event) => setSessionJson(event.target.value)}
+                spellCheck={false}
+                autoComplete='off'
+              />
+              <div className='flex flex-wrap gap-2'>
                 <Button
                   type='button'
-                  variant='ghost'
                   size='sm'
-                  onClick={() => setSessionJson('')}
+                  disabled={saveSession.isPending || sessionJson.trim() === ''}
+                  onClick={() => saveSession.mutate(sessionJson.trim())}
                 >
-                  {t('Clear')}
+                  {saveSession.isPending
+                    ? t('Verifying...')
+                    : t('Save ChatGPT session')}
                 </Button>
-              )}
-            </div>
-          </Field>
-        )}
+                {sessionJson !== '' && (
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='sm'
+                    onClick={() => setSessionJson('')}
+                  >
+                    {t('Clear')}
+                  </Button>
+                )}
+              </div>
+            </Field>
 
-        <Field>
-          <FieldLabel htmlFor='devi-mon-account-proxy'>
-            {t('Proxy address')}
-          </FieldLabel>
-          <Input
-            id='devi-mon-account-proxy'
-            placeholder='socks5://user:pass@host:port'
-            value={shownProxy}
-            onChange={(event) => {
-              setProxyTouched(true)
-              setProxyUrl(event.target.value)
-            }}
-            aria-invalid={proxyInvalid}
-          />
-          <FieldDescription>
-            {t(
-              'Network proxy for this account only (HTTP, HTTPS, SOCKS5 and SOCKS5H). Leave empty to connect directly.'
+            {stored?.signed_in && (
+              <Field className='rounded-md border p-3'>
+                <FieldLabel htmlFor='devi-mon-account-proxy'>
+                  {t('Proxy address')}
+                </FieldLabel>
+                <Input
+                  id='devi-mon-account-proxy'
+                  placeholder='socks5://user:pass@host:port'
+                  value={shownProxy}
+                  onChange={(event) => {
+                    setProxyTouched(true)
+                    setProxyUrl(event.target.value)
+                  }}
+                  aria-invalid={proxyInvalid}
+                />
+                <FieldDescription>
+                  {t(
+                    'Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly.'
+                  )}
+                </FieldDescription>
+                {proxyInvalid ? (
+                  <FieldError>{t(PROXY_ERROR_KEY)}</FieldError>
+                ) : null}
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
+                  disabled={
+                    saveProxy.isPending ||
+                    !proxyTouched ||
+                    proxyInvalid ||
+                    shownProxy.trim() === (stored?.proxy_url ?? '')
+                  }
+                  onClick={() => saveProxy.mutate()}
+                >
+                  {saveProxy.isPending ? t('Saving...') : t('Save proxy')}
+                </Button>
+              </Field>
             )}
-          </FieldDescription>
-          {proxyInvalid ? <FieldError>{t(PROXY_ERROR_KEY)}</FieldError> : null}
-          <Button
-            type='button'
-            size='sm'
-            variant='outline'
-            disabled={
-              saveProxy.isPending ||
-              !proxyTouched ||
-              proxyInvalid ||
-              shownProxy.trim() === (stored?.proxy_url ?? '')
-            }
-            onClick={() => saveProxy.mutate()}
-          >
-            {saveProxy.isPending ? t('Saving...') : t('Save proxy')}
-          </Button>
-        </Field>
+          </>
+        )}
 
         {stored?.signed_in && channel === 'chatgpt' ? (
           <div className='space-y-2 text-xs'>

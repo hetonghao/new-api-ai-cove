@@ -41,7 +41,8 @@ type Call = { method?: string; url?: string; body?: unknown }
 function serveChannels(
   signedIn: boolean,
   calls: Call[],
-  channel: 'cpa' | 'chatgpt' = 'cpa'
+  channel: 'cpa' | 'chatgpt' = 'cpa',
+  proxyUrl = ''
 ) {
   api.defaults.adapter = (async (config) => {
     let data: unknown = null
@@ -52,6 +53,7 @@ function serveChannels(
           account_id: 'acct-owned',
           channel,
           signed_in: signedIn,
+          proxy_url: proxyUrl,
           expires_at: 1_795_768_756,
         },
       ]
@@ -278,5 +280,45 @@ describe('devin account subscription channel', () => {
       ])
     )
     expect(confirm).not.toBeNull()
+  })
+
+  // CPA reads through its own proxy settings, so offering an account proxy
+  // while CPA is selected promised something the gateway never applies.
+  it('hides the proxy field on the CPA channel and shows it on the ChatGPT channel', async () => {
+    const calls: Call[] = []
+    serveChannels(true, calls)
+    renderDialog()
+    const user = userEvent.setup()
+
+    await screen.findAllByRole('radio')
+    expect(screen.queryByLabelText('Proxy address')).toBeNull()
+
+    await user.click(screen.getAllByRole('radio')[1])
+    expect(await screen.findByLabelText('Proxy address')).toBeVisible()
+  })
+
+  it('saves the proxy address for the account', async () => {
+    const calls: Call[] = []
+    serveChannels(true, calls, 'chatgpt')
+    renderDialog()
+    const user = userEvent.setup()
+
+    const field = await screen.findByLabelText('Proxy address')
+    await user.clear(field)
+    await user.type(field, 'socks5://user:pass@127.0.0.1:1080')
+    await user.click(screen.getByRole('button', { name: 'Save proxy' }))
+
+    await waitFor(() =>
+      expect(calls).toEqual([
+        {
+          method: 'put',
+          url: '/api/devin-monitor/accounts/proxy',
+          body: {
+            email: 'owned@example.com',
+            proxy_url: 'socks5://user:pass@127.0.0.1:1080',
+          },
+        },
+      ])
+    )
   })
 })

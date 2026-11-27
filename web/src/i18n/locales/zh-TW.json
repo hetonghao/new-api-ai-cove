@@ -8798,9 +8798,6 @@
     "The gateway reads the subscription from a ChatGPT web session, without CPA.": "閘道從 ChatGPT 網頁工作階段讀取訂閱資訊，不經過 CPA。",
     "Verifying...": "驗證中...",
     "Could not read the session JSON": "無法讀取工作階段 JSON",
-    "Network proxy for accounts read through the ChatGPT session (HTTP, HTTPS, SOCKS5 and SOCKS5H).": "透過 ChatGPT 工作階段讀取的帳號所使用的網路代理（支援 HTTP、HTTPS、SOCKS5 與 SOCKS5H）。",
-    "Could not start the ChatGPT sign-in": "無法發起 ChatGPT 登入",
-    "The pasted JSON has no session token. Open the session page and copy the whole page.": "貼上的內容裡沒有工作階段權杖。請開啟工作階段頁面並複製整頁內容。",
     "Devin account disabled": "已停用 Devin 帳號",
     "Devin account enabled": "已啟用 Devin 帳號",
     "Could not change the Devin status": "無法修改 Devin 啟停狀態",
@@ -8808,6 +8805,10 @@
     "Enable {{email}}": "啟用 {{email}}",
     "Account no longer in the Devin inventory": "帳號已不在 Devin 憑據列表中",
     "Save channel": "儲存通道",
-    "Paste a session below, then save the channel.": "先在下方貼上工作階段，再儲存通道。"
+    "Paste a session below, then save the channel.": "先在下方貼上工作階段，再儲存通道。",
+    "Save proxy": "儲存代理",
+    "Proxy address saved": "已儲存代理位址",
+    "Could not save the proxy address": "無法儲存代理位址",
+    "Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly.": "透過 ChatGPT 工作階段讀取該帳號時使用的出口代理。留空則直連。"
   }
 }

@@ -8798,9 +8798,6 @@
     "The gateway reads the subscription from a ChatGPT web session, without CPA.": "The gateway reads the subscription from a ChatGPT web session, without CPA.",
     "Verifying...": "Verifying...",
     "Could not read the session JSON": "Could not read the session JSON",
-    "Network proxy for accounts read through the ChatGPT session (HTTP, HTTPS, SOCKS5 and SOCKS5H).": "Network proxy for accounts read through the ChatGPT session (HTTP, HTTPS, SOCKS5 and SOCKS5H).",
-    "Could not start the ChatGPT sign-in": "Could not start the ChatGPT sign-in",
-    "The pasted JSON has no session token. Open the session page and copy the whole page.": "The pasted JSON has no session token. Open the session page and copy the whole page.",
     "Devin account disabled": "Devin account disabled",
     "Devin account enabled": "Devin account enabled",
     "Could not change the Devin status": "Could not change the Devin status",
@@ -8808,6 +8805,10 @@
     "Enable {{email}}": "Enable {{email}}",
     "Account no longer in the Devin inventory": "Account no longer in the Devin inventory",
     "Save channel": "Save channel",
-    "Paste a session below, then save the channel.": "Paste a session below, then save the channel."
+    "Paste a session below, then save the channel.": "Paste a session below, then save the channel.",
+    "Save proxy": "Save proxy",
+    "Proxy address saved": "Proxy address saved",
+    "Could not save the proxy address": "Could not save the proxy address",
+    "Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly.": "Egress proxy for reading this account through the ChatGPT session. Leave empty to connect directly."
   }
 }

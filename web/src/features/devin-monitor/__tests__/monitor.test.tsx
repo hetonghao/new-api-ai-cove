@@ -424,9 +424,12 @@ describe('devin monitor', () => {
   })
 
   // The enable/disable switch is a Devin-side toggle: it must be offered on the
-  // row itself and name the account it flips.
-  it('offers a per-account Devin status toggle that flips the disabled state', async () => {
+  // row itself, name the account it flips and show the state it just wrote.
+  it('flips the per-account Devin switch and keeps the new state on screen', async () => {
     const calls: { method?: string; url?: string; body?: unknown }[] = []
+    // The server reflects the write, so a refetch must not resurrect the state
+    // the account had when the last collection ran.
+    let devinDisabled: boolean | null = false
     api.defaults.adapter = (async (config) => {
       if (config.method === 'get') {
         return {
@@ -437,7 +440,7 @@ describe('devin monitor', () => {
               snapshot: {
                 ...SNAPSHOT,
                 accounts: [
-                  { ...SNAPSHOT.accounts[0], devin_disabled: false },
+                  { ...SNAPSHOT.accounts[0], devin_disabled: devinDisabled },
                   SNAPSHOT.accounts[1],
                 ],
               },
@@ -451,6 +454,7 @@ describe('devin monitor', () => {
           statusText: 'OK',
         }
       }
+      devinDisabled = JSON.parse(config.data).disabled
       calls.push({
         method: config.method,
         url: config.url,
@@ -467,15 +471,28 @@ describe('devin monitor', () => {
 
     renderMonitor()
     const user = userEvent.setup()
-    await user.click(
-      await screen.findByRole('button', { name: 'Disable busy@example.com' })
-    )
+    const toggle = await screen.findByRole('switch', {
+      name: 'Disable busy@example.com',
+    })
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+
+    await user.click(toggle)
+
+    // The switch must show the flipped state instead of snapping back to the
+    // last collection, which is what made the old button look dead.
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'false'))
     await waitFor(() =>
       expect(calls).toEqual([
         {
           method: 'put',
           url: '/api/devin-monitor/accounts/devin-status',
           body: { email: 'busy@example.com', disabled: true },
+        },
+        // The row renders the last collection, so the flip stores a reading.
+        {
+          method: 'post',
+          url: '/api/devin-monitor/accounts/refresh',
+          body: { email: 'busy@example.com' },
         },
       ])
     )
