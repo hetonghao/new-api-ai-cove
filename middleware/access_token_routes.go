@@ -49,6 +49,8 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/devin-monitor":                                       accessTokenSessionRule,
 	"POST /api/devin-monitor/collect":                              accessTokenSessionRule,
 	"GET /api/devin-monitor/accounts":                              accessTokenSessionRule,
+	"GET /api/devin-monitor/accounts/devin":                        accessTokenSessionRule,
+	"PUT /api/devin-monitor/accounts/devin-routing":                accessTokenSessionRule,
 	"PUT /api/devin-monitor/accounts/channel":                      accessTokenSessionRule,
 	"POST /api/devin-monitor/accounts/chatgpt/session":             accessTokenSessionRule,
 	"DELETE /api/devin-monitor/accounts/chatgpt":                   accessTokenSessionRule,

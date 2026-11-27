@@ -70,12 +70,13 @@ func RefreshDeviMonAccount(c *gin.Context) {
 
 func SetDeviMonAccountAutoReset(c *gin.Context) {
 	var body struct {
-		Email    string `json:"email"`
-		ResetKey string `json:"reset_key"`
-		Enabled  *bool  `json:"enabled"`
+		Email            string `json:"email"`
+		ResetKey         string `json:"reset_key"`
+		Enabled          *bool  `json:"enabled"`
+		EnableAfterReset *bool  `json:"enable_after_reset"`
 	}
 	if err := common.DecodeJsonBody(http.MaxBytesReader(c.Writer, c.Request.Body, deviMonMaxRequestSize), &body); err != nil ||
-		strings.TrimSpace(body.Email) == "" || len(body.Email) > 254 || body.Enabled == nil || len(body.ResetKey) != 64 {
+		strings.TrimSpace(body.Email) == "" || len(body.Email) > 254 || (body.Enabled == nil) == (body.EnableAfterReset == nil) || len(body.ResetKey) != 64 {
 		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid monitor configuration"))
 		return
 	}
@@ -83,7 +84,7 @@ func SetDeviMonAccountAutoReset(c *gin.Context) {
 		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid monitor configuration"))
 		return
 	}
-	if err := service.SetDeviMonAccountAutoReset(c.Request.Context(), body.Email, body.ResetKey, *body.Enabled); err != nil {
+	if err := service.SetDeviMonAccountPolicy(c.Request.Context(), body.Email, body.ResetKey, body.Enabled, body.EnableAfterReset); err != nil {
 		if errors.Is(err, service.ErrDeviMonAccountMissing) {
 			common.ApiErrorStatus(c, http.StatusNotFound, common.NewMessage("Account no longer in the monitor inventory"))
 			return
@@ -168,6 +169,39 @@ func SetDeviMonDevinStatus(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, nil)
+}
+
+// Shared between monitors on this node; reading CPA's inventory never probes quota.
+func GetDeviMonDevinInventory(c *gin.Context) {
+	data, err := service.GetDeviMonLiveInventory(c.Request.Context())
+	if err != nil {
+		common.ApiErrorStatus(c, http.StatusBadGateway, common.NewMessage("Could not load Devin request history"))
+		return
+	}
+	common.ApiSuccess(c, data)
+}
+
+func SetDeviMonRouting(c *gin.Context) {
+	var body struct {
+		Email string `json:"email"`
+		Field string `json:"field"`
+		Value *int64 `json:"value"`
+	}
+	if err := common.DecodeJsonBody(http.MaxBytesReader(c.Writer, c.Request.Body, deviMonMaxRequestSize), &body); err != nil || strings.TrimSpace(body.Email) == "" || len(body.Email) > 254 || body.Value == nil {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid Devin routing value"))
+		return
+	}
+	err := service.SetDeviMonRouting(c.Request.Context(), body.Email, body.Field, *body.Value)
+	switch {
+	case errors.Is(err, service.ErrDeviMonInvalidRouting):
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid Devin routing value"))
+	case errors.Is(err, service.ErrDeviMonDevinAccountMissing):
+		common.ApiErrorStatus(c, http.StatusNotFound, common.NewMessage("Account no longer in the Devin inventory"))
+	case err != nil:
+		common.ApiErrorStatus(c, http.StatusBadGateway, common.NewMessage("Could not update Devin routing"))
+	default:
+		common.ApiSuccess(c, nil)
+	}
 }
 
 // --- ChatGPT session channel ---------------------------------------------

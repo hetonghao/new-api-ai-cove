@@ -30,7 +30,8 @@ func TestDeviMonAccountActionsRequireRootAndValidTarget(t *testing.T) {
 		return w.Code
 	}
 	t.Setenv("CPA_MANAGEMENT_KEY", "")
-	routes := map[string]string{"refresh": http.MethodPost, "reset": http.MethodPost, "auto-reset": http.MethodPut}
+	routes := map[string]string{"refresh": http.MethodPost, "reset": http.MethodPost, "auto-reset": http.MethodPut, "devin-routing": http.MethodPut}
+	require.Equal(t, http.StatusUnauthorized, request(http.MethodGet, "devin", "", ""))
 	for endpoint, method := range routes {
 		require.Equal(t, http.StatusUnauthorized, request(method, endpoint, "", `{"email":"ops@example.test"}`))
 	}
@@ -44,6 +45,7 @@ func TestDeviMonAccountActionsRequireRootAndValidTarget(t *testing.T) {
 		session, err := service.CreateLoginSession(u.Id, "password", "127.0.0.1", "monitor-test")
 		require.NoError(t, err)
 		if role != common.RoleRootUser {
+			require.Equal(t, http.StatusForbidden, request(http.MethodGet, "devin", session.AccessToken, ""))
 			for endpoint, method := range routes {
 				require.Equal(t, http.StatusForbidden, request(method, endpoint, session.AccessToken, `{"email":"ops@example.test"}`))
 			}

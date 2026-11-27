@@ -51,24 +51,27 @@ type DeviMonCard struct {
 // DeviMonAccount is one Codex account with its weekly allowance, credits and
 // reset cards, paired with the configuration of the same-email Devin account.
 type DeviMonAccount struct {
-	ObservedAtUS  int64               `json:"observed_at_us,omitempty"`
-	Email         string              `json:"email"`
-	UsedPercent   *float64            `json:"used_percent"`
-	ResetAt       *int64              `json:"reset_at"`
-	PlanType      string              `json:"plan_type"`
-	CreditBalance string              `json:"credit_balance"`
-	Unlimited     bool                `json:"unlimited"`
-	Cards         []DeviMonCard       `json:"cards"`
-	RenewAt       string              `json:"renew_at"`
-	RenewSource   string              `json:"renew_source"`
-	DevinDisabled *bool               `json:"devin_disabled"`
-	DevinRouting  *DeviMonRouting     `json:"devin_routing,omitempty"`
-	Channel       string              `json:"channel"`
-	Error         string              `json:"error"`
-	ResetKey      string              `json:"reset_key,omitempty"`
-	AutoReset     bool                `json:"auto_reset,omitempty"`
-	ResetOffer    *DeviMonResetOffer  `json:"reset_offer,omitempty"`
-	ResetOutcome  DeviMonResetOutcome `json:"reset_outcome,omitempty"`
+	ObservedAtUS         int64            `json:"observed_at_us,omitempty"`
+	Email                string           `json:"email"`
+	UsedPercent          *float64         `json:"used_percent"`
+	ResetAt              *int64           `json:"reset_at"`
+	PlanType             string           `json:"plan_type"`
+	CreditBalance        string           `json:"credit_balance"`
+	Unlimited            bool             `json:"unlimited"`
+	Cards                []DeviMonCard    `json:"cards"`
+	RenewAt              string           `json:"renew_at"`
+	RenewSource          string           `json:"renew_source"`
+	DevinDisabled        *bool            `json:"devin_disabled"`
+	DevinRequests        *DeviMonRequests `json:"devin_requests,omitempty"`
+	DevinRouting         *DeviMonRouting  `json:"devin_routing,omitempty"`
+	Channel              string           `json:"channel"`
+	Error                string           `json:"error"`
+	ResetKey             string           `json:"reset_key,omitempty"`
+	AutoReset            bool             `json:"auto_reset,omitempty"`
+	AutoEnableAfterReset bool             `json:"auto_enable_after_reset"`
+	verifiedWeekly       bool
+	ResetOffer           *DeviMonResetOffer  `json:"reset_offer,omitempty"`
+	ResetOutcome         DeviMonResetOutcome `json:"reset_outcome,omitempty"`
 }
 
 // DeviMonRouting holds CPA account overrides. A nil field means no override;
@@ -80,9 +83,12 @@ type DeviMonRouting struct {
 
 // DeviMonDevin contains the configuration read from the Devin inventory.
 type DeviMonDevin struct {
-	Email    string          `json:"email"`
-	Disabled bool            `json:"disabled"`
-	Routing  *DeviMonRouting `json:"devin_routing,omitempty"`
+	name      string
+	authIndex string
+	Requests  *DeviMonRequests `json:"requests,omitempty"`
+	Email     string           `json:"email"`
+	Disabled  bool             `json:"disabled"`
+	Routing   *DeviMonRouting  `json:"devin_routing,omitempty"`
 }
 
 // DeviMonSnapshot is the last completed collection.
@@ -134,11 +140,7 @@ func (deviMonTask) Run(ctx context.Context, task *model.SystemTask, runnerID str
 		failSystemTask(task, runnerID, err)
 		return
 	}
-	var resetTask *model.SystemTask
-	if payload.AutoReset {
-		resetTask = task
-	}
-	snapshot, err := collectDeviMon(ctx, resetTask)
+	snapshot, err := collectDeviMon(ctx, task, payload.AutoReset)
 	if err != nil {
 		failSystemTask(task, runnerID, err)
 		return
@@ -199,6 +201,7 @@ func GetDeviMonState() (DeviMonState, error) {
 		account := &state.Snapshot.Accounts[i]
 		policy := policies[account.ResetKey]
 		account.AutoReset = policy.Enabled
+		account.AutoEnableAfterReset = account.ResetKey != "" && !policy.KeepDisabledAfterReset
 		if !policy.Enabled || account.ResetAt == nil || *account.ResetAt <= max(policy.AttemptedWindowEnd, now) {
 			account.ResetOffer = nil
 		}
@@ -212,7 +215,7 @@ func GetDeviMonState() (DeviMonState, error) {
 
 // collectDeviMon collects every Codex account once. Accounts are queried one at a
 // time with a random gap so the upstream never sees concurrent probes.
-func collectDeviMon(ctx context.Context, resetTask *model.SystemTask) (*DeviMonSnapshot, error) {
+func collectDeviMon(ctx context.Context, task *model.SystemTask, autoUseCard bool) (*DeviMonSnapshot, error) {
 	key := DeviMonKey()
 	if key == "" {
 		return nil, errors.New("CPA_MANAGEMENT_KEY is not configured")
@@ -261,13 +264,19 @@ func collectDeviMon(ctx context.Context, resetTask *model.SystemTask) (*DeviMonS
 		if paired[strings.ToLower(strings.TrimSpace(account.Email))] != 1 {
 			account.ResetKey = ""
 		}
+		devin := devinByEmail[strings.ToLower(account.Email)]
 		if policy := policies[account.ResetKey]; policy.Enabled && candidate != nil && policy.AttemptedWindowEnd < candidate.WindowEnd {
-			if resetTask != nil {
-				if _, err := redeemDeviMonCard(ctx, key, file, &account, candidate, resetTask); err != nil {
+			if autoUseCard && task != nil {
+				if _, err := redeemDeviMonCard(ctx, key, file, &account, candidate, devin, task); err != nil {
 					logger.LogWarn(ctx, common.LogText("devin monitor: could not record reset for %s: %v", account.Email, err))
 				}
 			} else {
 				account.ResetOffer = &candidate.DeviMonResetOffer
+			}
+		}
+		if account.ResetOutcome == "" {
+			if err := reconcileDeviMonAvailability(ctx, key, &account, devin, policies[account.ResetKey], task); err != nil {
+				snapshot.Errors = append(snapshot.Errors, account.Email+": "+errDeviMonDevinStatusFailed.Error())
 			}
 		}
 		snapshot.Accounts = append(snapshot.Accounts, account)
@@ -303,21 +312,7 @@ func deviMonInventory(ctx context.Context, key string) ([]map[string]any, map[st
 		return nil, nil, err
 	}
 	codexAccounts := deviMonMergeOwnedAccounts(filterDeviMonProvider(codexFiles, "codex"), owned)
-	devinByEmail := map[string]DeviMonDevin{}
-	for _, file := range filterDeviMonProvider(devinFiles, "devin") {
-		if email := deviMonString(file["email"]); email != "" {
-			devinByEmail[strings.ToLower(email)] = DeviMonDevin{
-				Email:    email,
-				Disabled: deviMonBool(file["disabled"]),
-				Routing: &DeviMonRouting{
-					Priority: deviMonOptionalInt(file["priority"]),
-					Weight:   deviMonOptionalInt(file["weight"]),
-				},
-			}
-		}
-	}
-
-	return codexAccounts, devinByEmail, nil
+	return codexAccounts, deviMonDevinInventory(devinFiles), nil
 }
 
 // deviMonNextGap returns the pause before the next account, in [min, max).
@@ -357,6 +352,7 @@ func collectDeviMonAccount(ctx context.Context, key string, file map[string]any,
 	if devin, ok := devinByEmail[strings.ToLower(email)]; ok {
 		account.DevinDisabled = &devin.Disabled
 		account.DevinRouting = devin.Routing
+		account.DevinRequests = devin.Requests
 	}
 	candidate := readDeviMonAllowance(ctx, key, file, accountID, &account, false)
 	if deviMonBool(file["disabled"]) {
@@ -408,6 +404,7 @@ func deviMonMergeOwnedAccounts(codexAccounts []map[string]any, owned map[string]
 func readDeviMonAllowance(ctx context.Context, key string, file map[string]any, accountID string, account *DeviMonAccount, verifyReset bool) *deviMonResetCandidate {
 	account.UsedPercent, account.ResetAt = nil, nil
 	account.Cards = []DeviMonCard{}
+	account.verifiedWeekly = false
 	account.Error = ""
 	var headers map[string]string
 	if accountID != "" {
@@ -427,6 +424,7 @@ func readDeviMonAllowance(ctx context.Context, key string, file map[string]any, 
 		account.Error = "Codex usage account mismatch"
 	} else {
 		weekly = applyDeviMonUsage(account, usage)
+		account.verifiedWeekly = weekly
 		if verifyReset && (!weekly || account.ResetAt == nil || *account.ResetAt <= 0) {
 			account.UsedPercent, account.ResetAt = nil, nil
 		}

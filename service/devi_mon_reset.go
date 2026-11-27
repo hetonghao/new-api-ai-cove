@@ -55,6 +55,10 @@ func deviMonCodexIdentity(file map[string]any) (accountID, accountKey string) {
 }
 
 func SetDeviMonAccountAutoReset(ctx context.Context, email, expectedKey string, enabled bool) error {
+	return SetDeviMonAccountPolicy(ctx, email, expectedKey, &enabled, nil)
+}
+
+func SetDeviMonAccountPolicy(ctx context.Context, email, expectedKey string, useCard, resume *bool) error {
 	key := DeviMonKey()
 	if key == "" {
 		return errors.New("CPA_MANAGEMENT_KEY is not configured")
@@ -68,7 +72,13 @@ func SetDeviMonAccountAutoReset(ctx context.Context, email, expectedKey string, 
 	if accountKey == "" || accountKey != expectedKey {
 		return ErrDeviMonAccountMissing
 	}
-	return model.SetDeviMonResetPolicy(ctx, accountKey, enabled)
+	if useCard != nil {
+		return model.SetDeviMonResetPolicy(ctx, accountKey, *useCard)
+	}
+	if resume != nil {
+		return model.SetDeviMonResumeAfterReset(ctx, accountKey, *resume)
+	}
+	return errors.New("empty monitor policy")
 }
 
 func uniqueDeviMonCodexAccount(files []map[string]any, email string) map[string]any {
@@ -106,7 +116,7 @@ func ConfirmDeviMonAccountReset(ctx context.Context, email, offerID string) (*De
 	if candidate == nil || candidate.ID != offerID {
 		return nil, ErrDeviMonResetOfferChanged
 	}
-	applied, err := redeemDeviMonCard(ctx, key, file, &account, candidate, nil)
+	applied, err := redeemDeviMonCard(ctx, key, file, &account, candidate, devins[strings.ToLower(account.Email)], nil)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +126,7 @@ func ConfirmDeviMonAccountReset(ctx context.Context, email, offerID string) (*De
 	return &account, nil
 }
 
-func redeemDeviMonCard(ctx context.Context, key string, file map[string]any, account *DeviMonAccount, candidate *deviMonResetCandidate, task *model.SystemTask) (bool, error) {
+func redeemDeviMonCard(ctx context.Context, key string, file map[string]any, account *DeviMonAccount, candidate *deviMonResetCandidate, devin DeviMonDevin, task *model.SystemTask) (bool, error) {
 	now := time.Now()
 	expiresAt, err := time.Parse(time.RFC3339, candidate.ExpiresAt)
 	if err != nil || !expiresAt.After(now) || candidate.WindowEnd <= now.Unix() {
@@ -166,15 +176,23 @@ func redeemDeviMonCard(ctx context.Context, key string, file map[string]any, acc
 	account.ResetOffer = nil
 	account.ResetOutcome = outcome
 	logger.LogInfo(ctx, common.LogText("devin monitor: reset card for %s: %s", account.Email, outcome))
+	policies, policyErr := model.GetDeviMonResetPolicies(operationCtx)
+	if policyErr == nil {
+		policy := policies[account.ResetKey]
+		account.AutoReset, account.AutoEnableAfterReset = policy.Enabled, !policy.KeepDisabledAfterReset
+		policyErr = reconcileDeviMonAvailability(operationCtx, key, account, devin, policy, task)
+	}
+	// Store the verified quota and its resulting Devin state together. A manual
+	// overlay must not restore the pre-reset status after the full task finishes.
 	saveCtx, cancelSave := context.WithTimeout(operationCtx, 5*time.Second)
 	defer cancelSave()
 	if err := saveDeviMonReading(saveCtx, account.Email, account.ObservedAtUS, deviMonReading{Account: account}); err != nil {
-		return true, err
+		return true, errors.Join(policyErr, err)
 	}
 	if rejected {
-		return true, model.ReleaseDeviMonUsageHold(saveCtx, account.ResetKey, candidate.WindowEnd)
+		return true, errors.Join(policyErr, model.ReleaseDeviMonUsageHold(saveCtx, account.ResetKey, candidate.WindowEnd))
 	}
-	return true, nil
+	return true, policyErr
 }
 
 func (account *DeviMonAccount) exhaustedInOldWindow(windowEnd int64) bool {

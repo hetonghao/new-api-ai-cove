@@ -117,7 +117,7 @@ func TestDeviMonSessionIsStoredEncryptedAndReadWithoutCpa(t *testing.T) {
 	assert.NotContains(t, row.AccessToken, "renewed-access-token")
 	assert.Equal(t, model.DeviMonChannelChatGPT, row.Channel)
 
-	snapshot, err := collectDeviMon(context.Background(), nil)
+	snapshot, err := collectDeviMon(context.Background(), nil, false)
 	require.NoError(t, err)
 	require.Len(t, snapshot.Accounts, 1)
 	reading := snapshot.Accounts[0]
@@ -225,7 +225,7 @@ func TestDeviMonExpiredAccessTokenIsRenewedDespiteFarSessionExpiry(t *testing.T)
 
 	// A fresh token must be fetched, so the read succeeds rather than 401ing.
 	require.False(t, deviMonTokenFresh(expired), "an expired token is never fresh")
-	snapshot, err := collectDeviMon(context.Background(), nil)
+	snapshot, err := collectDeviMon(context.Background(), nil, false)
 	require.NoError(t, err)
 	require.Len(t, snapshot.Accounts, 1)
 	assert.Equal(t, "", snapshot.Accounts[0].Error)
@@ -260,14 +260,14 @@ func TestDeviMonSessionChannelYieldsToTheCpaSwitch(t *testing.T) {
 	swapInventory(t, []any{deviMonTestAccount("both@example.test", "idx-both", "acct-both", "")})
 
 	// The stored session shadows the CPA credential with the same mailbox.
-	snapshot, err := collectDeviMon(context.Background(), nil)
+	snapshot, err := collectDeviMon(context.Background(), nil, false)
 	require.NoError(t, err)
 	require.Len(t, snapshot.Accounts, 1)
 	assert.Equal(t, model.DeviMonChannelChatGPT, snapshot.Accounts[0].Channel)
 
 	// Moving the switch back exposes the CPA credential again.
 	require.NoError(t, SetDeviMonAccountChannel(context.Background(), "both@example.test", model.DeviMonChannelCPA))
-	snapshot, err = collectDeviMon(context.Background(), nil)
+	snapshot, err = collectDeviMon(context.Background(), nil, false)
 	require.NoError(t, err)
 	require.Len(t, snapshot.Accounts, 1)
 	assert.Equal(t, model.DeviMonChannelCPA, snapshot.Accounts[0].Channel)

@@ -50,13 +50,16 @@ func RefreshDeviMonAccount(ctx context.Context, email string) error {
 		if account.Error != "" {
 			return errors.New(account.Error)
 		}
-		if candidate != nil {
+		if account.ResetKey != "" {
 			policies, err := model.GetDeviMonResetPolicies(ctx)
 			if err != nil {
 				return err
 			}
-			if policy := policies[account.ResetKey]; policy.Enabled && policy.AttemptedWindowEnd < candidate.WindowEnd {
+			if policy := policies[account.ResetKey]; candidate != nil && policy.Enabled && policy.AttemptedWindowEnd < candidate.WindowEnd {
 				account.ResetOffer = &candidate.DeviMonResetOffer
+			}
+			if err := reconcileDeviMonAvailability(ctx, key, &account, devins[email], policies[account.ResetKey], nil); err != nil {
+				return err
 			}
 		}
 		started = account.ObservedAtUS

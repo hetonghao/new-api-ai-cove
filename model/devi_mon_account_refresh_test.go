@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,14 +30,52 @@ func TestDeviMonResetPolicyDatabaseMatrix(t *testing.T) {
 	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
 			db := useSystemTaskMatrixDB(t, dialect)
-			require.NoError(t, db.AutoMigrate(&DeviMonResetPolicy{}, &SystemTaskLock{}))
+			previousType := common.MainDatabaseType()
+			common.SetMainDatabaseType(common.DatabaseType(dialect))
+			t.Cleanup(func() { common.SetMainDatabaseType(previousType) })
+			// Seed the released schema, then run the same AutoMigrate twice.
+			type releasedPolicy struct {
+				AccountKey         string `gorm:"type:varchar(64);primaryKey"`
+				Enabled            bool   `gorm:"not null;default:false"`
+				AttemptedWindowEnd int64  `gorm:"not null;default:0"`
+				AttemptedAt        int64  `gorm:"not null;default:0"`
+				HoldExhaustedUsage bool   `gorm:"not null;default:false"`
+			}
+			table := db.NamingStrategy.TableName("DeviMonResetPolicy")
+			require.NoError(t, db.Table(table).AutoMigrate(&releasedPolicy{}))
+			require.NoError(t, db.Table(table).Create(&releasedPolicy{AccountKey: "legacy-card", Enabled: true, AttemptedWindowEnd: 800, AttemptedAt: 600, HoldExhaustedUsage: true}).Error)
+			for range 2 {
+				require.NoError(t, db.AutoMigrate(&DeviMonResetPolicy{}, &SystemTaskLock{}))
+			}
+			ctx := context.Background()
+			read := func(key string) DeviMonResetPolicy {
+				t.Helper()
+				rows, err := GetDeviMonResetPolicies(ctx)
+				require.NoError(t, err)
+				return rows[key]
+			}
+			old := read("legacy-card")
+			require.True(t, old.Enabled)
+			require.False(t, old.KeepDisabledAfterReset)
+			require.True(t, old.HoldExhaustedUsage)
+			require.EqualValues(t, 800, old.AttemptedWindowEnd)
+			require.EqualValues(t, 600, old.AttemptedAt)
+			require.NoError(t, SetDeviMonResumeAfterReset(ctx, "legacy-card", false))
+			old = read("legacy-card")
+			require.True(t, old.KeepDisabledAfterReset)
+			require.True(t, old.Enabled)
+			require.NoError(t, SetDeviMonResetPolicy(ctx, "legacy-card", false))
+			require.True(t, read("legacy-card").KeepDisabledAfterReset)
+			require.NoError(t, UpdateDeviMonQuotaPause(ctx, "owned", nil, func(p *DeviMonResetPolicy) error { p.PausedWindowEnd, p.PausedCredential = 42, "devin-id"; return nil }))
+			require.EqualValues(t, 42, read("owned").PausedWindowEnd)
+			require.NoError(t, ForgetDeviMonQuotaPause(ctx, "devin-id"))
+			require.Empty(t, read("owned").PausedCredential)
 			t.Cleanup(func() { require.NoError(t, db.Migrator().DropTable(&DeviMonResetPolicy{}, &SystemTaskLock{})) })
 			if dialect != "sqlite" {
 				sqlDB, err := db.DB()
 				require.NoError(t, err)
 				sqlDB.SetMaxOpenConns(8)
 			}
-			ctx := context.Background()
 			key := "account-1"
 			require.NoError(t, SetDeviMonResetPolicy(ctx, key, true))
 			owner := &SystemTask{Type: SystemTaskTypeDevinMonitor, TaskID: "monitor-task", LockedBy: "old-node"}

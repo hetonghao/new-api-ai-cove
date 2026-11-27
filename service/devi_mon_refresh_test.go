@@ -129,10 +129,25 @@ func TestDeviMonResetRechecksUsageAndDoesNotSpendAnotherCard(t *testing.T) {
 			const enabled = "selected@example.test"
 			const other = "opt-out@example.test"
 			var posts, usageAfter, cardsAfter atomic.Int32
+			var paused atomic.Bool
+			paused.Store(true)
 			files := []any{deviMonTestAccount(enabled, "selected", "acct-selected", ""), deviMonTestAccount(other, "opt-out", "acct-other", "")}
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v0/management/auth-files/status" {
+					var body struct {
+						Name     string
+						Disabled bool
+					}
+					require.NoError(t, common.DecodeJson(r.Body, &body))
+					require.Equal(t, "selected-devin.json", body.Name)
+					require.False(t, body.Disabled)
+					paused.Store(false)
+					_, _ = w.Write([]byte(`{"disabled":false}`))
+					return
+				}
 				if r.URL.Path == "/v0/management/auth-files" {
-					body, err := common.Marshal(map[string]any{"files": files})
+					devin := map[string]any{"provider": "devin", "name": "selected-devin.json", "auth_index": "devin-selected", "email": enabled, "disabled": paused.Load()}
+					body, err := common.Marshal(map[string]any{"files": append(files, devin)})
 					if assert.NoError(t, err) {
 						_, _ = w.Write(body)
 					}
@@ -246,6 +261,9 @@ func TestDeviMonResetRechecksUsageAndDoesNotSpendAnotherCard(t *testing.T) {
 				run(scheduled)
 			}
 			updated := find(enabled)
+			require.Equal(t, tc.staleUsage, paused.Load(), "resume only with a verified reset")
+			require.NotNil(t, updated.DevinDisabled)
+			require.Equal(t, paused.Load(), *updated.DevinDisabled, "stored post-card reading must match CPA")
 			require.Equal(t, tc.outcome, updated.ResetOutcome)
 			require.Nil(t, updated.ResetOffer)
 			require.Len(t, updated.Cards, 1)
@@ -267,4 +285,145 @@ func TestDeviMonResetRechecksUsageAndDoesNotSpendAnotherCard(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Exercise real collection, independently stored policies, and CPA management
+// writes. Only the local HTTP boundary is replaced.
+func TestDeviMonQuotaPolicyTargetsPairedDevinAndWaitsForReset(t *testing.T) {
+	truncate(t)
+	const email = "quota-policy@example.test"
+	ctx := context.Background()
+	end := time.Now().Add(time.Hour).Unix()
+	var disabled atomic.Bool
+	var used, window, seconds atomic.Int64
+	used.Store(100)
+	window.Store(end)
+	seconds.Store(deviMonWeeklySeconds)
+	var statusWrites, cardsSpent atomic.Int32
+	codex := deviMonTestAccount(email, "codex-index", "codex-id", "")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var data any
+		switch r.URL.Path {
+		case "/v0/management/auth-files":
+			data = map[string]any{"files": []any{codex, map[string]any{"email": email, "provider": "devin", "name": "devin-one.json", "auth_index": "devin-one", "disabled": disabled.Load()}}}
+		case "/v0/management/auth-files/status":
+			var body struct {
+				Name      string
+				AuthIndex string `json:"auth_index"`
+				Disabled  bool
+			}
+			require.NoError(t, common.DecodeJson(r.Body, &body))
+			assert.Equal(t, "devin-one.json", body.Name)
+			assert.Equal(t, "devin-one", body.AuthIndex)
+			disabled.Store(body.Disabled)
+			statusWrites.Add(1)
+			data = map[string]bool{"disabled": body.Disabled}
+		case "/v0/management/api-call":
+			var call struct{ URL string }
+			require.NoError(t, common.DecodeJson(r.Body, &call))
+			body := "{}"
+			if call.URL == deviMonUsageURL {
+				body = fmt.Sprintf(`{"rate_limit":{"primary_window":{"limit_window_seconds":%d,"used_percent":%d,"reset_at":%d}}}`, seconds.Load(), used.Load(), window.Load())
+			}
+			if call.URL == deviMonCardsURL+"/consume" {
+				cardsSpent.Add(1)
+			}
+			data = map[string]any{"status_code": 200, "body": body}
+		default:
+			t.Errorf("unexpected endpoint %s", r.URL.Path)
+			w.WriteHeader(400)
+			return
+		}
+		raw, err := common.Marshal(data)
+		require.NoError(t, err)
+		_, _ = w.Write(raw)
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(deviMonReplaceBase(t, srv.URL))
+	_, accountKey := deviMonCodexIdentity(codex)
+	refresh := func() { t.Helper(); require.NoError(t, RefreshDeviMonAccount(ctx, email)) }
+	// The displayed fallback for an unspecified interval is never sufficient to change routing.
+	seconds.Store(0)
+	refresh()
+	require.Zero(t, statusWrites.Load())
+	seconds.Store(deviMonWeeklySeconds)
+	refresh()
+	require.True(t, disabled.Load())
+	require.EqualValues(t, 1, statusWrites.Load())
+	refresh()
+	require.EqualValues(t, 1, statusWrites.Load())
+	used.Store(20)
+	refresh()
+	require.True(t, disabled.Load(), "a better reading in the same window is not a reset")
+	window.Store(end + deviMonWeeklySeconds)
+	refresh()
+	require.False(t, disabled.Load())
+	require.EqualValues(t, 2, statusWrites.Load())
+	require.NoError(t, SetDeviMonAccountAutoReset(ctx, email, accountKey, true))
+	used.Store(100)
+	refresh()
+	require.False(t, disabled.Load(), "card mode without a card never falls through to disable")
+	require.NoError(t, SetDeviMonAccountAutoReset(ctx, email, accountKey, false))
+	off := false
+	require.NoError(t, SetDeviMonAccountPolicy(ctx, email, accountKey, nil, &off))
+	refresh()
+	require.True(t, disabled.Load())
+	used.Store(0)
+	window.Add(deviMonWeeklySeconds)
+	refresh()
+	require.True(t, disabled.Load(), "resume was turned off")
+	on := true
+	require.NoError(t, SetDeviMonAccountPolicy(ctx, email, accountKey, nil, &on))
+	refresh()
+	require.True(t, disabled.Load(), "enabling the preference is not a reset")
+	used.Store(100)
+	refresh()
+	used.Store(0)
+	window.Add(deviMonWeeklySeconds)
+	refresh()
+	require.False(t, disabled.Load(), "also recover a previously disabled account after observing its exhausted week reset")
+	require.Zero(t, cardsSpent.Load())
+}
+
+func TestDeviMonRoutingUsesOnlyUniqueDevinAndKeepsRequestsSeparate(t *testing.T) {
+	const email = "routing@example.test"
+	ctx := context.Background()
+	var duplicate atomic.Bool
+	var writes atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v0/management/auth-files":
+			d := map[string]any{"provider": "devin", "email": email, "name": "devin.json", "priority": -7, "weight": 0, "success": 101, "failed": 9, "recent_requests": []any{map[string]int{"success": 5, "failed": 5}}}
+			files := []any{map[string]any{"provider": "codex", "email": email, "name": "codex.json", "success": 2500}, d}
+			if duplicate.Load() {
+				files = append(files, d)
+			}
+			raw, err := common.Marshal(map[string]any{"files": files})
+			require.NoError(t, err)
+			_, _ = w.Write(raw)
+		case "/v0/management/auth-files/fields":
+			var body map[string]any
+			require.NoError(t, common.DecodeJson(r.Body, &body))
+			assert.Equal(t, http.MethodPatch, r.Method)
+			assert.Equal(t, map[string]any{"name": "devin.json", "weight": float64(0)}, body)
+			writes.Add(1)
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+		default:
+			t.Errorf("unexpected call %s", r.URL.Path)
+			w.WriteHeader(400)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(deviMonReplaceBase(t, srv.URL))
+	data, err := ListDeviMonDevin(ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 101, data[email].Requests.Success)
+	require.EqualValues(t, 9, data[email].Requests.Failed)
+	require.Equal(t, []DeviMonRequestBucket{{Success: 5, Failed: 5}}, data[email].Requests.Recent)
+	require.NoError(t, SetDeviMonRouting(ctx, strings.ToUpper(email), "weight", 0))
+	require.ErrorIs(t, SetDeviMonRouting(ctx, email, "weight", 1_000_001), ErrDeviMonInvalidRouting)
+	require.ErrorIs(t, SetDeviMonRouting(ctx, email, "disabled", 1), ErrDeviMonInvalidRouting)
+	duplicate.Store(true)
+	require.ErrorIs(t, SetDeviMonRouting(ctx, email, "priority", -2), ErrDeviMonDevinAccountMissing)
+	require.EqualValues(t, 1, writes.Load())
 }
