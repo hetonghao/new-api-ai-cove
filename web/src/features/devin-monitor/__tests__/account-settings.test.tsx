@@ -183,6 +183,12 @@ describe('devin account subscription channel', () => {
           url: '/api/devin-monitor/accounts/chatgpt/session',
           body: JSON.parse(SESSION_JSON),
         },
+        // Saving reads the account immediately so the row can move up.
+        {
+          method: 'post',
+          url: '/api/devin-monitor/accounts/refresh',
+          body: { email: 'owned@example.com' },
+        },
       ])
     )
   })

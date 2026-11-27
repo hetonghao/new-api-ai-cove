@@ -110,9 +110,12 @@ export function DeviMonAccountSettings(props: {
       }
       return saveDeviMonChatGPTSession(raw)
     },
-    onSuccess: (saved) => {
+    onSuccess: async (saved) => {
       setSessionJson('')
       setPreview(null)
+      // Read the account now so it moves into the main list instead of waiting
+      // up to a full collection interval. A failed read must not undo the save.
+      await refreshDeviMonAccount(saved.email).catch(() => undefined)
       refresh()
       toast.success(t('ChatGPT session saved'), { description: saved.email })
     },
