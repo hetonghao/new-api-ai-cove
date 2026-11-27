@@ -385,6 +385,7 @@ func migrateDB() error {
 		&SystemTask{},
 		&SystemTaskLock{},
 		&DeviMonAccountRefresh{},
+		&DeviMonResetPolicy{},
 		&CasbinRule{},
 		&AuthzRole{},
 		&ModelQualitySettings{},

@@ -109,6 +109,147 @@ function serveState(snapshot: unknown) {
 }
 
 describe('devin monitor', () => {
+  it('saves auto reset per account and asks before using a card after a manual refresh', async () => {
+    const mutations: [string | undefined, unknown][] = []
+    let enabled = false
+    let refreshed = false
+    api.defaults.adapter = (async (config) => {
+      let data: unknown = null
+      if (config.method === 'put') {
+        mutations.push([config.url, JSON.parse(config.data)])
+        enabled = true
+      } else if (config.method === 'post') {
+        mutations.push([config.url, JSON.parse(config.data)])
+        refreshed = true
+      } else {
+        data = {
+          snapshot: {
+            ...SNAPSHOT,
+            accounts: SNAPSHOT.accounts.map((row, index) => ({
+              ...row,
+              reset_key: `tracked-${index}`,
+              auto_reset: index === 0 && enabled,
+              used_percent: index === 0 && refreshed ? 100 : row.used_percent,
+              reset_offer:
+                index === 0 && refreshed
+                  ? {
+                      id: '2d96f420-fd03-53e9-8e77-0bfe30c83ace',
+                      expires_at: '2026-12-01T04:03:00Z',
+                    }
+                  : undefined,
+            })),
+          },
+          collecting: false,
+          next_run_at: 1_795_010_000,
+          configured: true,
+        }
+      }
+      return {
+        config,
+        data: { success: true, data },
+        headers: {},
+        status: 200,
+        statusText: 'OK',
+      }
+    }) satisfies AxiosAdapter
+    renderMonitor()
+    const user = userEvent.setup()
+    const busy = await screen.findByRole('checkbox', {
+      name: 'Auto reset when quota runs out · busy@example.com',
+    })
+    const fresh = screen.getByRole('checkbox', {
+      name: 'Auto reset when quota runs out · fresh@example.com',
+    })
+    expect(busy).not.toBeChecked()
+    expect(fresh).not.toBeChecked()
+    await user.click(busy)
+    await waitFor(() => expect(busy).toBeChecked())
+    expect(fresh).not.toBeChecked()
+    await user.click(
+      screen.getByRole('button', { name: 'Refresh busy@example.com' })
+    )
+    const dialog = await screen.findByRole('alertdialog', {
+      name: 'Use one reset card?',
+    })
+    expect(within(dialog).getByText(/busy@example.com/)).toBeVisible()
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(mutations).toEqual([
+      [
+        '/api/devin-monitor/accounts/auto-reset',
+        { email: 'busy@example.com', reset_key: 'tracked-0', enabled: true },
+      ],
+      ['/api/devin-monitor/accounts/refresh', { email: 'busy@example.com' }],
+    ])
+  })
+
+  it('shows the post-reset reading returned by the mocked confirmation even if polling fails', async () => {
+    const offer = {
+      id: '996feb4e-ffe7-5bc3-817b-88bd8ac1c081',
+      expires_at: '2026-12-01T04:03:00Z',
+    }
+    const exhausted = {
+      ...SNAPSHOT.accounts[0],
+      observed_at_us: 1_795_000_000_000_001,
+      used_percent: 100,
+      reset_key: 'tracked-account',
+      auto_reset: true,
+      reset_offer: offer,
+    }
+    let responseSent = false
+    const changes: unknown[] = []
+    api.defaults.adapter = (async (config) => {
+      let data: unknown = {
+        snapshot: { ...SNAPSHOT, accounts: [exhausted] },
+        collecting: false,
+        next_run_at: 1_795_010_000,
+        configured: true,
+      }
+      const success = !responseSent
+      if (config.method === 'post') {
+        changes.push([config.url, JSON.parse(config.data)])
+        responseSent = true
+        data = {
+          ...exhausted,
+          used_percent: 21,
+          observed_at_us: 1_795_000_000_000_002,
+          reset_offer: null,
+          reset_outcome: 'applied',
+          cards: [],
+        }
+      }
+      return {
+        config,
+        data: { success, data },
+        headers: {},
+        status: 200,
+        statusText: 'OK',
+      }
+    }) satisfies AxiosAdapter
+
+    renderMonitor()
+    const user = userEvent.setup()
+    const ready = await screen.findByRole('button', {
+      name: 'Confirm card use',
+    })
+    await user.click(ready)
+    const dialog = await screen.findByRole('alertdialog')
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Use reset card' })
+    )
+    expect(await screen.findByText('79% remaining')).toBeVisible()
+    expect(screen.getByText('Reset card used. Usage updated.')).toBeVisible()
+    await waitFor(() => expect(dialog).not.toBeInTheDocument())
+    expect(
+      screen.getByRole('button', { name: 'Refresh busy@example.com' })
+    ).toHaveFocus()
+    expect(changes).toEqual([
+      [
+        '/api/devin-monitor/accounts/reset',
+        { email: 'busy@example.com', offer_id: offer.id },
+      ],
+    ])
+  })
+
   it('refreshes only via the selected account button and reads the updated row without a full collection', async () => {
     const posts: unknown[] = []
     let release = () => {}

@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { QuotaWindow } from '@/features/upstream-subscriptions/components/quota-window'
@@ -24,8 +25,9 @@ import { toIntlLocale } from '@/i18n/languages'
 import dayjs from '@/lib/dayjs'
 import { formatNumber } from '@/lib/format'
 
-import type { DeviMonAccount } from '../types'
+import type { DeviMonAccount, DeviMonResetOffer } from '../types'
 import { AccountRefreshButton } from './devi-mon-refresh-button'
+import { DeviMonResetControls } from './devi-mon-reset-controls'
 import { DevinAccountStatus } from './devi-mon-status'
 
 function AccountDate({ value }: { readonly value: string }) {
@@ -83,6 +85,8 @@ export function DeviMonRow({
 }) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  const refreshButton = useRef<HTMLButtonElement>(null)
+  const [resetOffer, setResetOffer] = useState<DeviMonResetOffer | null>(null)
   const balance = account.credit_balance.trim()
   let balanceText = balance || t('Not provided')
   if (account.unlimited) {
@@ -112,7 +116,12 @@ export function DeviMonRow({
               routing={account.devin_routing}
             />
           </div>
-          <AccountRefreshButton email={account.email} configured={configured} />
+          <AccountRefreshButton
+            email={account.email}
+            configured={configured}
+            buttonRef={refreshButton}
+            onResetOffer={setResetOffer}
+          />
         </div>
         <QuotaWindow
           label={t('Weekly allowance')}
@@ -128,48 +137,57 @@ export function DeviMonRow({
         />
         {account.error && (
           <p className='text-destructive text-xs [overflow-wrap:anywhere]'>
-            {account.error}
+            {t(account.error)}
           </p>
         )}
       </div>
-      <dl className='grid min-w-0 grid-cols-[max-content_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 text-xs leading-relaxed tabular-nums'>
-        <dt className='text-muted-foreground'>{t('Credits')}</dt>
-        <dd
-          className='min-w-0 [overflow-wrap:anywhere]'
-          title={balance || undefined}
-        >
-          {balanceText}
-        </dd>
-        <dt className='text-muted-foreground'>{t('Subscription renews')}</dt>
-        <dd>
-          <RenewalDate value={account.renew_at} now={now} />{' '}
-          {account.renew_at && account.renew_source === 'id_token' && (
-            <span className='text-muted-foreground'>
-              {t('(sign-in snapshot)')}
-            </span>
-          )}
-        </dd>
-        <dt className='text-muted-foreground'>{t('Reset cards')}</dt>
-        <dd className='min-w-0'>
-          {account.cards.length ? (
-            <div className='flex items-baseline gap-x-2'>
-              <span className='shrink-0'>×{account.cards.length}</span>
-              <ul className='flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-0.5'>
-                {Array.from(cardsByExpiry, ([expires, count]) => (
-                  <li key={expires} className='whitespace-nowrap'>
-                    <AccountDate value={expires} />
-                    {count > 1 && (
-                      <span className='text-muted-foreground'> ×{count}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            emptyCards
-          )}
-        </dd>
-      </dl>
+      <div className='min-w-0'>
+        <dl className='grid min-w-0 grid-cols-[max-content_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 text-xs leading-relaxed tabular-nums'>
+          <dt className='text-muted-foreground'>{t('Credits')}</dt>
+          <dd
+            className='min-w-0 [overflow-wrap:anywhere]'
+            title={balance || undefined}
+          >
+            {balanceText}
+          </dd>
+          <dt className='text-muted-foreground'>{t('Subscription renews')}</dt>
+          <dd>
+            <RenewalDate value={account.renew_at} now={now} />{' '}
+            {account.renew_at && account.renew_source === 'id_token' && (
+              <span className='text-muted-foreground'>
+                {t('(sign-in snapshot)')}
+              </span>
+            )}
+          </dd>
+          <dt className='text-muted-foreground'>{t('Reset cards')}</dt>
+          <dd className='min-w-0'>
+            {account.cards.length ? (
+              <div className='flex items-baseline gap-x-2'>
+                <span className='shrink-0'>×{account.cards.length}</span>
+                <ul className='flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-0.5'>
+                  {Array.from(cardsByExpiry, ([expires, count]) => (
+                    <li key={expires} className='whitespace-nowrap'>
+                      <AccountDate value={expires} />
+                      {count > 1 && (
+                        <span className='text-muted-foreground'> ×{count}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              emptyCards
+            )}
+          </dd>
+        </dl>
+        <DeviMonResetControls
+          account={account}
+          configured={configured}
+          offer={resetOffer}
+          onOfferChange={setResetOffer}
+          returnFocus={refreshButton}
+        />
+      </div>
     </li>
   )
 }

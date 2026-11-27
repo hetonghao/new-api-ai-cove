@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
+import type { Ref } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -26,10 +27,13 @@ import { Button } from '@/components/ui/button'
 import { getServerErrorStatus } from '@/lib/server-error-message'
 
 import { deviMonQueryKey, refreshDeviMonAccount } from '../api'
+import type { DeviMonResetOffer, DeviMonState } from '../types'
 
 export function AccountRefreshButton(props: {
   readonly email: string
   readonly configured: boolean
+  readonly buttonRef?: Ref<HTMLButtonElement>
+  readonly onResetOffer?: (offer: DeviMonResetOffer) => void
 }) {
   const { t } = useTranslation()
   const client = useQueryClient()
@@ -40,6 +44,13 @@ export function AccountRefreshButton(props: {
         { queryKey: deviMonQueryKey, exact: true },
         { throwOnError: true }
       )
+      const account = client
+        .getQueryData<DeviMonState>(deviMonQueryKey)
+        ?.snapshot?.accounts.find((row) => row.email === props.email)
+      if (account?.reset_offer && props.onResetOffer) {
+        props.onResetOffer(account.reset_offer)
+        return
+      }
       toast.success(t('Updated successfully'), { description: props.email })
     },
     onError: (error) => {
@@ -53,6 +64,7 @@ export function AccountRefreshButton(props: {
   const label = t('Refresh {{email}}', { email: props.email })
   return (
     <Button
+      ref={props.buttonRef}
       type='button'
       variant='ghost'
       size='icon-sm'

@@ -105,7 +105,7 @@ func TestDeviMonCollectsAllowanceCardsAndDevinState(t *testing.T) {
 	defer upstream.Close()
 
 	t.Cleanup(deviMonReplaceBase(t, upstream.URL))
-	snapshot, err := collectDeviMon(context.Background())
+	snapshot, err := collectDeviMon(context.Background(), nil)
 	require.NoError(t, err)
 	require.Len(t, snapshot.Accounts, 2)
 
@@ -143,7 +143,7 @@ func TestDeviMonListsDevinAccountsWithoutCodexTwin(t *testing.T) {
 	defer upstream.Close()
 
 	t.Cleanup(deviMonReplaceBase(t, upstream.URL))
-	snapshot, err := collectDeviMon(context.Background())
+	snapshot, err := collectDeviMon(context.Background(), nil)
 	require.NoError(t, err)
 	require.Len(t, snapshot.Accounts, 1)
 	require.NotNil(t, snapshot.Accounts[0].DevinDisabled)
@@ -166,7 +166,7 @@ func TestDeviMonListsDevinAccountsWithoutCodexTwin(t *testing.T) {
 
 func TestDeviMonRequiresManagementKey(t *testing.T) {
 	t.Setenv("CPA_MANAGEMENT_KEY", "")
-	_, err := collectDeviMon(context.Background())
+	_, err := collectDeviMon(context.Background(), nil)
 	require.Error(t, err)
 }
 
@@ -297,7 +297,7 @@ func TestDeviMonRecollectsOnceAfterRunnerReplacement(t *testing.T) {
 	next, err := model.GetActiveSystemTask(h.Type())
 	require.NoError(t, err)
 	require.NotNil(t, next)
-	require.Empty(t, next.Payload)
+	require.JSONEq(t, `{"auto_reset":true}`, next.Payload)
 	upstream := deviMonFakeUpstream(t, map[string]any{"files": []any{deviMonTestAccount("new@example.test", "idx", "acct", "")}})
 	t.Cleanup(upstream.Close)
 	t.Cleanup(deviMonReplaceBase(t, upstream.URL))
@@ -321,7 +321,7 @@ func TestDeviMonCannotPublishUnpairedAccountsFromFailedInventory(t *testing.T) {
 	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusBadGateway) }))
 	defer broken.Close()
 	deviMonCodexBase = broken.URL
-	snapshot, err := collectDeviMon(context.Background())
+	snapshot, err := collectDeviMon(context.Background(), nil)
 	require.ErrorContains(t, err, "cpa-pro-2: HTTP 502")
 	require.Nil(t, snapshot)
 }

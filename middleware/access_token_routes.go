@@ -49,6 +49,8 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/devin-monitor":                                       accessTokenSessionRule,
 	"POST /api/devin-monitor/collect":                              accessTokenSessionRule,
 	"POST /api/devin-monitor/accounts/refresh":                     accessTokenSessionRule,
+	"POST /api/devin-monitor/accounts/reset":                       accessTokenSessionRule,
+	"PUT /api/devin-monitor/accounts/auto-reset":                   accessTokenSessionRule,
 	"GET /api/devin-monitor/config":                                accessTokenSessionRule,
 	"PUT /api/devin-monitor/config":                                accessTokenSessionRule,
 	"GET /api/upstream-subscriptions":                              accessTokenSessionRule,

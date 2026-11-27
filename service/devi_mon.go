@@ -48,19 +48,23 @@ type DeviMonCard struct {
 // DeviMonAccount is one Codex account with its weekly allowance, credits and
 // reset cards, paired with the configuration of the same-email Devin account.
 type DeviMonAccount struct {
-	ObservedAtUS  int64           `json:"observed_at_us,omitempty"`
-	Email         string          `json:"email"`
-	UsedPercent   *float64        `json:"used_percent"`
-	ResetAt       *int64          `json:"reset_at"`
-	PlanType      string          `json:"plan_type"`
-	CreditBalance string          `json:"credit_balance"`
-	Unlimited     bool            `json:"unlimited"`
-	Cards         []DeviMonCard   `json:"cards"`
-	RenewAt       string          `json:"renew_at"`
-	RenewSource   string          `json:"renew_source"`
-	DevinDisabled *bool           `json:"devin_disabled"`
-	DevinRouting  *DeviMonRouting `json:"devin_routing,omitempty"`
-	Error         string          `json:"error"`
+	ObservedAtUS  int64               `json:"observed_at_us,omitempty"`
+	Email         string              `json:"email"`
+	UsedPercent   *float64            `json:"used_percent"`
+	ResetAt       *int64              `json:"reset_at"`
+	PlanType      string              `json:"plan_type"`
+	CreditBalance string              `json:"credit_balance"`
+	Unlimited     bool                `json:"unlimited"`
+	Cards         []DeviMonCard       `json:"cards"`
+	RenewAt       string              `json:"renew_at"`
+	RenewSource   string              `json:"renew_source"`
+	DevinDisabled *bool               `json:"devin_disabled"`
+	DevinRouting  *DeviMonRouting     `json:"devin_routing,omitempty"`
+	Error         string              `json:"error"`
+	ResetKey      string              `json:"reset_key,omitempty"`
+	AutoReset     bool                `json:"auto_reset,omitempty"`
+	ResetOffer    *DeviMonResetOffer  `json:"reset_offer,omitempty"`
+	ResetOutcome  DeviMonResetOutcome `json:"reset_outcome,omitempty"`
 }
 
 // DeviMonRouting holds CPA account overrides. A nil field means no override;
@@ -100,21 +104,37 @@ func (deviMonTask) Enabled() bool { return DeviMonKey() != "" }
 func (deviMonTask) Interval() time.Duration {
 	return time.Duration(operation_setting.GetDeviMonSettings().IntervalMinutes) * time.Minute
 }
-func (deviMonTask) NewPayload() any { return nil }
 
-// Normal Devin collections have no payload. The automatic retry carries the
-// interrupted task ID, so another restart cannot start a chain of retries.
-func (deviMonTask) interruptedRetryAt(latest *model.SystemTask) (int64, bool) {
-	if latest.Status != model.SystemTaskStatusFailed || latest.Error != model.SystemTaskLeaseExpiredMessage || latest.Payload != "" {
-		return 0, false
+type deviMonTaskPayload struct {
+	AutoReset bool   `json:"auto_reset,omitempty"`
+	RetryOf   string `json:"retry_of,omitempty"`
+}
+
+func (deviMonTask) NewPayload() any { return deviMonTaskPayload{AutoReset: true} }
+
+func (deviMonTask) interruptedRetry(latest *model.SystemTask) (int64, any) {
+	var payload deviMonTaskPayload
+	if latest.Status != model.SystemTaskStatusFailed || latest.Error != model.SystemTaskLeaseExpiredMessage ||
+		latest.DecodePayload(&payload) != nil || payload.RetryOf != "" {
+		return 0, nil
 	}
-	return latest.UpdatedAt + int64(deviMonInterruptedRetryDelay/time.Second), true
+	payload.RetryOf = latest.TaskID
+	return latest.UpdatedAt + int64(deviMonInterruptedRetryDelay/time.Second), payload
 }
 
 func init() { RegisterSystemTaskHandler(deviMonTask{}) }
 
 func (deviMonTask) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
-	snapshot, err := collectDeviMon(ctx)
+	var payload deviMonTaskPayload
+	if err := task.DecodePayload(&payload); err != nil {
+		failSystemTask(task, runnerID, err)
+		return
+	}
+	var resetTask *model.SystemTask
+	if payload.AutoReset {
+		resetTask = task
+	}
+	snapshot, err := collectDeviMon(ctx, resetTask)
 	if err != nil {
 		failSystemTask(task, runnerID, err)
 		return
@@ -149,7 +169,7 @@ func GetDeviMonState() (DeviMonState, error) {
 	state.Collecting = latest.Status == model.SystemTaskStatusPending || latest.Status == model.SystemTaskStatusRunning
 	if state.Configured && !state.Collecting {
 		state.NextRunAt = latest.UpdatedAt + int64(state.IntervalMinutes)*60
-		if retryAt, ok := handler.interruptedRetryAt(latest); ok {
+		if retryAt, payload := handler.interruptedRetry(latest); payload != nil {
 			state.NextRunAt = retryAt
 		}
 	}
@@ -163,13 +183,32 @@ func GetDeviMonState() (DeviMonState, error) {
 	if err := common.UnmarshalJsonStr(latest.Result, &state.Snapshot); err != nil || state.Snapshot == nil {
 		return state, err
 	}
-	err = applyDeviMonRefreshes(state.Snapshot)
-	return state, err
+	if err := applyDeviMonRefreshes(state.Snapshot); err != nil {
+		return state, err
+	}
+	policies, err := model.GetDeviMonResetPolicies(context.Background())
+	if err != nil {
+		return state, err
+	}
+	now := common.GetTimestamp()
+	for i := range state.Snapshot.Accounts {
+		account := &state.Snapshot.Accounts[i]
+		policy := policies[account.ResetKey]
+		account.AutoReset = policy.Enabled
+		if !policy.Enabled || account.ResetAt == nil || *account.ResetAt <= max(policy.AttemptedWindowEnd, now) {
+			account.ResetOffer = nil
+		}
+		if policy.HoldExhaustedUsage && account.exhaustedInOldWindow(policy.AttemptedWindowEnd) {
+			account.UsedPercent, account.ResetAt = nil, nil
+			account.ResetOutcome = deviMonResetUnverified
+		}
+	}
+	return state, nil
 }
 
 // collectDeviMon collects every Codex account once. Accounts are queried one at a
 // time with a random gap so the upstream never sees concurrent probes.
-func collectDeviMon(ctx context.Context) (*DeviMonSnapshot, error) {
+func collectDeviMon(ctx context.Context, resetTask *model.SystemTask) (*DeviMonSnapshot, error) {
 	key := DeviMonKey()
 	if key == "" {
 		return nil, errors.New("CPA_MANAGEMENT_KEY is not configured")
@@ -189,14 +228,18 @@ func collectDeviMon(ctx context.Context) (*DeviMonSnapshot, error) {
 	}
 
 	// Pair from both complete credential lists, independently of quota probes.
-	paired := make(map[string]bool, len(codexAccounts))
+	paired := make(map[string]int, len(codexAccounts))
 	for _, file := range codexAccounts {
-		paired[strings.ToLower(deviMonString(file["email"]))] = true
+		paired[strings.ToLower(strings.TrimSpace(deviMonString(file["email"])))]++
 	}
 	for email, devin := range devinByEmail {
-		if !paired[email] {
+		if paired[email] == 0 {
 			snapshot.UnpairedDevin = append(snapshot.UnpairedDevin, devin)
 		}
+	}
+	policies, err := model.GetDeviMonResetPolicies(ctx)
+	if err != nil {
+		return nil, err
 	}
 	for i, file := range codexAccounts {
 		if i > 0 {
@@ -211,7 +254,20 @@ func collectDeviMon(ctx context.Context) (*DeviMonSnapshot, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		snapshot.Accounts = append(snapshot.Accounts, collectDeviMonAccount(ctx, key, file, devinByEmail))
+		account, candidate := collectDeviMonAccount(ctx, key, file, devinByEmail)
+		if paired[strings.ToLower(strings.TrimSpace(account.Email))] != 1 {
+			account.ResetKey = ""
+		}
+		if policy := policies[account.ResetKey]; policy.Enabled && candidate != nil && policy.AttemptedWindowEnd < candidate.WindowEnd {
+			if resetTask != nil {
+				if _, err := redeemDeviMonCard(ctx, key, deviMonString(file["auth_index"]), &account, candidate, resetTask); err != nil {
+					logger.LogWarn(ctx, common.LogText("devin monitor: could not record reset for %s: %v", account.Email, err))
+				}
+			} else {
+				account.ResetOffer = &candidate.DeviMonResetOffer
+			}
+		}
+		snapshot.Accounts = append(snapshot.Accounts, account)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -279,53 +335,113 @@ func sortDeviMonAccounts(accounts []DeviMonAccount) {
 	})
 }
 
-func collectDeviMonAccount(ctx context.Context, key string, file map[string]any, devinByEmail map[string]DeviMonDevin) DeviMonAccount {
-	email := deviMonString(file["email"])
-	account := DeviMonAccount{Email: email, Cards: []DeviMonCard{}, ObservedAtUS: time.Now().UnixMicro()}
+func collectDeviMonAccount(ctx context.Context, key string, file map[string]any, devinByEmail map[string]DeviMonDevin) (DeviMonAccount, *deviMonResetCandidate) {
+	email := strings.TrimSpace(deviMonString(file["email"]))
+	accountID, accountKey := deviMonCodexIdentity(file)
+	account := DeviMonAccount{Email: email, ResetKey: accountKey, ObservedAtUS: time.Now().UnixMicro()}
 	if devin, ok := devinByEmail[strings.ToLower(email)]; ok {
 		account.DevinDisabled = &devin.Disabled
 		account.DevinRouting = devin.Routing
 	}
-
-	usage, errUsage := deviMonAPICall(ctx, key, deviMonCodexBase, deviMonString(file["auth_index"]), deviMonUsageURL, nil)
-	if errUsage != nil {
-		account.Error = errUsage.Error()
-		return account
+	candidate := readDeviMonAllowance(ctx, key, deviMonString(file["auth_index"]), accountID, &account, false)
+	if deviMonBool(file["disabled"]) {
+		candidate = nil
 	}
-	if rateLimit, ok := usage["rate_limit"].(map[string]any); ok {
-		if window, ok := rateLimit["primary_window"].(map[string]any); ok {
-			if used, ok := deviMonFloat(window["used_percent"]); ok {
-				account.UsedPercent = &used
-			}
-			if resetAt, ok := deviMonInt(window["reset_at"]); ok {
-				account.ResetAt = &resetAt
-			}
-		}
-	}
-	account.PlanType = deviMonString(usage["plan_type"])
-	if credits, ok := usage["credits"].(map[string]any); ok {
-		account.CreditBalance = deviMonString(credits["balance"])
-		account.Unlimited = deviMonBool(credits["unlimited"])
-	}
-
-	if cards, errCards := deviMonAPICall(ctx, key, deviMonCodexBase, deviMonString(file["auth_index"]), deviMonCardsURL, nil); errCards != nil {
-		account.Error = "reset cards: " + errCards.Error()
-	} else if list, ok := cards["credits"].([]any); ok {
-		for _, entry := range list {
-			card, ok := entry.(map[string]any)
-			if !ok || deviMonString(card["status"]) != "available" {
-				continue
-			}
-			account.Cards = append(account.Cards, DeviMonCard{ExpiresAt: deviMonString(card["expires_at"])})
-		}
-	}
-
 	var renewalErr error
 	account.RenewAt, account.RenewSource, renewalErr = deviMonRenewal(ctx, key, file)
 	if renewalErr != nil && account.Error == "" {
 		account.Error = "subscription: " + renewalErr.Error()
 	}
-	return account
+	return account, candidate
+}
+
+func readDeviMonAllowance(ctx context.Context, key, authIndex, accountID string, account *DeviMonAccount, verifyReset bool) *deviMonResetCandidate {
+	account.UsedPercent, account.ResetAt = nil, nil
+	account.Cards = []DeviMonCard{}
+	account.Error = ""
+	var headers map[string]string
+	if accountID != "" {
+		headers = map[string]string{"ChatGPT-Account-Id": accountID}
+	}
+	usageCtx := ctx
+	if verifyReset {
+		var cancel context.CancelFunc
+		usageCtx, cancel = context.WithTimeout(ctx, deviMonRequestTimeout/2)
+		defer cancel()
+	}
+	usage, usageErr := deviMonAPICall(usageCtx, key, deviMonCodexBase, authIndex, deviMonUsageURL, headers)
+	weekly := false
+	if usageErr != nil {
+		account.Error = usageErr.Error()
+	} else if reportedID := deviMonString(usage["account_id"]); accountID != "" && reportedID != "" && reportedID != accountID {
+		account.Error = "Codex usage account mismatch"
+	} else {
+		weekly = applyDeviMonUsage(account, usage)
+		if verifyReset && (!weekly || account.ResetAt == nil || *account.ResetAt <= 0) {
+			account.UsedPercent, account.ResetAt = nil, nil
+		}
+	}
+	cards, err := deviMonAPICall(ctx, key, deviMonCodexBase, authIndex, deviMonCardsURL, headers)
+	if err != nil {
+		if account.Error == "" {
+			account.Error = "reset cards: " + err.Error()
+		}
+		return nil
+	}
+	list, _ := cards["credits"].([]any)
+	var earliest time.Time
+	var creditID, expiry string
+	now := time.Now()
+	canReset := !verifyReset && weekly && account.ResetKey != "" && account.UsedPercent != nil &&
+		*account.UsedPercent >= 100 && account.ResetAt != nil && *account.ResetAt > now.Unix()
+	for _, entry := range list {
+		card, ok := entry.(map[string]any)
+		if !ok || deviMonString(card["status"]) != "available" {
+			continue
+		}
+		expiresAt := deviMonString(card["expires_at"])
+		account.Cards = append(account.Cards, DeviMonCard{ExpiresAt: expiresAt})
+		if !canReset {
+			continue
+		}
+		id := deviMonString(card["id"])
+		when, err := time.Parse(time.RFC3339, expiresAt)
+		if id != "" && err == nil && when.After(now) &&
+			(earliest.IsZero() || when.Before(earliest) || (when.Equal(earliest) && id < creditID)) {
+			earliest, creditID, expiry = when, id, expiresAt
+		}
+	}
+	if creditID == "" {
+		return nil
+	}
+	return deviMonResetCandidateFor(*account, accountID, creditID, expiry)
+}
+
+func applyDeviMonUsage(account *DeviMonAccount, usage map[string]any) bool {
+	account.PlanType = deviMonString(usage["plan_type"])
+	credits, _ := usage["credits"].(map[string]any)
+	account.CreditBalance = deviMonString(credits["balance"])
+	account.Unlimited = deviMonBool(credits["unlimited"])
+
+	rateLimit, _ := usage["rate_limit"].(map[string]any)
+	primary, _ := rateLimit["primary_window"].(map[string]any)
+	secondary, _ := rateLimit["secondary_window"].(map[string]any)
+	window := primary
+	primarySeconds, primaryKnown := deviMonInt(primary["limit_window_seconds"])
+	secondarySeconds, _ := deviMonInt(secondary["limit_window_seconds"])
+	weekly := primarySeconds == deviMonWeeklySeconds || secondarySeconds == deviMonWeeklySeconds
+	if primarySeconds != deviMonWeeklySeconds && secondarySeconds == deviMonWeeklySeconds {
+		window = secondary
+	} else if primaryKnown && !weekly {
+		return false
+	}
+	if used, ok := deviMonFloat(window["used_percent"]); ok {
+		account.UsedPercent = &used
+	}
+	if resetAt, ok := deviMonInt(window["reset_at"]); ok {
+		account.ResetAt = &resetAt
+	}
+	return weekly
 }
 
 // deviMonRenewal prefers the live subscription endpoint because the id_token
@@ -375,16 +491,20 @@ func deviMonAuthFiles(ctx context.Context, key string, base string) ([]map[strin
 
 // deviMonAPICall asks CPA to run one upstream request with a credential token.
 func deviMonAPICall(ctx context.Context, key string, base string, authIndex string, target string, extra map[string]string) (map[string]any, error) {
+	return deviMonProxyCall(ctx, key, base, authIndex, http.MethodGet, target, extra, nil)
+}
+
+func deviMonProxyCall(ctx context.Context, key, base, authIndex, method, target string, extra map[string]string, data []byte) (map[string]any, error) {
 	header := map[string]string{"Authorization": "Bearer $TOKEN$"}
 	for name, value := range extra {
 		header[name] = value
 	}
-	body, err := common.Marshal(map[string]any{
-		"auth_index": authIndex,
-		"method":     http.MethodGet,
-		"url":        target,
-		"header":     header,
-	})
+	call := map[string]any{"auth_index": authIndex, "method": method, "url": target, "header": header}
+	if data != nil {
+		header["Content-Type"] = "application/json"
+		call["data"] = string(data)
+	}
+	body, err := common.Marshal(call)
 	if err != nil {
 		return nil, err
 	}

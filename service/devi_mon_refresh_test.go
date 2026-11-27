@@ -2,14 +2,17 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -102,4 +105,166 @@ func TestDeviMonRefreshDoesNotRewindOrResurrectAccounts(t *testing.T) {
 	left, err := model.GetDeviMonRefreshesSince(0)
 	require.NoError(t, err)
 	require.Len(t, left, 2)
+}
+
+func TestDeviMonResetRechecksUsageAndDoesNotSpendAnotherCard(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		manual     bool
+		code       int
+		staleUsage bool
+		outcome    DeviMonResetOutcome
+	}{
+		{name: "manual refresh requires confirmation", manual: true, code: 200, outcome: deviMonResetApplied},
+		{name: "scheduler refreshes after a lost redemption response", code: 502, outcome: deviMonResetUnverified},
+		{name: "scheduler hides the stale reading after a reset", code: 200, staleUsage: true, outcome: deviMonResetUnverified},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			truncate(t)
+			ctx := context.Background()
+			handler := deviMonTask{}
+			withSystemTaskRegistry(t, handler)
+			now := time.Now()
+			end := now.Add(time.Hour).Unix()
+			const enabled = "selected@example.test"
+			const other = "opt-out@example.test"
+			var posts, usageAfter, cardsAfter atomic.Int32
+			files := []any{deviMonTestAccount(enabled, "selected", "acct-selected", ""), deviMonTestAccount(other, "opt-out", "acct-other", "")}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v0/management/auth-files" {
+					body, err := common.Marshal(map[string]any{"files": files})
+					if assert.NoError(t, err) {
+						_, _ = w.Write(body)
+					}
+					return
+				}
+				assert.Equal(t, "/v0/management/api-call", r.URL.Path)
+				var call struct {
+					Index  string            `json:"auth_index"`
+					URL    string            `json:"url"`
+					Method string            `json:"method"`
+					Header map[string]string `json:"header"`
+					Data   string            `json:"data"`
+				}
+				if err := common.DecodeJson(r.Body, &call); !assert.NoError(t, err) {
+					w.WriteHeader(400)
+					return
+				}
+				didSpend := posts.Load() > 0 && call.Index == "selected"
+				status := 200
+				body := `{}`
+				switch call.URL {
+				case deviMonUsageURL:
+					used, resetAt := 100, end
+					if didSpend {
+						usageAfter.Add(1)
+						if !tc.staleUsage {
+							used, resetAt = 21, end+deviMonWeeklySeconds
+						}
+					}
+					body = fmt.Sprintf(`{"rate_limit":{"primary_window":{"used_percent":17,"limit_window_seconds":18000},"secondary_window":{"used_percent":%d,"reset_at":%d,"limit_window_seconds":604800}}}`, used, resetAt)
+				case deviMonCardsURL:
+					count := `{"id":"late","status":"available","expires_at":%q}`
+					cards := fmt.Sprintf(count, now.Add(4*time.Hour).Format(time.RFC3339))
+					if didSpend {
+						cardsAfter.Add(1)
+					} else {
+						cards += fmt.Sprintf(`,{"id":"expired","status":"available","expires_at":%q},{"id":"used","status":"redeemed","expires_at":%q},{"id":"first","status":"available","expires_at":%q}`,
+							now.Add(-time.Hour).Format(time.RFC3339), now.Add(time.Minute).Format(time.RFC3339), now.Add(2*time.Hour).Format(time.RFC3339))
+					}
+					body = `{"credits":[` + cards + `]}`
+				case deviMonCardsURL + "/consume":
+					posts.Add(1)
+					assert.Equal(t, http.MethodPost, call.Method)
+					assert.Equal(t, "selected", call.Index)
+					assert.Equal(t, "acct-selected", call.Header["ChatGPT-Account-Id"])
+					var request map[string]string
+					assert.NoError(t, common.UnmarshalJsonStr(call.Data, &request))
+					assert.Equal(t, "first", request["credit_id"])
+					assert.NotEmpty(t, request["redeem_request_id"])
+					status, body = tc.code, `{"code":"reset","windows_reset":1}`
+				}
+				raw, err := common.Marshal(map[string]any{"status_code": status, "body": body})
+				if assert.NoError(t, err) {
+					_, _ = w.Write(raw)
+				}
+			}))
+			t.Cleanup(srv.Close)
+			t.Cleanup(deviMonReplaceBase(t, srv.URL))
+			run := func(task *model.SystemTask) {
+				t.Helper()
+				claimed, ok, err := model.ClaimSystemTask(task.ID, task.Type, "test", common.GetTimestamp()+60)
+				require.NoError(t, err)
+				require.True(t, ok)
+				handler.Run(ctx, claimed, "test")
+			}
+			find := func(email string) DeviMonAccount {
+				t.Helper()
+				state, err := GetDeviMonState()
+				require.NoError(t, err)
+				require.NotNil(t, state.Snapshot)
+				for _, account := range state.Snapshot.Accounts {
+					if account.Email == email {
+						return account
+					}
+				}
+				t.Fatalf("%s is missing from snapshot", email)
+				return DeviMonAccount{}
+			}
+			task, _, err := EnqueueSystemTask(handler.Type(), nil)
+			require.NoError(t, err)
+			run(task)
+			account := find(enabled)
+			require.False(t, account.AutoReset)
+			require.NoError(t, SetDeviMonAccountAutoReset(ctx, enabled, account.ResetKey, true))
+			task, _, err = EnqueueSystemTask(handler.Type(), nil)
+			require.NoError(t, err)
+			run(task)
+			require.NotNil(t, find(enabled).ResetOffer, "manual full collection presents an offer")
+			require.Nil(t, find(other).ResetOffer, "the other exhausted account was not opted in")
+			require.Zero(t, posts.Load(), "neither enabling nor manual collection consumes a card")
+			if tc.manual {
+				require.NoError(t, RefreshDeviMonAccount(ctx, enabled))
+				offer := find(enabled).ResetOffer
+				require.NotNil(t, offer)
+				require.Zero(t, posts.Load(), "manual refresh must not consume a card")
+				require.NoError(t, SetDeviMonAccountAutoReset(ctx, enabled, account.ResetKey, false))
+				_, err := ConfirmDeviMonAccountReset(ctx, enabled, offer.ID)
+				require.ErrorIs(t, err, ErrDeviMonResetOfferChanged)
+				require.Zero(t, posts.Load(), "a disabled preference must invalidate confirmation")
+				require.NoError(t, SetDeviMonAccountAutoReset(ctx, enabled, account.ResetKey, true))
+				updated, err := ConfirmDeviMonAccountReset(ctx, enabled, offer.ID)
+				require.NoError(t, err)
+				require.Equal(t, tc.outcome, updated.ResetOutcome)
+				require.Equal(t, 21.0, *updated.UsedPercent)
+			} else {
+				require.NoError(t, model.DB.Model(task).Update("updated_at", now.Add(-24*time.Hour).Unix()).Error)
+				runSystemTaskScheduler()
+				scheduled, err := model.GetActiveSystemTask(handler.Type())
+				require.NoError(t, err)
+				require.NotNil(t, scheduled)
+				run(scheduled)
+			}
+			updated := find(enabled)
+			require.Equal(t, tc.outcome, updated.ResetOutcome)
+			require.Nil(t, updated.ResetOffer)
+			require.Len(t, updated.Cards, 1)
+			if tc.staleUsage {
+				require.Nil(t, updated.UsedPercent, "pre-reset usage must not be published as a new reading")
+			} else {
+				require.NotNil(t, updated.UsedPercent)
+				require.Equal(t, 21.0, *updated.UsedPercent)
+			}
+			require.Positive(t, usageAfter.Load())
+			require.Positive(t, cardsAfter.Load())
+			require.EqualValues(t, 1, posts.Load())
+			require.NoError(t, RefreshDeviMonAccount(ctx, enabled))
+			refreshed := find(enabled)
+			require.Nil(t, refreshed.ResetOffer, "the same window cannot offer a second card")
+			if tc.staleUsage {
+				require.Nil(t, refreshed.UsedPercent, "another poll of the old window must not restore stale 0%")
+				require.Equal(t, deviMonResetUnverified, refreshed.ResetOutcome)
+			}
+		})
+	}
 }

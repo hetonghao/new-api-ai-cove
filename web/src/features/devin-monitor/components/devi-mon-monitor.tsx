@@ -31,7 +31,6 @@ import { formatTimestampToDate } from '@/lib/format'
 
 import { collectDeviMon, deviMonQueryKey, getDeviMonState } from '../api'
 import { sortDevinAccounts, type DevinSort } from '../sort'
-import type { DeviMonState } from '../types'
 import { AccountRefreshButton } from './devi-mon-refresh-button'
 import { DeviMonRow } from './devi-mon-row'
 import { DevinAccountStatus } from './devi-mon-status'
@@ -58,12 +57,10 @@ export function DeviMonMonitor(props: {
     mutationFn: collectDeviMon,
     onMutate: () =>
       queryClient.cancelQueries({ queryKey: deviMonQueryKey, exact: true }),
-    onSuccess: async (data: DeviMonState) => {
-      await queryClient.cancelQueries({
-        queryKey: deviMonQueryKey,
-        exact: true,
-      })
-      queryClient.setQueryData(deviMonQueryKey, data)
+    onSuccess: async () => {
+      const query = { queryKey: deviMonQueryKey, exact: true }
+      await queryClient.cancelQueries(query)
+      await queryClient.invalidateQueries(query)
       setNow(Date.now())
     },
   })

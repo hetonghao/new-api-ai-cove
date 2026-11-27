@@ -28,7 +28,12 @@ const deviMonRoutingSchema = z.object({
   weight: z.number().int().nonnegative().nullable(),
 })
 
-const deviMonAccountSchema = z.object({
+const deviMonResetOfferSchema = z.object({
+  id: z.uuid(),
+  expires_at: z.string(),
+})
+
+export const deviMonAccountSchema = z.object({
   email: z.string(),
   used_percent: z.number().nullable(),
   reset_at: z.number().int().nullable(),
@@ -41,6 +46,11 @@ const deviMonAccountSchema = z.object({
   devin_disabled: z.boolean().nullable(),
   devin_routing: deviMonRoutingSchema.nullish(),
   error: z.string(),
+  observed_at_us: z.number().int().default(0),
+  reset_key: z.string().optional(),
+  auto_reset: z.boolean().default(false),
+  reset_offer: deviMonResetOfferSchema.nullish(),
+  reset_outcome: z.enum(['applied', 'rejected', 'unverified']).optional(),
 })
 
 const deviMonDevinSchema = z.object({
@@ -73,6 +83,7 @@ export const deviMonSettingsSchema = z.object({
 
 export type DeviMonRouting = z.infer<typeof deviMonRoutingSchema>
 export type DeviMonSnapshot = z.infer<typeof deviMonSnapshotSchema>
+export type DeviMonResetOffer = z.infer<typeof deviMonResetOfferSchema>
 export type DeviMonAccount = z.infer<typeof deviMonAccountSchema>
 export type DeviMonState = z.infer<typeof deviMonStateSchema>
 export type DeviMonSettings = z.infer<typeof deviMonSettingsSchema>

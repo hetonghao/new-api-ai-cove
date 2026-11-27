@@ -40,9 +40,21 @@ func RefreshDeviMonAccount(ctx context.Context, email string) error {
 		if deviMonString(file["auth_index"]) == "" {
 			return errors.New("credential has no auth index")
 		}
-		account := collectDeviMonAccount(ctx, key, file, devins)
+		account, candidate := collectDeviMonAccount(ctx, key, file, devins)
+		if uniqueDeviMonCodexAccount(files, email) == nil {
+			account.ResetKey, candidate = "", nil
+		}
 		if account.Error != "" {
 			return errors.New(account.Error)
+		}
+		if candidate != nil {
+			policies, err := model.GetDeviMonResetPolicies(ctx)
+			if err != nil {
+				return err
+			}
+			if policy := policies[account.ResetKey]; policy.Enabled && policy.AttemptedWindowEnd < candidate.WindowEnd {
+				account.ResetOffer = &candidate.DeviMonResetOffer
+			}
 		}
 		started = account.ObservedAtUS
 		reading.Account = &account
@@ -58,11 +70,15 @@ func RefreshDeviMonAccount(ctx context.Context, email string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	return saveDeviMonReading(ctx, email, started, reading)
+}
+
+func saveDeviMonReading(ctx context.Context, email string, started int64, reading deviMonReading) error {
 	raw, err := common.Marshal(reading)
 	if err != nil {
 		return err
 	}
-	return model.SaveDeviMonAccountRefresh(ctx, &model.DeviMonAccountRefresh{Email: email, StartedAtUS: started, Data: string(raw)})
+	return model.SaveDeviMonAccountRefresh(ctx, &model.DeviMonAccountRefresh{Email: strings.ToLower(strings.TrimSpace(email)), StartedAtUS: started, Data: string(raw)})
 }
 
 // Only update members of the last complete inventory. A removed credential

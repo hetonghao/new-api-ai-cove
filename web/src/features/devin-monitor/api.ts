@@ -23,6 +23,7 @@ import { api } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import {
+  deviMonAccountSchema,
   deviMonSettingsSchema,
   deviMonStateSchema,
   type DeviMonSettings,
@@ -60,6 +61,31 @@ export async function refreshDeviMonAccount(email: string) {
     { skipErrorHandler: true, skipBusinessError: true }
   )
   deviMonData(response.data, z.null())
+}
+
+export async function setDeviMonAccountAutoReset(
+  email: string,
+  resetKey: string,
+  enabled: boolean
+): Promise<void> {
+  const response = await api.put<unknown>(
+    `${BASE_PATH}/accounts/auto-reset`,
+    { email, reset_key: resetKey, enabled },
+    { skipErrorHandler: true, skipBusinessError: true }
+  )
+  deviMonData(response.data, z.null())
+}
+
+export async function confirmDeviMonAccountReset(
+  email: string,
+  offerId: string
+) {
+  const response = await api.post<unknown>(
+    `${BASE_PATH}/accounts/reset`,
+    { email, offer_id: offerId },
+    { skipErrorHandler: true, skipBusinessError: true }
+  )
+  return deviMonData(response.data, deviMonAccountSchema)
 }
 
 export async function getDeviMonSettings(signal?: AbortSignal) {

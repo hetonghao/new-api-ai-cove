@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 const deviMonMaxRequestSize = 4 << 10
@@ -64,6 +66,56 @@ func RefreshDeviMonAccount(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, nil)
+}
+
+func SetDeviMonAccountAutoReset(c *gin.Context) {
+	var body struct {
+		Email    string `json:"email"`
+		ResetKey string `json:"reset_key"`
+		Enabled  *bool  `json:"enabled"`
+	}
+	if err := common.DecodeJsonBody(http.MaxBytesReader(c.Writer, c.Request.Body, deviMonMaxRequestSize), &body); err != nil ||
+		strings.TrimSpace(body.Email) == "" || len(body.Email) > 254 || body.Enabled == nil || len(body.ResetKey) != 64 {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid monitor configuration"))
+		return
+	}
+	if _, err := hex.DecodeString(body.ResetKey); err != nil {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid monitor configuration"))
+		return
+	}
+	if err := service.SetDeviMonAccountAutoReset(c.Request.Context(), body.Email, body.ResetKey, *body.Enabled); err != nil {
+		if errors.Is(err, service.ErrDeviMonAccountMissing) {
+			common.ApiErrorStatus(c, http.StatusNotFound, common.NewMessage("Account no longer in the monitor inventory"))
+			return
+		}
+		logger.LogError(c.Request.Context(), common.LogText("devin monitor: could not save auto reset: %v", err))
+		common.ApiErrorStatus(c, http.StatusBadGateway, common.NewMessage("Could not save monitor configuration"))
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func ConfirmDeviMonAccountReset(c *gin.Context) {
+	var body struct {
+		Email   string `json:"email"`
+		OfferID string `json:"offer_id"`
+	}
+	if err := common.DecodeJsonBody(http.MaxBytesReader(c.Writer, c.Request.Body, deviMonMaxRequestSize), &body); err != nil ||
+		strings.TrimSpace(body.Email) == "" || len(body.Email) > 254 || uuid.Validate(body.OfferID) != nil {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid reset card confirmation"))
+		return
+	}
+	account, err := service.ConfirmDeviMonAccountReset(c.Request.Context(), body.Email, body.OfferID)
+	if err != nil {
+		if errors.Is(err, service.ErrDeviMonResetOfferChanged) {
+			common.ApiErrorStatus(c, http.StatusConflict, common.NewMessage("The reset offer has changed. Refresh the account before trying again."))
+			return
+		}
+		logger.LogError(c.Request.Context(), common.LogText("devin monitor: reset card confirmation failed: %v", err))
+		common.ApiErrorStatus(c, http.StatusBadGateway, common.NewMessage("Could not confirm the reset. Refresh the account to check its usage."))
+		return
+	}
+	common.ApiSuccess(c, account)
 }
 
 func GetDeviMonSettingsHandler(c *gin.Context) {
