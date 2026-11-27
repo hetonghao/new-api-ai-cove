@@ -31,9 +31,43 @@ import { formatTimestampToDate } from '@/lib/format'
 
 import { collectDeviMon, deviMonQueryKey, getDeviMonState } from '../api'
 import { sortDevinAccounts, type DevinSort } from '../sort'
+import type { DeviMonRouting } from '../types'
+import {
+  AccountSettingsButton,
+  DeviMonAccountSettings,
+} from './devi-mon-account-settings'
 import { AccountRefreshButton } from './devi-mon-refresh-button'
 import { DeviMonRow } from './devi-mon-row'
 import { DevinAccountStatus } from './devi-mon-status'
+
+// An account without a Codex twin is exactly the one that may need the other
+// channel, so it carries the same per-account settings button as a normal row.
+function UnpairedDevinRow(props: {
+  readonly email: string
+  readonly disabled: boolean
+  readonly routing?: DeviMonRouting | null
+  readonly configured: boolean
+}) {
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  return (
+    <li className='flex w-fit max-w-full items-center gap-x-2'>
+      <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
+        <span className='min-w-0 [overflow-wrap:anywhere]'>{props.email}</span>
+        <DevinAccountStatus disabled={props.disabled} routing={props.routing} />
+      </div>
+      <AccountSettingsButton
+        email={props.email}
+        onOpen={() => setSettingsOpen(true)}
+      />
+      <AccountRefreshButton email={props.email} configured={props.configured} />
+      <DeviMonAccountSettings
+        email={props.email}
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+      />
+    </li>
+  )
+}
 
 export function DeviMonMonitor(props: {
   readonly sort: DevinSort
@@ -247,24 +281,13 @@ export function DeviMonMonitor(props: {
           <p>{t('Devin accounts without a Codex twin')}</p>
           <ul className='mt-1 space-y-0.5'>
             {unpaired.map((devin) => (
-              <li
+              <UnpairedDevinRow
                 key={devin.email}
-                className='flex w-fit max-w-full items-center gap-x-2'
-              >
-                <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
-                  <span className='min-w-0 [overflow-wrap:anywhere]'>
-                    {devin.email}
-                  </span>
-                  <DevinAccountStatus
-                    disabled={devin.disabled}
-                    routing={devin.devin_routing}
-                  />
-                </div>
-                <AccountRefreshButton
-                  email={devin.email}
-                  configured={data.configured}
-                />
-              </li>
+                email={devin.email}
+                disabled={devin.disabled}
+                routing={devin.devin_routing}
+                configured={data.configured}
+              />
             ))}
           </ul>
         </div>
