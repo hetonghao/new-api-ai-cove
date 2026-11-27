@@ -8800,6 +8800,12 @@
     "Could not read the session JSON": "无法读取会话 JSON",
     "Network proxy for accounts read through the ChatGPT session (HTTP, HTTPS, SOCKS5 and SOCKS5H).": "通过 ChatGPT 会话读取的账号所使用的网络代理（支持 HTTP、HTTPS、SOCKS5 与 SOCKS5H）。",
     "Could not start the ChatGPT sign-in": "无法发起 ChatGPT 登录",
-    "The pasted JSON has no session token. Open the session page and copy the whole page.": "粘贴的内容里没有会话令牌。请打开会话页面并复制整页内容。"
+    "The pasted JSON has no session token. Open the session page and copy the whole page.": "粘贴的内容里没有会话令牌。请打开会话页面并复制整页内容。",
+    "Devin account disabled": "已禁用 Devin 账号",
+    "Devin account enabled": "已启用 Devin 账号",
+    "Could not change the Devin status": "无法修改 Devin 启停状态",
+    "Disable {{email}}": "禁用 {{email}}",
+    "Enable {{email}}": "启用 {{email}}",
+    "Account no longer in the Devin inventory": "账号已不在 Devin 凭据列表中"
   }
 }

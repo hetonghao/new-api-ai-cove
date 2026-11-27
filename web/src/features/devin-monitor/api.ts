@@ -137,6 +137,19 @@ export async function forgetDeviMonChatGPTAccount(email: string) {
   deviMonData(response.data, z.null())
 }
 
+// A Devin-side switch: it disables the credential in CPA, not the monitor row.
+export async function setDeviMonDevinDisabled(
+  email: string,
+  disabled: boolean
+) {
+  const response = await api.put<unknown>(
+    `${BASE_PATH}/accounts/devin-status`,
+    { email, disabled },
+    { skipErrorHandler: true, skipBusinessError: true }
+  )
+  deviMonData(response.data, z.null())
+}
+
 export async function getDeviMonSettings(signal?: AbortSignal) {
   const response = await api.get<unknown>(`${BASE_PATH}/config`, {
     signal,

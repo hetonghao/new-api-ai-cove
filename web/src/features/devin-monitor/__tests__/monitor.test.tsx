@@ -423,6 +423,64 @@ describe('devin monitor', () => {
     expect(screen.getByText('No Devin account')).toBeInTheDocument()
   })
 
+  // The enable/disable switch is a Devin-side toggle: it must be offered on the
+  // row itself and name the account it flips.
+  it('offers a per-account Devin status toggle that flips the disabled state', async () => {
+    const calls: { method?: string; url?: string; body?: unknown }[] = []
+    api.defaults.adapter = (async (config) => {
+      if (config.method === 'get') {
+        return {
+          config,
+          data: {
+            success: true,
+            data: {
+              snapshot: {
+                ...SNAPSHOT,
+                accounts: [
+                  { ...SNAPSHOT.accounts[0], devin_disabled: false },
+                  SNAPSHOT.accounts[1],
+                ],
+              },
+              collecting: false,
+              next_run_at: 1_795_010_000,
+              configured: true,
+            },
+          },
+          headers: {},
+          status: 200,
+          statusText: 'OK',
+        }
+      }
+      calls.push({
+        method: config.method,
+        url: config.url,
+        body: config.data ? JSON.parse(config.data) : undefined,
+      })
+      return {
+        config,
+        data: { success: true, data: null },
+        headers: {},
+        status: 200,
+        statusText: 'OK',
+      }
+    }) as AxiosAdapter
+
+    renderMonitor()
+    const user = userEvent.setup()
+    await user.click(
+      await screen.findByRole('button', { name: 'Disable busy@example.com' })
+    )
+    await waitFor(() =>
+      expect(calls).toEqual([
+        {
+          method: 'put',
+          url: '/api/devin-monitor/accounts/devin-status',
+          body: { email: 'busy@example.com', disabled: true },
+        },
+      ])
+    )
+  })
+
   it('shows only Devin routing, distinguishes zero from defaults and reads older snapshots', async () => {
     serveState({
       ...SNAPSHOT,

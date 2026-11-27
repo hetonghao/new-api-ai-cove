@@ -146,6 +146,30 @@ func SetDeviMonSettingsHandler(c *gin.Context) {
 	common.ApiSuccess(c, settings)
 }
 
+// SetDeviMonDevinStatus mirrors cpa-pro-1's enable/disable toggle. It changes
+// the Devin credential itself, independently of the reading channel.
+func SetDeviMonDevinStatus(c *gin.Context) {
+	var body struct {
+		Email    string `json:"email"`
+		Disabled *bool  `json:"disabled"`
+	}
+	if err := common.DecodeJsonBody(http.MaxBytesReader(c.Writer, c.Request.Body, deviMonMaxRequestSize), &body); err != nil ||
+		strings.TrimSpace(body.Email) == "" || len(body.Email) > 254 || body.Disabled == nil {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid account"))
+		return
+	}
+	if err := service.SetDeviMonDevinDisabled(c.Request.Context(), body.Email, *body.Disabled); err != nil {
+		if errors.Is(err, service.ErrDeviMonDevinAccountMissing) {
+			common.ApiErrorStatus(c, http.StatusNotFound, common.NewMessage("Account no longer in the Devin inventory"))
+			return
+		}
+		logger.LogError(c.Request.Context(), common.LogText("devin monitor: could not change the Devin status: %v", err))
+		common.ApiErrorStatus(c, http.StatusBadGateway, common.NewMessage("Could not change the Devin status"))
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
 // --- ChatGPT session channel ---------------------------------------------
 
 // The pasted /api/auth/session payload is a credential, so it is capped and

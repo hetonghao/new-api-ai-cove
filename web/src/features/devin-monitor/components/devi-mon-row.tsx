@@ -30,6 +30,7 @@ import {
   AccountSettingsButton,
   DeviMonAccountSettings,
 } from './devi-mon-account-settings'
+import { DevinAccountToggle } from './devi-mon-devin-toggle'
 import { AccountRefreshButton } from './devi-mon-refresh-button'
 import { DeviMonResetControls } from './devi-mon-reset-controls'
 import { DevinAccountStatus } from './devi-mon-status'
@@ -109,27 +110,15 @@ export function DeviMonRow({
       ? dayjs.unix(account.reset_at)
       : null
   return (
-    <li className='grid min-w-0 gap-x-10 gap-y-3 px-3 py-3 sm:px-4 @3xl/accounts:grid-cols-2 @3xl/accounts:items-center'>
+    <li className='grid min-w-0 gap-x-8 gap-y-3 px-3 py-3 sm:px-4 @3xl/accounts:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] @3xl/accounts:items-center'>
       <div className='min-w-0 space-y-2'>
-        <div className='flex items-start gap-2'>
-          <div className='flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 self-center'>
-            <h3 className='min-w-0 text-sm font-semibold [overflow-wrap:anywhere]'>
-              {account.email}
-            </h3>
-            <DevinAccountStatus
-              disabled={account.devin_disabled}
-              routing={account.devin_routing}
-            />
-          </div>
-          <AccountSettingsButton
-            email={account.email}
-            onOpen={() => setSettingsOpen(true)}
-          />
-          <AccountRefreshButton
-            email={account.email}
-            configured={configured}
-            buttonRef={refreshButton}
-            onResetOffer={setResetOffer}
+        <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
+          <h3 className='min-w-0 text-sm font-semibold [overflow-wrap:anywhere]'>
+            {account.email}
+          </h3>
+          <DevinAccountStatus
+            disabled={account.devin_disabled}
+            routing={account.devin_routing}
           />
         </div>
         <DeviMonAccountSettings
@@ -200,6 +189,23 @@ export function DeviMonRow({
           offer={resetOffer}
           onOfferChange={setResetOffer}
           returnFocus={refreshButton}
+        />
+      </div>
+      <div className='flex gap-x-1 @3xl/accounts:flex-col @3xl/accounts:gap-y-1'>
+        <DevinAccountToggle
+          email={account.email}
+          disabled={account.devin_disabled}
+          configured={configured}
+        />
+        <AccountSettingsButton
+          email={account.email}
+          onOpen={() => setSettingsOpen(true)}
+        />
+        <AccountRefreshButton
+          email={account.email}
+          configured={configured}
+          buttonRef={refreshButton}
+          onResetOffer={setResetOffer}
         />
       </div>
     </li>

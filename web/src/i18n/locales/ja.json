@@ -8800,6 +8800,12 @@
     "Could not read the session JSON": "Could not read the session JSON",
     "Network proxy for accounts read through the ChatGPT session (HTTP, HTTPS, SOCKS5 and SOCKS5H).": "Network proxy for accounts read through the ChatGPT session (HTTP, HTTPS, SOCKS5 and SOCKS5H).",
     "Could not start the ChatGPT sign-in": "Could not start the ChatGPT sign-in",
-    "The pasted JSON has no session token. Open the session page and copy the whole page.": "The pasted JSON has no session token. Open the session page and copy the whole page."
+    "The pasted JSON has no session token. Open the session page and copy the whole page.": "The pasted JSON has no session token. Open the session page and copy the whole page.",
+    "Devin account disabled": "Devin account disabled",
+    "Devin account enabled": "Devin account enabled",
+    "Could not change the Devin status": "Could not change the Devin status",
+    "Disable {{email}}": "Disable {{email}}",
+    "Enable {{email}}": "Enable {{email}}",
+    "Account no longer in the Devin inventory": "Account no longer in the Devin inventory"
   }
 }

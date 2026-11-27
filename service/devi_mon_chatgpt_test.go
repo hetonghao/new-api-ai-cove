@@ -154,6 +154,39 @@ func TestDeviMonLongSessionIsChunkedIntoTwoCookies(t *testing.T) {
 	assert.Equal(t, long, joined)
 }
 
+// The enable/disable switch is a Devin-side operation: it flips cpa-pro-1's
+// credential, and the reading channel has nothing to do with it.
+func TestDeviMonDevinStatusResolvesCredentialByEmail(t *testing.T) {
+	truncate(t)
+	resetDeviMonChatGPTAccounts(t)
+
+	var patched map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch {
+		case request.URL.Path == "/v0/management/auth-files":
+			raw, _ := common.Marshal(map[string]any{"files": []any{
+				map[string]any{"name": "devin-user-abc.json", "email": "owned@example.test", "provider": "devin", "disabled": false},
+				map[string]any{"name": "devin-other.json", "email": "other@example.test", "provider": "devin", "disabled": false},
+			}})
+			_, _ = writer.Write(raw)
+		case request.URL.Path == "/v0/management/auth-files/status" && request.Method == http.MethodPatch:
+			require.NoError(t, common.DecodeJson(request.Body, &patched))
+			_, _ = writer.Write([]byte(`{"status":"ok","disabled":true}`))
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+	t.Cleanup(deviMonReplaceBase(t, upstream.URL))
+
+	require.NoError(t, SetDeviMonDevinDisabled(context.Background(), "OWNED@example.test", true))
+	assert.Equal(t, map[string]any{"name": "devin-user-abc.json", "disabled": true}, patched)
+
+	// An unknown mailbox must not touch anything.
+	require.ErrorIs(t, SetDeviMonDevinDisabled(context.Background(), "nobody@example.test", true), ErrDeviMonDevinAccountMissing)
+}
+
 // /api/auth/session reports the SESSION expiry, which outlives the access token
 // by weeks. Caching on it served a dead token long after ChatGPT answered 401.
 func TestDeviMonExpiredAccessTokenIsRenewedDespiteFarSessionExpiry(t *testing.T) {

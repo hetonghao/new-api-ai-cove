@@ -36,6 +36,7 @@ import {
   AccountSettingsButton,
   DeviMonAccountSettings,
 } from './devi-mon-account-settings'
+import { DevinAccountToggle } from './devi-mon-devin-toggle'
 import { AccountRefreshButton } from './devi-mon-refresh-button'
 import { DeviMonRow } from './devi-mon-row'
 import { DevinAccountStatus } from './devi-mon-status'
@@ -55,6 +56,11 @@ function UnpairedDevinRow(props: {
         <span className='min-w-0 [overflow-wrap:anywhere]'>{props.email}</span>
         <DevinAccountStatus disabled={props.disabled} routing={props.routing} />
       </div>
+      <DevinAccountToggle
+        email={props.email}
+        disabled={props.disabled}
+        configured={props.configured}
+      />
       <AccountSettingsButton
         email={props.email}
         onOpen={() => setSettingsOpen(true)}
