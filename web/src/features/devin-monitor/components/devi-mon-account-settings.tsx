@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Settings } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -77,6 +77,7 @@ export function DeviMonAccountSettings(props: {
   const client = useQueryClient()
   const [sessionJson, setSessionJson] = useState('')
   const [confirmForget, setConfirmForget] = useState(false)
+  const sessionField = useRef<HTMLTextAreaElement>(null)
   const accounts = useQuery({
     queryKey: deviMonAccountsKey,
     queryFn: ({ signal }) => getDeviMonChannelAccounts(signal),
@@ -86,7 +87,12 @@ export function DeviMonAccountSettings(props: {
   const stored = accounts.data?.find(
     (row) => row.email.toLowerCase() === props.email.toLowerCase()
   )
-  const channel: Channel = stored?.channel === 'chatgpt' ? 'chatgpt' : 'cpa'
+  const savedChannel: Channel =
+    stored?.channel === 'chatgpt' ? 'chatgpt' : 'cpa'
+  // The operator can preview the ChatGPT branch before a session exists; that
+  // preview is what reveals the paste box, so it is local until saved.
+  const [preview, setPreview] = useState<Channel | null>(null)
+  const channel: Channel = preview ?? savedChannel
 
   const refresh = () => {
     void client.invalidateQueries({ queryKey: deviMonAccountsKey })
@@ -106,6 +112,7 @@ export function DeviMonAccountSettings(props: {
     },
     onSuccess: (saved) => {
       setSessionJson('')
+      setPreview(null)
       refresh()
       toast.success(t('ChatGPT session saved'), { description: saved.email })
     },
@@ -173,7 +180,14 @@ export function DeviMonAccountSettings(props: {
           onValueChange={(value) => {
             const next = value as Channel
             if (next === channel) return
-            if (next === 'chatgpt' && !stored?.signed_in) return
+            // Without a stored session there is nothing to switch to yet: reveal
+            // the paste box and let the operator decide, rather than ignoring
+            // the click or silently switching to a channel with no credential.
+            if (next === 'chatgpt' && !stored?.signed_in) {
+              setPreview('chatgpt')
+              return
+            }
+            setPreview(null)
             switchChannel.mutate(next)
           }}
           aria-label={t('Subscription channel')}
@@ -196,7 +210,6 @@ export function DeviMonAccountSettings(props: {
               value='chatgpt'
               aria-label={t('ChatGPT session')}
               className='mt-0.5'
-              disabled={!stored?.signed_in}
             />
             <span>
               <span className='font-medium'>{t('ChatGPT session')}</span>
@@ -209,59 +222,68 @@ export function DeviMonAccountSettings(props: {
           </label>
         </RadioGroup>
 
-        <Field className='rounded-md border p-3'>
-          <FieldLabel htmlFor='devi-mon-session'>
-            {t('ChatGPT session JSON')}
-          </FieldLabel>
-          <FieldDescription>
-            {t(
-              'Open the link below in the browser that is signed in to this account, copy the whole page, and paste it here.'
-            )}
-          </FieldDescription>
-          <Button
-            role='link'
-            variant='outline'
-            size='sm'
-            render={
-              <a href={SESSION_URL} target='_blank' rel='noreferrer noopener' />
-            }
-          >
-            {t('Open the session page')}
-          </Button>
-          <textarea
-            id='devi-mon-session'
-            className='border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 min-h-24 w-full rounded-md border p-2 font-mono text-xs outline-none focus-visible:ring-3'
-            placeholder='{"accessToken":"…","sessionToken":"…"}'
-            value={sessionJson}
-            onChange={(event) => setSessionJson(event.target.value)}
-            spellCheck={false}
-            autoComplete='off'
-          />
-          <div className='flex flex-wrap gap-2'>
+        {/* The paste box belongs to the ChatGPT branch only. Showing it while
+            CPA is selected made the dialog look like both channels were active. */}
+        {channel === 'chatgpt' && (
+          <Field className='rounded-md border p-3'>
+            <FieldLabel htmlFor='devi-mon-session'>
+              {t('ChatGPT session JSON')}
+            </FieldLabel>
+            <FieldDescription>
+              {t(
+                'Open the link below in the browser that is signed in to this account, copy the whole page, and paste it here.'
+              )}
+            </FieldDescription>
             <Button
-              type='button'
+              role='link'
+              variant='outline'
               size='sm'
-              disabled={saveSession.isPending || sessionJson.trim() === ''}
-              onClick={() => saveSession.mutate(sessionJson.trim())}
+              render={
+                <a
+                  href={SESSION_URL}
+                  target='_blank'
+                  rel='noreferrer noopener'
+                />
+              }
             >
-              {saveSession.isPending
-                ? t('Verifying...')
-                : t('Save ChatGPT session')}
+              {t('Open the session page')}
             </Button>
-            {sessionJson !== '' && (
+            <textarea
+              ref={sessionField}
+              id='devi-mon-session'
+              className='border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 min-h-24 w-full rounded-md border p-2 font-mono text-xs outline-none focus-visible:ring-3'
+              placeholder='{"accessToken":"…","sessionToken":"…"}'
+              value={sessionJson}
+              onChange={(event) => setSessionJson(event.target.value)}
+              spellCheck={false}
+              autoComplete='off'
+            />
+            <div className='flex flex-wrap gap-2'>
               <Button
                 type='button'
-                variant='ghost'
                 size='sm'
-                onClick={() => setSessionJson('')}
+                disabled={saveSession.isPending || sessionJson.trim() === ''}
+                onClick={() => saveSession.mutate(sessionJson.trim())}
               >
-                {t('Clear')}
+                {saveSession.isPending
+                  ? t('Verifying...')
+                  : t('Save ChatGPT session')}
               </Button>
-            )}
-          </div>
-        </Field>
+              {sessionJson !== '' && (
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='sm'
+                  onClick={() => setSessionJson('')}
+                >
+                  {t('Clear')}
+                </Button>
+              )}
+            </div>
+          </Field>
+        )}
 
-        {stored?.signed_in ? (
+        {stored?.signed_in && channel === 'chatgpt' ? (
           <div className='space-y-2 text-xs'>
             <p className='text-muted-foreground'>
               {t('A ChatGPT session is stored for this account.')}

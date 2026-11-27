@@ -134,20 +134,28 @@ describe('devin account subscription channel', () => {
     )
   })
 
-  it('offers the session page link and keeps the switch disabled until a session is saved', async () => {
+  it('offers the session page link and, without a session, sends the click to the paste box', async () => {
     const calls: Call[] = []
     serveChannels(false, calls)
     renderDialog()
+    const user = userEvent.setup()
+
+    // With CPA selected nothing of the ChatGPT branch is rendered; choosing it
+    // reveals the link and the paste box without switching (no session yet).
+    expect(screen.queryByLabelText('ChatGPT session JSON')).toBeNull()
+    expect(
+      screen.queryByRole('link', { name: 'Open the session page' })
+    ).toBeNull()
+
+    const radios = await screen.findAllByRole('radio')
+    await user.click(radios[1])
 
     const link = await screen.findByRole('link', {
       name: 'Open the session page',
     })
     expect(link).toHaveAttribute('href', 'https://chatgpt.com/api/auth/session')
     expect(link).toHaveAttribute('target', '_blank')
-
-    // Base UI renders the radio as a div, so disabled state is aria-disabled.
-    const radios = await screen.findAllByRole('radio')
-    expect(radios[1]).toHaveAttribute('aria-disabled', 'true')
+    expect(await screen.findByLabelText('ChatGPT session JSON')).toBeVisible()
     expect(calls).toEqual([])
   })
 
@@ -157,6 +165,9 @@ describe('devin account subscription channel', () => {
     renderDialog()
     const user = userEvent.setup()
 
+    // The paste box lives on the ChatGPT branch.
+    const radios = await screen.findAllByRole('radio')
+    await user.click(radios[1])
     const field = await screen.findByLabelText('ChatGPT session JSON')
     await user.click(field)
     // paste, not type: userEvent reads "{...}" in type() as key descriptors.
@@ -182,6 +193,8 @@ describe('devin account subscription channel', () => {
     renderDialog()
     const user = userEvent.setup()
 
+    const radios = await screen.findAllByRole('radio')
+    await user.click(radios[1])
     const field = await screen.findByLabelText('ChatGPT session JSON')
     await user.click(field)
     await user.paste('not json')
