@@ -8806,6 +8806,8 @@
     "Could not change the Devin status": "无法修改 Devin 启停状态",
     "Disable {{email}}": "禁用 {{email}}",
     "Enable {{email}}": "启用 {{email}}",
-    "Account no longer in the Devin inventory": "账号已不在 Devin 凭据列表中"
+    "Account no longer in the Devin inventory": "账号已不在 Devin 凭据列表中",
+    "Save channel": "保存通道",
+    "Paste a session below, then save the channel.": "先在下方粘贴会话，再保存通道。"
   }
 }

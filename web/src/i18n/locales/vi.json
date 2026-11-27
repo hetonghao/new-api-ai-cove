@@ -8806,6 +8806,8 @@
     "Could not change the Devin status": "Could not change the Devin status",
     "Disable {{email}}": "Disable {{email}}",
     "Enable {{email}}": "Enable {{email}}",
-    "Account no longer in the Devin inventory": "Account no longer in the Devin inventory"
+    "Account no longer in the Devin inventory": "Account no longer in the Devin inventory",
+    "Save channel": "Save channel",
+    "Paste a session below, then save the channel.": "Paste a session below, then save the channel."
   }
 }

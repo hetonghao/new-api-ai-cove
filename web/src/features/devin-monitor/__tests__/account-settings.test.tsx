@@ -118,6 +118,10 @@ describe('devin account subscription channel', () => {
     expect(radios[0]).toHaveAttribute('aria-checked', 'true')
     await user.click(radios[1])
 
+    // Selecting a channel only stages it; nothing is written until save.
+    expect(calls).toEqual([])
+    await user.click(screen.getByRole('button', { name: 'Save channel' }))
+
     await waitFor(() =>
       expect(calls).toEqual([
         {
@@ -132,6 +136,38 @@ describe('devin account subscription channel', () => {
         },
       ])
     )
+  })
+
+  // Regression: clicking a channel used to switch it immediately, so closing
+  // the dialog without saving still changed the account.
+  it('does not switch the channel when the dialog closes without saving', async () => {
+    const calls: Call[] = []
+    serveChannels(true, calls, 'chatgpt')
+    const { rerender } = renderDialog()
+    const user = userEvent.setup()
+
+    // Wait for the stored channel to arrive before asserting the selection.
+    await waitFor(() =>
+      expect(screen.getAllByRole('radio')[1]).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+    )
+    await user.click(screen.getAllByRole('radio')[0])
+    expect(calls).toEqual([])
+
+    // Close the dialog the way the operator would.
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    rerender(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <Harness />
+      </QueryClientProvider>
+    )
+    expect(calls).toEqual([])
   })
 
   it('offers the session page link and, without a session, sends the click to the paste box', async () => {

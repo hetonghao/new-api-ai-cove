@@ -89,10 +89,11 @@ export function DeviMonAccountSettings(props: {
   )
   const savedChannel: Channel =
     stored?.channel === 'chatgpt' ? 'chatgpt' : 'cpa'
-  // The operator can preview the ChatGPT branch before a session exists; that
-  // preview is what reveals the paste box, so it is local until saved.
-  const [preview, setPreview] = useState<Channel | null>(null)
-  const channel: Channel = preview ?? savedChannel
+  // Choosing a channel is only a selection. Nothing is written until the
+  // operator presses save, so closing the dialog leaves the account untouched.
+  const [draft, setDraft] = useState<Channel | null>(null)
+  const channel: Channel = draft ?? savedChannel
+  const channelChanged = channel !== savedChannel
 
   const refresh = () => {
     void client.invalidateQueries({ queryKey: deviMonAccountsKey })
@@ -112,7 +113,6 @@ export function DeviMonAccountSettings(props: {
     },
     onSuccess: async (saved) => {
       setSessionJson('')
-      setPreview(null)
       // Read the account now so it moves into the main list instead of waiting
       // up to a full collection interval. A failed read must not undo the save.
       await refreshDeviMonAccount(saved.email).catch(() => undefined)
@@ -134,6 +134,7 @@ export function DeviMonAccountSettings(props: {
       await refreshDeviMonAccount(props.email).catch(() => undefined)
     },
     onSuccess: (_data, next) => {
+      setDraft(null)
       refresh()
       toast.success(
         next === 'chatgpt'
@@ -172,7 +173,11 @@ export function DeviMonAccountSettings(props: {
     <>
       <Dialog
         open={props.open}
-        onOpenChange={props.onOpenChange}
+        onOpenChange={(open) => {
+          // An unsaved selection never survives closing the dialog.
+          if (!open) setDraft(null)
+          props.onOpenChange(open)
+        }}
         title={t('Subscription channel')}
         description={props.email}
         contentClassName='sm:max-w-lg'
@@ -182,16 +187,8 @@ export function DeviMonAccountSettings(props: {
           value={channel}
           onValueChange={(value) => {
             const next = value as Channel
-            if (next === channel) return
-            // Without a stored session there is nothing to switch to yet: reveal
-            // the paste box and let the operator decide, rather than ignoring
-            // the click or silently switching to a channel with no credential.
-            if (next === 'chatgpt' && !stored?.signed_in) {
-              setPreview('chatgpt')
-              return
-            }
-            setPreview(null)
-            switchChannel.mutate(next)
+            // Selection only: the save button below commits it.
+            setDraft(next === savedChannel ? null : next)
           }}
           aria-label={t('Subscription channel')}
         >
@@ -309,6 +306,35 @@ export function DeviMonAccountSettings(props: {
             {t('Could not load the account channels')}
           </p>
         )}
+
+        <div className='flex flex-wrap items-center gap-2'>
+          <Button
+            type='button'
+            size='sm'
+            disabled={
+              !channelChanged || switchChannel.isPending || !stored?.signed_in
+            }
+            onClick={() => switchChannel.mutate(channel)}
+          >
+            {switchChannel.isPending ? t('Saving...') : t('Save channel')}
+          </Button>
+          {channelChanged && (
+            <Button
+              type='button'
+              variant='ghost'
+              size='sm'
+              disabled={switchChannel.isPending}
+              onClick={() => setDraft(null)}
+            >
+              {t('Discard changes')}
+            </Button>
+          )}
+          {channel === 'chatgpt' && !stored?.signed_in && (
+            <span className='text-muted-foreground text-xs'>
+              {t('Paste a session below, then save the channel.')}
+            </span>
+          )}
+        </div>
       </Dialog>
 
       <ConfirmDialog
