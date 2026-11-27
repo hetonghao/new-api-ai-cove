@@ -145,3 +145,90 @@ func SetDeviMonSettingsHandler(c *gin.Context) {
 	}
 	common.ApiSuccess(c, settings)
 }
+
+// --- ChatGPT sign-in channel ---------------------------------------------
+
+// StartDeviMonChatGPTLogin hands the operator a one-time code; the account is
+// stored only after the code is approved in a browser.
+func StartDeviMonChatGPTLogin(c *gin.Context) {
+	info, err := service.StartDeviMonChatGPTLogin(c.Request.Context(), service.DeviMonProxyURL())
+	if err != nil {
+		logger.LogError(c.Request.Context(), common.LogText("devin monitor: device code request failed: %v", err))
+		common.ApiErrorStatus(c, http.StatusBadGateway, common.NewMessage("Could not start the ChatGPT sign-in"))
+		return
+	}
+	common.ApiSuccess(c, info)
+}
+
+// PollDeviMonChatGPTLogin is polled by the dialog until the code is approved.
+func PollDeviMonChatGPTLogin(c *gin.Context) {
+	var body struct {
+		DeviceAuthID string `json:"device_auth_id"`
+		UserCode     string `json:"user_code"`
+	}
+	if err := common.DecodeJsonBody(http.MaxBytesReader(c.Writer, c.Request.Body, deviMonMaxRequestSize), &body); err != nil ||
+		strings.TrimSpace(body.DeviceAuthID) == "" || len(body.DeviceAuthID) > 128 ||
+		strings.TrimSpace(body.UserCode) == "" || len(body.UserCode) > 32 {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid sign-in confirmation"))
+		return
+	}
+	done, email, err := service.PollDeviMonChatGPTLogin(c.Request.Context(), service.DeviMonProxyURL(), body.DeviceAuthID, body.UserCode)
+	if err != nil {
+		logger.LogError(c.Request.Context(), common.LogText("devin monitor: device sign-in failed: %v", err))
+		common.ApiErrorStatus(c, http.StatusBadGateway, common.NewMessage("The ChatGPT sign-in did not complete"))
+		return
+	}
+	common.ApiSuccess(c, gin.H{"done": done, "email": email})
+}
+
+func GetDeviMonAccounts(c *gin.Context) {
+	accounts, err := service.GetDeviMonChatGPTAccounts(c.Request.Context())
+	if err != nil {
+		logger.LogError(c.Request.Context(), common.LogText("devin monitor: could not list sign-ins: %v", err))
+		common.ApiErrorStatus(c, http.StatusInternalServerError, common.NewMessage("Could not load the account channels"))
+		return
+	}
+	common.ApiSuccess(c, accounts)
+}
+
+// SetDeviMonAccountChannel switches one account between the CPA inventory and
+// the gateway-stored ChatGPT sign-in.
+func SetDeviMonAccountChannel(c *gin.Context) {
+	var body struct {
+		Email   string `json:"email"`
+		Channel string `json:"channel"`
+	}
+	if err := common.DecodeJsonBody(http.MaxBytesReader(c.Writer, c.Request.Body, deviMonMaxRequestSize), &body); err != nil ||
+		strings.TrimSpace(body.Email) == "" || len(body.Email) > 254 {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid account"))
+		return
+	}
+	if err := service.SetDeviMonAccountChannel(c.Request.Context(), body.Email, body.Channel); err != nil {
+		if errors.Is(err, service.ErrDeviMonChatGPTAccountMissing) {
+			common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Sign in to ChatGPT before selecting that channel"))
+			return
+		}
+		logger.LogError(c.Request.Context(), common.LogText("devin monitor: could not switch account channel: %v", err))
+		common.ApiErrorStatus(c, http.StatusBadGateway, common.NewMessage("Could not change the subscription channel"))
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+// ForgetDeviMonChatGPTAccount removes the stored sign-in.
+func ForgetDeviMonChatGPTAccount(c *gin.Context) {
+	var body struct {
+		Email string `json:"email"`
+	}
+	if err := common.DecodeJsonBody(http.MaxBytesReader(c.Writer, c.Request.Body, deviMonMaxRequestSize), &body); err != nil ||
+		strings.TrimSpace(body.Email) == "" || len(body.Email) > 254 {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid account"))
+		return
+	}
+	if err := service.ForgetDeviMonChatGPTAccount(c.Request.Context(), body.Email); err != nil {
+		logger.LogError(c.Request.Context(), common.LogText("devin monitor: could not forget sign-in: %v", err))
+		common.ApiErrorStatus(c, http.StatusBadGateway, common.NewMessage("Could not remove the ChatGPT sign-in"))
+		return
+	}
+	common.ApiSuccess(c, nil)
+}

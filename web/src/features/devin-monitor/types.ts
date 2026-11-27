@@ -45,6 +45,7 @@ export const deviMonAccountSchema = z.object({
   renew_source: z.string(),
   devin_disabled: z.boolean().nullable(),
   devin_routing: deviMonRoutingSchema.nullish(),
+  channel: z.enum(['cpa', 'chatgpt']).default('cpa'),
   error: z.string(),
   observed_at_us: z.number().int().default(0),
   reset_key: z.string().optional(),
@@ -79,7 +80,28 @@ export const deviMonStateSchema = z.object({
 
 export const deviMonSettingsSchema = z.object({
   interval_minutes: z.number().int().min(15).max(10080),
+  chatgpt_proxy_url: z.string().default(''),
 })
+
+// One credential the monitor can read through either channel.
+export const deviMonChannelAccountSchema = z.object({
+  email: z.string(),
+  account_id: z.string(),
+  channel: z.enum(['cpa', 'chatgpt']),
+  signed_in: z.boolean(),
+  expires_at: z.number().int(),
+})
+
+export const deviMonDeviceCodeSchema = z.object({
+  device_auth_id: z.string(),
+  user_code: z.string(),
+  verification_url: z.string(),
+  interval: z.number().int().positive(),
+  expires_at: z.string(),
+})
+
+export type DeviMonDeviceCode = z.infer<typeof deviMonDeviceCodeSchema>
+export type DeviMonChannelAccount = z.infer<typeof deviMonChannelAccountSchema>
 
 export type DeviMonRouting = z.infer<typeof deviMonRoutingSchema>
 export type DeviMonSnapshot = z.infer<typeof deviMonSnapshotSchema>

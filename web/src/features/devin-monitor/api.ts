@@ -24,6 +24,8 @@ import { requireServerSuccess } from '@/lib/server-error-message'
 
 import {
   deviMonAccountSchema,
+  deviMonChannelAccountSchema,
+  deviMonDeviceCodeSchema,
   deviMonSettingsSchema,
   deviMonStateSchema,
   type DeviMonSettings,
@@ -40,6 +42,7 @@ function deviMonData<T>(payload: unknown, schema: z.ZodType<T>): T {
 
 export const deviMonQueryKey = ['devin-monitor'] as const
 export const deviMonSettingsKey = ['devin-monitor', 'config'] as const
+export const deviMonAccountsKey = ['devin-monitor', 'accounts'] as const
 
 export async function getDeviMonState(signal?: AbortSignal) {
   const response = await api.get<unknown>(BASE_PATH, {
@@ -86,6 +89,57 @@ export async function confirmDeviMonAccountReset(
     { skipErrorHandler: true, skipBusinessError: true }
   )
   return deviMonData(response.data, deviMonAccountSchema)
+}
+
+export async function getDeviMonChannelAccounts(signal?: AbortSignal) {
+  const response = await api.get<unknown>(`${BASE_PATH}/accounts`, {
+    signal,
+    disableDuplicate: true,
+  })
+  return deviMonData(response.data, z.array(deviMonChannelAccountSchema))
+}
+
+export async function setDeviMonAccountChannel(
+  email: string,
+  channel: 'cpa' | 'chatgpt'
+) {
+  const response = await api.put<unknown>(
+    `${BASE_PATH}/accounts/channel`,
+    { email, channel },
+    { skipErrorHandler: true, skipBusinessError: true }
+  )
+  deviMonData(response.data, z.null())
+}
+
+export async function startDeviMonChatGPTLogin() {
+  const response = await api.post<unknown>(
+    `${BASE_PATH}/accounts/chatgpt/login`
+  )
+  return deviMonData(response.data, deviMonDeviceCodeSchema)
+}
+
+export async function pollDeviMonChatGPTLogin(
+  deviceAuthId: string,
+  userCode: string
+) {
+  const response = await api.post<unknown>(
+    `${BASE_PATH}/accounts/chatgpt/login/poll`,
+    { device_auth_id: deviceAuthId, user_code: userCode },
+    { skipErrorHandler: true, skipBusinessError: true }
+  )
+  return deviMonData(
+    response.data,
+    z.object({ done: z.boolean(), email: z.string() })
+  )
+}
+
+export async function forgetDeviMonChatGPTAccount(email: string) {
+  const response = await api.delete<unknown>(`${BASE_PATH}/accounts/chatgpt`, {
+    data: { email },
+    skipErrorHandler: true,
+    skipBusinessError: true,
+  })
+  deviMonData(response.data, z.null())
 }
 
 export async function getDeviMonSettings(signal?: AbortSignal) {

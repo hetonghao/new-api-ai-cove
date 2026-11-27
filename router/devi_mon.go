@@ -9,6 +9,11 @@ import (
 func registerDeviMonRoutes(apiRouter *gin.RouterGroup) {
 	routes := apiRouter.Group("/devin-monitor", middleware.DisableCache(), middleware.RootAuth())
 	routes.GET("", controller.GetDeviMonSnapshot)
+	routes.GET("/accounts", controller.GetDeviMonAccounts)
+	routes.PUT("/accounts/channel", controller.SetDeviMonAccountChannel)
+	routes.POST("/accounts/chatgpt/login", middleware.UserCriticalRateLimit("devin-chatgpt-login"), controller.StartDeviMonChatGPTLogin)
+	routes.POST("/accounts/chatgpt/login/poll", controller.PollDeviMonChatGPTLogin)
+	routes.DELETE("/accounts/chatgpt", controller.ForgetDeviMonChatGPTAccount)
 	routes.POST("/collect", controller.RunDeviMonCollection)
 	routes.POST("/accounts/refresh", middleware.UserCriticalRateLimit("devin-account-refresh"), controller.RefreshDeviMonAccount)
 	routes.PUT("/accounts/auto-reset", controller.SetDeviMonAccountAutoReset)

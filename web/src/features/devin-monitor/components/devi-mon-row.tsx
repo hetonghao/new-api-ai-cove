@@ -26,6 +26,10 @@ import dayjs from '@/lib/dayjs'
 import { formatNumber } from '@/lib/format'
 
 import type { DeviMonAccount, DeviMonResetOffer } from '../types'
+import {
+  AccountSettingsButton,
+  DeviMonAccountSettings,
+} from './devi-mon-account-settings'
 import { AccountRefreshButton } from './devi-mon-refresh-button'
 import { DeviMonResetControls } from './devi-mon-reset-controls'
 import { DevinAccountStatus } from './devi-mon-status'
@@ -87,6 +91,7 @@ export function DeviMonRow({
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const refreshButton = useRef<HTMLButtonElement>(null)
   const [resetOffer, setResetOffer] = useState<DeviMonResetOffer | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const balance = account.credit_balance.trim()
   let balanceText = balance || t('Not provided')
   if (account.unlimited) {
@@ -116,6 +121,10 @@ export function DeviMonRow({
               routing={account.devin_routing}
             />
           </div>
+          <AccountSettingsButton
+            email={account.email}
+            onOpen={() => setSettingsOpen(true)}
+          />
           <AccountRefreshButton
             email={account.email}
             configured={configured}
@@ -123,6 +132,11 @@ export function DeviMonRow({
             onResetOffer={setResetOffer}
           />
         </div>
+        <DeviMonAccountSettings
+          email={account.email}
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+        />
         <QuotaWindow
           label={t('Weekly allowance')}
           subscriptionName={account.email}

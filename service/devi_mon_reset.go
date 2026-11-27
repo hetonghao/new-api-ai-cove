@@ -44,7 +44,10 @@ func deviMonCodexIdentity(file map[string]any) (accountID, accountKey string) {
 	claims, _ := file["id_token"].(map[string]any)
 	accountID = strings.TrimSpace(deviMonString(claims["chatgpt_account_id"]))
 	email := strings.ToLower(strings.TrimSpace(deviMonString(file["email"])))
-	if accountID == "" || email == "" || deviMonString(file["auth_index"]) == "" {
+	// A CPA credential is addressed by auth_index; a stored ChatGPT sign-in is
+	// addressed by its email row, so it carries no auth_index.
+	stored := deviMonFileChannel(file) == model.DeviMonChannelChatGPT
+	if accountID == "" || email == "" || (!stored && deviMonString(file["auth_index"]) == "") {
 		return accountID, ""
 	}
 	digest := sha256.Sum256([]byte(email + "\x00" + accountID))
@@ -56,11 +59,11 @@ func SetDeviMonAccountAutoReset(ctx context.Context, email, expectedKey string, 
 	if key == "" {
 		return errors.New("CPA_MANAGEMENT_KEY is not configured")
 	}
-	files, err := deviMonAuthFiles(ctx, key, deviMonCodexBase)
+	files, _, err := deviMonInventory(ctx, key)
 	if err != nil {
 		return err
 	}
-	file := uniqueDeviMonCodexAccount(filterDeviMonProvider(files, "codex"), email)
+	file := uniqueDeviMonCodexAccount(files, email)
 	_, accountKey := deviMonCodexIdentity(file)
 	if accountKey == "" || accountKey != expectedKey {
 		return ErrDeviMonAccountMissing
@@ -103,7 +106,7 @@ func ConfirmDeviMonAccountReset(ctx context.Context, email, offerID string) (*De
 	if candidate == nil || candidate.ID != offerID {
 		return nil, ErrDeviMonResetOfferChanged
 	}
-	applied, err := redeemDeviMonCard(ctx, key, deviMonString(file["auth_index"]), &account, candidate, nil)
+	applied, err := redeemDeviMonCard(ctx, key, file, &account, candidate, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +116,7 @@ func ConfirmDeviMonAccountReset(ctx context.Context, email, offerID string) (*De
 	return &account, nil
 }
 
-func redeemDeviMonCard(ctx context.Context, key, authIndex string, account *DeviMonAccount, candidate *deviMonResetCandidate, task *model.SystemTask) (bool, error) {
+func redeemDeviMonCard(ctx context.Context, key string, file map[string]any, account *DeviMonAccount, candidate *deviMonResetCandidate, task *model.SystemTask) (bool, error) {
 	now := time.Now()
 	expiresAt, err := time.Parse(time.RFC3339, candidate.ExpiresAt)
 	if err != nil || !expiresAt.After(now) || candidate.WindowEnd <= now.Unix() {
@@ -132,7 +135,7 @@ func redeemDeviMonCard(ctx context.Context, key, authIndex string, account *Devi
 	// Once claimed, finish the accepted operation even if the initiating request disconnects.
 	operationCtx := context.WithoutCancel(ctx)
 	headers := map[string]string{"ChatGPT-Account-Id": candidate.AccountID, "Accept": "application/json", "Originator": "codex_cli_rs"}
-	result, requestErr := deviMonProxyCall(operationCtx, key, deviMonCodexBase, authIndex, http.MethodPost, deviMonCardsURL+"/consume", headers, payload)
+	result, requestErr := deviMonCredentialRequest(operationCtx, key, file, http.MethodPost, deviMonCardsURL+"/consume", headers, payload)
 	outcome := deviMonResetUnverified
 	if requestErr == nil {
 		switch deviMonString(result["code"]) {
@@ -147,11 +150,11 @@ func redeemDeviMonCard(ctx context.Context, key, authIndex string, account *Devi
 	verifyCtx, cancel := context.WithTimeout(operationCtx, deviMonRequestTimeout)
 	defer cancel()
 	account.ObservedAtUS = time.Now().UnixMicro()
-	readDeviMonAllowance(verifyCtx, key, authIndex, candidate.AccountID, account, true)
+	readDeviMonAllowance(verifyCtx, key, file, candidate.AccountID, account, true)
 	if outcome != deviMonResetRejected && account.exhaustedInOldWindow(candidate.WindowEnd) {
 		// The upstream can briefly keep returning the pre-reset window.
 		account.ObservedAtUS = time.Now().UnixMicro()
-		readDeviMonAllowance(verifyCtx, key, authIndex, candidate.AccountID, account, true)
+		readDeviMonAllowance(verifyCtx, key, file, candidate.AccountID, account, true)
 		if account.exhaustedInOldWindow(candidate.WindowEnd) {
 			account.UsedPercent, account.ResetAt = nil, nil
 		}

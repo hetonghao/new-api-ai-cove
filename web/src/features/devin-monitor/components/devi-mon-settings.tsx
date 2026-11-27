@@ -46,6 +46,14 @@ import type { DeviMonSettings } from '../types'
 
 const settingsFormSchema = z.object({
   interval_minutes: z.number().int().min(15).max(10080),
+  chatgpt_proxy_url: z
+    .string()
+    .refine(
+      (value) =>
+        value.trim() === '' ||
+        /^(https?|socks5h?):\/\/[^/\s]+/.test(value.trim()),
+      'Use http, https, socks5, or socks5h'
+    ),
 })
 type SettingsForm = z.infer<typeof settingsFormSchema>
 
@@ -76,14 +84,20 @@ function SettingsFormCard(props: {
   const queryClient = useQueryClient()
   const form = useForm<SettingsForm>({
     resolver: zodResolver(settingsFormSchema),
-    defaultValues: { interval_minutes: props.settings.interval_minutes },
+    defaultValues: {
+      interval_minutes: props.settings.interval_minutes,
+      chatgpt_proxy_url: props.settings.chatgpt_proxy_url,
+    },
   })
   const save = useMutation({
     mutationFn: (values: DeviMonSettings) => saveDeviMonSettings(values),
     onSuccess: (saved) => {
       queryClient.setQueryData(deviMonSettingsKey, saved)
       void queryClient.invalidateQueries({ queryKey: deviMonQueryKey })
-      form.reset({ interval_minutes: saved.interval_minutes })
+      form.reset({
+        interval_minutes: saved.interval_minutes,
+        chatgpt_proxy_url: saved.chatgpt_proxy_url,
+      })
       toast.success(t('Settings saved'))
     },
   })
@@ -129,6 +143,37 @@ function SettingsFormCard(props: {
                   {t('Between 15 minutes and 7 days. Default is 180 minutes.')}
                 </FieldDescription>
                 <FieldError>{fieldState.error?.message}</FieldError>
+              </>
+            )}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor='devi-mon-chatgpt-proxy'>
+            {t('Proxy address')}
+          </FieldLabel>
+          <Controller
+            control={form.control}
+            name='chatgpt_proxy_url'
+            render={({ field, fieldState }) => (
+              <>
+                <Input
+                  id='devi-mon-chatgpt-proxy'
+                  placeholder='socks5://user:pass@host:port'
+                  value={field.value}
+                  onChange={(event) => field.onChange(event.target.value)}
+                  onBlur={field.onBlur}
+                  aria-invalid={fieldState.invalid}
+                />
+                <FieldDescription>
+                  {t(
+                    'Network proxy for accounts read through the ChatGPT sign-in (HTTP, HTTPS, SOCKS5 and SOCKS5H).'
+                  )}
+                </FieldDescription>
+                <FieldError>
+                  {fieldState.error?.message
+                    ? t(fieldState.error.message)
+                    : null}
+                </FieldError>
               </>
             )}
           />

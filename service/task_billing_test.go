@@ -65,6 +65,7 @@ func TestMain(m *testing.M) {
 		&model.SystemTaskLock{},
 		&model.DeviMonAccountRefresh{},
 		&model.DeviMonResetPolicy{},
+		&model.DeviMonChatGPTAccount{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}

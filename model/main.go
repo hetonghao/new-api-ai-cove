@@ -386,6 +386,7 @@ func migrateDB() error {
 		&SystemTaskLock{},
 		&DeviMonAccountRefresh{},
 		&DeviMonResetPolicy{},
+		&DeviMonChatGPTAccount{},
 		&CasbinRule{},
 		&AuthzRole{},
 		&ModelQualitySettings{},

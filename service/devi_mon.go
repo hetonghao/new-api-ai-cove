@@ -22,13 +22,16 @@ import (
 // cpa-pro-2 holds the Codex accounts and cpa-pro-1 holds the Devin accounts;
 // both are plain hostnames already resolvable from the new-api container.
 const (
-	deviMonUsageURL     = "https://chatgpt.com/backend-api/wham/usage"
-	deviMonCardsURL     = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
-	deviMonSubscribeURL = "https://chatgpt.com/backend-api/subscriptions"
-
 	deviMonInterruptedRetryDelay = time.Minute
 	deviMonRequestTimeout        = 45 * time.Second
 	deviMonMaxResponseSize       = 1 << 20
+)
+
+// Read targets stay variable so tests can serve them locally.
+var (
+	deviMonUsageURL     = "https://chatgpt.com/backend-api/wham/usage"
+	deviMonCardsURL     = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
+	deviMonSubscribeURL = "https://chatgpt.com/backend-api/subscriptions"
 )
 
 // Collection targets stay variable so tests can point them at a local server.
@@ -60,6 +63,7 @@ type DeviMonAccount struct {
 	RenewSource   string              `json:"renew_source"`
 	DevinDisabled *bool               `json:"devin_disabled"`
 	DevinRouting  *DeviMonRouting     `json:"devin_routing,omitempty"`
+	Channel       string              `json:"channel"`
 	Error         string              `json:"error"`
 	ResetKey      string              `json:"reset_key,omitempty"`
 	AutoReset     bool                `json:"auto_reset,omitempty"`
@@ -226,7 +230,6 @@ func collectDeviMon(ctx context.Context, resetTask *model.SystemTask) (*DeviMonS
 	if err != nil {
 		return nil, err
 	}
-
 	// Pair from both complete credential lists, independently of quota probes.
 	paired := make(map[string]int, len(codexAccounts))
 	for _, file := range codexAccounts {
@@ -260,7 +263,7 @@ func collectDeviMon(ctx context.Context, resetTask *model.SystemTask) (*DeviMonS
 		}
 		if policy := policies[account.ResetKey]; policy.Enabled && candidate != nil && policy.AttemptedWindowEnd < candidate.WindowEnd {
 			if resetTask != nil {
-				if _, err := redeemDeviMonCard(ctx, key, deviMonString(file["auth_index"]), &account, candidate, resetTask); err != nil {
+				if _, err := redeemDeviMonCard(ctx, key, file, &account, candidate, resetTask); err != nil {
 					logger.LogWarn(ctx, common.LogText("devin monitor: could not record reset for %s: %v", account.Email, err))
 				}
 			} else {
@@ -292,7 +295,14 @@ func deviMonInventory(ctx context.Context, key string) ([]map[string]any, map[st
 		return nil, nil, fmt.Errorf("cpa-pro-1: %w", err)
 	}
 
-	codexAccounts := filterDeviMonProvider(codexFiles, "codex")
+	// Accounts stored on the gateway join the CPA inventory and are read
+	// through their own channel; a CPA credential with the same email is
+	// shadowed so the switch never shows the same mailbox twice.
+	owned, err := model.GetDeviMonChatGPTAccounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	codexAccounts := deviMonMergeOwnedAccounts(filterDeviMonProvider(codexFiles, "codex"), owned)
 	devinByEmail := map[string]DeviMonDevin{}
 	for _, file := range filterDeviMonProvider(devinFiles, "devin") {
 		if email := deviMonString(file["email"]); email != "" {
@@ -338,12 +348,17 @@ func sortDeviMonAccounts(accounts []DeviMonAccount) {
 func collectDeviMonAccount(ctx context.Context, key string, file map[string]any, devinByEmail map[string]DeviMonDevin) (DeviMonAccount, *deviMonResetCandidate) {
 	email := strings.TrimSpace(deviMonString(file["email"]))
 	accountID, accountKey := deviMonCodexIdentity(file)
-	account := DeviMonAccount{Email: email, ResetKey: accountKey, ObservedAtUS: time.Now().UnixMicro()}
+	account := DeviMonAccount{
+		Email:        email,
+		ResetKey:     accountKey,
+		ObservedAtUS: time.Now().UnixMicro(),
+		Channel:      deviMonFileChannel(file),
+	}
 	if devin, ok := devinByEmail[strings.ToLower(email)]; ok {
 		account.DevinDisabled = &devin.Disabled
 		account.DevinRouting = devin.Routing
 	}
-	candidate := readDeviMonAllowance(ctx, key, deviMonString(file["auth_index"]), accountID, &account, false)
+	candidate := readDeviMonAllowance(ctx, key, file, accountID, &account, false)
 	if deviMonBool(file["disabled"]) {
 		candidate = nil
 	}
@@ -355,7 +370,42 @@ func collectDeviMonAccount(ctx context.Context, key string, file map[string]any,
 	return account, candidate
 }
 
-func readDeviMonAllowance(ctx context.Context, key, authIndex, accountID string, account *DeviMonAccount, verifyReset bool) *deviMonResetCandidate {
+// DeviMonFileChannel reports which channel reads this credential entry.
+func deviMonFileChannel(file map[string]any) string {
+	if deviMonString(file["channel"]) == model.DeviMonChannelChatGPT {
+		return model.DeviMonChannelChatGPT
+	}
+	return model.DeviMonChannelCPA
+}
+
+// deviMonMergeOwnedAccounts appends the gateway-stored sign-ins to the CPA
+// inventory, dropping a CPA credential whose mailbox is served by the switch.
+func deviMonMergeOwnedAccounts(codexAccounts []map[string]any, owned map[string]model.DeviMonChatGPTAccount) []map[string]any {
+	if len(owned) == 0 {
+		return codexAccounts
+	}
+	merged := make([]map[string]any, 0, len(codexAccounts)+len(owned))
+	for _, file := range codexAccounts {
+		email := strings.ToLower(strings.TrimSpace(deviMonString(file["email"])))
+		if row, ok := owned[email]; ok && row.Channel == model.DeviMonChannelChatGPT {
+			continue
+		}
+		merged = append(merged, file)
+	}
+	for _, row := range owned {
+		if row.Channel != model.DeviMonChannelChatGPT {
+			continue
+		}
+		merged = append(merged, deviMonChatGPTFile(row))
+	}
+	// A stable order keeps snapshots diffable across runs.
+	sort.SliceStable(merged, func(i, j int) bool {
+		return deviMonString(merged[i]["email"]) < deviMonString(merged[j]["email"])
+	})
+	return merged
+}
+
+func readDeviMonAllowance(ctx context.Context, key string, file map[string]any, accountID string, account *DeviMonAccount, verifyReset bool) *deviMonResetCandidate {
 	account.UsedPercent, account.ResetAt = nil, nil
 	account.Cards = []DeviMonCard{}
 	account.Error = ""
@@ -369,7 +419,7 @@ func readDeviMonAllowance(ctx context.Context, key, authIndex, accountID string,
 		usageCtx, cancel = context.WithTimeout(ctx, deviMonRequestTimeout/2)
 		defer cancel()
 	}
-	usage, usageErr := deviMonAPICall(usageCtx, key, deviMonCodexBase, authIndex, deviMonUsageURL, headers)
+	usage, usageErr := deviMonCredentialCall(usageCtx, key, file, deviMonUsageURL, headers)
 	weekly := false
 	if usageErr != nil {
 		account.Error = usageErr.Error()
@@ -381,7 +431,7 @@ func readDeviMonAllowance(ctx context.Context, key, authIndex, accountID string,
 			account.UsedPercent, account.ResetAt = nil, nil
 		}
 	}
-	cards, err := deviMonAPICall(ctx, key, deviMonCodexBase, authIndex, deviMonCardsURL, headers)
+	cards, err := deviMonCredentialCall(ctx, key, file, deviMonCardsURL, headers)
 	if err != nil {
 		if account.Error == "" {
 			account.Error = "reset cards: " + err.Error()
@@ -451,7 +501,7 @@ func deviMonRenewal(ctx context.Context, key string, file map[string]any) (strin
 	idToken, _ := file["id_token"].(map[string]any)
 	accountID := deviMonString(idToken["chatgpt_account_id"])
 	if accountID != "" {
-		body, err := deviMonAPICall(ctx, key, deviMonCodexBase, deviMonString(file["auth_index"]),
+		body, err := deviMonCredentialCall(ctx, key, file,
 			deviMonSubscribeURL+"?account_id="+accountID, map[string]string{"Chatgpt-Account-Id": accountID})
 		if err == nil {
 			if until := deviMonString(body["active_until"]); until != "" {
@@ -492,6 +542,38 @@ func deviMonAuthFiles(ctx context.Context, key string, base string) ([]map[strin
 // deviMonAPICall asks CPA to run one upstream request with a credential token.
 func deviMonAPICall(ctx context.Context, key string, base string, authIndex string, target string, extra map[string]string) (map[string]any, error) {
 	return deviMonProxyCall(ctx, key, base, authIndex, http.MethodGet, target, extra, nil)
+}
+
+// deviMonCredentialCall routes one read through the channel that owns the
+// credential: CPA proxies it, or the gateway calls ChatGPT itself.
+func deviMonCredentialCall(ctx context.Context, key string, file map[string]any, target string, extra map[string]string) (map[string]any, error) {
+	return deviMonCredentialRequest(ctx, key, file, http.MethodGet, target, extra, nil)
+}
+
+// deviMonCredentialRequest is the channel dispatch behind every monitor
+// request, including the reset-card consume POST.
+func deviMonCredentialRequest(ctx context.Context, key string, file map[string]any, method, target string, extra map[string]string, data []byte) (map[string]any, error) {
+	if deviMonFileChannel(file) != model.DeviMonChannelChatGPT {
+		return deviMonProxyCall(ctx, key, deviMonCodexBase, deviMonString(file["auth_index"]), method, target, extra, data)
+	}
+	row, err := model.GetDeviMonChatGPTAccount(ctx, deviMonString(file["email"]))
+	if err != nil {
+		return nil, err
+	}
+	client, err := deviMonChatGPTClient(deviMonChatGPTProxy())
+	if err != nil {
+		return nil, err
+	}
+	accessToken, err := deviMonChatGPTAccess(ctx, row)
+	if err != nil {
+		return nil, err
+	}
+	header := deviMonChatGPTHeaders(accessToken, row.AccountID)
+	for name, value := range extra {
+		header[name] = value
+	}
+	payload, _, err := deviMonChatGPTCall(ctx, client, method, target, data, header)
+	return payload, err
 }
 
 func deviMonProxyCall(ctx context.Context, key, base, authIndex, method, target string, extra map[string]string, data []byte) (map[string]any, error) {

@@ -37,7 +37,7 @@ func RefreshDeviMonAccount(ctx context.Context, email string) error {
 		if !strings.EqualFold(deviMonString(file["email"]), email) {
 			continue
 		}
-		if deviMonString(file["auth_index"]) == "" {
+		if deviMonString(file["auth_index"]) == "" && deviMonFileChannel(file) != model.DeviMonChannelChatGPT {
 			return errors.New("credential has no auth index")
 		}
 		account, candidate := collectDeviMonAccount(ctx, key, file, devins)
