@@ -152,6 +152,32 @@ describe('devin monitor', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 
+  it('opens a request window from the keyboard when operation mode is off', async () => {
+    const user = userEvent.setup()
+    render(
+      <DevinRequestHistory
+        email='lamp@example.test'
+        history={{
+          success: 3,
+          failed: 1,
+          as_of: 1_795_000_000,
+          recent: [{ success: 3, failed: 1 }],
+        }}
+      />
+    )
+    await user.tab()
+    const lamp = screen.getByRole('button', { name: /Success 3 · Failed 1/ })
+    expect(lamp).toHaveFocus()
+    await user.keyboard('{Enter}')
+    expect(await screen.findByRole('dialog')).toHaveTextContent('75.0%')
+    expect(lamp).not.toHaveAttribute('title', 'Please turn on operation mode')
+    await user.keyboard('{ArrowLeft}')
+    expect(await screen.findByRole('dialog')).toHaveTextContent('No requests')
+    await user.keyboard('{ArrowRight}')
+    expect(lamp).toHaveFocus()
+    expect(await screen.findByRole('dialog')).toHaveTextContent('75.0%')
+  })
+
   it('locks account changes on paired and unpaired rows without blocking a manual refresh or offering card use', async () => {
     const user = userEvent.setup()
     const writes: string[] = []
