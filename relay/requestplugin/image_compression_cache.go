@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	imageEncoderVersion  = 1
+	imageEncoderVersion  = 2
 	imageCachePrefix     = "ai-cove:img-cache:v1"
 	imageCacheBudget     = 150 * time.Millisecond
 	imageCacheRetryDelay = 2 * time.Second

@@ -292,7 +292,7 @@ func selectResponsesWebSocketChannel(c *gin.Context, info *relaycommon.RelayInfo
 			return nil, types.NewError(err, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 		}
 		selectedChannel, err := model.GetChannelById(channelID, true)
-		if err != nil || !model.ChannelSupportsResponsesWebSocket(selectedChannel) {
+		if err != nil || !model.ChannelServesResponsesWebSocket(selectedChannel, info.OriginModelName) {
 			return nil, types.NewError(errors.New("指定渠道不支持 Responses WebSocket"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 		}
 		if apiErr := middleware.SetupContextForSelectedChannel(c, selectedChannel, info.OriginModelName); apiErr != nil {
@@ -304,7 +304,7 @@ func selectResponsesWebSocketChannel(c *gin.Context, info *relaycommon.RelayInfo
 	usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 	if preferredID, found := service.GetPreferredChannelByAffinity(c, info.OriginModelName, usingGroup); found && !excluded[preferredID] {
 		preferred, err := model.CacheGetChannel(preferredID)
-		if err == nil && model.ChannelSupportsResponsesWebSocket(preferred) && service.CheckChannelClient(c, preferred) == nil {
+		if err == nil && model.ChannelServesResponsesWebSocket(preferred, info.OriginModelName) && service.CheckChannelClient(c, preferred) == nil {
 			if usingGroup == "auto" {
 				userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 				for _, group := range service.GetRequestAutoGroups(c, userGroup) {

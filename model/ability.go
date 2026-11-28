@@ -48,6 +48,18 @@ func GetGroupEnabledModels(group string) []string {
 	return models
 }
 
+// IsModelConfiguredForGroups checks enabled and disabled channel abilities for
+// the requested model and its routing name.
+func IsModelConfiguredForGroups(groups []string, modelName string) (bool, error) {
+	names := []string{modelName}
+	if normalized := ratio_setting.RoutingMatchModelName(modelName); normalized != "" && normalized != modelName {
+		names = append(names, normalized)
+	}
+	var ability Ability
+	result := DB.Select("channel_id").Where(map[string]any{"group": groups, "model": names}).Limit(1).Find(&ability)
+	return result.RowsAffected > 0, result.Error
+}
+
 func GetEnabledModels() []string {
 	var models []string
 	// Find distinct models
@@ -102,7 +114,7 @@ func getChannelWithSelection(group string, model string, retry int, requestPath 
 		abilities = filterAbilitiesByRequestPathAndModel(abilities, requestPath, model)
 	}
 	if requireWebSockets {
-		abilities = filterAbilitiesByWebSocketCapability(abilities, excludedChannelIDs)
+		abilities = filterAbilitiesByWebSocketCapability(abilities, model, excludedChannelIDs)
 	}
 	abilities = filterAbilitiesByExcludedChannels(abilities, excludedChannelIDs)
 	if len(abilities) > 0 {
@@ -181,7 +193,7 @@ func getWebSocketChannel(group string, model string, retry int, requestPath stri
 		return nil, err
 	}
 	abilities = filterAbilitiesByRequestPathAndModel(abilities, requestPath, model)
-	abilities = filterAbilitiesByWebSocketCapability(abilities, excludedChannelIDs)
+	abilities = filterAbilitiesByWebSocketCapability(abilities, model, excludedChannelIDs)
 	if len(abilities) == 0 {
 		return nil, nil
 	}
@@ -227,7 +239,7 @@ func getWebSocketChannel(group string, model string, retry int, requestPath stri
 	return &channel, nil
 }
 
-func filterAbilitiesByWebSocketCapability(abilities []Ability, excludedChannelIDs map[int]bool) []Ability {
+func filterAbilitiesByWebSocketCapability(abilities []Ability, modelName string, excludedChannelIDs map[int]bool) []Ability {
 	if len(abilities) == 0 {
 		return abilities
 	}
@@ -244,7 +256,7 @@ func filterAbilitiesByWebSocketCapability(abilities []Ability, excludedChannelID
 	}
 	enabled := make(map[int]struct{}, len(channels))
 	for _, channel := range channels {
-		if isResponsesWebSocketChannelType(channel.Type) && channel.GetSetting().ResponsesWebSocketEnabled {
+		if ChannelServesResponsesWebSocket(&channel, modelName) {
 			enabled[channel.Id] = struct{}{}
 		}
 	}

@@ -128,24 +128,29 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 		// plugins cannot execute this endpoint unless their relay routes do.
 		return relayChannel || pluginChannel
 	case dto.FilterResponsesWebSocket:
-		if !ChannelSupportsResponsesWebSocket(ch) {
-			return false
-		}
-		switch ch.Type {
-		case constant.ChannelTypeAdvancedCustom:
-			// The session forwards native Responses events without protocol
-			// conversion, so only a converter-free /v1/responses route qualifies.
-			route, ok := ch.GetOtherSettings().AdvancedCustom.MatchPathForModel("/v1/responses", modelName)
-			return ok && route.IsNative()
-		case constant.ChannelTypeTaskPlugin:
-			// The same rule on the relay routes of the channel's plugin.
-			plugin, ok := jsplugin.DefaultRegistry.Get(ch.GetSetting().TaskPluginKey)
-			return ok && plugin.Meta.ServesResponsesWebSocket(modelName)
-		}
-		return true
+		return ChannelServesResponsesWebSocket(ch, modelName)
 	default:
 		return true
 	}
+}
+
+// ChannelServesResponsesWebSocket checks the enabled native route for this model.
+func ChannelServesResponsesWebSocket(ch *Channel, modelName string) bool {
+	if !ChannelSupportsResponsesWebSocket(ch) {
+		return false
+	}
+	switch ch.Type {
+	case constant.ChannelTypeAdvancedCustom:
+		// The session forwards native Responses events without protocol
+		// conversion, so only a converter-free /v1/responses route qualifies.
+		route, ok := ch.GetOtherSettings().AdvancedCustom.MatchPathForModel("/v1/responses", modelName)
+		return ok && route.IsNative()
+	case constant.ChannelTypeTaskPlugin:
+		// The same rule on the relay routes of the channel's plugin.
+		plugin, ok := jsplugin.DefaultRegistry.Get(ch.GetSetting().TaskPluginKey)
+		return ok && plugin.Meta.ChannelServesResponsesWebSocket(ch.GetOtherSettings().PluginRoutes, modelName)
+	}
+	return true
 }
 
 // providerChannelServes reports a task plugin channel whose plugin relays
@@ -159,6 +164,6 @@ func providerChannelServes(ch *Channel, requestPath, modelName string) bool {
 	if !ok || !plugin.Meta.HasProviderPart() {
 		return false
 	}
-	_, ok = plugin.Meta.RelayRoute(requestPath, modelName)
+	_, ok = plugin.Meta.ChannelRelayRoute(ch.GetOtherSettings().PluginRoutes, requestPath, modelName)
 	return ok
 }

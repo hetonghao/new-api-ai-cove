@@ -151,14 +151,14 @@ func getRandomSatisfiedChannelWithSelection(group string, model string, retry in
 
 	// First, try to find channels with the exact model name.
 	channels, _ := filterCandidateIDs(group2model2channels[group][model], model, filters)
-	channels = filterChannelsByWebSocketCapability(channels, requireWebSockets)
+	channels = filterChannelsByWebSocketCapability(channels, model, requireWebSockets)
 	channels = filterExcludedChannels(channels, excludedChannelIDs)
 
 	// If no channels found, try to find channels with the normalized model name.
 	if len(channels) == 0 {
 		normalizedModel := ratio_setting.RoutingMatchModelName(model)
 		channels, _ = filterCandidateIDs(group2model2channels[group][normalizedModel], model, filters)
-		channels = filterChannelsByWebSocketCapability(channels, requireWebSockets)
+		channels = filterChannelsByWebSocketCapability(channels, model, requireWebSockets)
 		channels = filterExcludedChannels(channels, excludedChannelIDs)
 	}
 
@@ -270,14 +270,14 @@ func isResponsesWebSocketChannelType(channelType int) bool {
 	}
 }
 
-func filterChannelsByWebSocketCapability(channels []int, required bool) []int {
+func filterChannelsByWebSocketCapability(channels []int, modelName string, required bool) []int {
 	if !required || len(channels) == 0 {
 		return channels
 	}
 	filtered := make([]int, 0, len(channels))
 	for _, channelID := range channels {
 		channel, ok := channelsIDM[channelID]
-		if ok && isResponsesWebSocketChannelType(channel.Type) && channel.GetSetting().ResponsesWebSocketEnabled {
+		if ok && ChannelServesResponsesWebSocket(channel, modelName) {
 			filtered = append(filtered, channelID)
 		}
 	}

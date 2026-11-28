@@ -9,9 +9,11 @@ import (
 	_ "image/gif"
 	"image/jpeg"
 	"image/png"
+	"runtime"
 	"strings"
+	"sync"
 
-	"github.com/HugoSmits86/nativewebp"
+	"github.com/MoeForge/moego/webp"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/requestpatch"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -21,6 +23,7 @@ import (
 	"golang.org/x/image/vp8"
 	"golang.org/x/image/vp8l"
 	_ "golang.org/x/image/webp"
+	"golang.org/x/sync/semaphore"
 )
 
 // Limits of media.reencode.
@@ -29,8 +32,19 @@ const (
 	maxReencodePixels = 40_000_000
 )
 
-// reencodeSlots bounds the re-encodes running at once in the process.
-var reencodeSlots = make(chan struct{}, 4)
+type imageReencodePool struct {
+	slots  *semaphore.Weighted
+	encode func(context.Context, inlineMedia, requestpatch.Effect) (imageReencodeResult, error)
+}
+
+// Read the process limit after startup has loaded .env.
+var processImageEncoders = sync.OnceValue(func() *imageReencodePool {
+	limit := common.GetEnvOrDefault("IMAGE_REENCODE_CONCURRENCY", 0)
+	if limit <= 0 {
+		limit = runtime.GOMAXPROCS(0)
+	}
+	return &imageReencodePool{slots: semaphore.NewWeighted(int64(limit)), encode: encodeMedia}
+})
 
 // inlineMedia is one inline media string of a JSON body: a base64 data URL,
 // or the data of a Claude base64 source, a Gemini inline data part or a chat
@@ -165,28 +179,82 @@ func escapePointer(token string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(token, "~", "~0"), "/", "~1")
 }
 
-// reencodeMedia decodes an inline image and encodes it again as a
-// media.reencode effect asks. It returns the json.patch operations that
-// replace the media string and its mime type, and the change for the public
-// record; none when the new bytes are not smaller or the image is an
-// animated GIF or over the limits.
-func reencodeMedia(ctx context.Context, batch *imageCacheBatch, index int, item inlineMedia, effect requestpatch.Effect) ([]requestpatch.Operation, *relaycommon.RequestPluginMediaChange, error) {
-	if item.size() > maxReencodeBytes {
-		return nil, nil, nil
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, nil, err
-	}
-	key, result := batch.result(index)
-	if len(result.data) == 0 {
-		var err error
-		result, err = encodeMedia(ctx, item, effect)
-		if err != nil || len(result.data) == 0 {
-			return nil, nil, err
-		}
-		batch.add(key, result)
-	}
+type mediaReencodeResult struct {
+	ops    []requestpatch.Operation
+	change *relaycommon.RequestPluginMediaChange
+	err    error
+}
 
+// reencode returns one result per effect, in the order the plugin supplied.
+// Each request waits for only its next image so other requests can take a turn.
+func (p *imageReencodePool) reencode(ctx context.Context, batch *imageCacheBatch, start int, media []inlineMedia, effects []requestpatch.Effect) []mediaReencodeResult {
+	results := make([]mediaReencodeResult, len(effects))
+	encoded := make([]imageReencodeResult, len(effects))
+	// Only the caller touches the cache. Concurrent workers own one result each.
+	scheduled := make(map[string]bool)
+	admission, stop := context.WithCancel(ctx)
+	defer stop()
+	var workers sync.WaitGroup
+	for i, effect := range effects {
+		item := media[effect.Media]
+		if item.size() > maxReencodeBytes {
+			continue
+		}
+		if err := admission.Err(); err != nil {
+			results[i].err = err
+			break
+		}
+		key, cached := batch.result(start + i)
+		if len(cached.data) != 0 || scheduled[key] {
+			continue
+		}
+		if key != "" {
+			scheduled[key] = true
+		}
+		if err := p.slots.Acquire(admission, 1); err != nil {
+			results[i].err = err
+			break
+		}
+		result := &results[i]
+		encode := func() {
+			defer func() {
+				if recover() != nil {
+					result.err = fmt.Errorf("media %s cannot be encoded", item.path)
+				}
+				if result.err != nil {
+					// Stop admitting work. Earlier images finish so their errors
+					// are still reported in effect order.
+					stop()
+				}
+				p.slots.Release(1)
+			}()
+			encoded[i], result.err = p.encode(ctx, item, effect)
+		}
+		if i == len(effects)-1 {
+			encode()
+		} else {
+			workers.Go(encode)
+		}
+	}
+	workers.Wait()
+	for i, effect := range effects {
+		if results[i].err != nil {
+			break
+		}
+		key, data := batch.result(start + i)
+		if len(data.data) == 0 {
+			data = encoded[i]
+			if len(data.data) == 0 {
+				continue
+			}
+			batch.add(key, data)
+		}
+		results[i].ops, results[i].change, results[i].err = mediaReencodePatch(media[effect.Media], data)
+	}
+	return results
+}
+
+func mediaReencodePatch(item inlineMedia, result imageReencodeResult) ([]requestpatch.Operation, *relaycommon.RequestPluginMediaChange, error) {
 	mime := result.compressedMIME
 	payload := base64.StdEncoding.EncodeToString(result.data)
 	if item.mimePath == "" {
@@ -213,13 +281,6 @@ func reencodeMedia(ctx context.Context, batch *imageCacheBatch, index int, item 
 }
 
 func encodeMedia(ctx context.Context, item inlineMedia, effect requestpatch.Effect) (imageReencodeResult, error) {
-	select {
-	case reencodeSlots <- struct{}{}:
-	case <-ctx.Done():
-		return imageReencodeResult{}, ctx.Err()
-	}
-	defer func() { <-reencodeSlots }()
-
 	raw, err := base64.StdEncoding.DecodeString(item.data)
 	if err != nil {
 		return imageReencodeResult{}, fmt.Errorf("media %s is not valid base64", item.path)
@@ -283,8 +344,7 @@ func encodeMedia(ctx context.Context, item inlineMedia, effect requestpatch.Effe
 	case "png":
 		err = png.Encode(&encoded, img)
 	case "webp":
-		// nativewebp writes lossless WebP only.
-		err = nativewebp.Encode(&encoded, img, nil)
+		err = webp.Encode(&encoded, img)
 	default:
 		return imageReencodeResult{}, fmt.Errorf("format %q is not supported", effect.Format)
 	}

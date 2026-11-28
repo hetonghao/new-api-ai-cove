@@ -311,6 +311,9 @@ export const channelFormSchema = z
     channel_status_notify_enabled: z.boolean().optional(),
     // The bound plugin's channel settings (type 61, stored in settings JSON)
     plugin_config: z.record(z.string(), z.unknown()).optional(),
+    // Switches of the bound plugin's relay routes that differ from their
+    // defaults (type 61, stored in settings JSON)
+    plugin_routes: z.record(z.string(), z.boolean()).optional(),
     // Their values as typed, null until edited (not sent to backend)
     plugin_config_draft: z
       .record(z.string(), z.unknown())
@@ -515,6 +518,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   channel_status_notify_enabled: false,
   advanced_custom: '',
   plugin_config: {},
+  plugin_routes: {},
   plugin_config_draft: null,
 }
 
@@ -603,6 +607,7 @@ export function transformChannelToFormDefaults(
   let channelStatusNotifyEnabled = false
   let advancedCustom = ''
   let pluginConfig: Record<string, unknown> = {}
+  let pluginRoutes: Record<string, boolean> = {}
 
   if (channel.settings) {
     try {
@@ -639,6 +644,13 @@ export function transformChannelToFormDefaults(
       }
       if (isJsonObjectValue(parsed.plugin_config)) {
         pluginConfig = parsed.plugin_config
+      }
+      if (isJsonObjectValue(parsed.plugin_routes)) {
+        pluginRoutes = Object.fromEntries(
+          Object.entries(parsed.plugin_routes).filter(
+            (entry): entry is [string, boolean] => typeof entry[1] === 'boolean'
+          )
+        )
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -697,6 +709,7 @@ export function transformChannelToFormDefaults(
     channel_status_notify_enabled: channelStatusNotifyEnabled,
     advanced_custom: advancedCustom,
     plugin_config: pluginConfig,
+    plugin_routes: pluginRoutes,
     plugin_config_draft: null,
   }
 }
@@ -927,6 +940,14 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     settingsObj.plugin_config = formData.plugin_config
   } else {
     delete settingsObj.plugin_config
+  }
+  if (
+    formData.type === CHANNEL_TYPE_TASK_PLUGIN &&
+    Object.keys(formData.plugin_routes ?? {}).length > 0
+  ) {
+    settingsObj.plugin_routes = formData.plugin_routes
+  } else {
+    delete settingsObj.plugin_routes
   }
 
   return JSON.stringify(settingsObj)

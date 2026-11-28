@@ -105,7 +105,7 @@ func GetTransportCapability(groups []string, modelName string) (TransportCapabil
 				}
 				capability.addImageRoute(channel, modelName, group, instances)
 				capability.HTTP = true
-				if ChannelSupportsResponsesWebSocket(channel) {
+				if ChannelServesResponsesWebSocket(channel, modelName) {
 					capability.ResponsesWebSocket = true
 				}
 			}
@@ -142,7 +142,7 @@ func GetTransportCapability(groups []string, modelName string) (TransportCapabil
 		}
 		capability.addImageRoute(channel, modelName, ability.Group, instances)
 		capability.HTTP = true
-		if ChannelSupportsResponsesWebSocket(channel) {
+		if ChannelServesResponsesWebSocket(channel, modelName) {
 			capability.ResponsesWebSocket = true
 		}
 	}

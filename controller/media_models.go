@@ -716,8 +716,10 @@ func mediaVideoChannelSupport(generation *jsplugin.RoutingGeneration, bindings [
 		}
 	}
 	if len(bindings) == 0 && generation != nil && (channel.Type == constant.ChannelTypeOpenAI || channel.Type == constant.ChannelTypeSora) {
-		if plugin, ok := generation.GetByChannelType(channel.Type); ok && plugin != nil && pluginDeclaresOpenAIVideo(plugin) {
-			return plugin, true
+		for _, plugin := range generation.PluginsByChannelType(channel.Type) {
+			if pluginDeclaresOpenAIVideo(plugin) {
+				return plugin, true
+			}
 		}
 	}
 	return nil, false

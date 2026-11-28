@@ -42,14 +42,7 @@ func TestImageCompressionCacheHitBypassesEncoderSlotsAndIsolatesUsers(t *testing
 	// A second client has no process-local copy of the encoded result.
 	require.NoError(t, ConfigureImageCompressionCacheRedis(url))
 
-	for range cap(reencodeSlots) {
-		reencodeSlots <- struct{}{}
-	}
-	t.Cleanup(func() {
-		for range cap(reencodeSlots) {
-			<-reencodeSlots
-		}
-	})
+	occupyImageEncoderSlots(t)
 	// A real hook can run, but any re-encoding has to wait for a slot.
 	hitCtx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
@@ -202,17 +195,21 @@ func TestUnavailableImageCacheDoesNotKeepLocalResults(t *testing.T) {
 	withoutCache := NewPlan().Run(t.Context(), call)
 	require.Equal(t, warm.Body, withoutCache.Body)
 	require.Equal(t, ImageCacheUnavailable, GetImageCompressionCacheSnapshot(t.Context(), 1, 25).Status)
-	for range cap(reencodeSlots) {
-		reencodeSlots <- struct{}{}
-	}
-	defer func() {
-		for range cap(reencodeSlots) {
-			<-reencodeSlots
-		}
-	}()
+	occupyImageEncoderSlots(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
 	defer cancel()
 	miss := NewPlan().Run(ctx, call)
 	require.NotNil(t, miss.Failed)
 	require.Equal(t, errorMedia, miss.Failed.Class)
+}
+
+func occupyImageEncoderSlots(t *testing.T) {
+	t.Helper()
+	slots := processImageEncoders().slots
+	var held int64
+	for slots.TryAcquire(1) {
+		held++
+	}
+	require.Positive(t, held)
+	t.Cleanup(func() { slots.Release(held) })
 }
