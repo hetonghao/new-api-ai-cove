@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
@@ -10,9 +11,24 @@ import (
 
 const deviMonResetAttemptGapSeconds = 120
 
+type DeviMonExhaustionAction string
+
+const (
+	DeviMonDisableOnExhaustion DeviMonExhaustionAction = "disable"
+	DeviMonUseCardOnExhaustion DeviMonExhaustionAction = "use_card"
+	DeviMonSilentOnExhaustion  DeviMonExhaustionAction = "silent"
+)
+
+var ErrDeviMonInvalidPolicy = errors.New("invalid Devin quota policy")
+
+func (a DeviMonExhaustionAction) Valid() bool {
+	return a == DeviMonDisableOnExhaustion || a == DeviMonUseCardOnExhaustion || a == DeviMonSilentOnExhaustion
+}
+
 type DeviMonResetPolicy struct {
 	AccountKey             string `gorm:"type:varchar(64);primaryKey"`
 	Enabled                bool   `gorm:"not null;default:false"`
+	SilentOnExhaustion     bool   `gorm:"not null;default:false"`
 	KeepDisabledAfterReset bool   `gorm:"not null;default:false"`
 	PausedCredential       string `gorm:"type:varchar(64);not null;default:''"`
 	PausedWindowEnd        int64  `gorm:"not null;default:0"`
@@ -21,11 +37,25 @@ type DeviMonResetPolicy struct {
 	HoldExhaustedUsage     bool   `gorm:"not null;default:false"`
 }
 
-func SetDeviMonResetPolicy(ctx context.Context, accountKey string, enabled bool) error {
+// Enabled is the original use-card flag; existing rows keep their policy.
+func (p DeviMonResetPolicy) ExhaustionAction() DeviMonExhaustionAction {
+	if p.SilentOnExhaustion {
+		return DeviMonSilentOnExhaustion
+	}
+	if p.Enabled {
+		return DeviMonUseCardOnExhaustion
+	}
+	return DeviMonDisableOnExhaustion
+}
+
+func SetDeviMonResetPolicy(ctx context.Context, accountKey string, action DeviMonExhaustionAction) error {
+	if !action.Valid() {
+		return ErrDeviMonInvalidPolicy
+	}
 	return DB.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "account_key"}},
-		DoUpdates: clause.AssignmentColumns([]string{"enabled"}),
-	}).Create(&DeviMonResetPolicy{AccountKey: accountKey, Enabled: enabled}).Error
+		DoUpdates: clause.AssignmentColumns([]string{"enabled", "silent_on_exhaustion"}),
+	}).Create(&DeviMonResetPolicy{AccountKey: accountKey, Enabled: action == DeviMonUseCardOnExhaustion, SilentOnExhaustion: action == DeviMonSilentOnExhaustion}).Error
 }
 
 func GetDeviMonResetPolicies(ctx context.Context) (map[string]DeviMonResetPolicy, error) {
@@ -87,7 +117,7 @@ func ForgetDeviMonQuotaPause(ctx context.Context, credential string) error {
 func ClaimDeviMonReset(ctx context.Context, accountKey string, windowEnd, now int64, task *SystemTask) (bool, error) {
 	db := DB.WithContext(ctx)
 	claim := db.Model(&DeviMonResetPolicy{}).
-		Where("account_key = ? AND enabled = ? AND attempted_window_end < ? AND attempted_at <= ?", accountKey, true, windowEnd, now-deviMonResetAttemptGapSeconds)
+		Where("account_key = ? AND enabled = ? AND silent_on_exhaustion = ? AND attempted_window_end < ? AND attempted_at <= ?", accountKey, true, false, windowEnd, now-deviMonResetAttemptGapSeconds)
 	if task != nil {
 		lease := db.Model(&SystemTaskLock{}).Select("1").Where("type = ? AND task_id = ? AND locked_by = ? AND locked_until >= ?", task.Type, task.TaskID, task.LockedBy, now)
 		claim = claim.Where("EXISTS (?)", lease)

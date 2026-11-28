@@ -8875,6 +8875,8 @@
     "Enable after quota resets": "Tự bật sau khi đặt lại",
     "When quota runs out": "Khi hết hạn mức",
     "Disable when quota runs out": "Tự tắt khi hết hạn mức",
+    "Silent": "Không làm gì",
+    "Silent: take no action when quota runs out": "Không làm gì khi hết hạn mức",
     "Use card": "Dùng thẻ",
     "Request history": "Lịch sử yêu cầu",
     "No requests": "Không có yêu cầu",

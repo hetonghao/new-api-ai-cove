@@ -8875,6 +8875,8 @@
     "Enable after quota resets": "Réactiver après la réinitialisation",
     "When quota runs out": "Si le quota est épuisé",
     "Disable when quota runs out": "Désactiver si le quota est épuisé",
+    "Silent": "Ne rien faire",
+    "Silent: take no action when quota runs out": "Ne rien faire lorsque le quota est épuisé",
     "Use card": "Utiliser une carte",
     "Request history": "Historique des requêtes",
     "No requests": "Aucune requête",

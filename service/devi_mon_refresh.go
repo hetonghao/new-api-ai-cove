@@ -55,10 +55,12 @@ func RefreshDeviMonAccount(ctx context.Context, email string) error {
 			if err != nil {
 				return err
 			}
-			if policy := policies[account.ResetKey]; candidate != nil && policy.Enabled && policy.AttemptedWindowEnd < candidate.WindowEnd {
+			policy := policies[account.ResetKey]
+			account.setQuotaPolicy(policy)
+			if candidate != nil && account.AutoReset && policy.AttemptedWindowEnd < candidate.WindowEnd {
 				account.ResetOffer = &candidate.DeviMonResetOffer
 			}
-			if err := reconcileDeviMonAvailability(ctx, key, &account, devins[email], policies[account.ResetKey], nil); err != nil {
+			if err := reconcileDeviMonAvailability(ctx, key, &account, devins[email], policy, nil); err != nil {
 				return err
 			}
 		}

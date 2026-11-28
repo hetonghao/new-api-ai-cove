@@ -33,28 +33,40 @@ func TestDeviMonResetPolicyDatabaseMatrix(t *testing.T) {
 			previousType := common.MainDatabaseType()
 			common.SetMainDatabaseType(common.DatabaseType(dialect))
 			t.Cleanup(func() { common.SetMainDatabaseType(previousType) })
-			// Seed the released schema, then run the same AutoMigrate twice.
+			// Exercise both a fresh install and an upgrade from the released schema.
+			for range 2 {
+				require.NoError(t, db.AutoMigrate(&DeviMonResetPolicy{}))
+			}
+			ctx := t.Context()
+			require.NoError(t, SetDeviMonResetPolicy(ctx, "new", DeviMonSilentOnExhaustion))
+			require.NoError(t, db.Migrator().DropTable(&DeviMonResetPolicy{}))
 			type releasedPolicy struct {
-				AccountKey         string `gorm:"type:varchar(64);primaryKey"`
-				Enabled            bool   `gorm:"not null;default:false"`
-				AttemptedWindowEnd int64  `gorm:"not null;default:0"`
-				AttemptedAt        int64  `gorm:"not null;default:0"`
-				HoldExhaustedUsage bool   `gorm:"not null;default:false"`
+				AccountKey             string `gorm:"type:varchar(64);primaryKey"`
+				Enabled                bool   `gorm:"not null;default:false"`
+				KeepDisabledAfterReset bool   `gorm:"not null;default:false"`
+				PausedCredential       string `gorm:"type:varchar(64);not null;default:''"`
+				PausedWindowEnd        int64  `gorm:"not null;default:0"`
+				AttemptedWindowEnd     int64  `gorm:"not null;default:0"`
+				AttemptedAt            int64  `gorm:"not null;default:0"`
+				HoldExhaustedUsage     bool   `gorm:"not null;default:false"`
 			}
 			table := db.NamingStrategy.TableName("DeviMonResetPolicy")
 			require.NoError(t, db.Table(table).AutoMigrate(&releasedPolicy{}))
 			require.NoError(t, db.Table(table).Create(&releasedPolicy{AccountKey: "legacy-card", Enabled: true, AttemptedWindowEnd: 800, AttemptedAt: 600, HoldExhaustedUsage: true}).Error)
+			require.NoError(t, db.Table(table).Create(&releasedPolicy{AccountKey: "legacy-disable", KeepDisabledAfterReset: true}).Error)
 			for range 2 {
 				require.NoError(t, db.AutoMigrate(&DeviMonResetPolicy{}, &SystemTaskLock{}))
 			}
-			ctx := context.Background()
 			read := func(key string) DeviMonResetPolicy {
 				t.Helper()
 				rows, err := GetDeviMonResetPolicies(ctx)
 				require.NoError(t, err)
 				return rows[key]
 			}
+			require.Equal(t, DeviMonDisableOnExhaustion, read("legacy-disable").ExhaustionAction())
+			require.True(t, read("legacy-disable").KeepDisabledAfterReset)
 			old := read("legacy-card")
+			require.Equal(t, DeviMonUseCardOnExhaustion, old.ExhaustionAction())
 			require.True(t, old.Enabled)
 			require.False(t, old.KeepDisabledAfterReset)
 			require.True(t, old.HoldExhaustedUsage)
@@ -64,7 +76,17 @@ func TestDeviMonResetPolicyDatabaseMatrix(t *testing.T) {
 			old = read("legacy-card")
 			require.True(t, old.KeepDisabledAfterReset)
 			require.True(t, old.Enabled)
-			require.NoError(t, SetDeviMonResetPolicy(ctx, "legacy-card", false))
+			require.NoError(t, SetDeviMonResetPolicy(ctx, "legacy-card", DeviMonSilentOnExhaustion))
+			require.ErrorIs(t, SetDeviMonResetPolicy(ctx, "legacy-card", "unknown"), ErrDeviMonInvalidPolicy)
+			silent := read("legacy-card")
+			require.Equal(t, DeviMonSilentOnExhaustion, silent.ExhaustionAction())
+			require.True(t, silent.KeepDisabledAfterReset)
+			require.EqualValues(t, 800, silent.AttemptedWindowEnd)
+			claimed, err := ClaimDeviMonReset(ctx, "legacy-card", 2000, 1500, nil)
+			require.NoError(t, err)
+			require.False(t, claimed)
+			require.NoError(t, SetDeviMonResetPolicy(ctx, "legacy-card", DeviMonDisableOnExhaustion))
+			require.Equal(t, DeviMonDisableOnExhaustion, read("legacy-card").ExhaustionAction())
 			require.True(t, read("legacy-card").KeepDisabledAfterReset)
 			require.NoError(t, UpdateDeviMonQuotaPause(ctx, "owned", nil, func(p *DeviMonResetPolicy) error { p.PausedWindowEnd, p.PausedCredential = 42, "devin-id"; return nil }))
 			require.EqualValues(t, 42, read("owned").PausedWindowEnd)
@@ -77,11 +99,11 @@ func TestDeviMonResetPolicyDatabaseMatrix(t *testing.T) {
 				sqlDB.SetMaxOpenConns(8)
 			}
 			key := "account-1"
-			require.NoError(t, SetDeviMonResetPolicy(ctx, key, true))
+			require.NoError(t, SetDeviMonResetPolicy(ctx, key, DeviMonUseCardOnExhaustion))
 			owner := &SystemTask{Type: SystemTaskTypeDevinMonitor, TaskID: "monitor-task", LockedBy: "old-node"}
 			lock := &SystemTaskLock{Type: owner.Type, TaskID: owner.TaskID, LockedBy: owner.LockedBy, LockedUntil: 999}
 			require.NoError(t, db.Create(lock).Error)
-			claimed, err := ClaimDeviMonReset(ctx, key, 2000, 1000, owner)
+			claimed, err = ClaimDeviMonReset(ctx, key, 2000, 1000, owner)
 			require.NoError(t, err)
 			require.False(t, claimed, "an expired lease cannot authorize a card reset")
 			owner.LockedBy = "new-node"
@@ -106,11 +128,11 @@ func TestDeviMonResetPolicyDatabaseMatrix(t *testing.T) {
 				}
 			}
 			require.Equal(t, 1, winners, "a weekly window must be claimed once across workers")
-			require.NoError(t, SetDeviMonResetPolicy(ctx, key, false))
+			require.NoError(t, SetDeviMonResetPolicy(ctx, key, DeviMonDisableOnExhaustion))
 			claimed, err = ClaimDeviMonReset(ctx, key, 3000, 2200, nil)
 			require.NoError(t, err)
 			require.False(t, claimed, "disabled accounts cannot claim even the next window")
-			require.NoError(t, SetDeviMonResetPolicy(ctx, key, true))
+			require.NoError(t, SetDeviMonResetPolicy(ctx, key, DeviMonUseCardOnExhaustion))
 			claimed, err = ClaimDeviMonReset(ctx, key, 2000, 1200, nil)
 			require.NoError(t, err)
 			require.False(t, claimed, "toggling must not lose the existing claim")

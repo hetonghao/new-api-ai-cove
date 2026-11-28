@@ -70,13 +70,14 @@ func RefreshDeviMonAccount(c *gin.Context) {
 
 func SetDeviMonAccountAutoReset(c *gin.Context) {
 	var body struct {
-		Email            string `json:"email"`
-		ResetKey         string `json:"reset_key"`
-		Enabled          *bool  `json:"enabled"`
-		EnableAfterReset *bool  `json:"enable_after_reset"`
+		Email            string                         `json:"email"`
+		ResetKey         string                         `json:"reset_key"`
+		Enabled          *bool                          `json:"enabled"`
+		ExhaustionAction *model.DeviMonExhaustionAction `json:"exhaustion_action"`
+		EnableAfterReset *bool                          `json:"enable_after_reset"`
 	}
 	if err := common.DecodeJsonBody(http.MaxBytesReader(c.Writer, c.Request.Body, deviMonMaxRequestSize), &body); err != nil ||
-		strings.TrimSpace(body.Email) == "" || len(body.Email) > 254 || (body.Enabled == nil) == (body.EnableAfterReset == nil) || len(body.ResetKey) != 64 {
+		strings.TrimSpace(body.Email) == "" || len(body.Email) > 254 || (body.Enabled != nil && body.ExhaustionAction != nil) || (body.ExhaustionAction != nil && !body.ExhaustionAction.Valid()) || len(body.ResetKey) != 64 {
 		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid monitor configuration"))
 		return
 	}
@@ -84,7 +85,20 @@ func SetDeviMonAccountAutoReset(c *gin.Context) {
 		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid monitor configuration"))
 		return
 	}
-	if err := service.SetDeviMonAccountPolicy(c.Request.Context(), body.Email, body.ResetKey, body.Enabled, body.EnableAfterReset); err != nil {
+	var action model.DeviMonExhaustionAction
+	if body.ExhaustionAction != nil {
+		action = *body.ExhaustionAction
+	} else if body.Enabled != nil { // Pre-existing clients send the use-card flag.
+		action = model.DeviMonDisableOnExhaustion
+		if *body.Enabled {
+			action = model.DeviMonUseCardOnExhaustion
+		}
+	}
+	if err := service.SetDeviMonAccountPolicy(c.Request.Context(), body.Email, body.ResetKey, action, body.EnableAfterReset); err != nil {
+		if errors.Is(err, model.ErrDeviMonInvalidPolicy) {
+			common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid monitor configuration"))
+			return
+		}
 		if errors.Is(err, service.ErrDeviMonAccountMissing) {
 			common.ApiErrorStatus(c, http.StatusNotFound, common.NewMessage("Account no longer in the monitor inventory"))
 			return

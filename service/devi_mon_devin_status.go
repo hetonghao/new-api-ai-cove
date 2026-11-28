@@ -165,7 +165,7 @@ func reconcileDeviMonAvailability(ctx context.Context, key string, account *Devi
 				return false
 			}
 			if !devin.Disabled {
-				return !p.Enabled
+				return p.ExhaustionAction() == model.DeviMonDisableOnExhaustion
 			}
 			return !p.KeepDisabledAfterReset && (p.PausedCredential != id || p.PausedWindowEnd < end)
 		}
@@ -188,8 +188,8 @@ func reconcileDeviMonAvailability(ctx context.Context, key string, account *Devi
 			return ErrDeviMonDevinAccountMissing
 		}
 		if current.Disabled != exhausted {
-			// Card mode never disables, even without an available card.
-			if exhausted && p.Enabled {
+			// Only disable mode may pause a credential, even if its state changed mid-read.
+			if exhausted && p.ExhaustionAction() != model.DeviMonDisableOnExhaustion {
 				return nil
 			}
 			if err := patchDeviMonDevin(op, key, "status", current, map[string]any{"disabled": exhausted}); err != nil {

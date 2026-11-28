@@ -51,24 +51,25 @@ type DeviMonCard struct {
 // DeviMonAccount is one Codex account with its weekly allowance, credits and
 // reset cards, paired with the configuration of the same-email Devin account.
 type DeviMonAccount struct {
-	ObservedAtUS         int64            `json:"observed_at_us,omitempty"`
-	Email                string           `json:"email"`
-	UsedPercent          *float64         `json:"used_percent"`
-	ResetAt              *int64           `json:"reset_at"`
-	PlanType             string           `json:"plan_type"`
-	CreditBalance        string           `json:"credit_balance"`
-	Unlimited            bool             `json:"unlimited"`
-	Cards                []DeviMonCard    `json:"cards"`
-	RenewAt              string           `json:"renew_at"`
-	RenewSource          string           `json:"renew_source"`
-	DevinDisabled        *bool            `json:"devin_disabled"`
-	DevinRequests        *DeviMonRequests `json:"devin_requests,omitempty"`
-	DevinRouting         *DeviMonRouting  `json:"devin_routing,omitempty"`
-	Channel              string           `json:"channel"`
-	Error                string           `json:"error"`
-	ResetKey             string           `json:"reset_key,omitempty"`
-	AutoReset            bool             `json:"auto_reset,omitempty"`
-	AutoEnableAfterReset bool             `json:"auto_enable_after_reset"`
+	ObservedAtUS         int64                         `json:"observed_at_us,omitempty"`
+	Email                string                        `json:"email"`
+	UsedPercent          *float64                      `json:"used_percent"`
+	ResetAt              *int64                        `json:"reset_at"`
+	PlanType             string                        `json:"plan_type"`
+	CreditBalance        string                        `json:"credit_balance"`
+	Unlimited            bool                          `json:"unlimited"`
+	Cards                []DeviMonCard                 `json:"cards"`
+	RenewAt              string                        `json:"renew_at"`
+	RenewSource          string                        `json:"renew_source"`
+	DevinDisabled        *bool                         `json:"devin_disabled"`
+	DevinRequests        *DeviMonRequests              `json:"devin_requests,omitempty"`
+	DevinRouting         *DeviMonRouting               `json:"devin_routing,omitempty"`
+	Channel              string                        `json:"channel"`
+	Error                string                        `json:"error"`
+	ResetKey             string                        `json:"reset_key,omitempty"`
+	ExhaustionAction     model.DeviMonExhaustionAction `json:"exhaustion_action,omitempty"`
+	AutoReset            bool                          `json:"auto_reset,omitempty"`
+	AutoEnableAfterReset bool                          `json:"auto_enable_after_reset"`
 	verifiedWeekly       bool
 	ResetOffer           *DeviMonResetOffer  `json:"reset_offer,omitempty"`
 	ResetOutcome         DeviMonResetOutcome `json:"reset_outcome,omitempty"`
@@ -224,9 +225,8 @@ func GetDeviMonState() (DeviMonState, error) {
 	for i := range state.Snapshot.Accounts {
 		account := &state.Snapshot.Accounts[i]
 		policy := policies[account.ResetKey]
-		account.AutoReset = policy.Enabled
-		account.AutoEnableAfterReset = account.ResetKey != "" && !policy.KeepDisabledAfterReset
-		if !policy.Enabled || account.ResetAt == nil || *account.ResetAt <= max(policy.AttemptedWindowEnd, now) {
+		account.setQuotaPolicy(policy)
+		if !account.AutoReset || account.ResetAt == nil || *account.ResetAt <= max(policy.AttemptedWindowEnd, now) {
 			account.ResetOffer = nil
 		}
 		if policy.HoldExhaustedUsage && account.exhaustedInOldWindow(policy.AttemptedWindowEnd) {
@@ -289,7 +289,9 @@ func collectDeviMon(ctx context.Context, task *model.SystemTask, autoUseCard boo
 			account.ResetKey = ""
 		}
 		devin := devinByEmail[strings.ToLower(account.Email)]
-		if policy := policies[account.ResetKey]; policy.Enabled && candidate != nil && policy.AttemptedWindowEnd < candidate.WindowEnd {
+		policy := policies[account.ResetKey]
+		account.setQuotaPolicy(policy)
+		if account.AutoReset && candidate != nil && policy.AttemptedWindowEnd < candidate.WindowEnd {
 			if autoUseCard && task != nil {
 				if _, err := redeemDeviMonCard(ctx, key, file, &account, candidate, devin, task); err != nil {
 					logger.LogWarn(ctx, common.LogText("devin monitor: could not record reset for %s: %v", account.Email, err))
@@ -299,7 +301,7 @@ func collectDeviMon(ctx context.Context, task *model.SystemTask, autoUseCard boo
 			}
 		}
 		if account.ResetOutcome == "" {
-			if err := reconcileDeviMonAvailability(ctx, key, &account, devin, policies[account.ResetKey], task); err != nil {
+			if err := reconcileDeviMonAvailability(ctx, key, &account, devin, policy, task); err != nil {
 				snapshot.Errors = append(snapshot.Errors, account.Email+": "+errDeviMonDevinStatusFailed.Error())
 			}
 		}

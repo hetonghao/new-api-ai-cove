@@ -8875,6 +8875,8 @@
     "Enable after quota resets": "Enable after quota resets",
     "When quota runs out": "When quota runs out",
     "Disable when quota runs out": "Disable when quota runs out",
+    "Silent": "Silent",
+    "Silent: take no action when quota runs out": "Silent: take no action when quota runs out",
     "Use card": "Use card",
     "Request history": "Request history",
     "No requests": "No requests",

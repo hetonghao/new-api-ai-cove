@@ -8875,6 +8875,8 @@
     "Enable after quota resets": "リセット後に自動で有効化",
     "When quota runs out": "上限到達時",
     "Disable when quota runs out": "上限到達時に自動で無効化",
+    "Silent": "何もしない",
+    "Silent: take no action when quota runs out": "クォータを使い切っても何もしない",
     "Use card": "カードを使用",
     "Request history": "リクエスト履歴",
     "No requests": "リクエストなし",

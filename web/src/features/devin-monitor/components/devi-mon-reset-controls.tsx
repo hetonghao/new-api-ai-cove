@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { type RefObject, useContext, useId } from 'react'
+import { type RefObject, useContext, useEffect, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -34,7 +34,12 @@ import {
   setDeviMonAccountPolicy,
 } from '../api'
 import { DevinOperationMode } from '../operation-mode'
-import type { DeviMonAccount, DeviMonResetOffer, DeviMonState } from '../types'
+import type {
+  DeviMonAccount,
+  DeviMonPolicyUpdate,
+  DeviMonResetOffer,
+  DeviMonState,
+} from '../types'
 import { DevinOperationGroup } from './devi-mon-operation-group'
 
 export function DeviMonResetControls(props: {
@@ -50,6 +55,29 @@ export function DeviMonResetControls(props: {
   const id = useId()
   const resumeLabel = t('Enable after quota resets')
   const { account, offer, onOfferChange } = props
+  const useCard = account.exhaustion_action === 'use_card'
+  const currentOffer =
+    useCard && offer?.id === account.reset_offer?.id ? offer : null
+  useEffect(() => {
+    if (offer && !useCard) onOfferChange(null)
+  }, [offer, useCard, onOfferChange])
+  const choices = [
+    {
+      action: 'disable',
+      label: t('Disable'),
+      description: t('Disable when quota runs out'),
+    },
+    {
+      action: 'use_card',
+      label: t('Use card'),
+      description: t('Auto reset when quota runs out'),
+    },
+    {
+      action: 'silent',
+      label: t('Silent'),
+      description: t('Silent: take no action when quota runs out'),
+    },
+  ] as const
   const query = { queryKey: deviMonQueryKey, exact: true }
   const updateAccount = (
     update: (current: DeviMonAccount) => DeviMonAccount
@@ -70,9 +98,7 @@ export function DeviMonResetControls(props: {
     })
   }
   const preference = useMutation({
-    mutationFn: (
-      input: { enabled: boolean } | { enable_after_reset: boolean }
-    ) => {
+    mutationFn: (input: DeviMonPolicyUpdate) => {
       if (!account.reset_key) {
         throw new Error(t('Refresh this account before enabling auto reset'))
       }
@@ -81,15 +107,23 @@ export function DeviMonResetControls(props: {
     onSuccess: async (_, policy) => {
       await client.cancelQueries(query)
       updateAccount((current) =>
-        'enabled' in policy
+        'exhaustion_action' in policy
           ? {
               ...current,
-              auto_reset: policy.enabled,
-              reset_offer: policy.enabled ? current.reset_offer : null,
+              exhaustion_action: policy.exhaustion_action,
+              reset_offer:
+                policy.exhaustion_action === 'use_card'
+                  ? current.reset_offer
+                  : null,
             }
           : { ...current, auto_enable_after_reset: policy.enable_after_reset }
       )
-      if ('enabled' in policy && !policy.enabled) onOfferChange(null)
+      if (
+        'exhaustion_action' in policy &&
+        policy.exhaustion_action !== 'use_card'
+      ) {
+        onOfferChange(null)
+      }
       await client.invalidateQueries(query)
     },
     onError: (error) => {
@@ -108,7 +142,11 @@ export function DeviMonResetControls(props: {
           ? current
           : {
               ...updated,
-              auto_reset: current.auto_reset,
+              exhaustion_action: current.exhaustion_action,
+              reset_offer:
+                current.exhaustion_action === 'use_card'
+                  ? updated.reset_offer
+                  : null,
               auto_enable_after_reset: current.auto_enable_after_reset,
             }
       )
@@ -157,40 +195,45 @@ export function DeviMonResetControls(props: {
             {t('When quota runs out')}
           </span>
           <div className='bg-muted inline-flex rounded-md p-0.5'>
-            {([false, true] as const).map((useCard) => (
+            {choices.map(({ action, label, description }) => (
               <label
-                key={String(useCard)}
-                className='has-checked:bg-background has-checked:text-foreground text-muted-foreground has-focus-visible:ring-ring relative inline-flex min-h-6 cursor-pointer items-center rounded-sm px-2 has-checked:shadow-xs has-focus-visible:ring-2 has-disabled:cursor-default pointer-coarse:min-h-11'
+                key={action}
+                title={description}
+                className='has-checked:bg-background has-checked:text-foreground text-muted-foreground has-focus-visible:ring-ring relative inline-flex min-h-6 cursor-pointer items-center rounded-sm px-2 whitespace-nowrap has-checked:shadow-xs has-focus-visible:ring-2 has-disabled:cursor-default pointer-coarse:min-h-11'
               >
                 <input
                   className='peer sr-only'
                   type='radio'
                   name={`${id}-mode`}
-                  checked={account.auto_reset === useCard}
-                  aria-label={`${useCard ? t('Auto reset when quota runs out') : t('Disable when quota runs out')} · ${account.email}`}
-                  onChange={() => preference.mutate({ enabled: useCard })}
+                  value={action}
+                  checked={account.exhaustion_action === action}
+                  aria-label={`${description} · ${account.email}`}
+                  onChange={() =>
+                    preference.mutate({ exhaustion_action: action })
+                  }
                 />
-                {useCard ? t('Use card') : t('Disable')}
+                {label}
               </label>
             ))}
           </div>
         </fieldset>
         <Label
           htmlFor={id}
-          className='text-muted-foreground min-h-7 cursor-pointer text-xs font-normal pointer-coarse:min-h-11'
+          className='text-muted-foreground min-h-7 cursor-pointer text-xs font-normal whitespace-nowrap pointer-coarse:min-h-11'
         >
           <Checkbox
             id={id}
             checked={account.auto_enable_after_reset !== false}
             disabled={!operationMode || busy || account.devin_disabled === null}
-            aria-label={`${resumeLabel} · ${account.email}`}
             onCheckedChange={(enable) =>
               preference.mutate({ enable_after_reset: enable })
             }
           />
-          {resumeLabel}
+          <span>
+            {resumeLabel} <span className='sr-only'>· {account.email}</span>
+          </span>
         </Label>
-        {account.auto_reset && account.reset_offer && (
+        {useCard && account.reset_offer && (
           <Button
             type='button'
             size='xs'
@@ -211,7 +254,7 @@ export function DeviMonResetControls(props: {
         )}
       </DevinOperationGroup>
       <ConfirmDialog
-        open={operationMode && offer !== null}
+        open={operationMode && currentOffer !== null}
         onOpenChange={(open) => {
           if (!open && !reset.isPending) onOfferChange(null)
         }}
@@ -227,15 +270,10 @@ export function DeviMonResetControls(props: {
         destructive
         isLoading={reset.isPending}
         finalFocus={props.returnFocus}
-        disabled={
-          !offer ||
-          !account.auto_reset ||
-          account.reset_offer?.id !== offer.id ||
-          preference.isPending
-        }
+        disabled={!currentOffer || preference.isPending}
         handleConfirm={() => {
-          if (operationMode && offer) {
-            reset.mutate(offer)
+          if (operationMode && currentOffer) {
+            reset.mutate(currentOffer)
           }
         }}
       />

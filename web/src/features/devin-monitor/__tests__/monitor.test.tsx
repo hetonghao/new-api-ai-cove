@@ -26,6 +26,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { api } from '@/lib/api'
 
+import { deviMonQueryKey } from '../api'
 import { DeviMonMonitor } from '../components/devi-mon-monitor'
 import { DevinRequestHistory } from '../components/devi-mon-request-history'
 import { DEFAULT_DEVIN_SORT } from '../sort'
@@ -84,11 +85,12 @@ function renderMonitor() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
-  return render(
+  const view = render(
     <QueryClientProvider client={client}>
       <SortableMonitor />
     </QueryClientProvider>
   )
+  return { ...view, client }
 }
 
 function serveState(snapshot: unknown) {
@@ -340,15 +342,15 @@ describe('devin monitor', () => {
     }
   })
 
-  it('saves auto reset per account and asks before using a card after a manual refresh', async () => {
+  it('only offers a card in card mode and dismisses an open confirmation when the account goes silent', async () => {
     const mutations: [string | undefined, unknown][] = []
-    let enabled = false
+    let action = 'disable'
     let refreshed = false
     api.defaults.adapter = (async (config) => {
       let data: unknown = null
       if (config.method === 'put') {
         mutations.push([config.url, JSON.parse(config.data)])
-        enabled = true
+        action = JSON.parse(config.data).exhaustion_action
       } else if (config.method === 'post') {
         mutations.push([config.url, JSON.parse(config.data)])
         refreshed = true
@@ -359,7 +361,7 @@ describe('devin monitor', () => {
             accounts: SNAPSHOT.accounts.map((row, index) => ({
               ...row,
               reset_key: `tracked-${index}`,
-              auto_reset: index === 0 && enabled,
+              exhaustion_action: index === 0 ? action : 'disable',
               used_percent: index === 0 && refreshed ? 100 : row.used_percent,
               reset_offer:
                 index === 0 && refreshed
@@ -383,7 +385,7 @@ describe('devin monitor', () => {
         statusText: 'OK',
       }
     }) satisfies AxiosAdapter
-    renderMonitor()
+    const { client } = renderMonitor()
     const user = userEvent.setup()
     await user.click(
       await screen.findByRole('switch', { name: 'Operation mode' })
@@ -406,14 +408,53 @@ describe('devin monitor', () => {
       name: 'Use one reset card?',
     })
     expect(within(dialog).getByText(/busy@example.com/)).toBeVisible()
-    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    // A second tab saves Silent while this tab still has the card offer open.
+    action = 'silent'
+    await act(() => client.invalidateQueries({ queryKey: deviMonQueryKey }))
+    await waitFor(() => expect(dialog).not.toBeInTheDocument())
+    const silent = screen.getByRole('radio', {
+      name: /Silent: take no action when quota runs out · busy@example/,
+    })
+    expect(silent).toBeChecked()
+    expect(
+      screen.queryByRole('button', { name: 'Confirm card use' })
+    ).toBeNull()
+    // This server deliberately keeps returning the old offer on refresh.
+    const refresh = screen.getByRole('button', {
+      name: 'Refresh busy@example.com',
+    })
+    await user.click(refresh)
+    await waitFor(() => expect(refresh).toBeEnabled())
+    expect(screen.queryByRole('alertdialog')).toBeNull()
     expect(mutations).toEqual([
       [
         '/api/devin-monitor/accounts/auto-reset',
-        { email: 'busy@example.com', reset_key: 'tracked-0', enabled: true },
+        {
+          email: 'busy@example.com',
+          reset_key: 'tracked-0',
+          exhaustion_action: 'use_card',
+        },
       ],
       ['/api/devin-monitor/accounts/refresh', { email: 'busy@example.com' }],
+      ['/api/devin-monitor/accounts/refresh', { email: 'busy@example.com' }],
     ])
+    await user.click(busy)
+    await waitFor(() => expect(busy).toBeChecked())
+    await user.click(silent)
+    await waitFor(() => expect(silent).toBeChecked())
+    expect(mutations.at(-1)?.[1]).toEqual({
+      email: 'busy@example.com',
+      reset_key: 'tracked-0',
+      exhaustion_action: 'silent',
+    })
+    expect(
+      screen.getByRole('checkbox', {
+        name: /Enable after quota resets · busy@example/,
+      })
+    ).toBeChecked()
+    expect(
+      screen.queryByRole('button', { name: 'Confirm card use' })
+    ).toBeNull()
   })
 
   it('shows the post-reset reading returned by the mocked confirmation even if polling fails', async () => {

@@ -8875,6 +8875,8 @@
     "Enable after quota resets": "Включать после сброса квоты",
     "When quota runs out": "Когда квота исчерпана",
     "Disable when quota runs out": "Отключать при исчерпании квоты",
+    "Silent": "Без действий",
+    "Silent: take no action when quota runs out": "Ничего не делать при исчерпании квоты",
     "Use card": "Применить карту",
     "Request history": "История запросов",
     "No requests": "Нет запросов",

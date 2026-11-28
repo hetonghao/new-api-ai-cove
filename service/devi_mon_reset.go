@@ -54,11 +54,19 @@ func deviMonCodexIdentity(file map[string]any) (accountID, accountKey string) {
 	return accountID, hex.EncodeToString(digest[:])
 }
 
-func SetDeviMonAccountAutoReset(ctx context.Context, email, expectedKey string, enabled bool) error {
-	return SetDeviMonAccountPolicy(ctx, email, expectedKey, &enabled, nil)
+func (account *DeviMonAccount) setQuotaPolicy(policy model.DeviMonResetPolicy) {
+	account.ExhaustionAction = ""
+	if account.ResetKey != "" {
+		account.ExhaustionAction = policy.ExhaustionAction()
+	}
+	account.AutoReset = account.ExhaustionAction == model.DeviMonUseCardOnExhaustion
+	account.AutoEnableAfterReset = account.ResetKey != "" && !policy.KeepDisabledAfterReset
 }
 
-func SetDeviMonAccountPolicy(ctx context.Context, email, expectedKey string, useCard, resume *bool) error {
+func SetDeviMonAccountPolicy(ctx context.Context, email, expectedKey string, action model.DeviMonExhaustionAction, resume *bool) error {
+	if (resume != nil && action != "") || (resume == nil && !action.Valid()) {
+		return model.ErrDeviMonInvalidPolicy
+	}
 	key := DeviMonKey()
 	if key == "" {
 		return errors.New("CPA_MANAGEMENT_KEY is not configured")
@@ -72,13 +80,10 @@ func SetDeviMonAccountPolicy(ctx context.Context, email, expectedKey string, use
 	if accountKey == "" || accountKey != expectedKey {
 		return ErrDeviMonAccountMissing
 	}
-	if useCard != nil {
-		return model.SetDeviMonResetPolicy(ctx, accountKey, *useCard)
-	}
 	if resume != nil {
 		return model.SetDeviMonResumeAfterReset(ctx, accountKey, *resume)
 	}
-	return errors.New("empty monitor policy")
+	return model.SetDeviMonResetPolicy(ctx, accountKey, action)
 }
 
 func uniqueDeviMonCodexAccount(files []map[string]any, email string) map[string]any {
@@ -179,7 +184,7 @@ func redeemDeviMonCard(ctx context.Context, key string, file map[string]any, acc
 	policies, policyErr := model.GetDeviMonResetPolicies(operationCtx)
 	if policyErr == nil {
 		policy := policies[account.ResetKey]
-		account.AutoReset, account.AutoEnableAfterReset = policy.Enabled, !policy.KeepDisabledAfterReset
+		account.setQuotaPolicy(policy)
 		policyErr = reconcileDeviMonAvailability(operationCtx, key, account, devin, policy, task)
 	}
 	// Store the verified quota and its resulting Devin state together. A manual

@@ -51,6 +51,10 @@ func TestDeviMonAccountActionsRequireRootAndValidTarget(t *testing.T) {
 			}
 			continue
 		}
+		prefix := `{"email":"ops@example.test","reset_key":"` + strings.Repeat("a", 64) + `",`
+		for _, fields := range []string{`"exhaustion_action":"typo"`, `"exhaustion_action":"silent","enabled":true`, `"exhaustion_action":"silent","enable_after_reset":true`} {
+			require.Equal(t, http.StatusBadRequest, request(http.MethodPut, "auto-reset", session.AccessToken, prefix+fields+"}"))
+		}
 		for _, body := range []string{`{"email":"  "}`, "{}{}", strings.Repeat(" ", 4097)} {
 			for endpoint, method := range routes {
 				require.Equal(t, http.StatusBadRequest, request(method, endpoint, session.AccessToken, body))

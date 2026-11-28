@@ -47,28 +47,44 @@ const requestsSchema = z.object({
     .max(20),
 })
 
-export const deviMonAccountSchema = z.object({
-  email: z.string(),
-  used_percent: z.number().nullable(),
-  reset_at: z.number().int().nullable(),
-  plan_type: z.string(),
-  credit_balance: z.string(),
-  unlimited: z.boolean(),
-  cards: z.array(deviMonCardSchema),
-  renew_at: z.string(),
-  renew_source: z.string(),
-  devin_disabled: z.boolean().nullable(),
-  devin_routing: deviMonRoutingSchema.nullish(),
-  devin_requests: requestsSchema.nullish(),
-  channel: z.enum(['cpa', 'chatgpt']).default('cpa'),
-  error: z.string(),
-  observed_at_us: z.number().int().default(0),
-  reset_key: z.string().optional(),
-  auto_reset: z.boolean().default(false),
-  auto_enable_after_reset: z.boolean().optional(),
-  reset_offer: deviMonResetOfferSchema.nullish(),
-  reset_outcome: z.enum(['applied', 'rejected', 'unverified']).optional(),
-})
+const exhaustionActionSchema = z.enum(['disable', 'use_card', 'silent'])
+export type DeviMonPolicyUpdate =
+  | { exhaustion_action: z.infer<typeof exhaustionActionSchema> }
+  | { enable_after_reset: boolean }
+
+export const deviMonAccountSchema = z
+  .object({
+    email: z.string(),
+    used_percent: z.number().nullable(),
+    reset_at: z.number().int().nullable(),
+    plan_type: z.string(),
+    credit_balance: z.string(),
+    unlimited: z.boolean(),
+    cards: z.array(deviMonCardSchema),
+    renew_at: z.string(),
+    renew_source: z.string(),
+    devin_disabled: z.boolean().nullable(),
+    devin_routing: deviMonRoutingSchema.nullish(),
+    devin_requests: requestsSchema.nullish(),
+    channel: z.enum(['cpa', 'chatgpt']).default('cpa'),
+    error: z.string(),
+    observed_at_us: z.number().int().default(0),
+    reset_key: z.string().optional(),
+    auto_reset: z.boolean().default(false),
+    exhaustion_action: exhaustionActionSchema.optional(),
+    auto_enable_after_reset: z.boolean().optional(),
+    reset_offer: deviMonResetOfferSchema.nullish(),
+    reset_outcome: z.enum(['applied', 'rejected', 'unverified']).optional(),
+  })
+  .transform(({ auto_reset, ...account }) => {
+    const action =
+      account.exhaustion_action ?? (auto_reset ? 'use_card' : 'disable')
+    return {
+      ...account,
+      exhaustion_action: action,
+      reset_offer: action === 'use_card' ? account.reset_offer : null,
+    }
+  })
 
 const deviMonDevinSchema = z.object({
   email: z.string(),

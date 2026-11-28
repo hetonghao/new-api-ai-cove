@@ -29,6 +29,7 @@ import {
   deviMonSettingsSchema,
   deviMonStateSchema,
   type DeviMonSettings,
+  type DeviMonPolicyUpdate,
 } from './types'
 
 const BASE_PATH = '/api/devin-monitor'
@@ -93,7 +94,7 @@ export async function refreshDeviMonAccount(email: string) {
 export async function setDeviMonAccountPolicy(
   email: string,
   resetKey: string,
-  policy: { enabled: boolean } | { enable_after_reset: boolean }
+  policy: DeviMonPolicyUpdate
 ): Promise<void> {
   const response = await api.put<unknown>(
     `${BASE_PATH}/accounts/auto-reset`,
