@@ -347,7 +347,7 @@ export function ChannelsTable() {
     columnFilters,
     globalFilter,
     pagination,
-    channels.map((channel) => [channel.id, channel.priority]),
+    channels.map((channel) => [channel.id, channel.priority, channel.weight]),
   ])
   const priorityOrder = useChannelPriorityOrder({
     channels,

@@ -92,3 +92,28 @@ test('server preview applies visible changes and keeps deterministic null-zero o
   ])
   expect(channels[0].priority).toBe(100)
 })
+
+test.each([true, false])(
+  'joining a tier previews weight then ID in either direction (descending=%s)',
+  (desc) => {
+    const rows = [
+      { id: 1, priority: 80, weight: 90 },
+      { id: 4, priority: 80, weight: 20 },
+      { id: 2, priority: 80, weight: null },
+    ] as Channel[]
+    const moving = { id: 3, priority: 0, weight: 20 } as Channel
+    const original = desc ? [...rows, moving] : [moving, ...rows]
+    const drop = { id: 3, target_id: 1, position: 'same' } as const
+    const saved = {
+      revision: 'next',
+      changes: [],
+      items: original.map(({ id }) => ({ id, priority: 80 })),
+    }
+    expect(
+      previewPriorityDrop(original, drop, desc).map(({ id }) => id)
+    ).toEqual([1, 4, 3, 2])
+    expect(
+      applyPriorityPreview(original, saved, desc).map(({ id }) => id)
+    ).toEqual([1, 4, 3, 2])
+  }
+)

@@ -112,27 +112,25 @@ func NewChannelSortOptions(sortBy string, sortOrder string, idSort bool) Channel
 }
 
 func (options ChannelSortOptions) Apply(query *gorm.DB) *gorm.DB {
-	if columnName, ok := channelSortColumns[options.SortBy]; ok {
-		column := clause.Column{Name: columnName}
-		if columnName == "priority" {
-			// Routing treats a missing priority as zero on every database.
-			column = clause.Column{Name: "COALESCE(priority, 0)", Raw: true}
+	column, ok := channelSortColumns[options.SortBy]
+	desc := options.SortOrder != "asc"
+	if !ok {
+		column, desc = "priority", true
+		if options.IDSort {
+			column = "id"
 		}
-		return query.Order(clause.OrderByColumn{
-			Column: column,
-			Desc:   options.SortOrder != "asc",
-		}).Order(clause.OrderByColumn{Column: clause.Column{Name: "id"}, Desc: true})
 	}
-	if options.IDSort {
-		return query.Order(clause.OrderByColumn{
-			Column: clause.Column{Name: "id"},
-			Desc:   true,
-		})
+	order := clause.OrderByColumn{Column: clause.Column{Name: column}, Desc: desc}
+	if column == "priority" {
+		// Missing routing values display as zero, including on PostgreSQL.
+		order.Column = clause.Column{Name: "COALESCE(priority, 0)", Raw: true}
+		return query.Order(order).Order("COALESCE(weight, 0) DESC, id DESC")
 	}
-	return query.Order(clause.OrderByColumn{
-		Column: clause.Column{Name: "COALESCE(priority, 0)", Raw: true},
-		Desc:   true,
-	}).Order(clause.OrderByColumn{Column: clause.Column{Name: "id"}, Desc: true})
+	query = query.Order(order)
+	if column != "id" {
+		query = query.Order("id DESC")
+	}
+	return query
 }
 
 func resolveChannelSortOptions(idSort bool, sortOptions []ChannelSortOptions) ChannelSortOptions {
@@ -1370,11 +1368,8 @@ func CountChannelTags(query *gorm.DB) (int64, error) {
 // Get channels of specified type with pagination
 func GetChannelsByType(startIdx int, num int, idSort bool, channelType int) ([]*Channel, error) {
 	var channels []*Channel
-	order := "priority desc"
-	if idSort {
-		order = "id desc"
-	}
-	err := DB.Where("type = ?", channelType).Order(order).Limit(num).Offset(startIdx).Omit("key").Find(&channels).Error
+	query := DB.Where("type = ?", channelType)
+	err := NewChannelSortOptions("", "", idSort).Apply(query).Limit(num).Offset(startIdx).Omit("key").Find(&channels).Error
 	return channels, err
 }
 

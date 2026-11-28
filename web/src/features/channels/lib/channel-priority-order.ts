@@ -40,6 +40,10 @@ export type PriorityMove = Partial<PriorityDrop> & {
   restore?: PriorityChange[]
 }
 
+function compareWithinTier(a: Channel, b: Channel) {
+  return (b.weight ?? 0) - (a.weight ?? 0) || b.id - a.id
+}
+
 /** Positions are canonical (descending priority), independent of the view. */
 export function previewPriorityDrop(
   channels: Channel[],
@@ -57,7 +61,7 @@ export function previewPriorityDrop(
   let index = indices[0]
   if (drop.position === 'same') {
     index =
-      indices.find((i) => remaining[i].id < moving.id) ??
+      indices.find((i) => compareWithinTier(moving, remaining[i]) < 0) ??
       (indices.at(-1) ?? 0) + 1
   } else if ((drop.position === 'after') === desc) {
     index = (indices.at(-1) ?? 0) + 1
@@ -81,6 +85,7 @@ export function applyPriorityPreview(
     }))
     .sort(
       (a, b) =>
-        ((a.priority ?? 0) - (b.priority ?? 0)) * (desc ? -1 : 1) || b.id - a.id
+        ((a.priority ?? 0) - (b.priority ?? 0)) * (desc ? -1 : 1) ||
+        compareWithinTier(a, b)
     )
 }

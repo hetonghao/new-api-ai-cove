@@ -100,7 +100,7 @@ func TestChannelPriorityDatabaseMatrix(t *testing.T) {
 			require.NoError(t, db.Raw(query).Scan(&version).Error)
 			t.Logf("database version: %s", version)
 			high, low, zero := int64(100), int64(99), int64(0)
-			w1, w2, w3, w4 := uint(11), uint(22), uint(33), uint(44)
+			w1, w2, w3, w4 := uint(11), uint(33), uint(22), uint(44)
 			channels := []Channel{
 				{Name: "high", Priority: &high, Weight: &w1, Key: "preserved", Status: 1},
 				{Name: "low", Priority: &low, Weight: &w2, Status: 1},
@@ -191,9 +191,24 @@ func TestChannelPriorityDatabaseMatrix(t *testing.T) {
 			require.NoError(t, db.Model(&Channel{}).Where("id = ?", channels[3].Id).Update("priority", nil).Error)
 			nullable, err := GetChannelPriorityOrder()
 			require.NoError(t, err)
-			var sorted []ChannelPriority
-			require.NoError(t, NewChannelSortOptions("priority", "asc", false).Apply(db.Model(&Channel{}).Select("id", "priority")).Find(&sorted).Error)
-			assert.Equal(t, []int{channels[3].Id, channels[2].Id, channels[1].Id, channels[0].Id}, []int{sorted[0].ID, sorted[1].ID, sorted[2].ID, sorted[3].ID})
+			for _, tc := range []struct {
+				field, direction string
+				idSort           bool
+				want             []int
+			}{
+				{"priority", "asc", false, []int{channels[3].Id, channels[1].Id, channels[2].Id, channels[0].Id}},
+				{"", "", false, []int{channels[0].Id, channels[1].Id, channels[2].Id, channels[3].Id}},
+				{"", "", true, []int{channels[3].Id, channels[2].Id, channels[1].Id, channels[0].Id}},
+			} {
+				var ids []int
+				for offset := 0; offset < len(channels); offset += 2 {
+					var page []int
+					err := NewChannelSortOptions(tc.field, tc.direction, tc.idSort).Apply(db.Model(&Channel{})).Limit(2).Offset(offset).Pluck("id", &page).Error
+					require.NoError(t, err)
+					ids = append(ids, page...)
+				}
+				assert.Equal(t, tc.want, ids)
+			}
 			move.Revision = nullable.Revision
 			applied, err = ReorderChannelPriority(move)
 			require.NoError(t, err)
