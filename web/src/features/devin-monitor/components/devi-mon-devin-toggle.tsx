@@ -64,7 +64,7 @@ function withDeviMonDisabled(
 // unrelated, so every row keeps this switch.
 export function DevinAccountToggle(props: {
   readonly email: string
-  readonly disabled: boolean | null
+  readonly disabled: boolean
   readonly configured: boolean
 }) {
   const { t } = useTranslation()
@@ -109,13 +109,6 @@ export function DevinAccountToggle(props: {
       })
     },
   })
-  if (props.disabled === null) {
-    return (
-      <span className='text-muted-foreground text-xs'>
-        {t('No Devin account')}
-      </span>
-    )
-  }
   const status = enabled ? t('Devin enabled') : t('Devin disabled')
   const Mark = enabled ? CircleCheck : CircleAlert
   return (

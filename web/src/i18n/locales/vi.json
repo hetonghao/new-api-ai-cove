@@ -8822,6 +8822,8 @@
     "Invalid Devin routing value": "Ưu tiên hoặc trọng số Devin không hợp lệ",
     "Could not update Devin routing": "Không thể lưu định tuyến tài khoản Devin",
     "Could not load Devin request history": "Không thể tải lịch sử yêu cầu Devin",
+    "Operation mode": "Chế độ thao tác",
+    "Please turn on operation mode": "Vui lòng bật chế độ thao tác",
     "Live Devin data unavailable. Showing the last reading.": "Không thể tải dữ liệu Devin trực tiếp. Đang hiển thị lần đọc gần nhất."
   }
 }

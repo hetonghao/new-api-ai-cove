@@ -8822,6 +8822,8 @@
     "Invalid Devin routing value": "Devin の優先度または重みが無効です",
     "Could not update Devin routing": "Devin アカウントのルーティング設定を保存できませんでした",
     "Could not load Devin request history": "Devin のリクエスト履歴を読み込めませんでした",
+    "Operation mode": "操作モード",
+    "Please turn on operation mode": "操作モードをオンにしてください",
     "Live Devin data unavailable. Showing the last reading.": "Devin の最新データを取得できないため、前回の結果を表示しています。"
   }
 }

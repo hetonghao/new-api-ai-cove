@@ -21,16 +21,12 @@ import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTitle,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+import { Popover, PopoverContent, PopoverTitle } from '@/components/ui/popover'
 import dayjs from '@/lib/dayjs'
 import { cn } from '@/lib/utils'
 
 import type { DeviMonAccount } from '../types'
+import { DevinDetailTrigger } from './devi-mon-operation-group'
 
 type Cards = DeviMonAccount['cards']
 
@@ -96,7 +92,7 @@ export function DeviMonResetCards({
       <CardDates cards={cards.slice(0, 2)} />
       {extra.length > 0 && (
         <Popover>
-          <PopoverTrigger
+          <DevinDetailTrigger
             openOnHover
             delay={100}
             closeDelay={120}
@@ -111,7 +107,7 @@ export function DeviMonResetCards({
             }
           >
             <Plus className='size-3' aria-hidden='true' />
-          </PopoverTrigger>
+          </DevinDetailTrigger>
           <PopoverContent
             align='end'
             side='top'

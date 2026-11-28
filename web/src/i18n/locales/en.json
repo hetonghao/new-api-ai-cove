@@ -8822,6 +8822,8 @@
     "Invalid Devin routing value": "Invalid Devin routing value",
     "Could not update Devin routing": "Could not update Devin routing",
     "Could not load Devin request history": "Could not load Devin request history",
+    "Operation mode": "Operation mode",
+    "Please turn on operation mode": "Please turn on operation mode",
     "Live Devin data unavailable. Showing the last reading.": "Live Devin data unavailable. Showing the last reading."
   }
 }

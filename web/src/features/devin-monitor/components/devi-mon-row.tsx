@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useRef, useState } from 'react'
+import { useContext, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { QuotaWindow } from '@/features/upstream-subscriptions/components/quota-window'
@@ -25,6 +25,7 @@ import { toIntlLocale } from '@/i18n/languages'
 import dayjs from '@/lib/dayjs'
 import { formatNumber } from '@/lib/format'
 
+import { DevinOperationMode } from '../operation-mode'
 import type { DeviMonAccount, DeviMonResetOffer } from '../types'
 import { DeviMonAccountActions } from './devi-mon-account-actions'
 import { DeviMonAccountSettings } from './devi-mon-account-settings'
@@ -76,6 +77,7 @@ export function DeviMonRow({
 }) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  const operationMode = useContext(DevinOperationMode)
   const refreshButton = useRef<HTMLButtonElement>(null)
   const [resetOffer, setResetOffer] = useState<DeviMonResetOffer | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -103,7 +105,7 @@ export function DeviMonRow({
           configured={configured}
           onOpenSettings={() => setSettingsOpen(true)}
           refreshButton={refreshButton}
-          onResetOffer={setResetOffer}
+          onResetOffer={operationMode ? setResetOffer : undefined}
         />
         {account.devin_disabled !== null && (
           <DevinRequestHistory

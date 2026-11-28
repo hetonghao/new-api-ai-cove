@@ -95,6 +95,9 @@ describe('subscription operations tabs', () => {
     expect(
       screen.queryByRole('button', { name: 'Create subscription' })
     ).toBeNull()
+    const mode = screen.getByRole('switch', { name: 'Operation mode' })
+    await userEvent.click(mode)
+    expect(mode).toBeChecked()
     tabs[0].focus()
     await userEvent.keyboard('{ArrowRight}{Enter}')
     expect(tabs[1]).toHaveFocus()
@@ -107,5 +110,8 @@ describe('subscription operations tabs', () => {
     ).toBeGreaterThan(0)
     await userEvent.click(tabs[0])
     expect(await screen.findByRole('tabpanel', { name: 'Devin' })).toBeVisible()
+    expect(
+      await screen.findByRole('switch', { name: 'Operation mode' })
+    ).not.toBeChecked()
   })
 })

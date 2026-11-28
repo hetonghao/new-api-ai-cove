@@ -8822,6 +8822,8 @@
     "Invalid Devin routing value": "Devin 优先级或权重无效",
     "Could not update Devin routing": "未能保存 Devin 账号的路由设置",
     "Could not load Devin request history": "无法读取 Devin 请求记录",
+    "Operation mode": "操作模式",
+    "Please turn on operation mode": "请打开操作模式",
     "Live Devin data unavailable. Showing the last reading.": "Devin 实时数据暂不可用，当前显示上次读数。"
   }
 }

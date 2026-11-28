@@ -8822,6 +8822,8 @@
     "Invalid Devin routing value": "Priorité ou poids Devin non valide",
     "Could not update Devin routing": "Impossible de modifier le routage du compte Devin",
     "Could not load Devin request history": "Impossible de charger l’historique Devin",
+    "Operation mode": "Mode opérateur",
+    "Please turn on operation mode": "Activez le mode opérateur",
     "Live Devin data unavailable. Showing the last reading.": "Données Devin en direct indisponibles. Dernier relevé affiché."
   }
 }

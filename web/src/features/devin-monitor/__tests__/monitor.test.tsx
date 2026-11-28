@@ -18,11 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { AxiosAdapter } from 'axios'
 import { useState } from 'react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { api } from '@/lib/api'
 
@@ -143,13 +143,175 @@ describe('devin monitor', () => {
       })
     }
     expect(lamps[0]).toHaveAccessibleName(/No requests/)
-    await userEvent.click(lamps[16])
+    await userEvent.hover(lamps[16])
     const tip = await screen.findByRole('dialog')
     expect(tip).toHaveTextContent('Success 1')
     expect(tip).toHaveTextContent('Failed 3')
     expect(tip).toHaveTextContent('(25.0%)')
     await userEvent.keyboard('{Escape}')
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
+  it('locks account changes on paired and unpaired rows without blocking a manual refresh or offering card use', async () => {
+    const user = userEvent.setup()
+    const writes: string[] = []
+    let successes = 12
+    const paired = {
+      ...SNAPSHOT.accounts[0],
+      reset_key: 'tracked-account',
+      auto_reset: true,
+      reset_offer: {
+        id: '996feb4e-ffe7-5bc3-817b-88bd8ac1c081',
+        expires_at: '2026-12-01T04:03:00Z',
+      },
+    }
+    const emails = [paired.email, 'orphan@example.com']
+    api.defaults.adapter = async (config) => {
+      let data: unknown
+      if (config.method !== 'get') {
+        writes.push(config.url ?? '')
+        successes++
+        data = null
+      } else if (config.url?.endsWith('/accounts/devin')) {
+        data = Object.fromEntries(
+          emails.map((email) => [
+            email,
+            {
+              email,
+              disabled: false,
+              devin_routing: { priority: 2, weight: 1 },
+              requests: {
+                success: successes,
+                failed: 0,
+                as_of: 1_795_000_000,
+                recent: [],
+              },
+            },
+          ])
+        )
+      } else if (config.url?.endsWith('/accounts')) {
+        data = []
+      } else {
+        data = {
+          configured: true,
+          collecting: false,
+          next_run_at: 0,
+          snapshot: { ...SNAPSHOT, accounts: [paired] },
+        }
+      }
+      return {
+        config,
+        data: { success: true, data },
+        headers: {},
+        status: 200,
+        statusText: 'OK',
+      }
+    }
+    renderMonitor()
+    const mode = await screen.findByRole('switch', { name: 'Operation mode' })
+    expect(mode).not.toBeChecked()
+    for (const email of emails) {
+      const status = await screen.findByRole('switch', {
+        name: `Disable ${email}`,
+      })
+      const priority = screen.getByRole('button', {
+        name: `Priority · ${email}: 2`,
+      })
+      const weight = screen.getByRole('group', { name: `Weight · ${email}` })
+      expect(status).toBeDisabled()
+      expect(priority).toBeDisabled()
+      expect(
+        within(weight).getByRole('button', { name: 'Increment' })
+      ).toBeDisabled()
+      await user.click(status)
+      await user.click(priority)
+      expect(screen.queryByRole('textbox')).toBeNull()
+    }
+    const policy = screen.getByRole('radio', {
+      name: `Disable when quota runs out · ${paired.email}`,
+    })
+    const resume = screen.getByRole('checkbox', {
+      name: /Enable after quota resets · busy@example/,
+    })
+    expect(policy).toBeDisabled()
+    expect(resume).toHaveAttribute('aria-disabled', 'true')
+    const offer = screen.getByRole('button', { name: 'Confirm card use' })
+    expect(offer).toBeDisabled()
+    await user.click(policy)
+    await user.click(resume)
+    await user.click(offer)
+    const locked = screen.getByRole('group', {
+      name: `Devin · ${paired.email}`,
+    })
+    expect(locked).toHaveAccessibleDescription('Please turn on operation mode')
+    locked.focus()
+    await user.keyboard('{Enter} ')
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(writes).toEqual([])
+    await user.click(
+      screen.getByRole('button', { name: `Refresh ${paired.email}` })
+    )
+    const history = within(
+      screen.getByRole('group', { name: `Request history · ${paired.email}` })
+    )
+    expect(await history.findByText('13')).toBeVisible()
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(writes).toEqual(['/api/devin-monitor/accounts/refresh'])
+    await user.click(
+      screen.getByRole('button', {
+        name: `Subscription channel for ${emails[1]}`,
+      })
+    )
+    expect(await screen.findByRole('dialog')).toBeVisible()
+    await user.keyboard('{Escape}')
+    await user.click(mode)
+    expect(policy).toBeEnabled()
+    expect(offer).toBeEnabled()
+    await user.click(mode)
+    expect(policy).toBeDisabled()
+    expect(offer).toBeDisabled()
+  })
+
+  it('reads request history on entry and at the four-minute CPA interval without collecting quota', async () => {
+    const reads: string[] = []
+    vi.useFakeTimers()
+    try {
+      api.defaults.adapter = async (config) => {
+        reads.push(`${config.method ?? ''} ${config.url}`)
+        const data = config.url?.endsWith('/accounts/devin')
+          ? {}
+          : {
+              snapshot: SNAPSHOT,
+              collecting: false,
+              configured: true,
+              next_run_at: 0,
+            }
+        return {
+          config,
+          data: { success: true, data },
+          headers: {},
+          status: 200,
+          statusText: 'OK',
+        }
+      }
+      renderMonitor()
+      const historyReads = () =>
+        reads.filter((r) => r === 'get /api/devin-monitor/accounts/devin')
+          .length
+      const advance = (ms: number) =>
+        act(async () => {
+          await vi.advanceTimersByTimeAsync(ms)
+        })
+      await advance(10)
+      expect(historyReads()).toBe(1)
+      await advance(239_000)
+      expect(historyReads()).toBe(1)
+      await advance(1_100)
+      expect(historyReads()).toBe(2)
+      expect(reads.some((r) => r.startsWith('post '))).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('saves auto reset per account and asks before using a card after a manual refresh', async () => {
@@ -197,6 +359,9 @@ describe('devin monitor', () => {
     }) satisfies AxiosAdapter
     renderMonitor()
     const user = userEvent.setup()
+    await user.click(
+      await screen.findByRole('switch', { name: 'Operation mode' })
+    )
     const busy = await screen.findByRole('radio', {
       name: 'Auto reset when quota runs out · busy@example.com',
     })
@@ -271,6 +436,9 @@ describe('devin monitor', () => {
 
     renderMonitor()
     const user = userEvent.setup()
+    await user.click(
+      await screen.findByRole('switch', { name: 'Operation mode' })
+    )
     const ready = await screen.findByRole('button', {
       name: 'Confirm card use',
     })
@@ -397,6 +565,8 @@ describe('devin monitor', () => {
       'negative',
       'unknown',
     ])
+    expect(picker).toBeDisabled()
+    await user.click(screen.getByRole('switch', { name: 'Operation mode' }))
     await user.click(screen.getByRole('button', { name: 'Descending' }))
     expect(order()).toEqual([
       'negative',
@@ -503,6 +673,10 @@ describe('devin monitor', () => {
     more.focus()
     const user = userEvent.setup()
     await user.keyboard('{Enter}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await user.click(screen.getByRole('switch', { name: 'Operation mode' }))
+    more.focus()
+    await user.keyboard('{Enter}')
     const popup = await screen.findByRole('dialog')
     expect(popup.querySelector(`time[datetime="${third}"]`)).toBeVisible()
     expect(within(popup).getByRole('listitem')).toHaveTextContent('×2')
@@ -558,6 +732,9 @@ describe('devin monitor', () => {
 
     renderMonitor()
     const user = userEvent.setup()
+    await user.click(
+      await screen.findByRole('switch', { name: 'Operation mode' })
+    )
     const toggle = await screen.findByRole('switch', {
       name: 'Disable busy@example.com',
     })
@@ -717,6 +894,8 @@ describe('devin monitor', () => {
     renderMonitor()
     const collect = await screen.findByRole('button', { name: 'Collect now' })
     const user = userEvent.setup()
+    expect(collect).toBeDisabled()
+    await user.click(screen.getByRole('switch', { name: 'Operation mode' }))
     await user.click(collect)
     const dialog = await screen.findByRole('alertdialog', {
       name: 'Collect all accounts?',

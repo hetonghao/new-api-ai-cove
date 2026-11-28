@@ -8822,6 +8822,8 @@
     "Invalid Devin routing value": "Недопустимый приоритет или вес Devin",
     "Could not update Devin routing": "Не удалось сохранить маршрутизацию аккаунта Devin",
     "Could not load Devin request history": "Не удалось загрузить историю запросов Devin",
+    "Operation mode": "Режим управления",
+    "Please turn on operation mode": "Включите режим управления",
     "Live Devin data unavailable. Showing the last reading.": "Данные Devin недоступны. Показаны последние полученные данные."
   }
 }

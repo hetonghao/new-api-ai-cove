@@ -20,17 +20,14 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+import { Popover, PopoverContent } from '@/components/ui/popover'
 import { toIntlLocale } from '@/i18n/languages'
 import dayjs from '@/lib/dayjs'
 import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import type { DevinRequests } from '../types'
+import { DevinDetailTrigger } from './devi-mon-operation-group'
 
 // Match the CPA management center's ProviderStatusBar: continuous RGB stops
 // at 0%, 50%, 100%, and an uncolored block for a window with no requests.
@@ -131,7 +128,7 @@ export function DevinRequestHistory({
               <div className='flex items-center gap-2'>
                 <div className='flex min-w-0 flex-1'>
                   {blocks.map((b, i) => (
-                    <PopoverTrigger
+                    <DevinDetailTrigger
                       key={b.slot}
                       payload={i}
                       openOnHover
@@ -177,7 +174,7 @@ export function DevinRequestHistory({
                             : { backgroundColor: bucketColor(b.rate) }
                         }
                       />
-                    </PopoverTrigger>
+                    </DevinDetailTrigger>
                   ))}
                 </div>
                 <span

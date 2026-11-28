@@ -26,7 +26,11 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { getServerErrorStatus } from '@/lib/server-error-message'
 
-import { deviMonQueryKey, refreshDeviMonAccount } from '../api'
+import {
+  deviMonInventoryKey,
+  deviMonQueryKey,
+  refreshDeviMonAccount,
+} from '../api'
 import type { DeviMonResetOffer, DeviMonState } from '../types'
 
 export function AccountRefreshButton(props: {
@@ -40,10 +44,16 @@ export function AccountRefreshButton(props: {
   const refresh = useMutation({
     mutationFn: () => refreshDeviMonAccount(props.email),
     onSuccess: async () => {
-      await client.invalidateQueries(
-        { queryKey: deviMonQueryKey, exact: true },
-        { throwOnError: true }
-      )
+      await Promise.all([
+        client.invalidateQueries(
+          { queryKey: deviMonQueryKey, exact: true },
+          { throwOnError: true }
+        ),
+        client.invalidateQueries({
+          queryKey: deviMonInventoryKey,
+          exact: true,
+        }),
+      ])
       const account = client
         .getQueryData<DeviMonState>(deviMonQueryKey)
         ?.snapshot?.accounts.find((row) => row.email === props.email)
