@@ -122,14 +122,40 @@ type deviMonTaskPayload struct {
 
 func (deviMonTask) NewPayload() any { return deviMonTaskPayload{AutoReset: true} }
 
-func (deviMonTask) interruptedRetry(latest *model.SystemTask) (int64, any) {
-	var payload deviMonTaskPayload
-	if latest.Status != model.SystemTaskStatusFailed || latest.Error != model.SystemTaskLeaseExpiredMessage ||
-		latest.DecodePayload(&payload) != nil || payload.RetryOf != "" {
-		return 0, nil
+// Intervals that divide the day, and whole hours/days, follow a local clock grid.
+// Anchor on a local Monday so a seven-day interval also has a stable weekday.
+func nextDeviMonCollection(finished time.Time, interval time.Duration) time.Time {
+	if (24*time.Hour)%interval != 0 && interval%time.Hour != 0 {
+		return finished.Add(interval)
 	}
-	payload.RetryOf = latest.TaskID
-	return latest.UpdatedAt + int64(deviMonInterruptedRetryDelay/time.Second), payload
+	const monday = 4 * 24 * 60 * 60 // 1970-01-05, in local wall-clock seconds
+	period := int64(interval / time.Second)
+	for next := finished.Truncate(time.Minute).Add(time.Minute); ; {
+		_, offset := next.Zone()
+		wait := (monday - next.Unix() - int64(offset)) % period
+		if wait < 0 {
+			wait += period
+		}
+		slot := next.Add(time.Duration(wait) * time.Second)
+		// A clock change before the slot can remove or repeat it. Re-evaluate
+		// from the transition with the new offset rather than invent a local time.
+		_, end := next.ZoneBounds()
+		if end.IsZero() || !end.After(next) || slot.Before(end) {
+			return slot
+		}
+		next = end
+	}
+}
+
+func (deviMonTask) nextScheduledRun(latest *model.SystemTask, interval time.Duration) (int64, any) {
+	if latest.Status == model.SystemTaskStatusFailed && latest.Error == model.SystemTaskLeaseExpiredMessage {
+		var payload deviMonTaskPayload
+		if latest.DecodePayload(&payload) == nil && payload.RetryOf == "" {
+			payload.RetryOf = latest.TaskID
+			return latest.UpdatedAt + int64(deviMonInterruptedRetryDelay/time.Second), payload
+		}
+	}
+	return nextDeviMonCollection(time.Unix(latest.UpdatedAt, 0), interval).Unix(), nil
 }
 
 func init() { RegisterSystemTaskHandler(deviMonTask{}) }
@@ -164,20 +190,18 @@ type DeviMonState struct {
 }
 
 // The primary writes task results; every gateway reads them. The scheduler
-// and this view use the same recovery time for an interrupted collection.
+// and this view use the same clock slots and interruption recovery policy.
 func GetDeviMonState() (DeviMonState, error) {
 	handler := deviMonTask{}
-	state := DeviMonState{Configured: handler.Enabled(), IntervalMinutes: operation_setting.GetDeviMonSettings().IntervalMinutes}
+	interval := handler.Interval()
+	state := DeviMonState{Configured: handler.Enabled(), IntervalMinutes: int(interval / time.Minute)}
 	latest, err := model.GetLatestSystemTask(handler.Type())
 	if err != nil || latest == nil {
 		return state, err
 	}
 	state.Collecting = latest.Status == model.SystemTaskStatusPending || latest.Status == model.SystemTaskStatusRunning
 	if state.Configured && !state.Collecting {
-		state.NextRunAt = latest.UpdatedAt + int64(state.IntervalMinutes)*60
-		if retryAt, payload := handler.interruptedRetry(latest); payload != nil {
-			state.NextRunAt = retryAt
-		}
+		state.NextRunAt, _ = handler.nextScheduledRun(latest, interval)
 	}
 	state.LastError = latest.Error
 	if latest.Status != model.SystemTaskStatusSucceeded {

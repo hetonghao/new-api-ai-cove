@@ -254,7 +254,7 @@ func TestDeviMonResetRechecksUsageAndDoesNotSpendAnotherCard(t *testing.T) {
 				require.Equal(t, 21.0, *updated.UsedPercent)
 			} else {
 				require.NoError(t, model.DB.Model(task).Update("updated_at", now.Add(-24*time.Hour).Unix()).Error)
-				runSystemTaskScheduler()
+				runSystemTaskScheduler(common.GetTimestamp())
 				scheduled, err := model.GetActiveSystemTask(handler.Type())
 				require.NoError(t, err)
 				require.NotNil(t, scheduled)

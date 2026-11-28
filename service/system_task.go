@@ -37,8 +37,7 @@ type SystemTaskHandler interface {
 }
 
 // ScheduledSystemTaskHandler is a SystemTaskHandler that the scheduler also
-// creates periodically when enabled and the configured interval has elapsed
-// since the last run.
+// creates periodically when enabled. By default the interval starts at completion.
 type ScheduledSystemTaskHandler interface {
 	SystemTaskHandler
 	Enabled() bool
@@ -46,9 +45,10 @@ type ScheduledSystemTaskHandler interface {
 	NewPayload() any
 }
 
-// Only handlers whose work is safe to repeat may opt into an earlier recovery run.
-type interruptedSystemTaskRetrier interface {
-	interruptedRetry(latest *model.SystemTask) (int64, any)
+// An optional schedule can choose clock slots or a recovery payload after a terminal run.
+// A nil payload uses the handler's ordinary scheduled payload.
+type customSystemTaskSchedule interface {
+	nextScheduledRun(latest *model.SystemTask, interval time.Duration) (int64, any)
 }
 
 var (
@@ -153,7 +153,7 @@ func StartSystemTaskRunner() {
 				}
 				if now.Sub(lastScheduler) >= systemTaskSchedulerInterval {
 					lastScheduler = now
-					runSystemTaskScheduler()
+					runSystemTaskScheduler(now.Unix())
 				}
 				runSystemTaskClaimPass(runnerID)
 				finishAppliedSyncTasks()
@@ -263,11 +263,9 @@ func runSystemTaskClaimPass(runnerID string) {
 }
 
 // runSystemTaskScheduler creates a new task row for each enabled scheduled
-// handler whose interval has elapsed since its last run and that has no active
-// row. The task active_key unique index deduplicates concurrent creation while
-// the per-type lock guarantees only one runner executes the task.
-func runSystemTaskScheduler() {
-	now := common.GetTimestamp()
+// handler that is due and has no active row. The active_key unique index
+// deduplicates concurrent creation; the per-type lock prevents overlapping runs.
+func runSystemTaskScheduler(now int64) {
 	handlers := registeredSystemTaskHandlers()
 	scheduledHandlers := make([]ScheduledSystemTaskHandler, 0, len(handlers))
 	taskTypes := make([]string, 0, len(handlers))
@@ -291,11 +289,12 @@ func runSystemTaskScheduler() {
 			if latest.Status == model.SystemTaskStatusPending || latest.Status == model.SystemTaskStatusRunning {
 				continue // an active row already exists
 			}
-			due := latest.UpdatedAt + int64(scheduled.Interval().Seconds())
-			if handler, ok := scheduled.(interruptedSystemTaskRetrier); ok {
-				if retryAt, retryPayload := handler.interruptedRetry(latest); retryPayload != nil {
-					due, payload = retryAt, retryPayload
-				}
+			interval := scheduled.Interval()
+			var due int64
+			if custom, ok := scheduled.(customSystemTaskSchedule); ok {
+				due, payload = custom.nextScheduledRun(latest, interval)
+			} else {
+				due = latest.UpdatedAt + int64(interval/time.Second)
 			}
 			if now < due {
 				continue

@@ -73,12 +73,12 @@ func TestSystemTaskSchedulerCreatesWhenDueAndDedups(t *testing.T) {
 	handler := &stubScheduledHandler{taskType: "test_scheduled", enabled: true, interval: time.Minute}
 	withSystemTaskRegistry(t, handler)
 
-	runSystemTaskScheduler()
+	runSystemTaskScheduler(common.GetTimestamp())
 	require.Equal(t, int64(1), countSystemTasks(t, handler.taskType))
 
 	// An active (pending) row already exists, so a second pass must not create
 	// another row.
-	runSystemTaskScheduler()
+	runSystemTaskScheduler(common.GetTimestamp())
 	require.Equal(t, int64(1), countSystemTasks(t, handler.taskType))
 
 	// Finish the run; with a fresh updated_at the next run is not due yet.
@@ -90,7 +90,7 @@ func TestSystemTaskSchedulerCreatesWhenDueAndDedups(t *testing.T) {
 	require.True(t, claimed)
 	require.NoError(t, model.FinishSystemTask(latest.TaskID, "runner-a", model.SystemTaskStatusSucceeded, nil, ""))
 
-	runSystemTaskScheduler()
+	runSystemTaskScheduler(common.GetTimestamp())
 	require.Equal(t, int64(1), countSystemTasks(t, handler.taskType))
 
 	// Backdate the finished row beyond the interval -> the job becomes due again.
@@ -98,7 +98,7 @@ func TestSystemTaskSchedulerCreatesWhenDueAndDedups(t *testing.T) {
 		Where("task_id = ?", latest.TaskID).
 		Update("updated_at", common.GetTimestamp()-120).Error)
 
-	runSystemTaskScheduler()
+	runSystemTaskScheduler(common.GetTimestamp())
 	require.Equal(t, int64(2), countSystemTasks(t, handler.taskType))
 }
 
@@ -108,7 +108,7 @@ func TestSystemTaskSchedulerSkipsDisabled(t *testing.T) {
 	handler := &stubScheduledHandler{taskType: "test_disabled", enabled: false, interval: time.Minute}
 	withSystemTaskRegistry(t, handler)
 
-	runSystemTaskScheduler()
+	runSystemTaskScheduler(common.GetTimestamp())
 	assert.Equal(t, int64(0), countSystemTasks(t, handler.taskType))
 }
 

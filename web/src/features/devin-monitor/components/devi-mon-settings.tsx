@@ -130,7 +130,9 @@ function SettingsFormCard(props: {
                   aria-invalid={fieldState.invalid}
                 />
                 <FieldDescription>
-                  {t('Between 15 minutes and 7 days. Default is 180 minutes.')}
+                  {t(
+                    '15 minutes to 7 days; default: 180 minutes. A 60-minute interval runs on the hour.'
+                  )}
                 </FieldDescription>
                 <FieldError>{fieldState.error?.message}</FieldError>
               </>

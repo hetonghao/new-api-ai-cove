@@ -203,12 +203,7 @@ export function DeviMonMonitor(props: {
   let nextRun = t('Not scheduled')
   if (data.next_run_at > 0) nextRun = formatTimestampToDate(data.next_run_at)
   else if (data.collecting) {
-    const interval = data.interval_minutes ?? snapshot?.interval_minutes
-    nextRun = interval
-      ? t('{{minutes}} minutes after this collection finishes', {
-          minutes: interval,
-        })
-      : t('Collecting')
+    nextRun = t('Determined when this collection finishes')
   } else if (data.configured) nextRun = t('Awaiting first collection')
 
   const collectedAt = snapshot

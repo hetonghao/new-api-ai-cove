@@ -188,7 +188,7 @@ func TestDeviMonInterruptedCollectionKeepsLastCompleteInventoryAndSharedSchedule
 	defer upstream.Close()
 	t.Cleanup(deviMonReplaceBase(t, upstream.URL))
 
-	runSystemTaskScheduler()
+	runSystemTaskScheduler(common.GetTimestamp())
 	queued, created, err := EnqueueSystemTask(handler.Type(), nil)
 	require.NoError(t, err)
 	require.False(t, created, "manual and scheduled collection share one job")
@@ -235,6 +235,71 @@ func TestDeviMonInterruptedCollectionKeepsLastCompleteInventoryAndSharedSchedule
 	require.Equal(t, complete, state.Snapshot)
 }
 
+func TestDeviMonCollectionUsesLocalClockSlots(t *testing.T) {
+	local := time.FixedZone("UTC+8", 8*60*60)
+	for _, tc := range []struct {
+		minutes     int
+		after, want string
+	}{
+		{60, "2026-11-28 10:03:17", "2026-11-28 11:00:00"},
+		{60, "2026-11-28 11:00:00", "2026-11-28 12:00:00"},
+		{30, "2026-11-28 10:11:04", "2026-11-28 10:30:00"},
+		{15, "2026-11-28 23:59:58", "2026-11-29 00:00:00"},
+		{180, "2026-11-28 10:03:17", "2026-11-28 12:00:00"},
+		{1440, "2026-11-28 17:30:00", "2026-11-29 00:00:00"},
+		{10080, "2026-11-28 17:30:00", "2026-11-30 00:00:00"},
+		{23, "2026-11-28 10:03:17", "2026-11-28 10:26:17"},
+	} {
+		after, err := time.ParseInLocation(time.DateTime, tc.after, local)
+		require.NoError(t, err)
+		got := nextDeviMonCollection(after, time.Duration(tc.minutes)*time.Minute)
+		assert.Equal(t, tc.want, got.Format(time.DateTime), "%d minutes after %s", tc.minutes, after)
+	}
+	// A spring-forward skips a clock slot; the fall-back hour occurs at two distinct instants.
+	newYork, err := time.LoadLocation("America/New_York")
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		hours       int
+		after, want string
+	}{
+		{3, "2026-03-08T00:15:00-05:00", "2026-03-08T03:00:00-04:00"},
+		{1, "2026-11-01T01:59:40-04:00", "2026-11-01T01:00:00-05:00"},
+	} {
+		after, err := time.Parse(time.RFC3339, tc.after)
+		require.NoError(t, err)
+		assert.Equal(t, tc.want, nextDeviMonCollection(after.In(newYork), time.Duration(tc.hours)*time.Hour).Format(time.RFC3339))
+	}
+}
+
+func TestDeviMonSchedulerQueuesAtTheDisplayedBoundary(t *testing.T) {
+	truncate(t)
+	t.Setenv("CPA_MANAGEMENT_KEY", "fixture")
+	previous := operation_setting.GetDeviMonSettings()
+	t.Cleanup(func() { require.NoError(t, operation_setting.SetDeviMonSettings(previous)) })
+	require.NoError(t, operation_setting.SetDeviMonSettings(operation_setting.DeviMonSettings{IntervalMinutes: 60}))
+	h := deviMonTask{}
+	withSystemTaskRegistry(t, h)
+	// This collection crossed 10:00. Do not replay that slot or drift to 11:03.
+	finished := time.Date(2026, 11, 28, 10, 3, 0, 0, time.Local)
+	require.NoError(t, model.DB.Create(&model.SystemTask{
+		TaskID: "clock-slot", Type: h.Type(), Status: model.SystemTaskStatusSucceeded, Result: "{}",
+		CreatedAt: finished.Add(-5 * time.Minute).Unix(), UpdatedAt: finished.Unix(),
+	}).Error)
+	want := time.Date(2026, 11, 28, 11, 0, 0, 0, time.Local).Unix()
+	state, err := GetDeviMonState()
+	require.NoError(t, err)
+	require.Equal(t, want, state.NextRunAt)
+	runSystemTaskScheduler(want - 1)
+	require.EqualValues(t, 1, countSystemTasks(t, h.Type()))
+	runSystemTaskScheduler(want)
+	runSystemTaskScheduler(want + 15)
+	require.EqualValues(t, 2, countSystemTasks(t, h.Type()))
+	queued, err := model.GetActiveSystemTask(h.Type())
+	require.NoError(t, err)
+	require.NotNil(t, queued)
+	require.JSONEq(t, `{"auto_reset":true}`, queued.Payload)
+}
+
 func TestDeviMonRecollectsOnceAfterRunnerReplacement(t *testing.T) {
 	truncate(t)
 	t.Setenv("CPA_MANAGEMENT_KEY", "fixture")
@@ -265,11 +330,11 @@ func TestDeviMonRecollectsOnceAfterRunnerReplacement(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, snapshot, state.Snapshot)
 	require.Equal(t, failed.UpdatedAt+60, state.NextRunAt, "retry after one minute rather than a full collection interval")
-	runSystemTaskScheduler()
+	runSystemTaskScheduler(common.GetTimestamp())
 	require.EqualValues(t, 2, countSystemTasks(t, h.Type()))
 	require.NoError(t, model.DB.Model(failed).Update("updated_at", common.GetTimestamp()-61).Error)
-	runSystemTaskScheduler()
-	runSystemTaskScheduler()
+	runSystemTaskScheduler(common.GetTimestamp())
+	runSystemTaskScheduler(common.GetTimestamp())
 	retry, created, err := EnqueueSystemTask(h.Type(), nil)
 	require.NoError(t, err)
 	require.False(t, created, "manual collection must reuse the pending recovery")
@@ -281,8 +346,9 @@ func TestDeviMonRecollectsOnceAfterRunnerReplacement(t *testing.T) {
 	expire(retry, "replacement")
 	retry, err = model.GetSystemTaskByTaskID(retry.TaskID)
 	require.NoError(t, err)
-	require.NoError(t, model.DB.Model(retry).Update("updated_at", common.GetTimestamp()-61).Error)
-	runSystemTaskScheduler()
+	finished := time.Date(2026, 11, 30, 0, 0, 0, 0, time.Local).Unix()
+	require.NoError(t, model.DB.Model(retry).Update("updated_at", finished).Error)
+	runSystemTaskScheduler(finished + 61)
 	require.EqualValues(t, 3, countSystemTasks(t, h.Type()), "an interrupted retry must not loop")
 	state, err = GetDeviMonState()
 	require.NoError(t, err)
@@ -292,8 +358,7 @@ func TestDeviMonRecollectsOnceAfterRunnerReplacement(t *testing.T) {
 
 	// After the normal interval, a healthy run replaces the old snapshot and
 	// clears the warning. The one-retry limit is per collection, not permanent.
-	require.NoError(t, model.DB.Model(retry).Update("updated_at", common.GetTimestamp()-int64(h.Interval().Seconds())-1).Error)
-	runSystemTaskScheduler()
+	runSystemTaskScheduler(state.NextRunAt)
 	next, err := model.GetActiveSystemTask(h.Type())
 	require.NoError(t, err)
 	require.NotNil(t, next)

@@ -920,7 +920,7 @@ describe('devin monitor', () => {
     ).toBeDisabled()
     expect(screen.getByText('busy@example.com')).toBeVisible()
     expect(
-      screen.getByText('180 minutes after this collection finishes')
+      screen.getByText('Determined when this collection finishes')
     ).toBeVisible()
     expect(screen.queryByText('Not scheduled')).toBeNull()
     complete = true
