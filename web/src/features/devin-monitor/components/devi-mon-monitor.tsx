@@ -52,7 +52,6 @@ import { sortDevinAccounts, type DevinSort } from '../sort'
 import type { DeviMonRouting, DevinRequests } from '../types'
 import { DeviMonAccountActions } from './devi-mon-account-actions'
 import { DeviMonAccountSettings } from './devi-mon-account-settings'
-import { DevinOperationGroup } from './devi-mon-operation-group'
 import { DevinRequestHistory } from './devi-mon-request-history'
 import { DeviMonRow } from './devi-mon-row'
 
@@ -107,7 +106,6 @@ export function DeviMonMonitor(props: {
   const [confirmCollect, setConfirmCollect] = useState(false)
   const collectTrigger = useRef<HTMLButtonElement>(null)
   function requestCollection(event: MouseEvent<HTMLButtonElement>) {
-    if (!operationMode) return
     collectTrigger.current = event.currentTarget
     setConfirmCollect(true)
   }
@@ -219,20 +217,18 @@ export function DeviMonMonitor(props: {
   const seconds = Math.round((snapshot?.duration_ms ?? 0) / 1000)
   const collectLabel = busy ? t('Collecting...') : t('Collect now')
   const collectButton = (
-    <DevinOperationGroup label={collectLabel}>
-      <Button
-        variant='outline'
-        size='sm'
-        disabled={busy || !data.configured}
-        onClick={requestCollection}
-      >
-        <RefreshCw
-          className={busy ? 'animate-spin' : undefined}
-          aria-hidden='true'
-        />
-        {collectLabel}
-      </Button>
-    </DevinOperationGroup>
+    <Button
+      variant='outline'
+      size='sm'
+      disabled={busy || !data.configured}
+      onClick={requestCollection}
+    >
+      <RefreshCw
+        className={busy ? 'animate-spin' : undefined}
+        aria-hidden='true'
+      />
+      {collectLabel}
+    </Button>
   )
 
   return (
@@ -278,30 +274,28 @@ export function DeviMonMonitor(props: {
               {t('Operation mode')}
             </Label>
             {(accounts.length > 0 || unpaired.length > 0) && (
-              <DevinOperationGroup label={t('Sort subscriptions by')}>
-                <SubscriptionSortControl<DevinSort['field']>
-                  options={[
-                    { value: 'priority', label: t('Priority') },
-                    { value: 'reset', label: t('Reset time') },
-                    { value: 'renewal', label: t('Renewal time') },
-                  ]}
-                  value={props.sort.field}
-                  descending={props.sort.descending}
-                  onChange={(field) => {
-                    if (field === props.sort.field) return
-                    props.onSortChange({
-                      field,
-                      descending: field === 'priority',
-                    })
-                  }}
-                  onToggle={() =>
-                    props.onSortChange({
-                      ...props.sort,
-                      descending: !props.sort.descending,
-                    })
-                  }
-                />
-              </DevinOperationGroup>
+              <SubscriptionSortControl<DevinSort['field']>
+                options={[
+                  { value: 'priority', label: t('Priority') },
+                  { value: 'reset', label: t('Reset time') },
+                  { value: 'renewal', label: t('Renewal time') },
+                ]}
+                value={props.sort.field}
+                descending={props.sort.descending}
+                onChange={(field) => {
+                  if (field === props.sort.field) return
+                  props.onSortChange({
+                    field,
+                    descending: field === 'priority',
+                  })
+                }}
+                onToggle={() =>
+                  props.onSortChange({
+                    ...props.sort,
+                    descending: !props.sort.descending,
+                  })
+                }
+              />
             )}
             {props.onOpenSettings && (
               <Button variant='ghost' size='sm' onClick={props.onOpenSettings}>
@@ -313,7 +307,7 @@ export function DeviMonMonitor(props: {
         </div>
 
         <ConfirmDialog
-          open={operationMode && confirmCollect}
+          open={confirmCollect}
           onOpenChange={setConfirmCollect}
           finalFocus={collectTrigger}
           title={t('Collect all accounts?')}
@@ -323,7 +317,7 @@ export function DeviMonMonitor(props: {
           confirmText={t('Collect now')}
           disabled={busy || !data.configured}
           handleConfirm={() => {
-            if (!operationMode || busy || !data.configured) return
+            if (busy || !data.configured) return
             setConfirmCollect(false)
             collect.mutate()
           }}

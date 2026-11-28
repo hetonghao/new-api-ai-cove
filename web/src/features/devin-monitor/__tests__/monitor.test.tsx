@@ -565,8 +565,10 @@ describe('devin monitor', () => {
       'negative',
       'unknown',
     ])
-    expect(picker).toBeDisabled()
-    await user.click(screen.getByRole('switch', { name: 'Operation mode' }))
+    expect(
+      screen.getByRole('switch', { name: 'Operation mode' })
+    ).not.toBeChecked()
+    expect(picker).toBeEnabled()
     await user.click(screen.getByRole('button', { name: 'Descending' }))
     expect(order()).toEqual([
       'negative',
@@ -894,8 +896,10 @@ describe('devin monitor', () => {
     renderMonitor()
     const collect = await screen.findByRole('button', { name: 'Collect now' })
     const user = userEvent.setup()
-    expect(collect).toBeDisabled()
-    await user.click(screen.getByRole('switch', { name: 'Operation mode' }))
+    expect(
+      screen.getByRole('switch', { name: 'Operation mode' })
+    ).not.toBeChecked()
+    expect(collect).toBeEnabled()
     await user.click(collect)
     const dialog = await screen.findByRole('alertdialog', {
       name: 'Collect all accounts?',
